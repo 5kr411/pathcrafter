@@ -50,11 +50,11 @@ function createCraftNoTableState(bot, targets) {
     const enterToWaitForCraft = new StateTransition({
         parent: enter,
         child: waitForCraft,
-        name: 'BehaviorCraftNoTable: enter to wait for craft',
+        name: 'BehaviorCraftNoTable: enter -> wait for craft',
         shouldTransition: () => true,
         onTransition: async () => {
             waitForCraftStartTime = Date.now()
-            console.log('BehaviorCraftNoTable: enter to wait for craft')
+            console.log('BehaviorCraftNoTable: enter -> wait for craft')
             await craftItemNoTable(targets.itemNameToCraft, targets.timesToCraft, 3)
         }
     })
@@ -62,10 +62,10 @@ function createCraftNoTableState(bot, targets) {
     const waitForCraftToExit = new StateTransition({
         parent: waitForCraft,
         child: exit,
-        name: 'BehaviorCraftNoTable: wait for craft to exit',
+        name: 'BehaviorCraftNoTable: wait for craft -> exit',
         shouldTransition: () => getItemCountInInventory(bot, targets.itemNameToCraft) >= targets.expectedQuantityAfterCraft || Date.now() - waitForCraftStartTime > 3500,
         onTransition: () => {
-            console.log('BehaviorCraftNoTable: wait for craft to exit')
+            console.log('BehaviorCraftNoTable: wait for craft -> exit')
         }
     })
 
