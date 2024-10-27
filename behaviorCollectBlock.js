@@ -1,0 +1,202 @@
+const { parentPort, workerData, isMainThread } = require('worker_threads')
+
+const {
+    StateTransition,
+    BehaviorIdle,
+    BehaviorFollowEntity,
+    BehaviorGetClosestEntity,
+    NestedStateMachine,
+    BehaviorFindBlock,
+    BehaviorFindInteractPosition,
+    BehaviorMoveTo,
+    BehaviorMineBlock,
+} = require('mineflayer-statemachine')
+
+const { getItemCountInInventory } = require('./util')
+
+const minecraftData = require('minecraft-data')
+
+let findBlock
+const excludedPositionType = 'excludedPosition'
+
+function createCollectBlockState(bot, targets) {
+    const mcData = minecraftData(bot.version)
+    const blockId = mcData.blocksByName[targets.blockName].id
+
+    const currentBlockCount = getItemCountInInventory(bot, targets.itemName)
+
+    function collectedCount() {
+        return getItemCountInInventory(bot, targets.itemName) - currentBlockCount
+    }
+
+    const enter = new BehaviorIdle()
+
+    findBlock = new BehaviorFindBlock(bot, targets)
+    findBlock.blocks = [blockId]
+    findBlock.maxDistance = 32
+
+    const findInteractPosition = new BehaviorFindInteractPosition(bot, targets)
+
+    const goToBlock = new BehaviorMoveTo(bot, targets)
+    goToBlock.movements.allow1by1towers = true
+
+    const mineBlock = new BehaviorMineBlock(bot, targets)
+
+    const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity) => {
+        return entity.displayName === 'Dropped item' && entity.position.distanceTo(bot.entity.position) < 6
+    })
+
+    const goToDrop = new BehaviorFollowEntity(bot, targets)
+
+    const exit = new BehaviorIdle()
+
+    const enterToFindBlock = new StateTransition({
+        parent: enter,
+        child: findBlock,
+        name: 'BehaviorFindBlock: enter to find block',
+        shouldTransition: () => collectedCount() < targets.numBlocksToCollect,
+        onTransition: () => {
+            console.log('BehaviorFindBlock: enter to find block')
+        }
+    })
+
+    const findBlockToExit = new StateTransition({
+        parent: findBlock,
+        child: exit,
+        name: 'BehaviorFindBlock: find block to exit',
+        shouldTransition: () => targets.position === undefined,
+        onTransition: () => {
+            console.log('BehaviorFindBlock: find block to exit')
+        }
+    })
+
+    const findBlockToFindInteractPosition = new StateTransition({
+        parent: findBlock,
+        child: findInteractPosition,
+        name: 'BehaviorFindBlock: find block to find interact position',
+        shouldTransition: () => targets.position !== undefined,
+        onTransition: () => {
+            targets.blockPosition = targets.position
+            console.log('BehaviorFindBlock: find block to find interact position')
+        }
+    })
+
+    const findInteractPositionToGoToBlock = new StateTransition({
+        parent: findInteractPosition,
+        child: goToBlock,
+        name: 'BehaviorFindInteractPosition: find interact position to go to block',
+        shouldTransition: () => true,
+        onTransition: () => {
+            if (targets.blockPosition) {
+                if (!isMainThread && parentPort) {
+                    parentPort.postMessage({ from: workerData.username, type: excludedPositionType, data: targets.blockPosition });
+                    console.log('added excluded position to findBlock because self found: ', targets.blockPosition);
+                } else {
+                    console.log('Found block position (main thread): ', targets.blockPosition);
+                }
+                findBlock.addExcludedPosition(targets.blockPosition)
+                console.log('BehaviorFindInteractPosition: find interact position to go to block')
+            }
+        }
+    })
+
+    const goToBlockToMineBlock = new StateTransition({
+        parent: goToBlock,
+        child: mineBlock,
+        name: 'BehaviorMoveTo: go to block to mine block',
+        shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() < 6,
+        onTransition: () => {
+            console.log(goToBlock.distanceToTarget())
+            targets.position = targets.blockPosition
+            console.log('BehaviorMoveTo: go to block to mine block')
+        }
+    })
+
+    const goToBlockToFindBlock = new StateTransition({
+        parent: goToBlock,
+        child: findBlock,
+        name: 'BehaviorMoveTo: go to block to find block',
+        shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() >= 6,
+        onTransition: () => {
+            console.log('BehaviorMoveTo: go to block to find block')
+        }
+    })
+
+    let mineBlockFinishTime
+    const mineBlockToFindDrop = new StateTransition({
+        parent: mineBlock,
+        child: findDrop,
+        name: 'BehaviorMineBlock: mine block to find drop',
+        shouldTransition: () => {
+            if (mineBlock.isFinished && !mineBlockFinishTime) {
+                mineBlockFinishTime = Date.now()
+            }
+            return Date.now() - mineBlockFinishTime > 500
+        },
+        onTransition: () => {
+            mineBlockFinishTime = undefined
+            console.log('BehaviorMineBlock: mine block to find drop')
+        }
+    })
+
+    let goToBlockStartTime
+    const findDropToGoToDrop = new StateTransition({
+        parent: findDrop,
+        child: goToDrop,
+        name: 'BehaviorGetClosestEntity: find drop to go to drop',
+        shouldTransition: () => targets.entity !== null,
+        onTransition: () => {
+            goToBlockStartTime = Date.now()
+            console.log('BehaviorGetClosestEntity: find drop to go to drop')
+        }
+    })
+
+    const findDropToFindBlock = new StateTransition({
+        parent: findDrop,
+        child: findBlock,
+        name: 'BehaviorFindBlock: find drop to find block',
+        shouldTransition: () => targets.entity === null,
+        onTransition: () => {
+            console.log('BehaviorFindBlock: find drop to find block')
+        }
+    })
+
+    const goToDropToFindBlock = new StateTransition({
+        parent: goToDrop,
+        child: findBlock,
+        name: 'BehaviorFindBlock: go to drop to find block',
+        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) && collectedCount() < targets.numBlocksToCollect,
+        onTransition: () => {
+            console.log('BehaviorFindBlock: go to drop to find block: ', Date.now() - goToBlockStartTime)
+            console.log(`Blocks collected:  ${collectedCount()}/${targets.numBlocksToCollect} ${targets.itemName}`)
+        }
+    })
+
+    const goToDropToExit = new StateTransition({
+        parent: goToDrop,
+        child: exit,
+        name: 'BehaviorFindBlock: go to drop to exit',
+        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.numBlocksToCollect && Date.now() - goToBlockStartTime > 1000),
+        onTransition: () => {
+            console.log(`BehaviorFindBlock: go to drop to exit: ${collectedCount()}/${targets.numBlocksToCollect} ${targets.itemName}`)
+        }
+    })
+
+    const transitions = [
+        enterToFindBlock,
+        findBlockToExit,
+        findBlockToFindInteractPosition,
+        findInteractPositionToGoToBlock,
+        goToBlockToMineBlock,
+        goToBlockToFindBlock,
+        mineBlockToFindDrop,
+        findDropToGoToDrop,
+        findDropToFindBlock,
+        goToDropToFindBlock,
+        goToDropToExit
+    ]
+
+    return new NestedStateMachine(transitions, enter, exit)
+}
+
+module.exports = createCollectBlockState

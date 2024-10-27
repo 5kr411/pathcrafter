@@ -1,0 +1,15 @@
+{
+  "name": "uhcbot",
+  "version": "1.0.0",
+  "description": "",
+  "main": "webserver.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "mineflayer-collectblock": "^1.4.1",
+    "mineflayer-statemachine": "^1.7.0"
+  }
+}
