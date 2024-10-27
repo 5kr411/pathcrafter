@@ -9,9 +9,6 @@ const {
     BehaviorIdle,
     NestedStateMachine,
     BotStateMachine,
-    BehaviorFindInteractPosition,
-    BehaviorMoveTo,
-    BehaviorPlaceBlock
 } = require('mineflayer-statemachine')
 
 const createCollectBlockState = require('./behaviorCollectBlock')
@@ -19,8 +16,6 @@ const createCollectBlockState = require('./behaviorCollectBlock')
 const createCraftNoTableState = require('./behaviorCraftNoTable')
 
 const createPlaceUtilityBlockState = require('./behaviorPlaceUtilityBlock')
-
-const { getItemCountInInventory } = require('./util')
 
 let botOptions = {
     host: 'localhost',
@@ -68,7 +63,7 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
-        const collectBlockState = createCollectBlockState(bot, targets)
+        const collectLogsState = createCollectBlockState(bot, targets)
 
         const craftPlanksState = createCraftNoTableState(bot, targets)
 
@@ -81,20 +76,20 @@ async function main() {
         const enterToCollectBlock = new StateTransition({
             name: 'main: enter -> collect block',
             parent: enter,
-            child: collectBlockState,
+            child: collectLogsState,
             shouldTransition: () => true,
             onTransition: () => {
                 console.log('main: enter -> collect block')
             }
         })
 
-        const collectBlockToCraftPlanks = new StateTransition({
-            name: 'main: collect block -> craft planks',
-            parent: collectBlockState,
+        const collectLogsToCraftPlanks = new StateTransition({
+            name: 'main: collect logs -> craft planks',
+            parent: collectLogsState,
             child: craftPlanksState,
-            shouldTransition: () => collectBlockState.isFinished(),
+            shouldTransition: () => collectLogsState.isFinished(),
             onTransition: () => {
-                console.log('main: collect block -> craft planks')
+                console.log('main: collect logs -> craft planks')
                 targets.itemNameToCraft = 'planks'
                 targets.timesToCraft = 1
                 targets.expectedQuantityAfterCraft = 4
@@ -139,7 +134,7 @@ async function main() {
 
         const transitions = [
             enterToCollectBlock,
-            collectBlockToCraftPlanks,
+            collectLogsToCraftPlanks,
             craftPlanksToCraftCraftingTable,
             craftCraftingTableToPlaceCraftingTable,
             placeCraftingTableToExit
