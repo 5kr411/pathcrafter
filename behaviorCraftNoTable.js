@@ -15,8 +15,24 @@ function createCraftNoTableState(bot, targets) {
 
     const exit = new BehaviorIdle()
 
+    async function clearCraftingSlots(bot) {
+        const craftingSlotIndices = [1, 2, 3, 4]; // Example indices for a 2x2 crafting grid
+
+        for (const index of craftingSlotIndices) {
+            const slot = bot.inventory.slots[index];
+            if (slot) {
+                try {
+                    await bot.moveSlotItem(index, bot.inventory.firstEmptyInventorySlot());
+                    console.log(`Moved item from crafting slot ${index} to inventory`);
+                } catch (err) {
+                    console.log(`Error moving item from crafting slot ${index}:`, err);
+                }
+            }
+        }
+    }
+
     const craftItemNoTable = async (itemName, amount, maxRetries = 3) => {
-        const mcData = minecraftData(bot.version)
+        const mcData = minecraftData(bot.version);
         const item = mcData.itemsByName[itemName];
 
         if (!item) {
@@ -30,6 +46,8 @@ function createCraftNoTableState(bot, targets) {
             return false;
         }
 
+        await clearCraftingSlots(bot);
+
         for (let attempt = 1; attempt <= maxRetries; attempt++) {
             try {
                 await bot.craft(recipe, amount, null);
@@ -37,6 +55,25 @@ function createCraftNoTableState(bot, targets) {
                 return true;
             } catch (err) {
                 console.log(`Error crafting ${itemName} (Attempt ${attempt}/${maxRetries}):`, err);
+
+                if (err.message && err.message.includes('Server rejected transaction')) {
+                    const match = err.message.match(/slot (\d+)/);
+                    if (match) {
+                        const slotNumber = parseInt(match[1]);
+                        if (slotNumber === 0) {
+                            console.log(`Retrying click on slot ${slotNumber}...`);
+                            try {
+                                await bot.simpleClick.leftMouse(slotNumber);
+                                console.log(`Successfully clicked slot ${slotNumber}`);
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                                continue;
+                            } catch (clickErr) {
+                                console.log(`Error retrying click on slot ${slotNumber}:`, clickErr);
+                            }
+                        }
+                    }
+                }
+
                 if (attempt === maxRetries) {
                     console.log(`Max retries reached for crafting ${itemName}`);
                     return false;

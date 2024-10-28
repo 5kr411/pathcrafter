@@ -50,12 +50,12 @@ async function main() {
     bot.once('spawn', () => {
         if (!isMainThread && parentPort) {
             parentPort.on('message', (message) => {
-                console.log('received message: ', message)
+                // console.log('received message: ', message)
                 // Handle worker-specific message logic
             })
         }
 
-        const targets = {
+        let targets = {
             blockName: 'log',
             numBlocksToCollect: 1,
             itemName: 'log'
