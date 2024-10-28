@@ -57,21 +57,7 @@ function createCraftNoTableState(bot, targets) {
                 console.log(`Error crafting ${itemName} (Attempt ${attempt}/${maxRetries}):`, err);
 
                 if (err.message && err.message.includes('Server rejected transaction')) {
-                    const match = err.message.match(/slot (\d+)/);
-                    if (match) {
-                        const slotNumber = parseInt(match[1]);
-                        if (slotNumber === 0) {
-                            console.log(`Retrying click on slot ${slotNumber}...`);
-                            try {
-                                await bot.simpleClick.leftMouse(slotNumber);
-                                console.log(`Successfully clicked slot ${slotNumber}`);
-                                await new Promise(resolve => setTimeout(resolve, 500));
-                                continue;
-                            } catch (clickErr) {
-                                console.log(`Error retrying click on slot ${slotNumber}:`, clickErr);
-                            }
-                        }
-                    }
+                    await clearCraftingSlots(bot);
                 }
 
                 if (attempt === maxRetries) {
@@ -92,7 +78,7 @@ function createCraftNoTableState(bot, targets) {
         onTransition: async () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftNoTable: enter -> wait for craft')
-            await craftItemNoTable(targets.itemNameToCraft, targets.timesToCraft, 3)
+            await craftItemNoTable(targets.itemNameToCraft, targets.timesToCraft, 5)
         }
     })
 

@@ -178,7 +178,7 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorFindBlock: go to drop -> exit',
         shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.numBlocksToCollect && Date.now() - goToBlockStartTime > 1000),
         onTransition: () => {
-            console.log(`BehaviorFindBlock: go to drop -> exit: ${collectedCount()}/${targets.numBlocksToCollect} ${targets.itemName}`)
+            console.log(`BehaviorFindBlock: go to drop -> exit: ${collectedCount()}/${targets.numBlocksToCollect} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
         }
     })
 
