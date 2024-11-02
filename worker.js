@@ -39,7 +39,6 @@ if (isMainThread) {
         port: workerData.port,
         username: workerData.username,
         password: workerData.password,
-        version: '1.21',
     });
 }
 
@@ -57,9 +56,9 @@ async function main() {
         }
 
         let targets = {
-            blockName: 'log',
+            blockName: 'oak_log',
             numBlocksToCollect: 1,
-            itemName: 'log'
+            itemName: 'oak_log'
         }
 
         const enter = new BehaviorIdle()
@@ -91,7 +90,7 @@ async function main() {
             shouldTransition: () => collectLogsState.isFinished(),
             onTransition: () => {
                 console.log('main: collect logs -> craft planks')
-                targets.itemNameToCraft = 'planks'
+                targets.itemNameToCraft = 'oak_planks'
                 targets.timesToCraft = 1
                 targets.expectedQuantityAfterCraft = 4
             }
