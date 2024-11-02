@@ -39,6 +39,7 @@ if (isMainThread) {
         port: workerData.port,
         username: workerData.username,
         password: workerData.password,
+        version: '1.21',
     });
 }
 
