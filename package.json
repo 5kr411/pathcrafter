@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "mineflayer": "^4.23.0",
     "mineflayer-collectblock": "^1.4.1",
     "mineflayer-statemachine": "^1.7.0"
   }
