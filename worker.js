@@ -90,8 +90,6 @@ async function main() {
                 console.log('main: collect logs -> craft planks')
                 targets.itemName = 'oak_planks'
                 targets.numNeeded = 4
-                targets.timesToCraft = 1
-                targets.expectedQuantityAfterCraft = 4
             }
         })
 
@@ -105,8 +103,6 @@ async function main() {
                 console.log('main: craft planks -> craft crafting table')
                 targets.itemName = 'crafting_table'
                 targets.numNeeded = 1
-                targets.timesToCraft = 1
-                targets.expectedQuantityAfterCraft = 1
                 placeRetries = 1
             }
         })

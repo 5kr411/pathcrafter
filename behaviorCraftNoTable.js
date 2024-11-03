@@ -5,7 +5,6 @@ const {
 } = require('mineflayer-statemachine')
 
 const { getItemCountInInventory } = require('./util')
-
 const minecraftData = require('minecraft-data')
 
 function createCraftNoTableState(bot, targets) {
@@ -41,55 +40,62 @@ function createCraftNoTableState(bot, targets) {
         });
     }
 
-    const craftItemNoTable = (itemName, amount, maxRetries = 3) => {
+    const craftItemNoTable = async (itemName, numNeeded, maxRetries = 3) => {
         const mcData = minecraftData(bot.version);
         const item = mcData.itemsByName[itemName];
 
         if (!item) {
             console.log(`BehaviorCraftNoTable: Item ${itemName} not found`);
-            return Promise.resolve(false);
+            return false;
         }
 
         const recipe = bot.recipesFor(item.id, null, 1, null).find(r => !r.requiresTable);
         if (!recipe) {
             console.log(`BehaviorCraftNoTable: No recipe found for ${itemName} that doesn't require a crafting table`);
-            return Promise.resolve(false);
+            return false;
         }
 
+        let currentCount = getItemCountInInventory(bot, itemName);
         let attempt = 1;
 
-        function attemptCraft() {
-            return clearCraftingSlots(bot)
-                .then(() => bot.craft(recipe, amount, null))
-                .then(() => {
-                    console.log(`BehaviorCraftNoTable: Successfully crafted ${itemName} ${amount} times, ${getItemCountInInventory(bot, itemName)}/${targets.expectedQuantityAfterCraft} items in inventory`);
-                    return true;
-                })
-                .catch(err => {
-                    console.log(`BehaviorCraftNoTable: Error crafting ${itemName} (Attempt ${attempt}/${maxRetries}):`, err);
+        while (currentCount < numNeeded && attempt <= maxRetries) {
+            try {
+                await clearCraftingSlots(bot);
 
-                    if (err.message && err.message.includes('Server rejected transaction')) {
-                        return clearCraftingSlots(bot)
-                            .then(() => {
-                                if (attempt < maxRetries) {
-                                    attempt++;
-                                    return new Promise(resolve => setTimeout(() => resolve(attemptCraft()), 1000));
-                                }
-                                console.log(`BehaviorCraftNoTable: Max retries reached for crafting ${itemName}`);
-                                return false;
-                            });
-                    }
+                // Calculate how many more items we need
+                const remainingNeeded = numNeeded - currentCount;
+                // Calculate how many times we can craft with current recipe
+                const timesToCraft = Math.min(Math.ceil(remainingNeeded / recipe.result.count), Math.floor(64 / recipe.result.count));
 
-                    if (attempt < maxRetries) {
-                        attempt++;
-                        return new Promise(resolve => setTimeout(() => resolve(attemptCraft()), 1000));
-                    }
-                    console.log(`BehaviorCraftNoTable: Max retries reached for crafting ${itemName}`);
-                    return false;
-                });
+                console.log(`BehaviorCraftNoTable: Attempting to craft ${timesToCraft} times (Attempt ${attempt}/${maxRetries})`);
+
+                await bot.craft(recipe, timesToCraft, null);
+
+                const newCount = getItemCountInInventory(bot, itemName);
+                console.log(`BehaviorCraftNoTable: Successfully crafted. Inventory now has ${newCount}/${numNeeded} ${itemName}`);
+
+                if (newCount === currentCount) {
+                    // If count didn't change, something went wrong
+                    throw new Error('Crafting did not increase item count');
+                }
+
+                currentCount = newCount;
+
+            } catch (err) {
+                console.log(`BehaviorCraftNoTable: Error crafting ${itemName} (Attempt ${attempt}/${maxRetries}):`, err);
+
+                if (err.message && err.message.includes('Server rejected transaction')) {
+                    await clearCraftingSlots(bot);
+                }
+
+                attempt++;
+                if (attempt <= maxRetries) {
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
         }
 
-        return attemptCraft();
+        return currentCount >= numNeeded;
     };
 
     let waitForCraftStartTime
@@ -101,7 +107,7 @@ function createCraftNoTableState(bot, targets) {
         onTransition: () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftNoTable: enter -> wait for craft')
-            craftItemNoTable(targets.itemName, targets.timesToCraft, 5)
+            craftItemNoTable(targets.itemName, targets.numNeeded, 5)
         }
     })
 
@@ -109,7 +115,7 @@ function createCraftNoTableState(bot, targets) {
         parent: waitForCraft,
         child: exit,
         name: 'BehaviorCraftNoTable: wait for craft -> exit',
-        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.expectedQuantityAfterCraft || Date.now() - waitForCraftStartTime > 3500,
+        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.numNeeded || Date.now() - waitForCraftStartTime > 10000,
         onTransition: () => {
             console.log('BehaviorCraftNoTable: wait for craft -> exit')
         }
