@@ -17,7 +17,7 @@ function createPlaceNearState(bot, targets) {
     const moveToPlaceCoords = new BehaviorMoveTo(bot, targets)
     moveToPlaceCoords.distance = 0.05
 
-    const placeUtilityBlock = new BehaviorPlaceBlock(bot, targets)
+    const placeBlock = new BehaviorPlaceBlock(bot, targets)
 
     const exit = new BehaviorIdle()
 
@@ -56,13 +56,13 @@ function createPlaceNearState(bot, targets) {
 
     let placeStartTime
     const moveToPlaceCoordsToPlaceUtilityBlock = new StateTransition({
-        name: 'BehaviorPlaceNear: move to place coords -> place utility block',
+        name: 'BehaviorPlaceNear: move to place coords -> place block',
         parent: moveToPlaceCoords,
-        child: placeUtilityBlock,
+        child: placeBlock,
         shouldTransition: () => moveToPlaceCoords.isFinished(),
         onTransition: () => {
             placeStartTime = Date.now()
-            console.log('BehaviorPlaceNear: move to place coords -> place utility block')
+            console.log('BehaviorPlaceNear: move to place coords -> place block')
             targets.position = targets.placePosition
             targets.blockFace = new Vec3(0, 1, 0)
 
@@ -72,23 +72,23 @@ function createPlaceNearState(bot, targets) {
     })
 
     const placeUtilityBlockToFindPlaceCoords = new StateTransition({
-        name: 'BehaviorPlaceNear: place utility block -> find place coords',
-        parent: placeUtilityBlock,
+        name: 'BehaviorPlaceNear: place block -> find place coords',
+        parent: placeBlock,
         child: findPlaceCoords,
         shouldTransition: () => Date.now() - placeStartTime > 1000 && placeTries < 5 && bot.world.getBlockType(targets.placedPosition) === 0,
         onTransition: () => {
-            console.log(`BehaviorPlaceNear: place utility block -> find place coords (retry ${placeTries})`)
+            console.log(`BehaviorPlaceNear: place block -> find place coords (retry ${placeTries})`)
             placeTries++
         }
     })
 
     const placeUtilityBlockToExit = new StateTransition({
-        name: 'BehaviorPlaceNear: place utility block -> exit',
-        parent: placeUtilityBlock,
+        name: 'BehaviorPlaceNear: place block -> exit',
+        parent: placeBlock,
         child: exit,
         shouldTransition: () => Date.now() - placeStartTime > 1000 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 5),
         onTransition: () => {
-            console.log('BehaviorPlaceNear: place utility block -> exit')
+            console.log('BehaviorPlaceNear: place block -> exit')
             console.log('Block at place position:', bot.world.getBlockType(targets.placedPosition))
         }
     })

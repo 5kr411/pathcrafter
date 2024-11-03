@@ -40,7 +40,7 @@ function createCraftNoTableState(bot, targets) {
         });
     }
 
-    const craftItemNoTable = async (itemName, numNeeded, maxRetries = 3) => {
+    const craftItemNoTable = async (itemName, additionalNeeded, maxRetries = 3) => {
         const mcData = minecraftData(bot.version);
         const item = mcData.itemsByName[itemName];
 
@@ -55,47 +55,58 @@ function createCraftNoTableState(bot, targets) {
             return false;
         }
 
-        let currentCount = getItemCountInInventory(bot, itemName);
-        let attempt = 1;
+        const startingCount = getItemCountInInventory(bot, itemName);
+        const targetCount = startingCount + additionalNeeded;
+        let currentCount = startingCount;
 
-        while (currentCount < numNeeded && attempt <= maxRetries) {
-            try {
-                await clearCraftingSlots(bot);
+        console.log(`BehaviorCraftNoTable: Starting with ${startingCount} ${itemName}, need ${additionalNeeded} more (target: ${targetCount})`);
 
-                // Calculate how many more items we need
-                const remainingNeeded = numNeeded - currentCount;
-                // Calculate how many times we can craft with current recipe
-                const timesToCraft = Math.min(Math.ceil(remainingNeeded / recipe.result.count), Math.floor(64 / recipe.result.count));
+        // Check if we have enough ingredients before starting
+        const hasIngredients = recipe.delta.filter(item => item.count < 0)  // Get only the items we need (negative counts)
+            .every(item => {
+                const requiredCount = Math.abs(item.count);
+                const availableCount = getItemCountInInventory(bot, mcData.items[item.id].name);
+                const hasEnough = availableCount >= requiredCount;
 
-                console.log(`BehaviorCraftNoTable: Attempting to craft ${timesToCraft} times (Attempt ${attempt}/${maxRetries})`);
-
-                await bot.craft(recipe, timesToCraft, null);
-
-                const newCount = getItemCountInInventory(bot, itemName);
-                console.log(`BehaviorCraftNoTable: Successfully crafted. Inventory now has ${newCount}/${numNeeded} ${itemName}`);
-
-                if (newCount === currentCount) {
-                    // If count didn't change, something went wrong
-                    throw new Error('Crafting did not increase item count');
+                if (!hasEnough) {
+                    console.log(`BehaviorCraftNoTable: Missing ingredients. Need ${requiredCount} ${mcData.items[item.id].name} but only have ${availableCount}`);
                 }
 
-                currentCount = newCount;
+                return hasEnough;
+            });
 
-            } catch (err) {
-                console.log(`BehaviorCraftNoTable: Error crafting ${itemName} (Attempt ${attempt}/${maxRetries}):`, err);
-
-                if (err.message && err.message.includes('Server rejected transaction')) {
-                    await clearCraftingSlots(bot);
-                }
-
-                attempt++;
-                if (attempt <= maxRetries) {
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                }
-            }
+        if (!hasIngredients) {
+            console.log(`BehaviorCraftNoTable: Cannot craft ${itemName} - missing ingredients`);
+            return false;
         }
 
-        return currentCount >= numNeeded;
+        try {
+            await clearCraftingSlots(bot);
+
+            // Calculate how many more items we need
+            const remainingNeeded = targetCount - currentCount;
+            // Calculate how many times we can craft with current recipe
+            const timesToCraft = Math.min(Math.ceil(remainingNeeded / recipe.result.count), Math.floor(64 / recipe.result.count));
+
+            console.log(`BehaviorCraftNoTable: Attempting to craft ${timesToCraft} times`);
+
+            await bot.craft(recipe, timesToCraft, null);
+
+            const newCount = getItemCountInInventory(bot, itemName);
+            console.log(`BehaviorCraftNoTable: Successfully crafted. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`);
+
+            if (newCount === currentCount) {
+                console.log('BehaviorCraftNoTable: Crafting did not increase item count');
+                return false;
+            }
+
+            return newCount >= targetCount;
+
+        } catch (err) {
+            console.log(`BehaviorCraftNoTable: Error crafting ${itemName}:`, err);
+            await clearCraftingSlots(bot);
+            return false;
+        }
     };
 
     let waitForCraftStartTime
