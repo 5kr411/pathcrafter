@@ -15,7 +15,7 @@ const createCollectBlockState = require('./behaviorCollectBlock')
 
 const createCraftNoTableState = require('./behaviorCraftNoTable')
 
-const createPlaceUtilityBlockState = require('./behaviorPlaceUtilityBlock')
+const createPlaceUtilityBlockState = require('./behaviorPlaceNear')
 
 let botOptions = {
     host: 'localhost',
@@ -132,18 +132,36 @@ async function main() {
             }
         })
 
+        const exitToEnter = new StateTransition({
+            name: 'main: exit -> enter',
+            parent: exit,
+            child: enter,
+            shouldTransition: () => false,
+            onTransition: () => {
+                console.log('main: exit -> enter')
+            }
+        })
+
         const transitions = [
             enterToCollectBlock,
             collectLogsToCraftPlanks,
             craftPlanksToCraftCraftingTable,
             craftCraftingTableToPlaceCraftingTable,
-            placeCraftingTableToExit
+            placeCraftingTableToExit,
+            exitToEnter
         ]
 
         const root = new NestedStateMachine(transitions, enter)
         root.name = 'main'
 
         const stateMachine = new BotStateMachine(bot, root)
+
+        bot.on('chat', (username, message) => {
+            if (username === bot.username) return
+            if (message === 'go') {
+                exitToEnter.trigger()
+            }
+        })
     })
 }
 

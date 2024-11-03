@@ -23,6 +23,9 @@ function createCollectBlockState(bot, targets) {
     const mcData = minecraftData(bot.version)
     const blockId = mcData.blocksByName[targets.blockName].id
 
+    let block
+    let validDrops
+
     const currentBlockCount = getItemCountInInventory(bot, targets.itemName)
 
     function collectedCount() {
@@ -43,7 +46,7 @@ function createCollectBlockState(bot, targets) {
     const mineBlock = new BehaviorMineBlock(bot, targets)
 
     const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity) => {
-        return entity.displayName === 'Dropped item' && entity.position.distanceTo(bot.entity.position) < 6
+        return (entity.displayName === 'Item') && entity.position.distanceTo(bot.entity.position) < 6;
     })
 
     const goToDrop = new BehaviorFollowEntity(bot, targets)
