@@ -57,7 +57,7 @@ function createCollectBlockState(bot, targets) {
         parent: enter,
         child: findBlock,
         name: 'BehaviorFindBlock: enter -> find block',
-        shouldTransition: () => collectedCount() < targets.numBlocksToCollect,
+        shouldTransition: () => collectedCount() < targets.numToCollect,
         onTransition: () => {
             console.log('BehaviorFindBlock: enter -> find block')
         }
@@ -168,10 +168,10 @@ function createCollectBlockState(bot, targets) {
         parent: goToDrop,
         child: findBlock,
         name: 'BehaviorFindBlock: go to drop -> find block',
-        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) && collectedCount() < targets.numBlocksToCollect,
+        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) && collectedCount() < targets.numToCollect,
         onTransition: () => {
             console.log('BehaviorFindBlock: go to drop -> find block: ', Date.now() - goToBlockStartTime)
-            console.log(`Blocks collected:  ${collectedCount()}/${targets.numBlocksToCollect} ${targets.itemName}`)
+            console.log(`Blocks collected:  ${collectedCount()}/${targets.numToCollect} ${targets.itemName}`)
         }
     })
 
@@ -179,9 +179,9 @@ function createCollectBlockState(bot, targets) {
         parent: goToDrop,
         child: exit,
         name: 'BehaviorFindBlock: go to drop -> exit',
-        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.numBlocksToCollect && Date.now() - goToBlockStartTime > 1000),
+        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.numToCollect && Date.now() - goToBlockStartTime > 1000),
         onTransition: () => {
-            console.log(`BehaviorFindBlock: go to drop -> exit: ${collectedCount()}/${targets.numBlocksToCollect} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
+            console.log(`BehaviorFindBlock: go to drop -> exit: ${collectedCount()}/${targets.numToCollect} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
         }
     })
 

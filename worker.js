@@ -2,8 +2,6 @@ const mineflayer = require('mineflayer')
 
 const { workerData, parentPort, isMainThread } = require('worker_threads')
 
-const Vec3 = require('vec3').Vec3;
-
 const {
     StateTransition,
     BehaviorIdle,
@@ -11,7 +9,7 @@ const {
     BotStateMachine,
 } = require('mineflayer-statemachine')
 
-const createCollectBlockState = require('./behaviorCollectBlock')
+const createCollectBlockIfNeededState = require('./behaviorCollectBlockIfNeeded')
 
 const createCraftNoTableState = require('./behaviorCraftNoTable')
 
@@ -57,13 +55,13 @@ async function main() {
 
         let targets = {
             blockName: 'oak_log',
-            numBlocksToCollect: 1,
+            numNeeded: 1,
             itemName: 'oak_log'
         }
 
         const enter = new BehaviorIdle()
 
-        const collectLogsState = createCollectBlockState(bot, targets)
+        const collectLogsState = createCollectBlockIfNeededState(bot, targets)
 
         const craftPlanksState = createCraftNoTableState(bot, targets)
 
