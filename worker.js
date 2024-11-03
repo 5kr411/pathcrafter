@@ -11,7 +11,7 @@ const {
 
 const createCollectBlockIfNeededState = require('./behaviorCollectBlockIfNeeded')
 
-const createCraftNoTableState = require('./behaviorCraftNoTable')
+const createCraftNoTableIfNeededState = require('./behaviorCraftNoTableIfNeeded')
 
 const createPlaceUtilityBlockState = require('./behaviorPlaceNear')
 
@@ -61,11 +61,11 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
-        const collectLogsState = createCollectBlockIfNeededState(bot, targets)
+        const collectLogsIfNeededState = createCollectBlockIfNeededState(bot, targets)
 
-        const craftPlanksState = createCraftNoTableState(bot, targets)
+        const craftPlanksIfNeededState = createCraftNoTableIfNeededState(bot, targets)
 
-        const craftCraftingTableState = createCraftNoTableState(bot, targets)
+        const craftCraftingTableIfNeededState = createCraftNoTableIfNeededState(bot, targets)
 
         const placeCraftingTableState = createPlaceUtilityBlockState(bot, targets)
 
@@ -74,7 +74,7 @@ async function main() {
         const enterToCollectBlock = new StateTransition({
             name: 'main: enter -> collect block',
             parent: enter,
-            child: collectLogsState,
+            child: collectLogsIfNeededState,
             shouldTransition: () => true,
             onTransition: () => {
                 console.log('main: enter -> collect block')
@@ -83,12 +83,13 @@ async function main() {
 
         const collectLogsToCraftPlanks = new StateTransition({
             name: 'main: collect logs -> craft planks',
-            parent: collectLogsState,
-            child: craftPlanksState,
-            shouldTransition: () => collectLogsState.isFinished(),
+            parent: collectLogsIfNeededState,
+            child: craftPlanksIfNeededState,
+            shouldTransition: () => collectLogsIfNeededState.isFinished(),
             onTransition: () => {
                 console.log('main: collect logs -> craft planks')
-                targets.itemNameToCraft = 'oak_planks'
+                targets.itemName = 'oak_planks'
+                targets.numNeeded = 4
                 targets.timesToCraft = 1
                 targets.expectedQuantityAfterCraft = 4
             }
@@ -97,12 +98,13 @@ async function main() {
         let placeRetries = 1
         const craftPlanksToCraftCraftingTable = new StateTransition({
             name: 'main: craft planks -> craft crafting table',
-            parent: craftPlanksState,
-            child: craftCraftingTableState,
-            shouldTransition: () => craftPlanksState.isFinished(),
+            parent: craftPlanksIfNeededState,
+            child: craftCraftingTableIfNeededState,
+            shouldTransition: () => craftPlanksIfNeededState.isFinished(),
             onTransition: () => {
                 console.log('main: craft planks -> craft crafting table')
-                targets.itemNameToCraft = 'crafting_table'
+                targets.itemName = 'crafting_table'
+                targets.numNeeded = 1
                 targets.timesToCraft = 1
                 targets.expectedQuantityAfterCraft = 1
                 placeRetries = 1
@@ -111,9 +113,9 @@ async function main() {
 
         const craftCraftingTableToPlaceCraftingTable = new StateTransition({
             name: 'main: craft crafting table -> place crafting table',
-            parent: craftCraftingTableState,
+            parent: craftCraftingTableIfNeededState,
             child: placeCraftingTableState,
-            shouldTransition: () => craftCraftingTableState.isFinished(),
+            shouldTransition: () => craftCraftingTableIfNeededState.isFinished(),
             onTransition: () => {
                 console.log('main: craft crafting table -> place crafting table')
                 targets.item = bot.inventory.items().find(item => item.name === 'crafting_table');

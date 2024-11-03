@@ -23,9 +23,6 @@ function createCollectBlockState(bot, targets) {
     const mcData = minecraftData(bot.version)
     const blockId = mcData.blocksByName[targets.blockName].id
 
-    let block
-    let validDrops
-
     const currentBlockCount = getItemCountInInventory(bot, targets.itemName)
 
     function collectedCount() {
