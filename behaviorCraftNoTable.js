@@ -115,7 +115,7 @@ function createCraftNoTableState(bot, targets) {
         onTransition: () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftNoTable: enter -> wait for craft')
-            craftItemNoTable(targets.itemName, targets.numNeeded)
+            craftItemNoTable(targets.itemName, targets.amount)
         }
     })
 
@@ -123,7 +123,7 @@ function createCraftNoTableState(bot, targets) {
         parent: waitForCraft,
         child: exit,
         name: 'BehaviorCraftNoTable: wait for craft -> exit',
-        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.numNeeded || Date.now() - waitForCraftStartTime > 5000,
+        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.amount || Date.now() - waitForCraftStartTime > 5000,
         onTransition: () => {
             console.log('BehaviorCraftNoTable: wait for craft -> exit')
         }

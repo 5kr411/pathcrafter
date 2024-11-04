@@ -53,7 +53,7 @@ async function main() {
 
         let targets = {
             blockName: 'oak_log',
-            numNeeded: 1,
+            amount: 1,
             itemName: 'oak_log'
         }
 

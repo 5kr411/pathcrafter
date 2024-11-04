@@ -53,49 +53,49 @@ function createCollectBlockState(bot, targets) {
     const enterToFindBlock = new StateTransition({
         parent: enter,
         child: findBlock,
-        name: 'BehaviorFindBlock: enter -> find block',
-        shouldTransition: () => collectedCount() < targets.numToCollect,
+        name: 'BehaviorCollectBlock: enter -> find block',
+        shouldTransition: () => collectedCount() < targets.amount,
         onTransition: () => {
-            console.log('BehaviorFindBlock: enter -> find block')
+            console.log('BehaviorCollectBlock: enter -> find block')
         }
     })
 
     const findBlockToExit = new StateTransition({
         parent: findBlock,
         child: exit,
-        name: 'BehaviorFindBlock: find block -> exit',
+        name: 'BehaviorCollectBlock: find block -> exit',
         shouldTransition: () => targets.position === undefined,
         onTransition: () => {
-            console.log('BehaviorFindBlock: find block -> exit')
+            console.log('BehaviorCollectBlock: find block -> exit')
         }
     })
 
     const findBlockToFindInteractPosition = new StateTransition({
         parent: findBlock,
         child: findInteractPosition,
-        name: 'BehaviorFindBlock: find block -> find interact position',
+        name: 'BehaviorCollectBlock: find block -> find interact position',
         shouldTransition: () => targets.position !== undefined,
         onTransition: () => {
             targets.blockPosition = targets.position
-            console.log('BehaviorFindBlock: find block -> find interact position')
+            console.log('BehaviorCollectBlock: find block -> find interact position')
         }
     })
 
     const findInteractPositionToGoToBlock = new StateTransition({
         parent: findInteractPosition,
         child: goToBlock,
-        name: 'BehaviorFindInteractPosition: find interact position -> go to block',
+        name: 'BehaviorCollectBlock: find interact position -> go to block',
         shouldTransition: () => true,
         onTransition: () => {
             if (targets.blockPosition) {
                 if (!isMainThread && parentPort) {
                     parentPort.postMessage({ from: workerData.username, type: excludedPositionType, data: targets.blockPosition });
-                    console.log('added excluded position -> findBlock because self found: ', targets.blockPosition);
+                    console.log('BehaviorCollectBlock: Added excluded position -> findBlock because self found: ', targets.blockPosition);
                 } else {
-                    console.log('Found block position (main thread): ', targets.blockPosition);
+                    console.log('BehaviorCollectBlock: Found block position (main thread): ', targets.blockPosition);
                 }
                 findBlock.addExcludedPosition(targets.blockPosition)
-                console.log('BehaviorFindInteractPosition: find interact position -> go to block')
+                console.log('BehaviorCollectBlock: find interact position -> go to block')
             }
         }
     })
@@ -103,22 +103,21 @@ function createCollectBlockState(bot, targets) {
     const goToBlockToMineBlock = new StateTransition({
         parent: goToBlock,
         child: mineBlock,
-        name: 'BehaviorMoveTo: go to block -> mine block',
+        name: 'BehaviorCollectBlock: go to block -> mine block',
         shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() < 6,
         onTransition: () => {
-            console.log(goToBlock.distanceToTarget())
             targets.position = targets.blockPosition
-            console.log('BehaviorMoveTo: go to block -> mine block')
+            console.log('BehaviorCollectBlock: go to block -> mine block')
         }
     })
 
     const goToBlockToFindBlock = new StateTransition({
         parent: goToBlock,
         child: findBlock,
-        name: 'BehaviorMoveTo: go to block -> find block',
+        name: 'BehaviorCollectBlock: go to block -> find block',
         shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() >= 6,
         onTransition: () => {
-            console.log('BehaviorMoveTo: go to block -> find block')
+            console.log('BehaviorCollectBlock: go to block -> find block')
         }
     })
 
@@ -126,7 +125,7 @@ function createCollectBlockState(bot, targets) {
     const mineBlockToFindDrop = new StateTransition({
         parent: mineBlock,
         child: findDrop,
-        name: 'BehaviorMineBlock: mine block -> find drop',
+        name: 'BehaviorCollectBlock: mine block -> find drop',
         shouldTransition: () => {
             if (mineBlock.isFinished && !mineBlockFinishTime) {
                 mineBlockFinishTime = Date.now()
@@ -135,7 +134,7 @@ function createCollectBlockState(bot, targets) {
         },
         onTransition: () => {
             mineBlockFinishTime = undefined
-            console.log('BehaviorMineBlock: mine block -> find drop')
+            console.log('BehaviorCollectBlock: mine block -> find drop')
         }
     })
 
@@ -143,42 +142,42 @@ function createCollectBlockState(bot, targets) {
     const findDropToGoToDrop = new StateTransition({
         parent: findDrop,
         child: goToDrop,
-        name: 'BehaviorGetClosestEntity: find drop -> go to drop',
+        name: 'BehaviorCollectBlock: find drop -> go to drop',
         shouldTransition: () => targets.entity !== null,
         onTransition: () => {
             goToBlockStartTime = Date.now()
-            console.log('BehaviorGetClosestEntity: find drop -> go to drop')
+            console.log('BehaviorCollectBlock: find drop -> go to drop')
         }
     })
 
     const findDropToFindBlock = new StateTransition({
         parent: findDrop,
         child: findBlock,
-        name: 'BehaviorFindBlock: find drop -> find block',
+        name: 'BehaviorCollectBlock: find drop -> find block',
         shouldTransition: () => targets.entity === null,
         onTransition: () => {
-            console.log('BehaviorFindBlock: find drop -> find block')
+            console.log('BehaviorCollectBlock: find drop -> find block')
         }
     })
 
     const goToDropToFindBlock = new StateTransition({
         parent: goToDrop,
         child: findBlock,
-        name: 'BehaviorFindBlock: go to drop -> find block',
-        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) && collectedCount() < targets.numToCollect,
+        name: 'BehaviorCollectBlock: go to drop -> find block',
+        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) && collectedCount() < targets.amount,
         onTransition: () => {
-            console.log('BehaviorFindBlock: go to drop -> find block: ', Date.now() - goToBlockStartTime)
-            console.log(`Blocks collected:  ${collectedCount()}/${targets.numToCollect} ${targets.itemName}`)
+            console.log('BehaviorCollectBlock: go to drop -> find block: ', Date.now() - goToBlockStartTime)
+            console.log(`BehaviorCollectBlock: Blocks collected:  ${collectedCount()}/${targets.amount} ${targets.itemName}`)
         }
     })
 
     const goToDropToExit = new StateTransition({
         parent: goToDrop,
         child: exit,
-        name: 'BehaviorFindBlock: go to drop -> exit',
-        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.numToCollect && Date.now() - goToBlockStartTime > 1000),
+        name: 'BehaviorCollectBlock: go to drop -> exit',
+        shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.amount && Date.now() - goToBlockStartTime > 1000),
         onTransition: () => {
-            console.log(`BehaviorFindBlock: go to drop -> exit: ${collectedCount()}/${targets.numToCollect} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
+            console.log(`BehaviorCollectBlock: go to drop -> exit: ${collectedCount()}/${targets.amount} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
         }
     })
 

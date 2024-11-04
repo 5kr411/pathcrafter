@@ -20,10 +20,10 @@ function createCollectBlockIfNeededState(bot, targets) {
         parent: enter,
         child: exit,
         shouldTransition: () => {
-            return getItemCountInInventory(bot, targets.itemName) >= targets.numNeeded
+            return getItemCountInInventory(bot, targets.itemName) >= targets.amount
         },
         onTransition: () => {
-            console.log(`BehaviorCollectBlockIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.numNeeded} ${targets.itemName} in inventory`)
+            console.log(`BehaviorCollectBlockIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -32,11 +32,11 @@ function createCollectBlockIfNeededState(bot, targets) {
         parent: enter,
         child: collectBlock,
         shouldTransition: () => {
-            return getItemCountInInventory(bot, targets.itemName) < targets.numNeeded
+            return getItemCountInInventory(bot, targets.itemName) < targets.amount
         },
         onTransition: () => {
-            targets.numToCollect = targets.numNeeded - getItemCountInInventory(bot, targets.itemName)
-            console.log(`BehaviorCollectBlockIfNeeded: enter -> collect block: ${getItemCountInInventory(bot, targets.itemName)}/${targets.numNeeded} ${targets.itemName} in inventory`)
+            targets.amount = targets.amount - getItemCountInInventory(bot, targets.itemName)
+            console.log(`BehaviorCollectBlockIfNeeded: enter -> collect block: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -46,7 +46,7 @@ function createCollectBlockIfNeededState(bot, targets) {
         child: exit,
         shouldTransition: () => collectBlock.isFinished(),
         onTransition: () => {
-            console.log(`BehaviorCollectBlockIfNeeded: collect block -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.numNeeded} ${targets.itemName} in inventory`)
+            console.log(`BehaviorCollectBlockIfNeeded: collect block -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 

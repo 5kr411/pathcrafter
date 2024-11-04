@@ -18,10 +18,10 @@ function createCraftNoTableIfNeededState(bot, targets) {
         parent: enter,
         child: exit,
         shouldTransition: () => {
-            return getItemCountInInventory(bot, targets.itemName) >= targets.numNeeded
+            return getItemCountInInventory(bot, targets.itemName) >= targets.amount
         },
         onTransition: () => {
-            console.log(`BehaviorCraftNoTableIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.numNeeded} ${targets.itemName} in inventory`)
+            console.log(`BehaviorCraftNoTableIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -30,11 +30,11 @@ function createCraftNoTableIfNeededState(bot, targets) {
         parent: enter,
         child: craftNoTable,
         shouldTransition: () => {
-            return getItemCountInInventory(bot, targets.itemName) < targets.numNeeded
+            return getItemCountInInventory(bot, targets.itemName) < targets.amount
         },
         onTransition: () => {
-            targets.numNeeded = targets.numNeeded - getItemCountInInventory(bot, targets.itemName)
-            console.log(`BehaviorCraftNoTableIfNeeded: enter -> craft no table: ${getItemCountInInventory(bot, targets.itemName)}/${targets.numNeeded} ${targets.itemName} in inventory`)
+            targets.amount = targets.amount - getItemCountInInventory(bot, targets.itemName)
+            console.log(`BehaviorCraftNoTableIfNeeded: enter -> craft no table: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
