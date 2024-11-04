@@ -73,11 +73,21 @@ function createAcquireCraftingTableState(bot, targets) {
         }
     })
 
+    const collectLogsToExit = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: collect logs -> exit',
+        parent: collectLogsIfNeededState,
+        child: exit,
+        shouldTransition: () => collectLogsIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_log') < 1,
+        onTransition: () => {
+            console.log('BehaviorAcquireCraftingTable: collect logs -> exit: Could not collect any logs')
+        }
+    })
+
     const collectLogsToCraftPlanks = new StateTransition({
         name: 'BehaviorAcquireCraftingTable: collect logs -> craft planks',
         parent: collectLogsIfNeededState,
         child: craftPlanksIfNeededState,
-        shouldTransition: () => collectLogsIfNeededState.isFinished(),
+        shouldTransition: () => collectLogsIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_log') >= 1,
         onTransition: () => {
             targets.itemName = 'oak_planks'
             targets.numNeeded = 4
@@ -85,11 +95,21 @@ function createAcquireCraftingTableState(bot, targets) {
         }
     })
 
+    const craftPlanksToExit = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: craft planks -> exit',
+        parent: craftPlanksIfNeededState,
+        child: exit,
+        shouldTransition: () => craftPlanksIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_planks') < 4,
+        onTransition: () => {
+            console.log('BehaviorAcquireCraftingTable: craft planks -> exit: Could not craft planks')
+        }
+    })
+
     const craftPlanksToCraftCraftingTable = new StateTransition({
         name: 'BehaviorAcquireCraftingTable: craft planks -> craft crafting table',
         parent: craftPlanksIfNeededState,
         child: craftCraftingTableIfNeededState,
-        shouldTransition: () => craftPlanksIfNeededState.isFinished(),
+        shouldTransition: () => craftPlanksIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_planks') >= 4,
         onTransition: () => {
             targets.itemName = 'crafting_table'
             targets.numNeeded = 1
@@ -113,7 +133,9 @@ function createAcquireCraftingTableState(bot, targets) {
         enterToCraftCraftingTable,
         enterToCraftPlanks,
         enterToCollectLogs,
+        collectLogsToExit,
         collectLogsToCraftPlanks,
+        craftPlanksToExit,
         craftPlanksToCraftCraftingTable,
         craftCraftingTableToExit
     ]

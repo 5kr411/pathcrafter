@@ -104,6 +104,7 @@ function createPlaceNearState(bot, targets) {
     })
 
     const transitions = [
+        enterToExit,
         enterToFindPlaceCoords,
         findPlaceCoordsToMoveToPlaceCoords,
         moveToPlaceCoordsToPlaceUtilityBlock,
