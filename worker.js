@@ -93,7 +93,6 @@ async function main() {
             }
         })
 
-        let placeRetries = 1
         const craftPlanksToCraftCraftingTable = new StateTransition({
             name: 'main: craft planks -> craft crafting table',
             parent: craftPlanksIfNeededState,
@@ -103,7 +102,6 @@ async function main() {
                 console.log('main: craft planks -> craft crafting table')
                 targets.itemName = 'crafting_table'
                 targets.numNeeded = 1
-                placeRetries = 1
             }
         })
 
