@@ -10,6 +10,10 @@ const createCraftNoTableIfNeededState = require('./behaviorCraftNoTableIfNeeded'
 const { getItemCountInInventory } = require('./util')
 
 function createAcquireCraftingTableState(bot, targets) {
+    if (targets == null) {
+        targets = {}
+    }
+
     targets.blockName = 'oak_log'
     targets.numNeeded = 1
     targets.itemName = 'oak_log'
