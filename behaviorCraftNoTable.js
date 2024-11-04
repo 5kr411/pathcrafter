@@ -40,7 +40,7 @@ function createCraftNoTableState(bot, targets) {
         });
     }
 
-    const craftItemNoTable = async (itemName, additionalNeeded, maxRetries = 3) => {
+    const craftItemNoTable = async (itemName, additionalNeeded) => {
         const mcData = minecraftData(bot.version);
         const item = mcData.itemsByName[itemName];
 
@@ -61,8 +61,7 @@ function createCraftNoTableState(bot, targets) {
 
         console.log(`BehaviorCraftNoTable: Starting with ${startingCount} ${itemName}, need ${additionalNeeded} more (target: ${targetCount})`);
 
-        // Check if we have enough ingredients before starting
-        const hasIngredients = recipe.delta.filter(item => item.count < 0)  // Get only the items we need (negative counts)
+        const hasIngredients = recipe.delta.filter(item => item.count < 0)
             .every(item => {
                 const requiredCount = Math.abs(item.count);
                 const availableCount = getItemCountInInventory(bot, mcData.items[item.id].name);
@@ -83,9 +82,7 @@ function createCraftNoTableState(bot, targets) {
         try {
             await clearCraftingSlots(bot);
 
-            // Calculate how many more items we need
             const remainingNeeded = targetCount - currentCount;
-            // Calculate how many times we can craft with current recipe
             const timesToCraft = Math.min(Math.ceil(remainingNeeded / recipe.result.count), Math.floor(64 / recipe.result.count));
 
             console.log(`BehaviorCraftNoTable: Attempting to craft ${timesToCraft} times`);
@@ -118,7 +115,7 @@ function createCraftNoTableState(bot, targets) {
         onTransition: () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftNoTable: enter -> wait for craft')
-            craftItemNoTable(targets.itemName, targets.numNeeded, 5)
+            craftItemNoTable(targets.itemName, targets.numNeeded)
         }
     })
 
@@ -126,7 +123,7 @@ function createCraftNoTableState(bot, targets) {
         parent: waitForCraft,
         child: exit,
         name: 'BehaviorCraftNoTable: wait for craft -> exit',
-        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.numNeeded || Date.now() - waitForCraftStartTime > 10000,
+        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.numNeeded || Date.now() - waitForCraftStartTime > 5000,
         onTransition: () => {
             console.log('BehaviorCraftNoTable: wait for craft -> exit')
         }
