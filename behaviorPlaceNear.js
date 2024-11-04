@@ -21,6 +21,16 @@ function createPlaceNearState(bot, targets) {
 
     const exit = new BehaviorIdle()
 
+    const enterToExit = new StateTransition({
+        name: 'BehaviorPlaceNear: enter -> exit',
+        parent: enter,
+        child: exit,
+        shouldTransition: () => targets.item == null,
+        onTransition: () => {
+            console.log('BehaviorPlaceNear: enter -> exit, item is null')
+        }
+    })
+
     let placeTries = 1
     const enterToFindPlaceCoords = new StateTransition({
         name: 'BehaviorPlaceNear: enter -> find place coords',
@@ -86,7 +96,7 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: place block -> exit',
         parent: placeBlock,
         child: exit,
-        shouldTransition: () => Date.now() - placeStartTime > 1000 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 5),
+        shouldTransition: () => Date.now() - placeStartTime > 500 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 5),
         onTransition: () => {
             console.log('BehaviorPlaceNear: place block -> exit')
             console.log('Block at place position:', bot.world.getBlockType(targets.placedPosition))

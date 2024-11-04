@@ -9,9 +9,7 @@ const {
     BotStateMachine,
 } = require('mineflayer-statemachine')
 
-const createCollectBlockIfNeededState = require('./behaviorCollectBlockIfNeeded')
-
-const createCraftNoTableIfNeededState = require('./behaviorCraftNoTableIfNeeded')
+const createAcquireCraftingTableState = require('./behaviorAcquireCraftingTable')
 
 const createPlaceUtilityBlockState = require('./behaviorPlaceNear')
 
@@ -61,86 +59,55 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
-        const collectLogsIfNeededState = createCollectBlockIfNeededState(bot, targets)
-
-        const craftPlanksIfNeededState = createCraftNoTableIfNeededState(bot, targets)
-
-        const craftCraftingTableIfNeededState = createCraftNoTableIfNeededState(bot, targets)
+        const acquireCraftingTableState = createAcquireCraftingTableState(bot, targets)
 
         const placeCraftingTableState = createPlaceUtilityBlockState(bot, targets)
 
         const exit = new BehaviorIdle()
 
-        const enterToCollectBlock = new StateTransition({
-            name: 'main: enter -> collect block',
+        const enterToAcquireCraftingTable = new StateTransition({
+            name: 'worker: enter -> acquire crafting table',
             parent: enter,
-            child: collectLogsIfNeededState,
+            child: acquireCraftingTableState,
             shouldTransition: () => true,
             onTransition: () => {
-                console.log('main: enter -> collect block')
+                console.log('worker: enter -> acquire crafting table')
             }
         })
 
-        const collectLogsToCraftPlanks = new StateTransition({
-            name: 'main: collect logs -> craft planks',
-            parent: collectLogsIfNeededState,
-            child: craftPlanksIfNeededState,
-            shouldTransition: () => collectLogsIfNeededState.isFinished(),
-            onTransition: () => {
-                console.log('main: collect logs -> craft planks')
-                targets.itemName = 'oak_planks'
-                targets.numNeeded = 4
-            }
-        })
-
-        const craftPlanksToCraftCraftingTable = new StateTransition({
-            name: 'main: craft planks -> craft crafting table',
-            parent: craftPlanksIfNeededState,
-            child: craftCraftingTableIfNeededState,
-            shouldTransition: () => craftPlanksIfNeededState.isFinished(),
-            onTransition: () => {
-                console.log('main: craft planks -> craft crafting table')
-                targets.itemName = 'crafting_table'
-                targets.numNeeded = 1
-            }
-        })
-
-        const craftCraftingTableToPlaceCraftingTable = new StateTransition({
-            name: 'main: craft crafting table -> place crafting table',
-            parent: craftCraftingTableIfNeededState,
+        const acquireCraftingTableToPlaceCraftingTable = new StateTransition({
+            name: 'worker: acquire crafting table -> place crafting table',
+            parent: acquireCraftingTableState,
             child: placeCraftingTableState,
-            shouldTransition: () => craftCraftingTableIfNeededState.isFinished(),
+            shouldTransition: () => acquireCraftingTableState.isFinished(),
             onTransition: () => {
-                console.log('main: craft crafting table -> place crafting table')
-                targets.item = bot.inventory.items().find(item => item.name === 'crafting_table');
+                console.log('worker: acquire crafting table -> place crafting table')
             }
         })
 
         const placeCraftingTableToExit = new StateTransition({
-            name: 'main: place crafting table -> exit',
+            name: 'worker: place crafting table -> exit',
             parent: placeCraftingTableState,
             child: exit,
             shouldTransition: () => placeCraftingTableState.isFinished(),
             onTransition: () => {
-                console.log('main: place crafting table -> exit')
+                console.log('worker: place crafting table -> exit')
             }
         })
 
         const exitToEnter = new StateTransition({
-            name: 'main: exit -> enter',
+            name: 'worker: exit -> enter',
             parent: exit,
             child: enter,
             shouldTransition: () => false,
             onTransition: () => {
-                console.log('main: exit -> enter')
+                console.log('worker: exit -> enter')
             }
         })
 
         const transitions = [
-            enterToCollectBlock,
-            collectLogsToCraftPlanks,
-            craftPlanksToCraftCraftingTable,
-            craftCraftingTableToPlaceCraftingTable,
+            enterToAcquireCraftingTable,
+            acquireCraftingTableToPlaceCraftingTable,
             placeCraftingTableToExit,
             exitToEnter
         ]

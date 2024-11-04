@@ -1,0 +1,120 @@
+const {
+    BehaviorIdle,
+    StateTransition,
+    NestedStateMachine,
+} = require('mineflayer-statemachine')
+
+const createCollectBlockIfNeededState = require('./behaviorCollectBlockIfNeeded')
+const createCraftNoTableIfNeededState = require('./behaviorCraftNoTableIfNeeded')
+
+const { getItemCountInInventory } = require('./util')
+
+function createAcquireCraftingTableState(bot, targets) {
+    targets.blockName = 'oak_log'
+    targets.numNeeded = 1
+    targets.itemName = 'oak_log'
+
+    const enter = new BehaviorIdle()
+
+    const collectLogsIfNeededState = createCollectBlockIfNeededState(bot, targets)
+
+    const craftPlanksIfNeededState = createCraftNoTableIfNeededState(bot, targets)
+
+    const craftCraftingTableIfNeededState = createCraftNoTableIfNeededState(bot, targets)
+
+    const exit = new BehaviorIdle()
+
+    const enterToExit = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: enter -> exit',
+        parent: enter,
+        child: exit,
+        shouldTransition: () => getItemCountInInventory(bot, 'crafting_table') >= 1,
+        onTransition: () => {
+            targets.item = bot.inventory.items().find(item => item.name === 'crafting_table');
+            console.log('BehaviorAcquireCraftingTable: enter -> exit: Crafting table in inventory')
+        }
+    })
+
+    const enterToCraftCraftingTable = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: enter -> craft crafting table',
+        parent: enter,
+        child: craftCraftingTableIfNeededState,
+        shouldTransition: () => getItemCountInInventory(bot, 'oak_planks') >= 4,
+        onTransition: () => {
+            targets.itemName = 'crafting_table'
+            targets.numNeeded = 1
+            console.log('BehaviorAcquireCraftingTable: enter -> craft crafting table: Already have enough planks')
+        }
+    })
+
+    const enterToCraftPlanks = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: enter -> craft planks',
+        parent: enter,
+        child: craftPlanksIfNeededState,
+        shouldTransition: () => getItemCountInInventory(bot, 'oak_log') >= 1,
+        onTransition: () => {
+            targets.itemName = 'oak_planks'
+            targets.numNeeded = 4
+            console.log('BehaviorAcquireCraftingTable: enter -> craft planks: Already have a log')
+        }
+    })
+
+    const enterToCollectLogs = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: enter -> collect logs',
+        parent: enter,
+        child: collectLogsIfNeededState,
+        shouldTransition: () => getItemCountInInventory(bot, 'oak_log') < 1,
+        onTransition: () => {
+            console.log('BehaviorAcquireCraftingTable: enter -> collect logs: Need a log')
+        }
+    })
+
+    const collectLogsToCraftPlanks = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: collect logs -> craft planks',
+        parent: collectLogsIfNeededState,
+        child: craftPlanksIfNeededState,
+        shouldTransition: () => collectLogsIfNeededState.isFinished(),
+        onTransition: () => {
+            targets.itemName = 'oak_planks'
+            targets.numNeeded = 4
+            console.log('BehaviorAcquireCraftingTable: collect logs -> craft planks: Collected logs')
+        }
+    })
+
+    const craftPlanksToCraftCraftingTable = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: craft planks -> craft crafting table',
+        parent: craftPlanksIfNeededState,
+        child: craftCraftingTableIfNeededState,
+        shouldTransition: () => craftPlanksIfNeededState.isFinished(),
+        onTransition: () => {
+            targets.itemName = 'crafting_table'
+            targets.numNeeded = 1
+            console.log('BehaviorAcquireCraftingTable: craft planks -> craft crafting table: Crafted planks')
+        }
+    })
+
+    const craftCraftingTableToExit = new StateTransition({
+        name: 'BehaviorAcquireCraftingTable: craft crafting table -> exit',
+        parent: craftCraftingTableIfNeededState,
+        child: exit,
+        shouldTransition: () => craftCraftingTableIfNeededState.isFinished(),
+        onTransition: () => {
+            targets.item = bot.inventory.items().find(item => item.name === 'crafting_table');
+            console.log('BehaviorAcquireCraftingTable: craft crafting table -> exit: Crafted crafting table')
+        }
+    })
+
+    const transitions = [
+        enterToExit,
+        enterToCraftCraftingTable,
+        enterToCraftPlanks,
+        enterToCollectLogs,
+        collectLogsToCraftPlanks,
+        craftPlanksToCraftCraftingTable,
+        craftCraftingTableToExit
+    ]
+
+    return new NestedStateMachine(transitions, enter, exit)
+}
+
+module.exports = createAcquireCraftingTableState
