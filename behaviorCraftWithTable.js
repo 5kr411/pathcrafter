@@ -91,12 +91,28 @@ const createCraftWithTableState = (bot, targets) => {
     const waitForCraft = new BehaviorIdle()
     const exit = new BehaviorIdle()
 
+    const enterToExit = new StateTransition({
+        parent: enter,
+        child: exit,
+        name: 'BehaviorCraftWithTable: enter -> exit',
+        shouldTransition: () => targets.itemName == null || targets.amount == null,
+        onTransition: () => {
+            if (targets.itemName == null) {
+                console.log('BehaviorCraftWithTable: Error: No item name')
+            }
+            if (targets.amount == null) {
+                console.log('BehaviorCraftWithTable: Error: No amount')
+            }
+            console.log('BehaviorCraftWithTable: enter -> exit')
+        }
+    })
+
     let waitForCraftStartTime
     const enterToWaitForCraft = new StateTransition({
         parent: enter,
         child: waitForCraft,
         name: 'BehaviorCraftWithTable: enter -> wait for craft',
-        shouldTransition: () => true,
+        shouldTransition: () => targets.itemName != null && targets.amount != null,
         onTransition: () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftWithTable: enter -> wait for craft')
@@ -115,6 +131,7 @@ const createCraftWithTableState = (bot, targets) => {
     })
 
     const transitions = [
+        enterToExit,
         enterToWaitForCraft,
         waitForCraftToExit
     ]

@@ -106,12 +106,28 @@ function createCraftNoTableState(bot, targets) {
         }
     };
 
+    const enterToExit = new StateTransition({
+        parent: enter,
+        child: exit,
+        name: 'BehaviorCraftNoTable: enter -> exit',
+        shouldTransition: () => targets.itemName == null || targets.amount == null,
+        onTransition: () => {
+            if (targets.itemName == null) {
+                console.log('BehaviorCraftNoTable: Error: No item name')
+            }
+            if (targets.amount == null) {
+                console.log('BehaviorCraftNoTable: Error: No amount')
+            }
+            console.log('BehaviorCraftNoTable: enter -> exit')
+        }
+    })
+
     let waitForCraftStartTime
     const enterToWaitForCraft = new StateTransition({
         parent: enter,
         child: waitForCraft,
         name: 'BehaviorCraftNoTable: enter -> wait for craft',
-        shouldTransition: () => true,
+        shouldTransition: () => targets.itemName != null && targets.amount != null,
         onTransition: () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftNoTable: enter -> wait for craft')
@@ -129,7 +145,11 @@ function createCraftNoTableState(bot, targets) {
         }
     })
 
-    const transitions = [enterToWaitForCraft, waitForCraftToExit]
+    const transitions = [
+        enterToExit,
+        enterToWaitForCraft,
+        waitForCraftToExit
+    ]
 
     return new NestedStateMachine(transitions, enter, exit)
 }
