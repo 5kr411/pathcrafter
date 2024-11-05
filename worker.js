@@ -13,7 +13,7 @@ const createAcquireCraftingTableState = require('./behaviorAcquireCraftingTable'
 
 const createPlaceUtilityBlockState = require('./behaviorPlaceNear')
 
-const createCraftWithTableState = require('./behaviorCraftWithTable')
+const createCraftWoodenToolsIfNeeded = require('./behaviorCraftWoodenToolsIfNeeded')
 
 let botOptions = {
     host: 'localhost',
@@ -61,13 +61,7 @@ async function main() {
 
         const placeCraftingTableState = createPlaceUtilityBlockState(bot, targets)
 
-        const craftPlanksState = createCraftWithTableState(bot, targets)
-
-        const craftSticksState = createCraftWithTableState(bot, targets)
-
-        const craftWoodenPickaxeState = createCraftWithTableState(bot, targets)
-
-        const craftWoodenAxeState = createCraftWithTableState(bot, targets)
+        const craftWoodenToolsIfNeededState = createCraftWoodenToolsIfNeeded(bot, targets)
 
         const exit = new BehaviorIdle()
 
@@ -93,62 +87,23 @@ async function main() {
             }
         })
 
-        const placeCraftingTableToCraftPlanks = new StateTransition({
-            name: 'worker: place crafting table -> craft planks',
+        const placeCraftingTableToCraftWoodenTools = new StateTransition({
+            name: 'worker: place crafting table -> craft wooden tools',
             parent: placeCraftingTableState,
-            child: craftPlanksState,
+            child: craftWoodenToolsIfNeededState,
             shouldTransition: () => placeCraftingTableState.isFinished() && Date.now() - placeCraftingTableStartTime > 2000,
             onTransition: () => {
-                targets.itemName = 'oak_planks'
-                targets.amount = 8
-                console.log('worker: place crafting table -> craft planks')
+                console.log('worker: place crafting table -> craft wooden tools')
             }
         })
 
-        const craftPlanksToCraftSticks = new StateTransition({
-            name: 'worker: craft planks -> craft sticks',
-            parent: craftPlanksState,
-            child: craftSticksState,
-            shouldTransition: () => craftPlanksState.isFinished(),
-            onTransition: () => {
-                targets.itemName = 'stick'
-                targets.amount = 4
-                console.log('worker: craft planks -> craft sticks')
-            }
-        })
-
-
-        const craftSticksToCraftWoodenPickaxe = new StateTransition({
-            name: 'worker: craft sticks -> craft wooden pickaxe',
-            parent: craftSticksState,
-            child: craftWoodenPickaxeState,
-            shouldTransition: () => craftSticksState.isFinished(),
-            onTransition: () => {
-                targets.itemName = 'wooden_pickaxe'
-                targets.amount = 1
-                console.log('worker: craft sticks -> craft wooden pickaxe')
-            }
-        })
-
-        const craftWoodenPickaxeToCraftWoodenAxe = new StateTransition({
-            name: 'worker: craft wooden pickaxe -> craft wooden axe',
-            parent: craftWoodenPickaxeState,
-            child: craftWoodenAxeState,
-            shouldTransition: () => craftWoodenPickaxeState.isFinished(),
-            onTransition: () => {
-                targets.itemName = 'wooden_axe'
-                targets.amount = 1
-                console.log('worker: craft wooden pickaxe -> craft wooden axe')
-            }
-        })
-
-        const craftWoodenAxeToExit = new StateTransition({
-            name: 'worker: craft wooden axe -> exit',
-            parent: craftWoodenAxeState,
+        const craftWoodenToolsToExit = new StateTransition({
+            name: 'worker: craft wooden tools -> exit',
+            parent: craftWoodenToolsIfNeededState,
             child: exit,
-            shouldTransition: () => craftWoodenAxeState.isFinished(),
+            shouldTransition: () => craftWoodenToolsIfNeededState.isFinished(),
             onTransition: () => {
-                console.log('worker: craft wooden axe -> exit')
+                console.log('worker: craft wooden tools -> exit')
             }
         })
 
@@ -165,11 +120,8 @@ async function main() {
         const transitions = [
             enterToAcquireCraftingTable,
             acquireCraftingTableToPlaceCraftingTable,
-            placeCraftingTableToCraftPlanks,
-            craftPlanksToCraftSticks,
-            craftSticksToCraftWoodenPickaxe,
-            craftWoodenPickaxeToCraftWoodenAxe,
-            craftWoodenAxeToExit,
+            placeCraftingTableToCraftWoodenTools,
+            craftWoodenToolsToExit,
             exitToEnter
         ]
 
