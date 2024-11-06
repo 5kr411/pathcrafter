@@ -9,11 +9,7 @@ const {
     BotStateMachine,
 } = require('mineflayer-statemachine')
 
-const createAcquireCraftingTableState = require('./behaviorAcquireCraftingTable')
-
-const createPlaceUtilityBlockState = require('./behaviorPlaceNear')
-
-const createCraftWoodenToolsIfNeeded = require('./behaviorCraftWoodenToolsIfNeeded')
+const createAcquireWoodenToolsState = require('./behaviorAcquireWoodenTools')
 
 let botOptions = {
     host: 'localhost',
@@ -57,53 +53,28 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
-        const acquireCraftingTableState = createAcquireCraftingTableState(bot, targets)
-
-        const placeCraftingTableState = createPlaceUtilityBlockState(bot, targets)
-
-        const craftWoodenToolsIfNeededState = createCraftWoodenToolsIfNeeded(bot, targets)
+        const acquireWoodenToolsState = createAcquireWoodenToolsState(bot, targets)
 
         const exit = new BehaviorIdle()
 
-        const enterToAcquireCraftingTable = new StateTransition({
-            name: 'worker: enter -> acquire crafting table',
+
+        const enterToAcquireWoodenTools = new StateTransition({
+            name: 'worker: enter -> acquire wooden tools',
             parent: enter,
-            child: acquireCraftingTableState,
+            child: acquireWoodenToolsState,
             shouldTransition: () => true,
             onTransition: () => {
-                console.log('worker: enter -> acquire crafting table')
+                console.log('worker: enter -> acquire wooden tools')
             }
         })
 
-        let placeCraftingTableStartTime
-        const acquireCraftingTableToPlaceCraftingTable = new StateTransition({
-            name: 'worker: acquire crafting table -> place crafting table',
-            parent: acquireCraftingTableState,
-            child: placeCraftingTableState,
-            shouldTransition: () => acquireCraftingTableState.isFinished(),
-            onTransition: () => {
-                placeCraftingTableStartTime = Date.now()
-                console.log('worker: acquire crafting table -> place crafting table')
-            }
-        })
-
-        const placeCraftingTableToCraftWoodenTools = new StateTransition({
-            name: 'worker: place crafting table -> craft wooden tools',
-            parent: placeCraftingTableState,
-            child: craftWoodenToolsIfNeededState,
-            shouldTransition: () => placeCraftingTableState.isFinished() && Date.now() - placeCraftingTableStartTime > 2000,
-            onTransition: () => {
-                console.log('worker: place crafting table -> craft wooden tools')
-            }
-        })
-
-        const craftWoodenToolsToExit = new StateTransition({
-            name: 'worker: craft wooden tools -> exit',
-            parent: craftWoodenToolsIfNeededState,
+        const acquireWoodenToolsToExit = new StateTransition({
+            name: 'worker: acquire wooden tools -> exit',
+            parent: acquireWoodenToolsState,
             child: exit,
-            shouldTransition: () => craftWoodenToolsIfNeededState.isFinished(),
+            shouldTransition: () => acquireWoodenToolsState.isFinished(),
             onTransition: () => {
-                console.log('worker: craft wooden tools -> exit')
+                console.log('worker: acquire wooden tools -> exit')
             }
         })
 
@@ -118,10 +89,8 @@ async function main() {
         })
 
         const transitions = [
-            enterToAcquireCraftingTable,
-            acquireCraftingTableToPlaceCraftingTable,
-            placeCraftingTableToCraftWoodenTools,
-            craftWoodenToolsToExit,
+            enterToAcquireWoodenTools,
+            acquireWoodenToolsToExit,
             exitToEnter
         ]
 
