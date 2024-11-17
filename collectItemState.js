@@ -27,8 +27,7 @@ function createAcquireItemState(bot, targets) {
         name: 'acquireItemState: enter -> evaluate',
         shouldTransition: () => true,
         onTransition: () => {
-            console.log('acquireItemState: enter -> evaluate')
-            console.log('acquireItemState: itemName', targets.itemName)
+            console.log('acquireItemState: enter -> evaluate:', targets.itemName, targets.amount)
             analyzeRecipes(bot, targets.itemName, targets.amount)
         }
     })

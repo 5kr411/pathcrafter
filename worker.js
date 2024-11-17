@@ -65,8 +65,12 @@ async function main() {
             shouldTransition: () => true,
             onTransition: () => {
                 console.log('worker: enter -> collect item')
-                targets.itemName = 'diamond_pickaxe'
-                targets.amount = 1
+                if (!targets.itemName) {
+                    targets.itemName = 'diamond_pickaxe'
+                }
+                if (!targets.amount) {
+                    targets.amount = 1
+                }
             }
         })
 

@@ -1,17 +1,34 @@
 const minecraftData = require('minecraft-data')
 
 function requiresCraftingTable(recipe) {
-    if (recipe.ingredients) {
-        return false;
-    }
-
+    if (recipe.ingredients) return false;
     if (recipe.inShape) {
         const tooWide = recipe.inShape.some(row => row.length > 2);
         const tooTall = recipe.inShape.length > 2;
         return tooWide || tooTall;
     }
-
     return false;
+}
+
+function findBlocksThatDrop(mcData, itemName) {
+    const sources = [];
+    const item = mcData.itemsByName[itemName];
+
+    if (!item) return sources;
+
+    // Check all blocks for drops
+    Object.values(mcData.blocks).forEach(block => {
+        if (block.drops && block.drops.includes(item.id)) {
+            sources.push({
+                block: block.name,
+                tool: block.harvestTools ?
+                    Object.keys(block.harvestTools).map(id => mcData.items[id]?.name || id).join('/') :
+                    'any'
+            });
+        }
+    });
+
+    return sources;
 }
 
 function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHistory = new Set()) {
@@ -23,9 +40,15 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
         return;
     }
 
-    // Check for circular dependencies
     if (craftingHistory.has(itemName)) {
         console.log(`${' '.repeat(depth * 4)}↻ ${itemName} (circular dependency)`);
+        const sources = findBlocksThatDrop(mcData, itemName);
+        if (sources.length > 0) {
+            console.log(`${' '.repeat(depth * 4)}  Can be obtained by mining:`);
+            sources.forEach(source => {
+                console.log(`${' '.repeat(depth * 4)}  - ${source.block} (requires: ${source.tool})`);
+            });
+        }
         return;
     }
 
@@ -33,15 +56,19 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
         .sort((a, b) => b.result.count - a.result.count);
 
     if (recipes.length === 0) {
-        // Base item (can't be crafted)
         console.log(`${' '.repeat(depth * 4)}→ ${itemName} needed: ${targetCount}`);
+        const sources = findBlocksThatDrop(mcData, itemName);
+        if (sources.length > 0) {
+            console.log(`${' '.repeat(depth * 4)}  Can be obtained by mining:`);
+            sources.forEach(source => {
+                console.log(`${' '.repeat(depth * 4)}  - ${source.block} (requires: ${source.tool})`);
+            });
+        }
         return;
     }
 
-    // Add current item to crafting history
     craftingHistory.add(itemName);
 
-    // Show all recipes
     recipes.forEach((recipe, index) => {
         const craftingLocation = requiresCraftingTable(recipe) ? 'table' : 'inventory';
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
@@ -49,7 +76,6 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
         console.log(`${' '.repeat(depth * 4)}+ ${itemName} (Recipe ${index + 1}/${recipes.length}, ${craftingLocation})`);
         console.log(`${' '.repeat(depth * 4)}  Want: ${targetCount}, Recipe makes: ${recipe.result.count}, Need to craft: ${craftingsNeeded}x`);
 
-        // Track ingredients and their counts
         const ingredientCounts = new Map();
 
         if (recipe.ingredients) {
@@ -70,11 +96,9 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
             });
         }
 
-        // Recursively analyze consolidated ingredients
         ingredientCounts.forEach((count, ingredientId) => {
             const ingredientItem = mcData.items[ingredientId];
             if (ingredientItem) {
-                // Create a new Set for each branch of recursion
                 const newHistory = new Set(craftingHistory);
                 analyzeRecipes(bot, ingredientItem.name, count * craftingsNeeded, depth + 1, newHistory);
             }
