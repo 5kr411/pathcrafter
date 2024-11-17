@@ -49,7 +49,8 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHisto
         console.log(`${' '.repeat((depth + 1) * 2)}├─ mine (${targetCount}x)`);
         sources.forEach((source, index) => {
             const isLast = index === sources.length - 1;
-            console.log(`${' '.repeat((depth + 2) * 2)}${isLast ? '└─' : '├─'} ${source.block}`);
+            const toolInfo = source.tool === 'any' ? '' : ` (needs ${source.tool})`;
+            console.log(`${' '.repeat((depth + 2) * 2)}${isLast ? '└─' : '├─'} ${source.block}${toolInfo}`);
         });
     }
 
@@ -104,7 +105,8 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHisto
                                     console.log(`${' '.repeat((depth + 3) * 2)}└─ mine`);
                                     sources.forEach((source, sourceIndex) => {
                                         const isLast = sourceIndex === sources.length - 1;
-                                        console.log(`${' '.repeat((depth + 4) * 2)}${isLast ? '└─' : '├─'} ${source.block}`);
+                                        const toolInfo = source.tool === 'any' ? '' : ` (needs ${source.tool})`;
+                                        console.log(`${' '.repeat((depth + 4) * 2)}${isLast ? '└─' : '├─'} ${source.block}${toolInfo}`);
                                     });
                                 }
                             } else {
