@@ -29,7 +29,7 @@ function createAcquireItemState(bot, targets) {
         onTransition: () => {
             console.log('acquireItemState: enter -> evaluate')
             console.log('acquireItemState: itemName', targets.itemName)
-            analyzeRecipes(bot, targets.itemName)
+            analyzeRecipes(bot, targets.itemName, targets.amount)
         }
     })
 

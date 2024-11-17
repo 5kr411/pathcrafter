@@ -65,7 +65,8 @@ async function main() {
             shouldTransition: () => true,
             onTransition: () => {
                 console.log('worker: enter -> collect item')
-                targets.itemName = 'stick'
+                targets.itemName = 'diamond_pickaxe'
+                targets.amount = 1
             }
         })
 
@@ -111,8 +112,8 @@ async function main() {
 
             if (parts[0] === 'collect') {
                 exitToEnter.trigger()
-                const itemName = parts[1]
-                targets.itemName = itemName
+                targets.itemName = parts[1]
+                targets.amount = parseInt(parts[2])
             }
         })
     })

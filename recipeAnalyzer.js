@@ -14,12 +14,18 @@ function requiresCraftingTable(recipe) {
     return false;
 }
 
-function analyzeRecipes(bot, itemName, depth = 0, count = 1) {
+function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHistory = new Set()) {
     const mcData = minecraftData(bot.version);
     const item = mcData.itemsByName[itemName];
 
     if (!item) {
-        console.log(`${' '.repeat(depth * 4)}Item "${itemName}" not found`);
+        console.log(`${' '.repeat(depth * 4)}Cannot find item: ${itemName}`);
+        return;
+    }
+
+    // Check for circular dependencies
+    if (craftingHistory.has(itemName)) {
+        console.log(`${' '.repeat(depth * 4)}↻ ${itemName} (circular dependency)`);
         return;
     }
 
@@ -28,13 +34,22 @@ function analyzeRecipes(bot, itemName, depth = 0, count = 1) {
 
     if (recipes.length === 0) {
         // Base item (can't be crafted)
-        console.log(`${' '.repeat(depth * 4)}- ${itemName} (${item.id}): base item x${count}`);
+        console.log(`${' '.repeat(depth * 4)}→ ${itemName} needed: ${targetCount}`);
         return;
     }
 
-    recipes.forEach(recipe => {
-        console.log(`${' '.repeat(depth * 4)}- ${itemName} (${item.id}): ${recipe.result.count} (${requiresCraftingTable(recipe) ? 'table' : 'inventory'})`);
+    // Add current item to crafting history
+    craftingHistory.add(itemName);
 
+    // Show all recipes
+    recipes.forEach((recipe, index) => {
+        const craftingLocation = requiresCraftingTable(recipe) ? 'table' : 'inventory';
+        const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
+
+        console.log(`${' '.repeat(depth * 4)}+ ${itemName} (Recipe ${index + 1}/${recipes.length}, ${craftingLocation})`);
+        console.log(`${' '.repeat(depth * 4)}  Want: ${targetCount}, Recipe makes: ${recipe.result.count}, Need to craft: ${craftingsNeeded}x`);
+
+        // Track ingredients and their counts
         const ingredientCounts = new Map();
 
         if (recipe.ingredients) {
@@ -55,10 +70,13 @@ function analyzeRecipes(bot, itemName, depth = 0, count = 1) {
             });
         }
 
+        // Recursively analyze consolidated ingredients
         ingredientCounts.forEach((count, ingredientId) => {
             const ingredientItem = mcData.items[ingredientId];
             if (ingredientItem) {
-                analyzeRecipes(bot, ingredientItem.name, depth + 1, count);
+                // Create a new Set for each branch of recursion
+                const newHistory = new Set(craftingHistory);
+                analyzeRecipes(bot, ingredientItem.name, count * craftingsNeeded, depth + 1, newHistory);
             }
         });
     });
