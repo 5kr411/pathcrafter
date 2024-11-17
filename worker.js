@@ -9,7 +9,7 @@ const {
     BotStateMachine,
 } = require('mineflayer-statemachine')
 
-const createAcquireWoodenToolsState = require('./behaviorAcquireWoodenTools')
+const createAcquireItemState = require('./acquireItemState')
 
 let botOptions = {
     host: 'localhost',
@@ -53,28 +53,28 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
-        const acquireWoodenToolsState = createAcquireWoodenToolsState(bot, targets)
+        const acquireItemState = createAcquireItemState(bot, targets)
 
         const exit = new BehaviorIdle()
 
 
-        const enterToAcquireWoodenTools = new StateTransition({
-            name: 'worker: enter -> acquire wooden tools',
+        const enterToAcquireItem = new StateTransition({
+            name: 'worker: enter -> acquire item',
             parent: enter,
-            child: acquireWoodenToolsState,
+            child: acquireItemState,
             shouldTransition: () => true,
             onTransition: () => {
-                console.log('worker: enter -> acquire wooden tools')
+                console.log('worker: enter -> acquire item')
             }
         })
 
-        const acquireWoodenToolsToExit = new StateTransition({
-            name: 'worker: acquire wooden tools -> exit',
-            parent: acquireWoodenToolsState,
+        const acquireItemToExit = new StateTransition({
+            name: 'worker: acquire item -> exit',
+            parent: acquireItemState,
             child: exit,
-            shouldTransition: () => acquireWoodenToolsState.isFinished(),
+            shouldTransition: () => acquireItemState.isFinished(),
             onTransition: () => {
-                console.log('worker: acquire wooden tools -> exit')
+                console.log('worker: acquire item -> exit')
             }
         })
 
@@ -89,8 +89,8 @@ async function main() {
         })
 
         const transitions = [
-            enterToAcquireWoodenTools,
-            acquireWoodenToolsToExit,
+            enterToAcquireItem,
+            acquireItemToExit,
             exitToEnter
         ]
 
@@ -101,8 +101,17 @@ async function main() {
 
         bot.on('chat', (username, message) => {
             if (username === bot.username) return
-            if (message === 'go') {
+
+            const parts = message.split(' ')
+
+            if (parts[0] === 'go') {
                 exitToEnter.trigger()
+            }
+
+            if (parts[0] === 'acquire') {
+                exitToEnter.trigger()
+                const itemName = parts[1]
+                targets.itemName = itemName
             }
         })
     })
