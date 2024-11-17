@@ -36,102 +36,90 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHisto
     const item = mcData.itemsByName[itemName];
 
     if (!item) {
-        console.log(`${' '.repeat(depth * 4)}Cannot find item: ${itemName}`);
+        console.log(`${' '.repeat(depth * 2)}Cannot find item: ${itemName}`);
         return { materials: new Map() };
     }
 
     // Print item header
-    console.log(`${' '.repeat(depth * 4)}+ ${itemName} (Want: ${targetCount})`);
+    console.log(`${' '.repeat(depth * 2)}├─ ${itemName} (want ${targetCount})`);
 
-    if (craftingHistory.has(itemName)) {
-        console.log(`${' '.repeat(depth * 4)}  ↻ Circular dependency detected`);
-        const sources = findBlocksThatDrop(mcData, itemName);
-        if (sources.length > 0) {
-            console.log(`${' '.repeat(depth * 4)}  Can be obtained by mining:`);
-            sources.forEach(source => {
-                console.log(`${' '.repeat(depth * 4)}  - ${source.block} (requires: ${source.tool})`);
-            });
-        }
-        const materials = new Map();
-        materials.set(itemName, targetCount);
-        return { materials };
+    // Always check and show mining path if available
+    const sources = findBlocksThatDrop(mcData, itemName);
+    if (sources.length > 0) {
+        console.log(`${' '.repeat((depth + 1) * 2)}├─ mine (${targetCount}x)`);
+        sources.forEach((source, index) => {
+            const isLast = index === sources.length - 1;
+            console.log(`${' '.repeat((depth + 2) * 2)}${isLast ? '└─' : '├─'} ${source.block}`);
+        });
     }
 
+    // Then show crafting paths if available
     const recipes = (mcData.recipes[item.id] || [])
         .sort((a, b) => b.result.count - a.result.count);
 
-    if (recipes.length === 0) {
-        const sources = findBlocksThatDrop(mcData, itemName);
-        if (sources.length > 0) {
-            console.log(`${' '.repeat(depth * 4)}  Can be obtained by mining:`);
-            sources.forEach(source => {
-                console.log(`${' '.repeat(depth * 4)}  - ${source.block} (requires: ${source.tool})`);
-            });
-        }
-        const materials = new Map();
-        materials.set(itemName, targetCount);
-        return { materials };
-    }
+    if (recipes.length > 0) {
+        recipes.forEach((recipe, recipeIndex) => {
+            const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
+            const isLastRecipe = recipeIndex === recipes.length - 1;
+            const craftingLocation = requiresCraftingTable(recipe) ? 'table' : 'inventory';
+            console.log(`${' '.repeat((depth + 1) * 2)}${isLastRecipe ? '└─' : '├─'} craft in ${craftingLocation} (${craftingsNeeded}x)`);
 
-    craftingHistory.add(itemName);
+            // Get ingredients and their counts
+            const ingredients = recipe.ingredients || recipe.inShape?.flat().filter(Boolean);
+            const ingredientCounts = new Map();
 
-    // Find best recipe
-    let bestRecipe = null;
-    let bestMaterials = null;
-    let bestTotalMaterials = Infinity;
+            if (ingredients) {
+                // Sort ingredients by ID first
+                const sortedIngredients = [...ingredients].sort((a, b) => a - b);
 
-    for (const recipe of recipes) {
-        const craftingLocation = requiresCraftingTable(recipe) ? 'table' : 'inventory';
-        const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
-
-        console.log(`${' '.repeat(depth * 4)}  Recipe makes: ${recipe.result.count}, Need to craft: ${craftingsNeeded}x (${craftingLocation})`);
-
-        const ingredientCounts = new Map();
-
-        if (recipe.ingredients) {
-            recipe.ingredients.forEach(ingredient => {
-                if (mcData.items[ingredient]) {
-                    const currentCount = ingredientCounts.get(ingredient) || 0;
-                    ingredientCounts.set(ingredient, currentCount + 1);
-                }
-            });
-        } else if (recipe.inShape) {
-            recipe.inShape.forEach(row => {
-                row.forEach(ingredientId => {
-                    if (ingredientId) {
-                        const currentCount = ingredientCounts.get(ingredientId) || 0;
-                        ingredientCounts.set(ingredientId, currentCount + 1);
-                    }
+                // Count ingredients
+                sortedIngredients.forEach(id => {
+                    ingredientCounts.set(id, (ingredientCounts.get(id) || 0) + 1);
                 });
-            });
-        }
 
-        const recipeMaterials = new Map();
-        let totalMaterials = 0;
+                // Show recipe conversion with sorted ingredients
+                const ingredientList = Array.from(ingredientCounts.entries())
+                    .sort(([idA], [idB]) => idA - idB)
+                    .map(([id, count]) => `${count} ${mcData.items[id].name}`)
+                    .join(' + ');
+                console.log(`${' '.repeat((depth + 2) * 2)}├─ ${ingredientList} -> ${recipe.result.count} ${itemName}`);
 
-        // Analyze ingredients
-        for (const [ingredientId, count] of ingredientCounts) {
-            const ingredientItem = mcData.items[ingredientId];
-            if (ingredientItem) {
-                const newHistory = new Set(craftingHistory);
-                const result = analyzeRecipes(bot, ingredientItem.name, count * craftingsNeeded, depth + 1, newHistory);
+                // Process unique ingredients in sorted order
+                Array.from(ingredientCounts.entries())
+                    .sort(([idA], [idB]) => idA - idB)
+                    .forEach(([ingredientId, count]) => {
+                        const ingredientItem = mcData.items[ingredientId];
+                        if (ingredientItem) {
+                            // Check for circular dependency
+                            const ingredientRecipes = mcData.recipes[ingredientItem.id] || [];
+                            const wouldCreateCircular = ingredientRecipes.some(r =>
+                                (r.ingredients && r.ingredients.includes(item.id)) ||
+                                (r.inShape && r.inShape.some(row => row.includes(item.id)))
+                            );
 
-                result.materials.forEach((count, material) => {
-                    recipeMaterials.set(material, (recipeMaterials.get(material) || 0) + count);
-                    totalMaterials += count;
-                });
+                            if (wouldCreateCircular) {
+                                // Just show the mining path
+                                const sources = findBlocksThatDrop(mcData, ingredientItem.name);
+                                if (sources.length > 0) {
+                                    console.log(`${' '.repeat((depth + 3) * 2)}└─ mine`);
+                                    sources.forEach((source, sourceIndex) => {
+                                        const isLast = sourceIndex === sources.length - 1;
+                                        console.log(`${' '.repeat((depth + 4) * 2)}${isLast ? '└─' : '├─'} ${source.block}`);
+                                    });
+                                }
+                            } else {
+                                analyzeRecipes(bot, ingredientItem.name,
+                                    count * craftingsNeeded,
+                                    depth + 2,
+                                    new Set(craftingHistory));
+                            }
+                        }
+                    });
             }
-        }
-
-        if (totalMaterials < bestTotalMaterials) {
-            bestTotalMaterials = totalMaterials;
-            bestMaterials = recipeMaterials;
-            bestRecipe = recipe;
-        }
+        });
     }
 
-    craftingHistory.delete(itemName);
-    return { materials: bestMaterials };
+    return { materials: new Map() };
 }
 
 module.exports = analyzeRecipes;
