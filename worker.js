@@ -9,7 +9,7 @@ const {
     BotStateMachine,
 } = require('mineflayer-statemachine')
 
-const createAcquireItemState = require('./acquireItemState')
+const createCollectItemState = require('./collectItemState')
 
 let botOptions = {
     host: 'localhost',
@@ -53,28 +53,29 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
-        const acquireItemState = createAcquireItemState(bot, targets)
+        const collectItemState = createCollectItemState(bot, targets)
 
         const exit = new BehaviorIdle()
 
 
-        const enterToAcquireItem = new StateTransition({
-            name: 'worker: enter -> acquire item',
+        const enterToCollectItem = new StateTransition({
+            name: 'worker: enter -> collect item',
             parent: enter,
-            child: acquireItemState,
+            child: collectItemState,
             shouldTransition: () => true,
             onTransition: () => {
-                console.log('worker: enter -> acquire item')
+                console.log('worker: enter -> collect item')
+                targets.itemName = 'stick'
             }
         })
 
-        const acquireItemToExit = new StateTransition({
-            name: 'worker: acquire item -> exit',
-            parent: acquireItemState,
+        const collectItemToExit = new StateTransition({
+            name: 'worker: collect item -> exit',
+            parent: collectItemState,
             child: exit,
-            shouldTransition: () => acquireItemState.isFinished(),
+            shouldTransition: () => collectItemState.isFinished(),
             onTransition: () => {
-                console.log('worker: acquire item -> exit')
+                console.log('worker: collect item -> exit')
             }
         })
 
@@ -89,8 +90,8 @@ async function main() {
         })
 
         const transitions = [
-            enterToAcquireItem,
-            acquireItemToExit,
+            enterToCollectItem,
+            collectItemToExit,
             exitToEnter
         ]
 
@@ -108,7 +109,7 @@ async function main() {
                 exitToEnter.trigger()
             }
 
-            if (parts[0] === 'acquire') {
+            if (parts[0] === 'collect') {
                 exitToEnter.trigger()
                 const itemName = parts[1]
                 targets.itemName = itemName

@@ -1,63 +1,66 @@
 const minecraftData = require('minecraft-data')
 
-function analyzeRecipes(bot, itemName) {
+function requiresCraftingTable(recipe) {
+    if (recipe.ingredients) {
+        return false;
+    }
+
+    if (recipe.inShape) {
+        const tooWide = recipe.inShape.some(row => row.length > 2);
+        const tooTall = recipe.inShape.length > 2;
+        return tooWide || tooTall;
+    }
+
+    return false;
+}
+
+function analyzeRecipes(bot, itemName, depth = 0, count = 1) {
     const mcData = minecraftData(bot.version);
     const item = mcData.itemsByName[itemName];
 
     if (!item) {
-        console.log(`Item "${itemName}" not found`);
+        console.log(`${' '.repeat(depth * 4)}Item "${itemName}" not found`);
         return;
     }
 
-    console.log(`\nDebug Info:`);
-    console.log(`Bot version: ${bot.version}`);
-    console.log(`Item ID: ${item.id}`);
+    const recipes = (mcData.recipes[item.id] || [])
+        .sort((a, b) => b.result.count - a.result.count);
 
-    // Check if recipes are loaded
-    if (!bot.recipes || bot.recipes.length === 0) {
-        console.log('\nWARNING: Recipes not yet loaded!');
-        console.log('Waiting for recipes to load...');
-
-        // Return a promise that resolves when recipes are loaded
-        return new Promise((resolve) => {
-            bot.once('recipesAll', () => {
-                console.log(`Recipes loaded! Total recipes: ${bot.recipes.length}`);
-                analyzeRecipesImpl(bot, itemName, mcData, item);
-                resolve();
-            });
-        });
+    if (recipes.length === 0) {
+        // Base item (can't be crafted)
+        console.log(`${' '.repeat(depth * 4)}- ${itemName} (${item.id}): base item x${count}`);
+        return;
     }
 
-    return analyzeRecipesImpl(bot, itemName, mcData, item);
-}
+    recipes.forEach(recipe => {
+        console.log(`${' '.repeat(depth * 4)}- ${itemName} (${item.id}): ${recipe.result.count} (${requiresCraftingTable(recipe) ? 'table' : 'inventory'})`);
 
-function analyzeRecipesImpl(bot, itemName, mcData, item) {
-    console.log(`\nTotal recipes in bot: ${bot.recipes.length}`);
+        const ingredientCounts = new Map();
 
-    // Find recipes for the item
-    const itemRecipes = bot.recipes.filter(recipe =>
-        recipe.result &&
-        recipe.result.item &&
-        recipe.result.item.id === item.id
-    );
-
-    console.log(`Found ${itemRecipes.length} recipes for ${itemName}\n`);
-
-    itemRecipes.forEach((recipe, index) => {
-        console.log(`Recipe #${index + 1}:`);
-        console.log(`Requires Table: ${recipe.requiresTable ? 'Yes' : 'No'}`);
-        console.log(`Output Count: ${recipe.result.count}`);
-
-        console.log('Ingredients:');
-        if (recipe.ingredients && recipe.ingredients.length > 0) {
+        if (recipe.ingredients) {
             recipe.ingredients.forEach(ingredient => {
-                const ingredientName = mcData.items[ingredient.id]?.name || `Unknown(${ingredient.id})`;
-                console.log(`  - ${ingredient.count}x ${ingredientName}`);
+                if (mcData.items[ingredient]) {
+                    const currentCount = ingredientCounts.get(ingredient) || 0;
+                    ingredientCounts.set(ingredient, currentCount + 1);
+                }
             });
-        } else {
-            console.log('No ingredient data available');
+        } else if (recipe.inShape) {
+            recipe.inShape.forEach(row => {
+                row.forEach(ingredientId => {
+                    if (ingredientId) {
+                        const currentCount = ingredientCounts.get(ingredientId) || 0;
+                        ingredientCounts.set(ingredientId, currentCount + 1);
+                    }
+                });
+            });
         }
-        console.log(''); // Empty line between recipes
+
+        ingredientCounts.forEach((count, ingredientId) => {
+            const ingredientItem = mcData.items[ingredientId];
+            if (ingredientItem) {
+                analyzeRecipes(bot, ingredientItem.name, depth + 1, count);
+            }
+        });
     });
 }
 
