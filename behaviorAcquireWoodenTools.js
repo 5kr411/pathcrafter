@@ -47,11 +47,50 @@ function createAcquireWoodenToolsState(bot, targets) {
         }
     })
 
+    function hasWoodenTool(bot) {
+        return getItemCountInInventory(bot, 'wooden_pickaxe') >= 1 || getItemCountInInventory(bot, 'wooden_axe') >= 1
+    }
+
+    function needToCollectLogs(bot) {
+        if (getItemCountInInventory(bot, 'oak_log') >= 2) {
+            console.log('BehaviorAcquireWoodenTools: do not need to collect logs: already have 2 logs')
+            return false
+        }
+
+        if (getItemCountInInventory(bot, 'oak_planks') >= 8) {
+            console.log('BehaviorAcquireWoodenTools: do not need to collect logs: already have 8 planks')
+            return false
+        }
+
+        if (getItemCountInInventory(bot, 'oak_log') >= 1 && getItemCountInInventory(bot, 'oak_planks') >= 4) {
+            console.log('BehaviorAcquireWoodenTools: do not need to collect logs: already have 1 log and 4 planks')
+            return false
+        }
+
+        if (getItemCountInInventory(bot, 'oak_planks') >= 6 && getItemCountInInventory(bot, 'stick') >= 4) {
+            console.log('BehaviorAcquireWoodenTools: do not need to collect logs: already have 6 planks and 4 sticks')
+            return false
+        }
+
+        if (hasWoodenTool(bot) && getItemCountInInventory(bot, 'oak_planks') >= 5) {
+            console.log('BehaviorAcquireWoodenTools: do not need to collect logs: already have a wooden tool and 5 planks')
+            return false
+        }
+
+        if (hasWoodenTool(bot) && getItemCountInInventory(bot, 'oak_planks') >= 3 && getItemCountInInventory(bot, 'stick') >= 2) {
+            console.log('BehaviorAcquireWoodenTools: do not need to collect logs: already have a wooden tool and 3 planks and 2 sticks')
+            return false
+        }
+
+        console.log('BehaviorAcquireWoodenTools: need to collect logs')
+        return true
+    }
+
     const acquireCraftingTableToCollectLogs = new StateTransition({
         parent: acquireCraftingTableState,
         child: collectLogsIfNeededState,
         name: 'BehaviorAcquireWoodenTools: acquire crafting table -> collect logs',
-        shouldTransition: () => acquireCraftingTableState.isFinished(),
+        shouldTransition: () => acquireCraftingTableState.isFinished() && needToCollectLogs(bot),
         onTransition: () => {
             console.log('BehaviorAcquireWoodenTools: acquire crafting table -> collect logs')
             targets.blockName = 'oak_log'
@@ -61,6 +100,17 @@ function createAcquireWoodenToolsState(bot, targets) {
     })
 
     let placeCraftingTableStartTime
+    const acquireCraftingTableToPlaceCraftingTable = new StateTransition({
+        parent: acquireCraftingTableState,
+        child: placeCraftingTableState,
+        name: 'BehaviorAcquireWoodenTools: acquire crafting table -> place crafting table',
+        shouldTransition: () => acquireCraftingTableState.isFinished() && !needToCollectLogs(bot),
+        onTransition: () => {
+            placeCraftingTableStartTime = Date.now()
+            console.log('BehaviorAcquireWoodenTools: acquire crafting table -> place crafting table')
+        }
+    })
+
     const collectLogsToPlaceCraftingTable = new StateTransition({
         parent: collectLogsIfNeededState,
         child: placeCraftingTableState,
@@ -96,6 +146,7 @@ function createAcquireWoodenToolsState(bot, targets) {
         enterToExit,
         enterToAcquireCraftingTable,
         acquireCraftingTableToCollectLogs,
+        acquireCraftingTableToPlaceCraftingTable,
         collectLogsToPlaceCraftingTable,
         placeCraftingTableToCraftWoodenTools,
         craftWoodenToolsToExit,
