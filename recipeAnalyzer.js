@@ -80,17 +80,13 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHisto
     // Print item header
     console.log(`${' '.repeat(depth * 2)}├─ ${itemName} (want ${targetCount})`);
 
-    // Show mining path
-    const sources = findBlocksThatDrop(mcData, itemName);
-    printMiningPath(sources, depth, targetCount);
-
-    // Show crafting paths
+    // Show crafting paths first
     const recipes = (mcData.recipes[item.id] || [])
         .sort((a, b) => b.result.count - a.result.count);
 
     recipes.forEach((recipe, recipeIndex) => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
-        const isLastRecipe = recipeIndex === recipes.length - 1;
+        const isLastRecipe = recipeIndex === recipes.length - 1 && !findBlocksThatDrop(mcData, itemName).length;
         const craftingLocation = requiresCraftingTable(recipe) ? 'table' : 'inventory';
         console.log(`${' '.repeat((depth + 1) * 2)}${isLastRecipe ? '└─' : '├─'} craft in ${craftingLocation} (${craftingsNeeded}x)`);
 
@@ -124,6 +120,12 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHisto
                 });
         }
     });
+
+    // Show mining path last
+    const sources = findBlocksThatDrop(mcData, itemName);
+    if (sources.length > 0) {
+        printMiningPath(sources, depth, targetCount);
+    }
 
     return { materials: new Map() };
 }
