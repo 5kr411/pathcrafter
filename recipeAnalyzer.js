@@ -31,17 +31,20 @@ function findBlocksThatDrop(mcData, itemName) {
     return sources;
 }
 
-function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHistory = new Set()) {
+function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHistory = new Set()) {
     const mcData = minecraftData(bot.version);
     const item = mcData.itemsByName[itemName];
 
     if (!item) {
         console.log(`${' '.repeat(depth * 4)}Cannot find item: ${itemName}`);
-        return;
+        return { materials: new Map() };
     }
 
+    // Print item header
+    console.log(`${' '.repeat(depth * 4)}+ ${itemName} (Want: ${targetCount})`);
+
     if (craftingHistory.has(itemName)) {
-        console.log(`${' '.repeat(depth * 4)}↻ ${itemName} (circular dependency)`);
+        console.log(`${' '.repeat(depth * 4)}  ↻ Circular dependency detected`);
         const sources = findBlocksThatDrop(mcData, itemName);
         if (sources.length > 0) {
             console.log(`${' '.repeat(depth * 4)}  Can be obtained by mining:`);
@@ -49,14 +52,15 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
                 console.log(`${' '.repeat(depth * 4)}  - ${source.block} (requires: ${source.tool})`);
             });
         }
-        return;
+        const materials = new Map();
+        materials.set(itemName, targetCount);
+        return { materials };
     }
 
     const recipes = (mcData.recipes[item.id] || [])
         .sort((a, b) => b.result.count - a.result.count);
 
     if (recipes.length === 0) {
-        console.log(`${' '.repeat(depth * 4)}→ ${itemName} needed: ${targetCount}`);
         const sources = findBlocksThatDrop(mcData, itemName);
         if (sources.length > 0) {
             console.log(`${' '.repeat(depth * 4)}  Can be obtained by mining:`);
@@ -64,17 +68,23 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
                 console.log(`${' '.repeat(depth * 4)}  - ${source.block} (requires: ${source.tool})`);
             });
         }
-        return;
+        const materials = new Map();
+        materials.set(itemName, targetCount);
+        return { materials };
     }
 
     craftingHistory.add(itemName);
 
-    recipes.forEach((recipe, index) => {
+    // Find best recipe
+    let bestRecipe = null;
+    let bestMaterials = null;
+    let bestTotalMaterials = Infinity;
+
+    for (const recipe of recipes) {
         const craftingLocation = requiresCraftingTable(recipe) ? 'table' : 'inventory';
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
 
-        console.log(`${' '.repeat(depth * 4)}+ ${itemName} (Recipe ${index + 1}/${recipes.length}, ${craftingLocation})`);
-        console.log(`${' '.repeat(depth * 4)}  Want: ${targetCount}, Recipe makes: ${recipe.result.count}, Need to craft: ${craftingsNeeded}x`);
+        console.log(`${' '.repeat(depth * 4)}  Recipe makes: ${recipe.result.count}, Need to craft: ${craftingsNeeded}x (${craftingLocation})`);
 
         const ingredientCounts = new Map();
 
@@ -96,14 +106,32 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 0, craftingHisto
             });
         }
 
-        ingredientCounts.forEach((count, ingredientId) => {
+        const recipeMaterials = new Map();
+        let totalMaterials = 0;
+
+        // Analyze ingredients
+        for (const [ingredientId, count] of ingredientCounts) {
             const ingredientItem = mcData.items[ingredientId];
             if (ingredientItem) {
                 const newHistory = new Set(craftingHistory);
-                analyzeRecipes(bot, ingredientItem.name, count * craftingsNeeded, depth + 1, newHistory);
+                const result = analyzeRecipes(bot, ingredientItem.name, count * craftingsNeeded, depth + 1, newHistory);
+
+                result.materials.forEach((count, material) => {
+                    recipeMaterials.set(material, (recipeMaterials.get(material) || 0) + count);
+                    totalMaterials += count;
+                });
             }
-        });
-    });
+        }
+
+        if (totalMaterials < bestTotalMaterials) {
+            bestTotalMaterials = totalMaterials;
+            bestMaterials = recipeMaterials;
+            bestRecipe = recipe;
+        }
+    }
+
+    craftingHistory.delete(itemName);
+    return { materials: bestMaterials };
 }
 
 module.exports = analyzeRecipes;

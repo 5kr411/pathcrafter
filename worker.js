@@ -66,7 +66,7 @@ async function main() {
             onTransition: () => {
                 console.log('worker: enter -> collect item')
                 if (!targets.itemName) {
-                    targets.itemName = 'diamond_pickaxe'
+                    targets.itemName = 'diamond'
                 }
                 if (!targets.amount) {
                     targets.amount = 1
