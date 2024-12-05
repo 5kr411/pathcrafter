@@ -68,6 +68,37 @@ function printRecipeConversion(mcData, ingredientCounts, recipe, itemName, depth
     console.log(`${' '.repeat((depth + 2) * 2)}├─ ${ingredientList} -> ${recipe.result.count} ${itemName}`);
 }
 
+function findMobsThatDrop(mcData, itemName) {
+    const sources = [];
+    const item = mcData.itemsByName[itemName];
+
+    if (!item) return sources;
+
+    Object.entries(mcData.entityLoot || {}).forEach(([entityId, lootTable]) => {
+        if (lootTable && lootTable.drops) {
+            const hasItem = lootTable.drops.some(drop => drop.item === itemName);
+            if (hasItem) {
+                sources.push({
+                    mob: lootTable.entity,
+                    tool: 'weapon'
+                });
+            }
+        }
+    });
+
+    return sources;
+}
+
+function printHuntingPath(sources, depth, targetCount) {
+    if (sources.length === 0) return;
+
+    console.log(`${' '.repeat((depth + 1) * 2)}├─ hunt (${targetCount}x)`);
+    sources.forEach((source, index) => {
+        const isLast = index === sources.length - 1;
+        console.log(`${' '.repeat((depth + 2) * 2)}${isLast ? '└─' : '├─'} ${source.mob}`);
+    });
+}
+
 function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHistory = new Set()) {
     const mcData = minecraftData(bot.version);
     const item = mcData.itemsByName[itemName];
@@ -121,10 +152,16 @@ function analyzeRecipes(bot, itemName, targetCount = 1, depth = 1, craftingHisto
         }
     });
 
-    // Show mining path last
-    const sources = findBlocksThatDrop(mcData, itemName);
-    if (sources.length > 0) {
-        printMiningPath(sources, depth, targetCount);
+    // Show mining path
+    const miningPaths = findBlocksThatDrop(mcData, itemName);
+    if (miningPaths.length > 0) {
+        printMiningPath(miningPaths, depth, targetCount);
+    }
+
+    // Show hunting path last
+    const huntingPaths = findMobsThatDrop(mcData, itemName);
+    if (huntingPaths.length > 0) {
+        printHuntingPath(huntingPaths, depth, targetCount);
     }
 
     return { materials: new Map() };
