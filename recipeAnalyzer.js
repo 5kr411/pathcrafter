@@ -76,11 +76,18 @@ function findMobsThatDrop(mcData, itemName) {
 
     Object.entries(mcData.entityLoot || {}).forEach(([entityId, lootTable]) => {
         if (lootTable && lootTable.drops) {
-            const hasItem = lootTable.drops.some(drop => drop.item === itemName);
+            const hasItem = lootTable.drops.some(drop => {
+                const dropItemName = drop.item?.toLowerCase().replace(' ', '_');
+                return dropItemName === itemName;
+            });
+
             if (hasItem) {
                 sources.push({
                     mob: lootTable.entity,
-                    tool: 'weapon'
+                    tool: 'weapon',
+                    dropChance: lootTable.drops.find(d =>
+                        d.item?.toLowerCase().replace(' ', '_') === itemName
+                    )?.dropChance
                 });
             }
         }
@@ -95,7 +102,8 @@ function printHuntingPath(sources, depth, targetCount) {
     console.log(`${' '.repeat((depth + 1) * 2)}├─ hunt (${targetCount}x)`);
     sources.forEach((source, index) => {
         const isLast = index === sources.length - 1;
-        console.log(`${' '.repeat((depth + 2) * 2)}${isLast ? '└─' : '├─'} ${source.mob}`);
+        const chanceInfo = source.dropChance ? ` (${source.dropChance * 100}% chance)` : '';
+        console.log(`${' '.repeat((depth + 2) * 2)}${isLast ? '└─' : '├─'} ${source.mob}${chanceInfo}`);
     });
 }
 
