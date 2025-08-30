@@ -8,6 +8,32 @@ function resolveMcData(ctx) {
     return undefined;
 }
 
+function chooseMinimalToolName(toolNames) {
+    if (!toolNames || toolNames.length === 0) return undefined;
+    const tierRank = {
+        wooden: 0,
+        golden: 0.5,
+        stone: 1,
+        iron: 2,
+        diamond: 3,
+        netherite: 4
+    };
+    function rank(name) {
+        // expected pattern like wooden_pickaxe, iron_axe, shears, etc.
+        const first = String(name).split('_')[0];
+        const base = tierRank[first];
+        if (base === undefined) return 10; // unknown tools ranked higher
+        return base;
+    }
+    let best = toolNames[0];
+    let bestRank = rank(best);
+    for (let i = 1; i < toolNames.length; i++) {
+        const r = rank(toolNames[i]);
+        if (r < bestRank) { best = toolNames[i]; bestRank = r; }
+    }
+    return best;
+}
+
 function requiresCraftingTable(recipe) {
     if (recipe.ingredients) return false;
     if (recipe.inShape) {
@@ -122,6 +148,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     if (!mcData || !item) return root;
     const avoidTool = context.avoidTool;
     const visited = context.visited instanceof Set ? context.visited : new Set();
+    const preferMinimalTools = context.preferMinimalTools !== false; // default true
     if (visited.has(itemName)) return root;
     const nextVisited = new Set(visited);
     nextVisited.add(itemName);
@@ -161,14 +188,17 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                                 if (!s.tool || s.tool === 'any') {
                                     return [{ action: 'mine', what: s.block, count: neededCount, children: [] }];
                                 }
-                                const tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
+                                let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
+                                if (preferMinimalTools && tools.length > 1) {
+                                    tools = [chooseMinimalToolName(tools)];
+                                }
                                 return tools.map(toolName => ({
                                     action: 'require',
                                     operator: 'AND',
                                     what: `tool:${toolName}`,
                                     count: 1,
                                     children: [
-                                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited }),
+                                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools }),
                                         { action: 'mine', what: s.block, tool: toolName, count: neededCount, children: [] }
                                     ]
                                 }));
@@ -177,7 +207,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         craftNode.children.push(miningGroup);
                     }
                 } else {
-                    const ingredientTree = buildRecipeTree(mcData, ingredientItem.name, count * craftingsNeeded, { ...context, visited: nextVisited });
+                    const ingredientTree = buildRecipeTree(mcData, ingredientItem.name, count * craftingsNeeded, { ...context, visited: nextVisited, preferMinimalTools });
                     craftNode.children.push(ingredientTree);
                 }
             });
@@ -210,14 +240,17 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 if (!s.tool || s.tool === 'any') {
                     return [{ action: 'mine', what: s.block, count: targetCount, children: [] }];
                 }
-                const tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
+                let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
+                if (preferMinimalTools && tools.length > 1) {
+                    tools = [chooseMinimalToolName(tools)];
+                }
                 return tools.map(toolName => ({
                     action: 'require',
                     operator: 'AND',
                     what: `tool:${toolName}`,
                     count: 1,
                     children: [
-                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited }),
+                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools }),
                         { action: 'mine', what: s.block, tool: toolName, count: targetCount, children: [] }
                     ]
                 }));
