@@ -1,4 +1,8 @@
 const minecraftData = require('minecraft-data')
+let lastMcData = null
+let woodSpeciesTokens = null
+let currentSpeciesContext = null
+let targetItemNameGlobal = null
 
 function resolveMcData(ctx) {
     if (!ctx) return undefined;
@@ -42,6 +46,129 @@ function requiresCraftingTable(recipe) {
         return tooWide || tooTall;
     }
     return false;
+}
+
+function getItemName(mcData, id) {
+    return mcData.items[id]?.name || String(id);
+}
+
+function getSuffixTokenFromName(name) {
+    if (!name) return name;
+    const idx = name.lastIndexOf('_');
+    if (idx === -1) return name; // no underscore
+    return name.slice(idx + 1); // take final token as base (e.g., planks, log, wood, table)
+}
+
+function extractSpeciesPrefix(name) {
+    if (!name || !name.includes('_') || !woodSpeciesTokens) return null;
+    const idx = name.lastIndexOf('_');
+    if (idx <= 0) return null;
+    const prefix = name.slice(0, idx);
+    // Some species tokens include underscores themselves (e.g., dark_oak)
+    // Check all tokens to find the longest match at the start
+    let best = null;
+    for (const s of woodSpeciesTokens) {
+        if (prefix === s) { best = s; break; }
+        // Handle names like bamboo_block etc. Only exact prefix match counts.
+    }
+    return best;
+}
+
+function baseHasMultipleWoodSpecies(baseName) {
+    if (!lastMcData || !woodSpeciesTokens || !baseName) return false;
+    let count = 0;
+    for (const species of woodSpeciesTokens) {
+        const candidate = `${species}_${baseName}`;
+        if (lastMcData.itemsByName[candidate]) {
+            count++;
+            if (count >= 2) return true;
+        }
+    }
+    return false;
+}
+
+function renderName(name, meta) {
+    if (!name) return name;
+    // Always keep exact target name concrete
+    if (targetItemNameGlobal && name === targetItemNameGlobal) return name;
+    if (meta && meta.selectedSpecies) {
+        const base = getSuffixTokenFromName(name);
+        const forced = `${meta.selectedSpecies}_${base}`;
+        if (lastMcData?.itemsByName?.[forced]) return forced;
+        return name;
+    }
+    if (meta && meta.generic) {
+        const base = getSuffixTokenFromName(name);
+        return `generic_${base}`;
+    }
+    return genericizeItemName(name);
+}
+
+function genericizeItemName(name) {
+    if (!lastMcData) return name;
+    if (targetItemNameGlobal && name === targetItemNameGlobal) return name;
+    if (!name || !name.includes('_')) return name;
+    // Build wood species tokens once (e.g., oak, spruce, birch, dark_oak, crimson, warped, mangrove, cherry, bamboo)
+    if (!woodSpeciesTokens) {
+        woodSpeciesTokens = new Set();
+        const names = Object.keys(lastMcData.itemsByName || {});
+        for (const n of names) {
+            if (n.endsWith('_planks')) {
+                const species = n.slice(0, -('_planks'.length));
+                if (species.length > 0) woodSpeciesTokens.add(species);
+            }
+        }
+    }
+    // If we are in a species-specific context (e.g., cherry_stairs), do not genericize wood items for that species
+    if (currentSpeciesContext && name.startsWith(currentSpeciesContext + '_')) return name;
+    const base = getSuffixTokenFromName(name); // e.g., planks, log, wood, slab, stairs
+    // Count how many species-specific items exist for this base
+    let count = 0;
+    for (const species of woodSpeciesTokens) {
+        const candidate = `${species}_${base}`;
+        if (lastMcData.itemsByName[candidate]) count++;
+        if (count >= 2) break;
+    }
+    if (count >= 2) return `generic_${base}`; // family with multiple wood species variants
+    return name;
+}
+
+function canonicalizeShapedRecipe(mcData, recipe) {
+    // Returns a signature string that ignores species by replacing item names with their suffix tokens
+    // and preserves the exact shape (rows/cols and empties)
+    const rows = recipe.inShape || [];
+    const canonRows = rows.map(row => row.map(cell => {
+        if (!cell) return 0;
+        const name = getItemName(mcData, cell);
+        return getSuffixTokenFromName(name);
+    }));
+    return JSON.stringify(canonRows);
+}
+
+function canonicalizeShapelessRecipe(mcData, recipe) {
+    const ids = (recipe.ingredients || []).filter(Boolean);
+    const canon = ids.map(id => getSuffixTokenFromName(getItemName(mcData, id))).sort();
+    return JSON.stringify(canon);
+}
+
+function dedupeRecipesForItem(mcData, itemId, preferFamilies = true) {
+    const all = (mcData.recipes[itemId] || []);
+    if (!preferFamilies) return all.slice();
+    const shapedMap = new Map();
+    const shapelessMap = new Map();
+    for (const r of all) {
+        if (r.inShape) {
+            const key = canonicalizeShapedRecipe(mcData, r);
+            if (!shapedMap.has(key)) shapedMap.set(key, r);
+        } else if (r.ingredients) {
+            const key = canonicalizeShapelessRecipe(mcData, r);
+            if (!shapelessMap.has(key)) shapelessMap.set(key, r);
+        } else {
+            // Unknown type; keep as-is by creating a unique key per object identity
+            shapelessMap.set(Math.random() + '', r);
+        }
+    }
+    return [...shapedMap.values(), ...shapelessMap.values()];
 }
 
 function findBlocksThatDrop(mcData, itemName) {
@@ -149,23 +276,54 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const avoidTool = context.avoidTool;
     const visited = context.visited instanceof Set ? context.visited : new Set();
     const preferMinimalTools = context.preferMinimalTools !== false; // default true
+    const familyGenericBases = context.familyGenericBases instanceof Set ? context.familyGenericBases : new Set();
     if (visited.has(itemName)) return root;
     const nextVisited = new Set(visited);
     nextVisited.add(itemName);
 
-    const recipes = (mcData.recipes[item.id] || []).sort((a, b) => b.result.count - a.result.count);
+    const preferWoodFamilies = context.preferWoodFamilies !== false; // default true
+    const recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies)
+        .sort((a, b) => b.result.count - a.result.count);
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
         const ingredientCounts = getIngredientCounts(recipe);
+        const resultBase = getSuffixTokenFromName(itemName);
+        const baseForcedGeneric = familyGenericBases.has(resultBase);
+        const resultSpecies = baseForcedGeneric ? null : extractSpeciesPrefix(itemName);
+        const resultIsFamily = baseHasMultipleWoodSpecies(resultBase);
         const craftNode = {
             action: 'craft',
             operator: 'AND',
             what: requiresCraftingTable(recipe) ? 'table' : 'inventory',
             count: craftingsNeeded,
-            result: { item: itemName, perCraftCount: recipe.result.count },
+            result: {
+                item: itemName,
+                perCraftCount: recipe.result.count,
+                meta: {
+                    generic: baseForcedGeneric || false,
+                    selectedSpecies: baseForcedGeneric ? null : (resultSpecies || null)
+                }
+            },
             ingredients: Array.from(ingredientCounts.entries())
                 .sort(([a], [b]) => a - b)
-                .map(([id, count]) => ({ item: mcData.items[id]?.name, perCraftCount: count })),
+                .map(([id, count]) => {
+                    const ingName = mcData.items[id]?.name;
+                    const base = getSuffixTokenFromName(ingName);
+                    const isFamily = baseHasMultipleWoodSpecies(base);
+                    let selectedSpecies = null;
+                    if (resultSpecies && isFamily) {
+                        const candidate = `${resultSpecies}_${base}`;
+                        if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies;
+                    }
+                    return {
+                        item: ingName,
+                        perCraftCount: count,
+                        meta: {
+                            generic: (isFamily && !selectedSpecies && preferWoodFamilies) || familyGenericBases.has(base),
+                            selectedSpecies: selectedSpecies
+                        }
+                    };
+                }),
             children: []
         };
 
@@ -198,7 +356,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                                     what: `tool:${toolName}`,
                                     count: 1,
                                     children: [
-                                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools }),
+                                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies }),
                                         { action: 'mine', what: s.block, tool: toolName, count: neededCount, children: [] }
                                     ]
                                 }));
@@ -207,7 +365,19 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         craftNode.children.push(miningGroup);
                     }
                 } else {
-                    const ingredientTree = buildRecipeTree(mcData, ingredientItem.name, count * craftingsNeeded, { ...context, visited: nextVisited, preferMinimalTools });
+                    const ingName = ingredientItem.name;
+                    const base = getSuffixTokenFromName(ingName);
+                    const isFamily = baseHasMultipleWoodSpecies(base);
+                    let selectedSpecies = null;
+                    if (resultSpecies && isFamily) {
+                        const candidate = `${resultSpecies}_${base}`;
+                        if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies;
+                    }
+                    const nextFamilyGenerics = new Set(familyGenericBases);
+                    if (isFamily && !selectedSpecies && preferWoodFamilies) {
+                        nextFamilyGenerics.add(base);
+                    }
+                    const ingredientTree = buildRecipeTree(mcData, ingName, count * craftingsNeeded, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics });
                     craftNode.children.push(ingredientTree);
                 }
             });
@@ -250,7 +420,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                     what: `tool:${toolName}`,
                     count: 1,
                     children: [
-                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools }),
+                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases }),
                         { action: 'mine', what: s.block, tool: toolName, count: targetCount, children: [] }
                     ]
                 }));
@@ -301,8 +471,9 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
         const op = node.operator === 'AND' ? 'ALL' : 'ANY';
         console.log(`${indent}${branch} craft in ${node.what} (${node.count}x) [${op}]`);
         if (node.ingredients && node.ingredients.length > 0 && node.result) {
-            const ingredientsStr = node.ingredients.map(i => `${i.perCraftCount} ${i.item}`).join(' + ');
-            console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingredientsStr} to ${node.result.perCraftCount} ${node.result.item}`);
+            const ingredientsStr = node.ingredients.map(i => `${i.perCraftCount} ${renderName(i.item, i.meta)}`).join(' + ');
+            const resultName = renderName(node.result.item, node.result.meta);
+            console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingredientsStr} to ${node.result.perCraftCount} ${resultName}`);
         }
         const children = node.children || [];
         children.forEach((child, idx) => logRecipeTree(child, depth + 2));
@@ -319,11 +490,11 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
                     const subIndent = ' '.repeat((depth + 1) * 2);
                     const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
                     const toolInfo = child.tool && child.tool !== 'any' ? ` (needs ${child.tool})` : '';
-                    console.log(`${subIndent}${subBranch} ${child.what}${toolInfo}`);
+                    console.log(`${subIndent}${subBranch} ${renderName(child.what)}${toolInfo}`);
                 }
             });
         } else {
-            console.log(`${indent}${branch} ${node.what}`);
+            console.log(`${indent}${branch} ${renderName(node.what)}`);
         }
         return;
     }
@@ -343,10 +514,10 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
                 const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
                 const chance = child.dropChance ? ` (${child.dropChance * 100}% chance)` : '';
                 const toolInfo = child.tool && child.tool !== 'any' ? ` (needs ${child.tool})` : '';
-                console.log(`${subIndent}${subBranch} ${child.what}${chance}${toolInfo}`);
+                console.log(`${subIndent}${subBranch} ${renderName(child.what)}${chance}${toolInfo}`);
             });
         } else {
-            console.log(`${indent}${branch} ${node.what}`);
+            console.log(`${indent}${branch} ${renderName(node.what)}`);
         }
         return;
     }
@@ -356,7 +527,24 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
 }
 
 function analyzeRecipes(ctx, itemName, targetCount = 1, options = {}) {
-    const tree = buildRecipeTree(ctx, itemName, targetCount);
+    lastMcData = resolveMcData(ctx);
+    targetItemNameGlobal = itemName;
+    // Determine species context from target if it is wood-specific
+    if (!woodSpeciesTokens) {
+        woodSpeciesTokens = new Set();
+        const names = Object.keys(lastMcData.itemsByName || {});
+        for (const n of names) {
+            if (n.endsWith('_planks')) {
+                const species = n.slice(0, -('_planks'.length));
+                if (species.length > 0) woodSpeciesTokens.add(species);
+            }
+        }
+    }
+    currentSpeciesContext = null;
+    for (const species of woodSpeciesTokens) {
+        if (itemName.startsWith(species + '_')) { currentSpeciesContext = species; break; }
+    }
+    const tree = buildRecipeTree(lastMcData, itemName, targetCount);
     if (!options || options.log !== false) logRecipeTree(tree);
     return tree;
 }
@@ -517,9 +705,9 @@ function logActionPath(path) {
     const parts = path.map(step => {
         if (step.action === 'craft') {
             const ing = step.ingredients && step.ingredients.length > 0
-                ? `${step.ingredients.map(i => `${i.perCraftCount} ${i.item}`).join(' + ')} to `
+                ? `${step.ingredients.map(i => `${i.perCraftCount} ${renderName(i.item, i.meta)}`).join(' + ')} to `
                 : '';
-            const res = step.result ? `${step.result.perCraftCount} ${step.result.item}` : 'unknown';
+            const res = step.result ? `${step.result.perCraftCount} ${renderName(step.result.item, step.result.meta)}` : 'unknown';
             return `craft in ${step.what} (${step.count}x): ${ing}${res}`;
         }
         if (step.action === 'require') {
@@ -527,14 +715,14 @@ function logActionPath(path) {
         }
         if (step.action === 'mine') {
             const tool = step.tool && step.tool !== 'any' ? `, needs ${step.tool}` : '';
-            return `mine ${step.what} (${step.count}x${tool})`;
+            return `mine ${renderName(step.what)} (${step.count}x${tool})`;
         }
         if (step.action === 'hunt') {
             const chance = step.dropChance ? `, ${step.dropChance * 100}% chance` : '';
             const tool = step.tool && step.tool !== 'any' ? `, needs ${step.tool}` : '';
-            return `hunt ${step.what} (${step.count}x${chance}${tool})`;
+            return `hunt ${renderName(step.what)} (${step.count}x${chance}${tool})`;
         }
-        return `${step.action} ${step.what} (${step.count}x)`;
+        return `${step.action} ${renderName(step.what)} (${step.count}x)`;
     });
     console.log(parts.join(' -> '));
 }

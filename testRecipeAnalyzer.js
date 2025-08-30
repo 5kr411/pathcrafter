@@ -3,15 +3,15 @@ const { resolveMcData } = analyzeRecipes._internals;
 
 const mcData = resolveMcData('1.20.1');
 
-const item = 'cobblestone';
+const item = 'cherry_stairs';
 const count = 1;
-console.log(`Analyzing target: ${item} x${count}`);
+console.log(`Analyzing target item: ${item} x${count}`);
 const tree = analyzeRecipes(mcData, item, count, { log: false });
 
 const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = analyzeRecipes._internals;
 console.log(`\nGenerated action path tree with max depth: ${computeTreeMaxDepth(tree)}`);
-let pathsToLog = 10;
-console.log(`\nFirst ${pathsToLog} generated action paths (original order) for ${item} x${count}:`);
+let pathsToLog = 100;
+console.log(`\nFirst ${pathsToLog} generated action paths for ${item} x${count}:`);
 let j = 0;
 for (const path of enumerateActionPathsGenerator(tree)) {
     process.stdout.write(`#${++j} `);
