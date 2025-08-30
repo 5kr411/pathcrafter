@@ -8,12 +8,19 @@ const count = 1;
 console.log(`Analyzing target: ${item} x${count}`);
 const tree = analyzeRecipes(mcData, item, count, { log: false });
 
-const { enumerateActionPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = analyzeRecipes._internals;
+const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = analyzeRecipes._internals;
 console.log(`\nGenerated action path tree with max depth: ${computeTreeMaxDepth(tree)}`);
 let pathsToLog = 10;
-console.log(`\nFirst ${pathsToLog} enumerated action paths for ${item} x${count}:`);
-let i = 0;
+console.log(`\nFirst ${pathsToLog} generated action paths (original order) for ${item} x${count}:`);
+let j = 0;
 for (const path of enumerateActionPathsGenerator(tree)) {
+    process.stdout.write(`#${++j} `);
+    logActionPath(path);
+    if (j >= pathsToLog) break;
+}
+console.log(`\nFirst ${pathsToLog} shortest action paths for ${item} x${count}:`);
+let i = 0;
+for (const path of enumerateShortestPathsGenerator(tree)) {
     process.stdout.write(`#${++i} `);
     logActionPath(path);
     if (i >= pathsToLog) break;
