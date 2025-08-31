@@ -1,4 +1,5 @@
 const minecraftData = require('minecraft-data')
+const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('./smeltingConfig')
 let lastMcData = null
 let woodSpeciesTokens = null
 let currentSpeciesContext = null
@@ -169,6 +170,12 @@ function dedupeRecipesForItem(mcData, itemId, preferFamilies = true) {
         }
     }
     return [...shapedMap.values(), ...shapelessMap.values()];
+}
+
+// Smelting helpers via config
+function findFurnaceSmeltsForItem(mcData, itemName) {
+    const inputs = getFurnaceInputsFor(itemName);
+    return inputs.filter(n => !!mcData.itemsByName[n]);
 }
 
 function findBlocksThatDrop(mcData, itemName) {
@@ -399,6 +406,37 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
         }
     });
 
+    // Insert smelting (furnace) after crafting but before mining/hunting
+    const smeltInputs = findFurnaceSmeltsForItem(mcData, itemName);
+    if (smeltInputs.length > 0) {
+        const perSmelt = 1; // iron: 1 input -> 1 output
+        const smeltsNeeded = Math.ceil(targetCount / perSmelt);
+        const fuelName = chooseMinimalFuelName(mcData);
+        const smeltsPerFuel = fuelName ? getSmeltsPerUnitForFuel(fuelName) : 0;
+        const fuelTotal = fuelName && smeltsPerFuel > 0 ? Math.ceil(smeltsNeeded / smeltsPerFuel) : 0;
+        const smeltGroup = {
+            action: 'smelt',
+            operator: 'OR',
+            what: itemName,
+            count: targetCount,
+            children: smeltInputs.map(inp => ({
+                action: 'smelt',
+                operator: 'AND',
+                what: 'furnace',
+                count: smeltsNeeded,
+                input: { item: inp, perSmelt: 1 },
+                result: { item: itemName, perSmelt: perSmelt },
+                fuel: fuelName || null,
+                children: [
+                    { action: 'require', operator: 'AND', what: 'furnace', count: 1, children: [buildRecipeTree(mcData, 'furnace', 1, { ...context, visited: nextVisited })] },
+                    fuelName && fuelTotal > 0 ? buildRecipeTree(mcData, fuelName, fuelTotal, { ...context, visited: nextVisited }) : { action: 'root', operator: 'OR', what: 'no_fuel_needed', count: 0, children: [] },
+                    buildRecipeTree(mcData, inp, smeltsNeeded, { ...context, visited: nextVisited })
+                ]
+            }))
+        };
+        root.children.push(smeltGroup);
+    }
+
     const miningPaths = findBlocksThatDrop(mcData, itemName);
     if (miningPaths.length > 0) {
         const mineGroup = {
@@ -439,7 +477,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             children: huntingPaths.map(s => {
                 const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
                 const expectedKills = Math.ceil(targetCount / p);
-                return { action: 'hunt', what: s.mob, count: expectedKills, dropChance: s.dropChance, children: [] };
+                return { action: 'hunt', what: s.mob, targetItem: itemName, count: expectedKills, dropChance: s.dropChance, children: [] };
             })
         };
         root.children.push(huntGroup);
@@ -498,6 +536,22 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
         }
         return;
     }
+    if (node.action === 'smelt') {
+        if (node.children && node.children.length > 0) {
+            const op = node.operator === 'AND' ? 'ALL' : 'ANY';
+            const fuelInfo = node.fuel ? ` with ${renderName(node.fuel)}` : '';
+            console.log(`${indent}${branch} smelt in furnace${fuelInfo} (${node.count}x) [${op}]`);
+            if (node.input && node.result) {
+                const ingStr = `${node.input.perSmelt} ${renderName(node.input.item)}`;
+                const resStr = `${node.result.perSmelt} ${renderName(node.result.item)}`;
+                console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingStr} to ${resStr}`);
+            }
+            node.children.forEach((child, idx) => logRecipeTree(child, depth + 1));
+        } else {
+            console.log(`${indent}${branch} smelt ${renderName(node.what)}`);
+        }
+        return;
+    }
     if (node.action === 'require') {
         const op = node.operator === 'AND' ? 'ALL' : 'ANY';
         console.log(`${indent}${branch} require ${node.what.replace('tool:', '')} [${op}]`);
@@ -514,7 +568,8 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
                 const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
                 const chance = child.dropChance ? ` (${child.dropChance * 100}% chance)` : '';
                 const toolInfo = child.tool && child.tool !== 'any' ? ` (needs ${child.tool})` : '';
-                console.log(`${subIndent}${subBranch} ${renderName(child.what)}${chance}${toolInfo}`);
+                const targetInfo = child.targetItem ? ` for ${renderName(child.targetItem)}` : '';
+                console.log(`${subIndent}${subBranch} ${renderName(child.what)}${targetInfo}${chance}${toolInfo}`);
             });
         } else {
             console.log(`${indent}${branch} ${renderName(node.what)}`);
@@ -607,8 +662,25 @@ function enumerateActionPaths(tree) {
             });
             return results;
         }
+        if (node.action === 'smelt' && node.operator === 'OR' && node.children && node.children.length > 0) {
+            const results = [];
+            node.children.forEach(child => { results.push(...enumerate(child)); });
+            return results;
+        }
+        if (node.action === 'smelt' && node.operator === 'AND' && node.children && node.children.length > 0) {
+            let combined = [[]];
+            for (const child of node.children) {
+                const childPaths = enumerate(child);
+                if (childPaths.length === 0) return [];
+                const nextCombined = [];
+                combined.forEach(prefix => childPaths.forEach(seq => nextCombined.push(prefix.concat(seq))));
+                combined = nextCombined;
+            }
+            combined = combined.map(seq => seq.concat([{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]));
+            return combined;
+        }
         if ((node.action === 'mine' || node.action === 'hunt') && (!node.children || node.children.length === 0)) {
-            return [[{ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool }]];
+            return [[{ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }]];
         }
         return [];
     }
@@ -658,6 +730,25 @@ function enumerateActionPathsGenerator(tree) {
             yield* combine(0, []);
             return;
         }
+        if (node.action === 'smelt') {
+            if (node.operator === 'OR' && node.children && node.children.length > 0) {
+                for (const child of node.children) yield* enumerate(child);
+                return;
+            }
+            if (node.operator === 'AND' && node.children && node.children.length > 0) {
+                function* combine(idx, prefix) {
+                    if (idx >= node.children.length) {
+                        yield prefix.concat([{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]);
+                        return;
+                    }
+                    for (const seg of enumerate(node.children[idx])) {
+                        yield* combine(idx + 1, prefix.concat(seg));
+                    }
+                }
+                yield* combine(0, []);
+                return;
+            }
+        }
         if ((node.action === 'mine' || node.action === 'hunt') && node.operator === 'OR' && node.children && node.children.length > 0) {
             for (const child of node.children) {
                 yield* enumerate(child);
@@ -665,7 +756,7 @@ function enumerateActionPathsGenerator(tree) {
             return;
         }
         if ((node.action === 'mine' || node.action === 'hunt') && (!node.children || node.children.length === 0)) {
-            yield [{ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool }];
+            yield [{ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }];
             return;
         }
     }
@@ -710,6 +801,12 @@ function logActionPath(path) {
             const res = step.result ? `${step.result.perCraftCount} ${renderName(step.result.item, step.result.meta)}` : 'unknown';
             return `craft in ${step.what} (${step.count}x): ${ing}${res}`;
         }
+        if (step.action === 'smelt') {
+            const ing = step.input ? `${step.input.perSmelt} ${renderName(step.input.item)}` : '';
+            const res = step.result ? `${step.result.perSmelt} ${renderName(step.result.item)}` : 'unknown';
+            const fuel = step.fuel ? ` with ${renderName(step.fuel)}` : '';
+            return `smelt in furnace${fuel} (${step.count}x): ${ing} to ${res}`;
+        }
         if (step.action === 'require') {
             return `require ${String(step.what).replace('tool:', '')}`;
         }
@@ -720,7 +817,8 @@ function logActionPath(path) {
         if (step.action === 'hunt') {
             const chance = step.dropChance ? `, ${step.dropChance * 100}% chance` : '';
             const tool = step.tool && step.tool !== 'any' ? `, needs ${step.tool}` : '';
-            return `hunt ${renderName(step.what)} (${step.count}x${chance}${tool})`;
+            const forWhat = step.targetItem ? ` for ${renderName(step.targetItem)}` : '';
+            return `hunt ${renderName(step.what)}${forWhat} (${step.count}x${chance}${tool})`;
         }
         return `${step.action} ${renderName(step.what)} (${step.count}x)`;
     });
@@ -791,11 +889,17 @@ function enumerateShortestPathsGenerator(tree) {
         if (!node) return function* () { };
         if (!node.children || node.children.length === 0) {
             if (node.action === 'craft') { return makeLeafStream({ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }); }
-            if (node.action === 'mine' || node.action === 'hunt') { return makeLeafStream({ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool }); }
+            if (node.action === 'smelt') { return function* () { }; }
+            if (node.action === 'mine' || node.action === 'hunt') { return makeLeafStream({ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }); }
             if (node.action === 'require') return function* () { };
             return function* () { };
         }
         if (node.action === 'root') { return makeOrStream((node.children || []).map(makeStream)); }
+        if (node.action === 'smelt') {
+            if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream));
+            const step = { action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel };
+            return makeAndStream((node.children || []).map(makeStream), step);
+        }
         if (node.action === 'mine' || node.action === 'hunt') { if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream)); }
         if (node.action === 'require') { return makeAndStream((node.children || []).map(makeStream), null); }
         if (node.action === 'craft') { const step = { action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }; return makeAndStream((node.children || []).map(makeStream), step); }
