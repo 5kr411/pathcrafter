@@ -976,7 +976,8 @@ function logActionPath(path) {
         }
         return `${step.action} ${renderName(step.what)} (${step.count}x)`;
     });
-    console.log(parts.join(' -> '));
+    const weight = typeof computePathWeight === 'function' ? computePathWeight(path) : 0;
+    console.log(`${parts.join(' -> ')} (w=${weight})`);
 }
 
 function logActionPaths(paths) {
@@ -1231,6 +1232,26 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
     return (function* () { for (const item of stream()) yield item.path; })();
 }
 
+function computePathWeight(path) {
+    if (!Array.isArray(path)) return 0;
+    let total = 0;
+    for (const step of path) {
+        if (!step || !step.action) continue;
+        const count = Number(step.count) || 0;
+        if (count <= 0) continue;
+        if (step.action === 'craft') {
+            total += (step.what === 'inventory' ? 1 : 10) * count;
+        } else if (step.action === 'smelt') {
+            total += 100 * count;
+        } else if (step.action === 'mine') {
+            total += 1000 * count;
+        } else if (step.action === 'hunt') {
+            total += 10000 * count;
+        }
+    }
+    return total;
+}
+
 analyzeRecipes._internals = {
     resolveMcData,
     requiresCraftingTable,
@@ -1249,7 +1270,8 @@ analyzeRecipes._internals = {
     computeTreeMaxDepth,
     countActionPaths,
     logActionPath,
-    logActionPaths
+    logActionPaths,
+    computePathWeight
 };
 
 module.exports = analyzeRecipes;
