@@ -277,9 +277,39 @@ function printHuntingPath(sources, depth, targetCount) {
 function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const mcData = resolveMcData(ctx);
     const item = mcData?.itemsByName[itemName];
+    // Inventory helpers (object <-> map)
+    const invObj = context && context.inventory && typeof context.inventory === 'object' ? context.inventory : null;
+    function invToMap(obj) {
+        const m = new Map();
+        if (!obj) return m;
+        for (const [k, v] of Object.entries(obj)) {
+            const n = Number(v);
+            if (!Number.isNaN(n) && n > 0) m.set(k, n);
+        }
+        return m;
+    }
+    function mapToInv(m) {
+        const o = {};
+        if (!m) return o;
+        for (const [k, v] of m.entries()) {
+            if (v > 0) o[k] = v;
+        }
+        return o;
+    }
+    const invMap = invToMap(invObj);
+    // Root-level subtraction: if inventory already has some of the target, reduce required count
+    if (invMap && invMap.size > 0 && targetCount > 0) {
+        const have = invMap.get(itemName) || 0;
+        if (have > 0) {
+            const use = Math.min(have, targetCount);
+            invMap.set(itemName, have - use);
+            targetCount -= use;
+        }
+    }
     const root = { action: 'root', operator: 'OR', what: itemName, count: targetCount, children: [] };
 
     if (!mcData || !item) return root;
+    if (targetCount <= 0) return root;
     const avoidTool = context.avoidTool;
     const visited = context.visited instanceof Set ? context.visited : new Set();
     const preferMinimalTools = context.preferMinimalTools !== false; // default true
@@ -334,16 +364,32 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             children: []
         };
 
+        // Make an inventory working copy for this specific recipe branch,
+        // so we can allocate inventory across its AND children without affecting siblings
+        const recipeInv = new Map(invMap);
         Array.from(ingredientCounts.entries())
             .sort(([a], [b]) => a - b)
             .forEach(([ingredientId, count]) => {
                 const ingredientItem = mcData.items[ingredientId];
                 if (!ingredientItem) return;
+                // Allocate inventory to this ingredient first
+                const ingNameAlloc = ingredientItem.name;
+                const totalNeeded = count * craftingsNeeded;
+                let neededAfterInv = totalNeeded;
+                if (recipeInv && recipeInv.size > 0 && totalNeeded > 0) {
+                    const haveIng = recipeInv.get(ingNameAlloc) || 0;
+                    if (haveIng > 0) {
+                        const take = Math.min(haveIng, totalNeeded);
+                        recipeInv.set(ingNameAlloc, haveIng - take);
+                        neededAfterInv -= take;
+                    }
+                }
+                if (neededAfterInv <= 0) return; // fully satisfied by inventory
 
                 if (hasCircularDependency(mcData, item.id, ingredientId)) {
                     const sources = findBlocksThatDrop(mcData, ingredientItem.name);
                     if (sources.length > 0) {
-                        const neededCount = count * craftingsNeeded;
+                        const neededCount = neededAfterInv;
                         const miningGroup = {
                             action: 'mine',
                             operator: 'OR',
@@ -357,16 +403,22 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                                 if (preferMinimalTools && tools.length > 1) {
                                     tools = [chooseMinimalToolName(tools)];
                                 }
-                                return tools.map(toolName => ({
-                                    action: 'require',
-                                    operator: 'AND',
-                                    what: `tool:${toolName}`,
-                                    count: 1,
-                                    children: [
-                                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies }),
-                                        { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }
-                                    ]
-                                }));
+                                return tools.map(toolName => {
+                                    const alreadyHaveTool = recipeInv && (recipeInv.get(toolName) || 0) > 0;
+                                    if (alreadyHaveTool) {
+                                        return { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] };
+                                    }
+                                    return {
+                                        action: 'require',
+                                        operator: 'AND',
+                                        what: `tool:${toolName}`,
+                                        count: 1,
+                                        children: [
+                                            buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInv(recipeInv) }),
+                                            { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }
+                                        ]
+                                    };
+                                });
                             })
                         };
                         craftNode.children.push(miningGroup);
@@ -384,23 +436,29 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                     if (isFamily && !selectedSpecies && preferWoodFamilies) {
                         nextFamilyGenerics.add(base);
                     }
-                    const ingredientTree = buildRecipeTree(mcData, ingName, count * craftingsNeeded, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics });
+                    const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInv(recipeInv) });
                     craftNode.children.push(ingredientTree);
                 }
             });
 
         if (craftNode.what === 'table') {
-            const requireTable = {
-                action: 'require',
-                operator: 'AND',
-                what: 'crafting_table',
-                count: 1,
-                children: [
-                    buildRecipeTree(mcData, 'crafting_table', 1, { ...context, visited: nextVisited }),
-                    craftNode
-                ]
-            };
-            root.children.push(requireTable);
+            const alreadyHaveTable = invMap && (invMap.get('crafting_table') || 0) > 0;
+            if (alreadyHaveTable) {
+                // No need to require crafting table; keep craftNode directly
+                root.children.push(craftNode);
+            } else {
+                const requireTable = {
+                    action: 'require',
+                    operator: 'AND',
+                    what: 'crafting_table',
+                    count: 1,
+                    children: [
+                        buildRecipeTree(mcData, 'crafting_table', 1, { ...context, visited: nextVisited, inventory: mapToInv(invMap) }),
+                        craftNode
+                    ]
+                };
+                root.children.push(requireTable);
+            }
         } else {
             root.children.push(craftNode);
         }
@@ -413,26 +471,46 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
         const smeltsNeeded = Math.ceil(targetCount / perSmelt);
         const fuelName = chooseMinimalFuelName(mcData);
         const smeltsPerFuel = fuelName ? getSmeltsPerUnitForFuel(fuelName) : 0;
-        const fuelTotal = fuelName && smeltsPerFuel > 0 ? Math.ceil(smeltsNeeded / smeltsPerFuel) : 0;
+        let fuelTotal = fuelName && smeltsPerFuel > 0 ? Math.ceil(smeltsNeeded / smeltsPerFuel) : 0;
+        // Subtract inventory fuel
+        if (fuelName && invMap && invMap.size > 0 && fuelTotal > 0) {
+            const haveFuel = invMap.get(fuelName) || 0;
+            if (haveFuel > 0) fuelTotal = Math.max(0, fuelTotal - haveFuel);
+        }
         const smeltGroup = {
             action: 'smelt',
             operator: 'OR',
             what: itemName,
             count: targetCount,
-            children: smeltInputs.map(inp => ({
-                action: 'smelt',
-                operator: 'AND',
-                what: 'furnace',
-                count: smeltsNeeded,
-                input: { item: inp, perSmelt: 1 },
-                result: { item: itemName, perSmelt: perSmelt },
-                fuel: fuelName || null,
-                children: [
-                    { action: 'require', operator: 'AND', what: 'furnace', count: 1, children: [buildRecipeTree(mcData, 'furnace', 1, { ...context, visited: nextVisited })] },
-                    fuelName && fuelTotal > 0 ? buildRecipeTree(mcData, fuelName, fuelTotal, { ...context, visited: nextVisited }) : { action: 'root', operator: 'OR', what: 'no_fuel_needed', count: 0, children: [] },
-                    buildRecipeTree(mcData, inp, smeltsNeeded, { ...context, visited: nextVisited })
-                ]
-            }))
+            children: smeltInputs.map(inp => {
+                // Compute input after inventory
+                let inputNeeded = smeltsNeeded;
+                if (invMap && invMap.size > 0 && inputNeeded > 0) {
+                    const haveInp = invMap.get(inp) || 0;
+                    if (haveInp > 0) inputNeeded = Math.max(0, inputNeeded - haveInp);
+                }
+                const children = [];
+                // Skip requiring furnace if inventory already has one
+                if (!(invMap && (invMap.get('furnace') || 0) > 0)) {
+                    children.push({ action: 'require', operator: 'AND', what: 'furnace', count: 1, children: [buildRecipeTree(mcData, 'furnace', 1, { ...context, visited: nextVisited, inventory: mapToInv(invMap) })] });
+                }
+                if (fuelName && fuelTotal > 0) {
+                    children.push(buildRecipeTree(mcData, fuelName, fuelTotal, { ...context, visited: nextVisited, inventory: mapToInv(invMap) }));
+                }
+                if (inputNeeded > 0) {
+                    children.push(buildRecipeTree(mcData, inp, inputNeeded, { ...context, visited: nextVisited, inventory: mapToInv(invMap) }));
+                }
+                return {
+                    action: 'smelt',
+                    operator: 'AND',
+                    what: 'furnace',
+                    count: smeltsNeeded,
+                    input: { item: inp, perSmelt: 1 },
+                    result: { item: itemName, perSmelt: perSmelt },
+                    fuel: fuelName || null,
+                    children
+                };
+            })
         };
         root.children.push(smeltGroup);
     }
@@ -452,16 +530,22 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 if (preferMinimalTools && tools.length > 1) {
                     tools = [chooseMinimalToolName(tools)];
                 }
-                return tools.map(toolName => ({
-                    action: 'require',
-                    operator: 'AND',
-                    what: `tool:${toolName}`,
-                    count: 1,
-                    children: [
-                        buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases }),
-                        { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }
-                    ]
-                }));
+                return tools.map(toolName => {
+                    const alreadyHaveTool = invMap && (invMap.get(toolName) || 0) > 0;
+                    if (alreadyHaveTool) {
+                        return { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] };
+                    }
+                    return {
+                        action: 'require',
+                        operator: 'AND',
+                        what: `tool:${toolName}`,
+                        count: 1,
+                        children: [
+                            buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInv(invMap) }),
+                            { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }
+                        ]
+                    };
+                });
             })
         };
         root.children.push(mineGroup);
@@ -602,7 +686,7 @@ function analyzeRecipes(ctx, itemName, targetCount = 1, options = {}) {
     for (const species of woodSpeciesTokens) {
         if (itemName.startsWith(species + '_')) { currentSpeciesContext = species; break; }
     }
-    const tree = buildRecipeTree(lastMcData, itemName, targetCount);
+    const tree = buildRecipeTree(lastMcData, itemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
     if (!options || options.log !== false) logRecipeTree(tree);
     return tree;
 }
@@ -690,7 +774,8 @@ function enumerateActionPaths(tree) {
     return enumerate(tree);
 }
 
-function enumerateActionPathsGenerator(tree) {
+function enumerateActionPathsGenerator(tree, options = {}) {
+    const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
     // Treat all tools as persistent (plus table/furnace)
     const persistentNames = (() => {
         const s = new Set(['crafting_table', 'furnace']);
@@ -714,6 +799,14 @@ function enumerateActionPathsGenerator(tree) {
         return s;
     })();
     function isPersistentItemName(name) { return !!name && persistentNames.has(name); }
+    function persistentSetFromInventory(inv) {
+        const have = new Set();
+        if (!inv) return have;
+        for (const [k, v] of Object.entries(inv)) {
+            if ((v || 0) > 0 && isPersistentItemName(k)) have.add(k);
+        }
+        return have;
+    }
     function requiredPersistentFromRequire(node) {
         const what = String(node.what || '');
         if (what.startsWith('tool:')) return what.slice(5);
@@ -803,6 +896,11 @@ function enumerateActionPathsGenerator(tree) {
                 yield* enumerateChildren(0, [], have || new Set());
                 return;
             }
+            if (node.operator === 'AND' && (!node.children || node.children.length === 0)) {
+                // All prerequisites satisfied by inventory; perform the smelt step itself
+                yield [{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }];
+                return;
+            }
         }
         if ((node.action === 'mine' || node.action === 'hunt') && node.operator === 'OR' && node.children && node.children.length > 0) {
             for (const child of node.children) {
@@ -815,7 +913,7 @@ function enumerateActionPathsGenerator(tree) {
             return;
         }
     }
-    return enumerate(tree, new Set());
+    return enumerate(tree, persistentSetFromInventory(invObj));
 }
 
 function computeTreeMaxDepth(node) {
@@ -888,7 +986,8 @@ function logActionPaths(paths) {
     });
 }
 
-function enumerateShortestPathsGenerator(tree) {
+function enumerateShortestPathsGenerator(tree, options = {}) {
+    const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
     function MinHeap(compare) {
         this.compare = compare; this.data = [];
     }
@@ -928,10 +1027,22 @@ function enumerateShortestPathsGenerator(tree) {
         return s;
     })();
     function isPersistent(name) { return !!name && persistentNames.has(name); }
+    function makeSupplyFromInventory(inv) {
+        const m = new Map();
+        if (!inv) return m;
+        for (const [k, v] of Object.entries(inv)) {
+            const n = Number(v);
+            if (!Number.isNaN(n) && n > 0) m.set(k, n);
+        }
+        return m;
+    }
+    const initialSupply = makeSupplyFromInventory(invObj);
 
     function sanitizePath(path) {
         // Pass 1: remove duplicate acquisitions of persistent items
         const have = new Map();
+        // seed with inventory persistent items
+        for (const [k, v] of initialSupply.entries()) { if (isPersistent(k)) have.set(k, (have.get(k) || 0) + v); }
         const keepForward = new Array(path.length).fill(true);
         function produced(step) {
             if (!step) return null;
@@ -954,8 +1065,22 @@ function enumerateShortestPathsGenerator(tree) {
 
         // Pass 2: trim only suffix gather steps that are not demanded
         const need = new Map();
+        const supply = new Map(initialSupply);
         const keep = new Array(filtered.length).fill(false);
-        function incNeed(name, count) { if (!name || count <= 0) return; need.set(name, (need.get(name) || 0) + count); }
+        function takeFromSupply(name, count) {
+            if (!name || count <= 0) return 0;
+            const cur = supply.get(name) || 0;
+            if (cur <= 0) return 0;
+            const take = Math.min(cur, count);
+            supply.set(name, cur - take);
+            return take;
+        }
+        function incNeed(name, count) {
+            if (!name || count <= 0) return;
+            const covered = takeFromSupply(name, count);
+            const remain = count - covered;
+            if (remain > 0) need.set(name, (need.get(name) || 0) + remain);
+        }
         function decNeed(name, count) { if (!name || count <= 0) return; const cur = need.get(name) || 0; const next = cur - count; if (next > 0) need.set(name, next); else need.delete(name); }
         for (let i = filtered.length - 1; i >= 0; i--) {
             const st = filtered[i];
@@ -999,7 +1124,7 @@ function enumerateShortestPathsGenerator(tree) {
     }
 
     function isPathValid(path) {
-        const supply = new Map();
+        const supply = new Map(initialSupply);
         function add(name, count) { if (!name || count <= 0) return; supply.set(name, (supply.get(name) || 0) + count); }
         function take(name, count) { if (!name || count <= 0) return true; const cur = supply.get(name) || 0; if (cur < count) return false; supply.set(name, cur - count); return true; }
         function produced(step) { return step && (step.targetItem || step.what); }
@@ -1086,7 +1211,7 @@ function enumerateShortestPathsGenerator(tree) {
         if (!node) return function* () { };
         if (!node.children || node.children.length === 0) {
             if (node.action === 'craft') { return makeLeafStream({ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }); }
-            if (node.action === 'smelt') { return function* () { }; }
+            if (node.action === 'smelt') { return makeLeafStream({ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }); }
             if (node.action === 'mine' || node.action === 'hunt') { return makeLeafStream({ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }); }
             if (node.action === 'require') return function* () { };
             return function* () { };
