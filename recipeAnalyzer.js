@@ -1066,16 +1066,30 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
 
         // Pass 2: trim only suffix gather steps that are not demanded
         const need = new Map();
-        const supply = new Map(initialSupply);
-        const keep = new Array(filtered.length).fill(false);
-        function takeFromSupply(name, count) {
-            if (!name || count <= 0) return 0;
-            const cur = supply.get(name) || 0;
-            if (cur <= 0) return 0;
-            const take = Math.min(cur, count);
-            supply.set(name, cur - take);
-            return take;
+        // Note: Do not consume inventory during sanitization. We only use inventory at validation time.
+        function familyGenericKey(name) {
+            if (!name) return null;
+            const base = getSuffixTokenFromName(name);
+            return baseHasMultipleWoodSpecies(base) ? `generic_${base}` : null;
         }
+        function takeFromFamilySpecifics(base, count) {
+            if (count <= 0) return 0;
+            let remaining = count;
+            if (!woodSpeciesTokens) return 0;
+            for (const species of woodSpeciesTokens) {
+                if (remaining <= 0) break;
+                const candidate = `${species}_${base}`;
+                if (!lastMcData?.itemsByName?.[candidate]) continue;
+                const cur = supply.get(candidate) || 0;
+                if (cur <= 0) continue;
+                const take = Math.min(cur, remaining);
+                supply.set(candidate, cur - take);
+                remaining -= take;
+            }
+            return count - remaining;
+        }
+        const keep = new Array(filtered.length).fill(false);
+        function takeFromSupply(name, count) { return 0; }
         function incNeed(name, count) {
             if (!name || count <= 0) return;
             const covered = takeFromSupply(name, count);
@@ -1121,13 +1135,55 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
             }
             keep[i] = true;
         }
-        return filtered.filter((_, idx) => keep[idx]);
+        const out = filtered.filter((_, idx) => keep[idx]);
+        // Safety: never drop valid paths. If sanitization breaks feasibility, return original.
+        try {
+            if (!isPathValid(out)) return path;
+        } catch (_) { /* if validator throws, be conservative */ return path; }
+        return out;
     }
 
     function isPathValid(path) {
         const supply = new Map(initialSupply);
+        function familyGenericKey(name) { if (!name) return null; const base = getSuffixTokenFromName(name); return baseHasMultipleWoodSpecies(base) ? `generic_${base}` : null; }
+        function takeFromFamilySpecifics(base, count) {
+            if (count <= 0) return 0;
+            let remaining = count;
+            if (!woodSpeciesTokens) return 0;
+            for (const species of woodSpeciesTokens) {
+                if (remaining <= 0) break;
+                const candidate = `${species}_${base}`;
+                if (!lastMcData?.itemsByName?.[candidate]) continue;
+                const cur = supply.get(candidate) || 0;
+                if (cur <= 0) continue;
+                const take = Math.min(cur, remaining);
+                supply.set(candidate, cur - take);
+                remaining -= take;
+            }
+            return count - remaining;
+        }
         function add(name, count) { if (!name || count <= 0) return; supply.set(name, (supply.get(name) || 0) + count); }
-        function take(name, count) { if (!name || count <= 0) return true; const cur = supply.get(name) || 0; if (cur < count) return false; supply.set(name, cur - count); return true; }
+        function take(name, count) {
+            if (!name || count <= 0) return true;
+            let cur = supply.get(name) || 0;
+            if (cur >= count) { supply.set(name, cur - count); return true; }
+            // Try generic family bucket then specifics
+            const fam = familyGenericKey(name);
+            if (!fam) return false;
+            let missing = count - cur;
+            if (cur > 0) supply.set(name, 0);
+            let gcur = supply.get(fam) || 0;
+            if (gcur > 0) {
+                const use = Math.min(gcur, missing);
+                gcur -= use;
+                supply.set(fam, gcur);
+                missing -= use;
+            }
+            if (missing <= 0) return true;
+            const base = getSuffixTokenFromName(name);
+            const took = takeFromFamilySpecifics(base, missing);
+            return took >= missing;
+        }
         function produced(step) { return step && (step.targetItem || step.what); }
         for (const st of path) {
             if (!st) continue;
@@ -1199,16 +1255,10 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
                 const parts = []; for (let i = 0; i < node.idx.length; i++) parts.push(streams[i].buf[node.idx[i]].path);
                 let combined = parts.flat(); if (parentStepOrNull) combined = combined.concat([parentStepOrNull]);
                 let cleaned = sanitizePath(combined);
-                if (!isPathValid(cleaned)) {
-                    // If sanitized path is invalid, try the unsanitized combined path; if still invalid, skip
-                    if (!isPathValid(combined)) {
-                        // advance frontier without yielding
-                    } else {
-                        yield { path: combined, length: combined.length };
-                    }
-                } else {
-                    yield { path: cleaned, length: cleaned.length };
-                }
+                // If sanitizer returns an invalid result, fall back to combined. If combined invalid too, yield combined conservatively.
+                if (!isPathValid(cleaned)) cleaned = combined;
+                if (!isPathValid(cleaned)) { yield { path: combined, length: combined.length }; }
+                else { yield { path: cleaned, length: cleaned.length }; }
                 for (let d = 0; d < streams.length; d++) {
                     const nextIdx = node.idx.slice(); nextIdx[d] += 1; if (!ensure(d, nextIdx[d])) continue; const k = idxKey(nextIdx); if (visited.has(k)) continue; visited.add(k); heap.push({ idx: nextIdx, length: sumLen(nextIdx) });
                 }
@@ -1231,6 +1281,140 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
             const step = { action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel };
             return makeAndStream((node.children || []).map(makeStream), step);
         }
+        if (node.action === 'mine' || node.action === 'hunt') { if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream)); }
+        if (node.action === 'require') { return makeAndStream((node.children || []).map(makeStream), null); }
+        if (node.action === 'craft') { const step = { action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }; return makeAndStream((node.children || []).map(makeStream), step); }
+        return makeOrStream((node.children || []).map(makeStream));
+    }
+    const stream = makeStream(tree);
+    return (function* () { for (const item of stream()) yield item.path; })();
+}
+
+function enumerateLowestWeightPathsGenerator(tree, options = {}) {
+    const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
+    function MinHeap(compare) { this.compare = compare; this.data = []; }
+    MinHeap.prototype.push = function (item) { const a = this.data; a.push(item); let i = a.length - 1; while (i > 0) { const p = Math.floor((i - 1) / 2); if (this.compare(a[i], a[p]) >= 0) break; const t = a[i]; a[i] = a[p]; a[p] = t; i = p; } };
+    MinHeap.prototype.pop = function () { const a = this.data; if (a.length === 0) return undefined; const top = a[0]; const last = a.pop(); if (a.length) { a[0] = last; let i = 0; while (true) { const l = 2 * i + 1, r = l + 1; let s = i; if (l < a.length && this.compare(a[l], a[s]) < 0) s = l; if (r < a.length && this.compare(a[r], a[s]) < 0) s = r; if (s === i) break; const t = a[i]; a[i] = a[s]; a[s] = t; i = s; } } return top; };
+    MinHeap.prototype.size = function () { return this.data.length; };
+
+    function stepWeight(step) {
+        if (!step || !step.action) return 0;
+        const count = Number(step.count) || 0;
+        if (count <= 0) return 0;
+        if (step.action === 'craft') return (step.what === 'inventory' ? 1 : 10) * count;
+        if (step.action === 'smelt') return 100 * count;
+        if (step.action === 'mine') return 1000 * count;
+        if (step.action === 'hunt') return 10000 * count;
+        return 0;
+    }
+
+    function makeLeafStream(step) { const w = stepWeight(step); return function* () { yield { path: [step], weight: w }; }; }
+
+    // Inventory support mirrors shortest generator
+    const persistentNames = (() => {
+        const s = new Set(['crafting_table', 'furnace']);
+        if (lastMcData) {
+            try {
+                Object.values(lastMcData.blocks || {}).forEach(b => {
+                    if (b && b.harvestTools) {
+                        Object.keys(b.harvestTools).forEach(id => { const nm = lastMcData.items[id]?.name || String(id); if (nm) s.add(nm); });
+                    }
+                });
+                const toolSuffixes = new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']);
+                Object.keys(lastMcData.itemsByName || {}).forEach(n => { const base = getSuffixTokenFromName(n); if (toolSuffixes.has(base)) s.add(n); });
+            } catch (_) { }
+        }
+        return s;
+    })();
+    function isPersistent(name) { return !!name && persistentNames.has(name); }
+    function makeSupplyFromInventory(inv) { const m = new Map(); if (!inv) return m; for (const [k, v] of Object.entries(inv)) { const n = Number(v); if (!Number.isNaN(n) && n > 0) m.set(k, n); } return m; }
+    const initialSupply = makeSupplyFromInventory(invObj);
+
+    function sanitizePath(path) {
+        const have = new Map();
+        for (const [k, v] of initialSupply.entries()) { if (isPersistent(k)) have.set(k, (have.get(k) || 0) + v); }
+        const keepForward = new Array(path.length).fill(true);
+        function produced(step) { if (!step) return null; if (step.action === 'craft' && step.result && step.result.item) return step.result.item; if (step.action === 'smelt' && step.result && step.result.item) return step.result.item; if ((step.action === 'mine' || step.action === 'hunt') && (step.targetItem || step.what)) return (step.targetItem || step.what); return null; }
+        function addHave(name) { if (!name) return; have.set(name, (have.get(name) || 0) + 1); }
+        function hasHave(name) { return have.has(name) && have.get(name) > 0; }
+        for (let i = 0; i < path.length; i++) { const st = path[i]; const prod = produced(st); if (prod && isPersistent(prod)) { if (hasHave(prod)) { keepForward[i] = false; continue; } addHave(prod); } }
+        const filtered = path.filter((_, idx) => keepForward[idx]);
+        const need = new Map();
+        const supply = new Map(initialSupply);
+        const keep = new Array(filtered.length).fill(false);
+        function takeFromSupply(name, count) { if (!name || count <= 0) return 0; const cur = supply.get(name) || 0; if (cur <= 0) return 0; const take = Math.min(cur, count); supply.set(name, cur - take); return take; }
+        function incNeed(name, count) { if (!name || count <= 0) return; need.set(name, (need.get(name) || 0) + count); }
+        function decNeed(name, count) { if (!name || count <= 0) return; const cur = need.get(name) || 0; const next = cur - count; if (next > 0) need.set(name, next); else need.delete(name); }
+        for (let i = filtered.length - 1; i >= 0; i--) {
+            const st = filtered[i]; if (!st) continue;
+            if (st.action === 'smelt') { keep[i] = true; const inCount = (st.input?.perSmelt || 1) * (st.count || 1); incNeed(st.input?.item, inCount); if (st.fuel) { try { const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0; const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1); incNeed(st.fuel, fuelNeed); } catch (_) { incNeed(st.fuel, 1); } } continue; }
+            if (st.action === 'craft') { keep[i] = true; if (Array.isArray(st.ingredients)) { for (const ing of st.ingredients) incNeed(ing?.item, (ing?.perCraftCount || 0) * (st.count || 1)); } const out = st.result?.item; if (out) decNeed(out, (st.result?.perCraftCount || 1) * (st.count || 1)); continue; }
+            if (st.action === 'mine' || st.action === 'hunt') { const out = st.targetItem || st.what; const demand = need.get(out) || 0; if (demand > 0) { keep[i] = true; decNeed(out, st.count || 1); } else { keep[i] = false; } continue; }
+            keep[i] = true;
+        }
+        return filtered.filter((_, idx) => keep[idx]);
+    }
+
+    function isPathValid(path) {
+        const supply = new Map(initialSupply);
+        function add(name, count) { if (!name || count <= 0) return; supply.set(name, (supply.get(name) || 0) + count); }
+        function take(name, count) { if (!name || count <= 0) return true; const cur = supply.get(name) || 0; if (cur < count) return false; supply.set(name, cur - count); return true; }
+        function produced(step) { return step && (step.targetItem || step.what); }
+        for (const st of path) {
+            if (!st) continue;
+            if (st.action === 'mine' || st.action === 'hunt') { const prod = produced(st); add(prod, st.count || 1); continue; }
+            if (st.action === 'craft') { if (Array.isArray(st.ingredients)) { for (const ing of st.ingredients) { const need = (ing?.perCraftCount || 0) * (st.count || 1); if (!take(ing?.item, need)) return false; } } const resCount = (st.result?.perCraftCount || 1) * (st.count || 1); add(st.result?.item, resCount); continue; }
+            if (st.action === 'smelt') { const inCount = (st.input?.perSmelt || 1) * (st.count || 1); if (!take(st.input?.item, inCount)) return false; if (st.fuel) { try { const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0; const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1); if (!take(st.fuel, fuelNeed)) return false; } catch (_) { if (!take(st.fuel, 1)) return false; } } const outCount = (st.result?.perSmelt || 1) * (st.count || 1); add(st.result?.item, outCount); continue; }
+        }
+        return true;
+    }
+
+    function makeOrStream(childStreams) {
+        return function* () {
+            const heap = new MinHeap((a, b) => a.item.weight - b.item.weight);
+            const gens = childStreams.map(s => s());
+            gens.forEach((g, idx) => { const n = g.next(); if (!n.done) heap.push({ idx, gen: g, item: n.value }); });
+            while (heap.size() > 0) { const { idx, gen, item } = heap.pop(); yield item; const n = gen.next(); if (!n.done) heap.push({ idx, gen, item: n.value }); }
+        };
+    }
+
+    function makeAndStream(childStreams, parentStepOrNull) {
+        return function* () {
+            const streams = childStreams.map(s => ({ gen: s(), buf: [], done: false }));
+            function ensure(i, j) { const st = streams[i]; while (!st.done && st.buf.length <= j) { const n = st.gen.next(); if (n.done) { st.done = true; break; } st.buf.push(n.value); } return st.buf.length > j; }
+            for (let i = 0; i < streams.length; i++) { if (!ensure(i, 0)) return; }
+            const heap = new MinHeap((a, b) => a.weight - b.weight);
+            const visited = new Set();
+            const initIdx = new Array(streams.length).fill(0);
+            function idxKey(idxArr) { return idxArr.join(','); }
+            function sumWeight(idxArr) { let s = 0; for (let i = 0; i < idxArr.length; i++) s += streams[i].buf[idxArr[i]].weight; if (parentStepOrNull) s += stepWeight(parentStepOrNull); return s; }
+            heap.push({ idx: initIdx, weight: sumWeight(initIdx) }); visited.add(idxKey(initIdx));
+            while (heap.size() > 0) {
+                const node = heap.pop();
+                const parts = []; for (let i = 0; i < node.idx.length; i++) parts.push(streams[i].buf[node.idx[i]].path);
+                let combined = parts.flat(); if (parentStepOrNull) combined = combined.concat([parentStepOrNull]);
+                let cleaned = sanitizePath(combined);
+                if (!isPathValid(cleaned)) cleaned = combined;
+                if (!isPathValid(cleaned)) { yield { path: combined, weight: computePathWeight(combined) }; }
+                else { yield { path: cleaned, weight: computePathWeight(cleaned) }; }
+                for (let d = 0; d < streams.length; d++) {
+                    const nextIdx = node.idx.slice(); nextIdx[d] += 1; if (!ensure(d, nextIdx[d])) continue; const k = idxKey(nextIdx); if (visited.has(k)) continue; visited.add(k); heap.push({ idx: nextIdx, weight: sumWeight(nextIdx) });
+                }
+            }
+        };
+    }
+
+    function makeStream(node) {
+        if (!node) return function* () { };
+        if (!node.children || node.children.length === 0) {
+            if (node.action === 'craft') { return makeLeafStream({ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }); }
+            if (node.action === 'smelt') { return makeLeafStream({ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }); }
+            if (node.action === 'mine' || node.action === 'hunt') { return makeLeafStream({ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }); }
+            if (node.action === 'require') return function* () { };
+            return function* () { };
+        }
+        if (node.action === 'root') { return makeOrStream((node.children || []).map(makeStream)); }
+        if (node.action === 'smelt') { if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream)); const step = { action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }; return makeAndStream((node.children || []).map(makeStream), step); }
         if (node.action === 'mine' || node.action === 'hunt') { if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream)); }
         if (node.action === 'require') { return makeAndStream((node.children || []).map(makeStream), null); }
         if (node.action === 'craft') { const step = { action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }; return makeAndStream((node.children || []).map(makeStream), step); }
@@ -1279,7 +1463,8 @@ analyzeRecipes._internals = {
     countActionPaths,
     logActionPath,
     logActionPaths,
-    computePathWeight
+    computePathWeight,
+    enumerateLowestWeightPathsGenerator
 };
 
 module.exports = analyzeRecipes;
