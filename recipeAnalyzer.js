@@ -1199,8 +1199,16 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
                 const parts = []; for (let i = 0; i < node.idx.length; i++) parts.push(streams[i].buf[node.idx[i]].path);
                 let combined = parts.flat(); if (parentStepOrNull) combined = combined.concat([parentStepOrNull]);
                 let cleaned = sanitizePath(combined);
-                if (!isPathValid(cleaned)) cleaned = combined;
-                yield { path: cleaned, length: cleaned.length };
+                if (!isPathValid(cleaned)) {
+                    // If sanitized path is invalid, try the unsanitized combined path; if still invalid, skip
+                    if (!isPathValid(combined)) {
+                        // advance frontier without yielding
+                    } else {
+                        yield { path: combined, length: combined.length };
+                    }
+                } else {
+                    yield { path: cleaned, length: cleaned.length };
+                }
                 for (let d = 0; d < streams.length; d++) {
                     const nextIdx = node.idx.slice(); nextIdx[d] += 1; if (!ensure(d, nextIdx[d])) continue; const k = idxKey(nextIdx); if (visited.has(k)) continue; visited.add(k); heap.push({ idx: nextIdx, length: sumLen(nextIdx) });
                 }
