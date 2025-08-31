@@ -351,7 +351,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                             count: neededCount,
                             children: sources.flatMap(s => {
                                 if (!s.tool || s.tool === 'any') {
-                                    return [{ action: 'mine', what: s.block, count: neededCount, children: [] }];
+                                    return [{ action: 'mine', what: s.block, targetItem: ingredientItem.name, count: neededCount, children: [] }];
                                 }
                                 let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
                                 if (preferMinimalTools && tools.length > 1) {
@@ -364,7 +364,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                                     count: 1,
                                     children: [
                                         buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies }),
-                                        { action: 'mine', what: s.block, tool: toolName, count: neededCount, children: [] }
+                                        { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }
                                     ]
                                 }));
                             })
@@ -446,7 +446,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             count: targetCount,
             children: miningPaths.flatMap(s => {
                 if (!s.tool || s.tool === 'any') {
-                    return [{ action: 'mine', what: s.block, count: targetCount, children: [] }];
+                    return [{ action: 'mine', what: s.block, targetItem: itemName, count: targetCount, children: [] }];
                 }
                 let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
                 if (preferMinimalTools && tools.length > 1) {
@@ -459,7 +459,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                     count: 1,
                     children: [
                         buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases }),
-                        { action: 'mine', what: s.block, tool: toolName, count: targetCount, children: [] }
+                        { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }
                     ]
                 }));
             })
@@ -520,7 +520,8 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
     if (node.action === 'mine') {
         if (node.children && node.children.length > 0) {
             const op = node.operator === 'AND' ? 'ALL' : 'ANY';
-            console.log(`${indent}${branch} mine (${node.count}x) [${op}]`);
+            const targetInfo = node.what ? ` for ${renderName(node.what)}` : '';
+            console.log(`${indent}${branch} mine${targetInfo} (${node.count}x) [${op}]`);
             node.children.forEach((child, idx) => {
                 if (child.action === 'require') {
                     logRecipeTree(child, depth + 1);
@@ -528,11 +529,13 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
                     const subIndent = ' '.repeat((depth + 1) * 2);
                     const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
                     const toolInfo = child.tool && child.tool !== 'any' ? ` (needs ${child.tool})` : '';
-                    console.log(`${subIndent}${subBranch} ${renderName(child.what)}${toolInfo}`);
+                    const childTargetInfo = child.targetItem ? ` for ${renderName(child.targetItem)}` : '';
+                    console.log(`${subIndent}${subBranch} ${renderName(child.what)}${childTargetInfo}${toolInfo}`);
                 }
             });
         } else {
-            console.log(`${indent}${branch} ${renderName(node.what)}`);
+            const targetInfo = node.targetItem ? ` for ${renderName(node.targetItem)}` : '';
+            console.log(`${indent}${branch} ${renderName(node.what)}${targetInfo}`);
         }
         return;
     }
@@ -688,28 +691,65 @@ function enumerateActionPaths(tree) {
 }
 
 function enumerateActionPathsGenerator(tree) {
-    function* enumerate(node) {
+    // Treat all tools as persistent (plus table/furnace)
+    const persistentNames = (() => {
+        const s = new Set(['crafting_table', 'furnace']);
+        if (lastMcData) {
+            try {
+                Object.values(lastMcData.blocks || {}).forEach(b => {
+                    if (b && b.harvestTools) {
+                        Object.keys(b.harvestTools).forEach(id => {
+                            const nm = lastMcData.items[id]?.name || String(id);
+                            if (nm) s.add(nm);
+                        });
+                    }
+                });
+                const toolSuffixes = new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']);
+                Object.keys(lastMcData.itemsByName || {}).forEach(n => {
+                    const base = getSuffixTokenFromName(n);
+                    if (toolSuffixes.has(base)) s.add(n);
+                });
+            } catch (_) { /* ignore */ }
+        }
+        return s;
+    })();
+    function isPersistentItemName(name) { return !!name && persistentNames.has(name); }
+    function requiredPersistentFromRequire(node) {
+        const what = String(node.what || '');
+        if (what.startsWith('tool:')) return what.slice(5);
+        if (what === 'crafting_table' || what === 'furnace') return what;
+        return null;
+    }
+    function applyPersistentFromSteps(haveSet, steps) {
+        const have = new Set(haveSet);
+        for (const st of steps) {
+            if (st && st.action === 'craft' && st.result && isPersistentItemName(st.result.item)) have.add(st.result.item);
+            if (st && st.action === 'smelt' && st.result && isPersistentItemName(st.result.item)) have.add(st.result.item);
+            if (st && st.action === 'mine' && st.what && isPersistentItemName(st.what)) have.add(st.what);
+        }
+        return have;
+    }
+    function* enumerate(node, have) {
         if (!node) return;
         if (node.action === 'root') {
             const children = node.children || [];
             for (const child of children) {
-                yield* enumerate(child);
+                yield* enumerate(child, have);
             }
             return;
         }
         if (node.action === 'require') {
             const children = node.children || [];
-            if (children.length === 0) return;
-            function* combine(idx, prefix) {
-                if (idx >= children.length) {
-                    yield prefix;
-                    return;
-                }
-                for (const seg of enumerate(children[idx])) {
-                    yield* combine(idx + 1, prefix.concat(seg));
+            const reqName = requiredPersistentFromRequire(node);
+            const startIdx = (reqName && have && have.has(reqName)) ? 1 : 0;
+            function* enumerateChildren(idx, accSteps, haveNow) {
+                if (idx >= children.length) { yield accSteps; return; }
+                for (const seg of enumerate(children[idx], haveNow)) {
+                    const haveNext = applyPersistentFromSteps(haveNow, seg);
+                    yield* enumerateChildren(idx + 1, accSteps.concat(seg), haveNext);
                 }
             }
-            yield* combine(0, []);
+            yield* enumerateChildren(startIdx, [], have || new Set());
             return;
         }
         if (node.action === 'craft') {
@@ -718,40 +758,55 @@ function enumerateActionPathsGenerator(tree) {
                 yield [{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }];
                 return;
             }
-            function* combine(idx, prefix) {
+            // If crafting produces a persistent item we already have, skip the entire subtree
+            if (node.result && isPersistentItemName(node.result.item) && have && have.has(node.result.item)) {
+                yield [];
+                return;
+            }
+            function* enumerateChildren(idx, accSteps, haveNow) {
                 if (idx >= children.length) {
-                    yield prefix.concat([{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }]);
+                    yield accSteps.concat([{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }]);
                     return;
                 }
-                for (const seg of enumerate(children[idx])) {
-                    yield* combine(idx + 1, prefix.concat(seg));
+                for (const seg of enumerate(children[idx], haveNow)) {
+                    const haveNext = applyPersistentFromSteps(haveNow, seg);
+                    yield* enumerateChildren(idx + 1, accSteps.concat(seg), haveNext);
                 }
             }
-            yield* combine(0, []);
+            yield* enumerateChildren(0, [], have || new Set());
             return;
         }
         if (node.action === 'smelt') {
             if (node.operator === 'OR' && node.children && node.children.length > 0) {
-                for (const child of node.children) yield* enumerate(child);
+                for (const child of node.children) yield* enumerate(child, have);
                 return;
             }
             if (node.operator === 'AND' && node.children && node.children.length > 0) {
-                function* combine(idx, prefix) {
+                function* enumerateChildren(idx, accSteps, haveNow) {
                     if (idx >= node.children.length) {
-                        yield prefix.concat([{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]);
+                        yield accSteps.concat([{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]);
                         return;
                     }
-                    for (const seg of enumerate(node.children[idx])) {
-                        yield* combine(idx + 1, prefix.concat(seg));
+                    // If this child is a require furnace and we already have it, skip it
+                    const child = node.children[idx];
+                    const childReqName = child && child.action === 'require' ? requiredPersistentFromRequire(child) : null;
+                    const skip = childReqName && haveNow && haveNow.has(childReqName);
+                    if (skip) {
+                        yield* enumerateChildren(idx + 1, accSteps, haveNow);
+                        return;
+                    }
+                    for (const seg of enumerate(child, haveNow)) {
+                        const haveNext = applyPersistentFromSteps(haveNow, seg);
+                        yield* enumerateChildren(idx + 1, accSteps.concat(seg), haveNext);
                     }
                 }
-                yield* combine(0, []);
+                yield* enumerateChildren(0, [], have || new Set());
                 return;
             }
         }
         if ((node.action === 'mine' || node.action === 'hunt') && node.operator === 'OR' && node.children && node.children.length > 0) {
             for (const child of node.children) {
-                yield* enumerate(child);
+                yield* enumerate(child, have);
             }
             return;
         }
@@ -760,7 +815,7 @@ function enumerateActionPathsGenerator(tree) {
             return;
         }
     }
-    return enumerate(tree);
+    return enumerate(tree, new Set());
 }
 
 function computeTreeMaxDepth(node) {
@@ -812,7 +867,8 @@ function logActionPath(path) {
         }
         if (step.action === 'mine') {
             const tool = step.tool && step.tool !== 'any' ? `, needs ${step.tool}` : '';
-            return `mine ${renderName(step.what)} (${step.count}x${tool})`;
+            const forWhat = step.targetItem ? ` for ${renderName(step.targetItem)}` : '';
+            return `mine ${renderName(step.what)}${forWhat} (${step.count}x${tool})`;
         }
         if (step.action === 'hunt') {
             const chance = step.dropChance ? `, ${step.dropChance * 100}% chance` : '';
@@ -849,6 +905,145 @@ function enumerateShortestPathsGenerator(tree) {
 
     function makeLeafStream(step) { return function* () { yield { path: [step], length: 1 }; }; }
 
+    // Build persistent set (all tools + crafting_table + furnace)
+    const persistentNames = (() => {
+        const s = new Set(['crafting_table', 'furnace']);
+        if (lastMcData) {
+            try {
+                Object.values(lastMcData.blocks || {}).forEach(b => {
+                    if (b && b.harvestTools) {
+                        Object.keys(b.harvestTools).forEach(id => {
+                            const nm = lastMcData.items[id]?.name || String(id);
+                            if (nm) s.add(nm);
+                        });
+                    }
+                });
+                const toolSuffixes = new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']);
+                Object.keys(lastMcData.itemsByName || {}).forEach(n => {
+                    const base = getSuffixTokenFromName(n);
+                    if (toolSuffixes.has(base)) s.add(n);
+                });
+            } catch (_) { /* ignore */ }
+        }
+        return s;
+    })();
+    function isPersistent(name) { return !!name && persistentNames.has(name); }
+
+    function sanitizePath(path) {
+        // Pass 1: remove duplicate acquisitions of persistent items
+        const have = new Map();
+        const keepForward = new Array(path.length).fill(true);
+        function produced(step) {
+            if (!step) return null;
+            if (step.action === 'craft' && step.result && step.result.item) return step.result.item;
+            if (step.action === 'smelt' && step.result && step.result.item) return step.result.item;
+            if ((step.action === 'mine' || step.action === 'hunt') && (step.targetItem || step.what)) return (step.targetItem || step.what);
+            return null;
+        }
+        function addHave(name) { if (!name) return; have.set(name, (have.get(name) || 0) + 1); }
+        function hasHave(name) { return have.has(name) && have.get(name) > 0; }
+        for (let i = 0; i < path.length; i++) {
+            const step = path[i];
+            const prod = produced(step);
+            if (prod && isPersistent(prod)) {
+                if (hasHave(prod)) { keepForward[i] = false; continue; }
+                addHave(prod);
+            }
+        }
+        const filtered = path.filter((_, idx) => keepForward[idx]);
+
+        // Pass 2: trim only suffix gather steps that are not demanded
+        const need = new Map();
+        const keep = new Array(filtered.length).fill(false);
+        function incNeed(name, count) { if (!name || count <= 0) return; need.set(name, (need.get(name) || 0) + count); }
+        function decNeed(name, count) { if (!name || count <= 0) return; const cur = need.get(name) || 0; const next = cur - count; if (next > 0) need.set(name, next); else need.delete(name); }
+        for (let i = filtered.length - 1; i >= 0; i--) {
+            const st = filtered[i];
+            if (!st) continue;
+            if (st.action === 'smelt') {
+                keep[i] = true;
+                const inCount = (st.input?.perSmelt || 1) * (st.count || 1);
+                incNeed(st.input?.item, inCount);
+                if (st.fuel) {
+                    try {
+                        const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0;
+                        const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1);
+                        incNeed(st.fuel, fuelNeed);
+                    } catch (_) { incNeed(st.fuel, 1); }
+                }
+                continue;
+            }
+            if (st.action === 'craft') {
+                keep[i] = true;
+                if (Array.isArray(st.ingredients)) {
+                    for (const ing of st.ingredients) incNeed(ing?.item, (ing?.perCraftCount || 0) * (st.count || 1));
+                }
+                const out = st.result?.item;
+                if (out) decNeed(out, (st.result?.perCraftCount || 1) * (st.count || 1));
+                continue;
+            }
+            if (st.action === 'mine' || st.action === 'hunt') {
+                const out = st.targetItem || st.what;
+                const demand = need.get(out) || 0;
+                if (demand > 0) {
+                    keep[i] = true;
+                    decNeed(out, st.count || 1);
+                } else {
+                    keep[i] = false;
+                }
+                continue;
+            }
+            keep[i] = true;
+        }
+        return filtered.filter((_, idx) => keep[idx]);
+    }
+
+    function isPathValid(path) {
+        const supply = new Map();
+        function add(name, count) { if (!name || count <= 0) return; supply.set(name, (supply.get(name) || 0) + count); }
+        function take(name, count) { if (!name || count <= 0) return true; const cur = supply.get(name) || 0; if (cur < count) return false; supply.set(name, cur - count); return true; }
+        function produced(step) { return step && (step.targetItem || step.what); }
+        for (const st of path) {
+            if (!st) continue;
+            if (st.action === 'mine' || st.action === 'hunt') {
+                const prod = produced(st);
+                add(prod, st.count || 1);
+                continue;
+            }
+            if (st.action === 'craft') {
+                // Check ingredients
+                if (Array.isArray(st.ingredients)) {
+                    for (const ing of st.ingredients) {
+                        const need = (ing?.perCraftCount || 0) * (st.count || 1);
+                        if (!take(ing?.item, need)) return false;
+                    }
+                }
+                // Add result
+                const resCount = (st.result?.perCraftCount || 1) * (st.count || 1);
+                add(st.result?.item, resCount);
+                continue;
+            }
+            if (st.action === 'smelt') {
+                const inCount = (st.input?.perSmelt || 1) * (st.count || 1);
+                if (!take(st.input?.item, inCount)) return false;
+                if (st.fuel) {
+                    try {
+                        const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0;
+                        const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1);
+                        if (!take(st.fuel, fuelNeed)) return false;
+                    } catch (_) {
+                        // If unknown fuel rate, require at least 1 unit
+                        if (!take(st.fuel, 1)) return false;
+                    }
+                }
+                const outCount = (st.result?.perSmelt || 1) * (st.count || 1);
+                add(st.result?.item, outCount);
+                continue;
+            }
+        }
+        return true;
+    }
+
     function makeOrStream(childStreams) {
         return function* () {
             const heap = new MinHeap((a, b) => a.item.length - b.item.length);
@@ -877,7 +1072,9 @@ function enumerateShortestPathsGenerator(tree) {
                 const node = heap.pop();
                 const parts = []; for (let i = 0; i < node.idx.length; i++) parts.push(streams[i].buf[node.idx[i]].path);
                 let combined = parts.flat(); if (parentStepOrNull) combined = combined.concat([parentStepOrNull]);
-                yield { path: combined, length: combined.length };
+                let cleaned = sanitizePath(combined);
+                if (!isPathValid(cleaned)) cleaned = combined;
+                yield { path: cleaned, length: cleaned.length };
                 for (let d = 0; d < streams.length; d++) {
                     const nextIdx = node.idx.slice(); nextIdx[d] += 1; if (!ensure(d, nextIdx[d])) continue; const k = idxKey(nextIdx); if (visited.has(k)) continue; visited.add(k); heap.push({ idx: nextIdx, length: sumLen(nextIdx) });
                 }
