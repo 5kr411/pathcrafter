@@ -319,7 +319,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     nextVisited.add(itemName);
 
     const preferWoodFamilies = context.preferWoodFamilies !== false; // default true
-    const recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies)
+    let recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies)
         .sort((a, b) => b.result.count - a.result.count);
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
@@ -444,7 +444,6 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
         if (craftNode.what === 'table') {
             const alreadyHaveTable = invMap && (invMap.get('crafting_table') || 0) > 0;
             if (alreadyHaveTable) {
-                // No need to require crafting table; keep craftNode directly
                 root.children.push(craftNode);
             } else {
                 const requireTable = {
@@ -490,7 +489,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                     if (haveInp > 0) inputNeeded = Math.max(0, inputNeeded - haveInp);
                 }
                 const children = [];
-                // Skip requiring furnace if inventory already has one
+                // Require furnace unless already in inventory
                 if (!(invMap && (invMap.get('furnace') || 0) > 0)) {
                     children.push({ action: 'require', operator: 'AND', what: 'furnace', count: 1, children: [buildRecipeTree(mcData, 'furnace', 1, { ...context, visited: nextVisited, inventory: mapToInv(invMap) })] });
                 }
@@ -541,7 +540,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         what: `tool:${toolName}`,
                         count: 1,
                         children: [
-                            buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInv(invMap) }),
+                            buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInv(invMap) }),
                             { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }
                         ]
                     };
@@ -776,7 +775,8 @@ function enumerateActionPaths(tree) {
 
 function enumerateActionPathsGenerator(tree, options = {}) {
     const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
-    // Treat all tools as persistent (plus table/furnace)
+
+    // Persistent set (tools + crafting_table + furnace)
     const persistentNames = (() => {
         const s = new Set(['crafting_table', 'furnace']);
         if (lastMcData) {
@@ -799,6 +799,7 @@ function enumerateActionPathsGenerator(tree, options = {}) {
         return s;
     })();
     function isPersistentItemName(name) { return !!name && persistentNames.has(name); }
+
     function persistentSetFromInventory(inv) {
         const have = new Set();
         if (!inv) return have;
@@ -807,12 +808,14 @@ function enumerateActionPathsGenerator(tree, options = {}) {
         }
         return have;
     }
+
     function requiredPersistentFromRequire(node) {
         const what = String(node.what || '');
         if (what.startsWith('tool:')) return what.slice(5);
         if (what === 'crafting_table' || what === 'furnace') return what;
         return null;
     }
+
     function applyPersistentFromSteps(haveSet, steps) {
         const have = new Set(haveSet);
         for (const st of steps) {
@@ -822,13 +825,132 @@ function enumerateActionPathsGenerator(tree, options = {}) {
         }
         return have;
     }
+
+    function makeSupplyFromInventory(inv) {
+        const m = new Map();
+        if (!inv) return m;
+        for (const [k, v] of Object.entries(inv)) {
+            const n = Number(v);
+            if (!Number.isNaN(n) && n > 0) m.set(k, n);
+        }
+        return m;
+    }
+    const initialSupply = makeSupplyFromInventory(invObj);
+
+    function isPathValid(path) {
+        const supply = new Map(initialSupply);
+        function add(name, count) { if (!name || count <= 0) return; supply.set(name, (supply.get(name) || 0) + count); }
+        function take(name, count) { if (!name || count <= 0) return true; const cur = supply.get(name) || 0; if (cur < count) return false; supply.set(name, cur - count); return true; }
+        function produced(step) { return step && (step.targetItem || step.what); }
+        for (const st of path) {
+            if (!st) continue;
+            if (st.action === 'mine' || st.action === 'hunt') { const prod = produced(st); add(prod, st.count || 1); continue; }
+            if (st.action === 'craft') { if (Array.isArray(st.ingredients)) { for (const ing of st.ingredients) { const need = (ing?.perCraftCount || 0) * (st.count || 1); if (!take(ing?.item, need)) return false; } } const resCount = (st.result?.perCraftCount || 1) * (st.count || 1); add(st.result?.item, resCount); continue; }
+            if (st.action === 'smelt') { const inCount = (st.input?.perSmelt || 1) * (st.count || 1); if (!take(st.input?.item, inCount)) return false; if (st.fuel) { try { const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0; const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1); if (!take(st.fuel, fuelNeed)) return false; } catch (_) { if (!take(st.fuel, 1)) return false; } } const outCount = (st.result?.perSmelt || 1) * (st.count || 1); add(st.result?.item, outCount); continue; }
+        }
+        return true;
+    }
+
+    function sanitizePath(path) {
+        // Remove duplicate acquisitions of persistent items
+        const have = new Map();
+        const keepForward = new Array(path.length).fill(true);
+        function produced(step) {
+            if (!step) return null;
+            if (step.action === 'craft' && step.result && step.result.item) return step.result.item;
+            if (step.action === 'smelt' && step.result && step.result.item) return step.result.item;
+            if ((step.action === 'mine' || step.action === 'hunt') && (step.targetItem || step.what)) return (step.targetItem || step.what);
+            return null;
+        }
+        function addHave(name) { if (!name) return; have.set(name, (have.get(name) || 0) + 1); }
+        function hasHave(name) { return have.has(name) && have.get(name) > 0; }
+        for (let i = 0; i < path.length; i++) {
+            const st = path[i];
+            const prod = produced(st);
+            if (prod && isPersistentItemName(prod)) {
+                if (hasHave(prod)) { keepForward[i] = false; continue; }
+                addHave(prod);
+            }
+        }
+        const filtered = path.filter((_, idx) => keepForward[idx]);
+
+        // Backward pass: keep only steps that satisfy actual demand; drop crafts whose outputs aren't needed
+        const need = new Map();
+        // Seed demand with the final produced item so terminal crafts/smelts are preserved
+        (function seedFinalDemand() {
+            for (let i = filtered.length - 1; i >= 0; i--) {
+                const st = filtered[i];
+                if (!st) continue;
+                if (st.action === 'craft') {
+                    const out = st.result?.item;
+                    const outCount = (st.result?.perCraftCount || 1) * (st.count || 1);
+                    if (out && outCount > 0) { need.set(out, (need.get(out) || 0) + outCount); break; }
+                }
+                if (st.action === 'smelt') {
+                    const out = st.result?.item;
+                    const outCount = (st.result?.perSmelt || 1) * (st.count || 1);
+                    if (out && outCount > 0) { need.set(out, (need.get(out) || 0) + outCount); break; }
+                }
+                if (st.action === 'mine' || st.action === 'hunt') {
+                    const out = st.targetItem || st.what;
+                    const outCount = (st.count || 1);
+                    if (out && outCount > 0) { need.set(out, (need.get(out) || 0) + outCount); break; }
+                }
+            }
+        })();
+        const keep = new Array(filtered.length).fill(false);
+        function incNeed(name, count) { if (!name || count <= 0) return; need.set(name, (need.get(name) || 0) + count); }
+        function decNeed(name, count) { if (!name || count <= 0) return; const cur = need.get(name) || 0; const next = cur - count; if (next > 0) need.set(name, next); else need.delete(name); }
+        for (let i = filtered.length - 1; i >= 0; i--) {
+            const st = filtered[i];
+            if (!st) continue;
+            if (st.action === 'smelt') {
+                keep[i] = true;
+                const inCount = (st.input?.perSmelt || 1) * (st.count || 1);
+                incNeed(st.input?.item, inCount);
+                if (st.fuel) {
+                    try {
+                        const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0;
+                        const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1);
+                        incNeed(st.fuel, fuelNeed);
+                    } catch (_) { incNeed(st.fuel, 1); }
+                }
+                continue;
+            }
+            if (st.action === 'craft') {
+                const out = st.result?.item;
+                const outCount = (st.result?.perCraftCount || 1) * (st.count || 1);
+                const demand = out ? (need.get(out) || 0) : 0;
+                if (demand <= 0 && !(out && isPersistentItemName(out))) {
+                    keep[i] = false; // drop unused craft
+                    continue;
+                }
+                keep[i] = true;
+                if (Array.isArray(st.ingredients)) {
+                    for (const ing of st.ingredients) incNeed(ing?.item, (ing?.perCraftCount || 0) * (st.count || 1));
+                }
+                if (out) decNeed(out, outCount);
+                continue;
+            }
+            if (st.action === 'mine' || st.action === 'hunt') {
+                const out = st.targetItem || st.what;
+                const demand = need.get(out) || 0;
+                if (demand > 0) { keep[i] = true; decNeed(out, st.count || 1); } else { keep[i] = false; }
+                continue;
+            }
+            keep[i] = true;
+        }
+        const out = filtered.filter((_, idx) => keep[idx]);
+        // Safety: if sanitization breaks feasibility, return original
+        try { if (!isPathValid(out)) return path; } catch (_) { return path; }
+        return out;
+    }
+
     function* enumerate(node, have) {
         if (!node) return;
         if (node.action === 'root') {
             const children = node.children || [];
-            for (const child of children) {
-                yield* enumerate(child, have);
-            }
+            for (const child of children) yield* enumerate(child, have);
             return;
         }
         if (node.action === 'require') {
@@ -847,20 +969,9 @@ function enumerateActionPathsGenerator(tree, options = {}) {
         }
         if (node.action === 'craft') {
             const children = node.children || [];
-            if (children.length === 0) {
-                yield [{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }];
-                return;
-            }
-            // If crafting produces a persistent item we already have, skip the entire subtree
-            if (node.result && isPersistentItemName(node.result.item) && have && have.has(node.result.item)) {
-                yield [];
-                return;
-            }
+            if (children.length === 0) { yield [{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }]; return; }
             function* enumerateChildren(idx, accSteps, haveNow) {
-                if (idx >= children.length) {
-                    yield accSteps.concat([{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }]);
-                    return;
-                }
+                if (idx >= children.length) { yield accSteps.concat([{ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }]); return; }
                 for (const seg of enumerate(children[idx], haveNow)) {
                     const haveNext = applyPersistentFromSteps(haveNow, seg);
                     yield* enumerateChildren(idx + 1, accSteps.concat(seg), haveNext);
@@ -870,24 +981,14 @@ function enumerateActionPathsGenerator(tree, options = {}) {
             return;
         }
         if (node.action === 'smelt') {
-            if (node.operator === 'OR' && node.children && node.children.length > 0) {
-                for (const child of node.children) yield* enumerate(child, have);
-                return;
-            }
+            if (node.operator === 'OR' && node.children && node.children.length > 0) { for (const child of node.children) yield* enumerate(child, have); return; }
             if (node.operator === 'AND' && node.children && node.children.length > 0) {
                 function* enumerateChildren(idx, accSteps, haveNow) {
-                    if (idx >= node.children.length) {
-                        yield accSteps.concat([{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]);
-                        return;
-                    }
-                    // If this child is a require furnace and we already have it, skip it
+                    if (idx >= node.children.length) { yield accSteps.concat([{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]); return; }
                     const child = node.children[idx];
                     const childReqName = child && child.action === 'require' ? requiredPersistentFromRequire(child) : null;
                     const skip = childReqName && haveNow && haveNow.has(childReqName);
-                    if (skip) {
-                        yield* enumerateChildren(idx + 1, accSteps, haveNow);
-                        return;
-                    }
+                    if (skip) { yield* enumerateChildren(idx + 1, accSteps, haveNow); return; }
                     for (const seg of enumerate(child, haveNow)) {
                         const haveNext = applyPersistentFromSteps(haveNow, seg);
                         yield* enumerateChildren(idx + 1, accSteps.concat(seg), haveNext);
@@ -896,24 +997,45 @@ function enumerateActionPathsGenerator(tree, options = {}) {
                 yield* enumerateChildren(0, [], have || new Set());
                 return;
             }
-            if (node.operator === 'AND' && (!node.children || node.children.length === 0)) {
-                // All prerequisites satisfied by inventory; perform the smelt step itself
-                yield [{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }];
-                return;
-            }
+            if (node.operator === 'AND' && (!node.children || node.children.length === 0)) { yield [{ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }]; return; }
         }
-        if ((node.action === 'mine' || node.action === 'hunt') && node.operator === 'OR' && node.children && node.children.length > 0) {
-            for (const child of node.children) {
-                yield* enumerate(child, have);
-            }
-            return;
-        }
-        if ((node.action === 'mine' || node.action === 'hunt') && (!node.children || node.children.length === 0)) {
-            yield [{ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }];
-            return;
-        }
+        if ((node.action === 'mine' || node.action === 'hunt') && node.operator === 'OR' && node.children && node.children.length > 0) { for (const child of node.children) yield* enumerate(child, have); return; }
+        if ((node.action === 'mine' || node.action === 'hunt') && (!node.children || node.children.length === 0)) { yield [{ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }]; return; }
     }
-    return enumerate(tree, persistentSetFromInventory(invObj));
+
+    const baseGen = enumerate(tree, persistentSetFromInventory(invObj));
+    // Replace with stream composition in action order to avoid materializing huge arrays
+    function makeLeafStream(step) { return function* () { yield { path: [step] }; }; }
+    function makeOrStream(childStreams) {
+        return function* () { for (const s of childStreams) for (const item of s()) yield item; };
+    }
+    function makeAndStream(childStreams, parentStepOrNull) {
+        return function* () {
+            function* product(idx, acc) {
+                if (idx >= childStreams.length) { const final = parentStepOrNull ? acc.concat([parentStepOrNull]) : acc; yield { path: final }; return; }
+                for (const item of childStreams[idx]()) { yield* product(idx + 1, acc.concat(item.path)); }
+            }
+            yield* product(0, []);
+        };
+    }
+    function makeStream(node) {
+        if (!node) return function* () { };
+        if (!node.children || node.children.length === 0) {
+            if (node.action === 'craft') { return makeLeafStream({ action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }); }
+            if (node.action === 'smelt') { return makeLeafStream({ action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }); }
+            if (node.action === 'mine' || node.action === 'hunt') { return makeLeafStream({ action: node.action, what: node.what, count: node.count, dropChance: node.dropChance, tool: node.tool, targetItem: node.targetItem }); }
+            if (node.action === 'require') return function* () { };
+            return function* () { };
+        }
+        if (node.action === 'root') { return makeOrStream((node.children || []).map(makeStream)); }
+        if (node.action === 'require') { return makeAndStream((node.children || []).map(makeStream), null); }
+        if (node.action === 'craft') { const step = { action: 'craft', what: node.what, count: node.count, result: node.result, ingredients: node.ingredients }; return makeAndStream((node.children || []).map(makeStream), step); }
+        if (node.action === 'smelt') { if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream)); const step = { action: 'smelt', what: 'furnace', count: node.count, input: node.input, result: node.result, fuel: node.fuel }; return makeAndStream((node.children || []).map(makeStream), step); }
+        if (node.action === 'mine' || node.action === 'hunt') { if (node.operator === 'OR') return makeOrStream((node.children || []).map(makeStream)); }
+        return makeOrStream((node.children || []).map(makeStream));
+    }
+    const stream = makeStream(tree);
+    return (function* () { for (const item of stream()) { let cleaned = sanitizePath(item.path); if (!isPathValid(cleaned)) cleaned = item.path; if (isPathValid(cleaned)) yield cleaned; } })();
 }
 
 function computeTreeMaxDepth(node) {
@@ -1040,9 +1162,8 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
     const initialSupply = makeSupplyFromInventory(invObj);
 
     function sanitizePath(path) {
-        // Pass 1: remove duplicate acquisitions of persistent items
+        // Only remove duplicate acquisitions of persistent items; do not trim gathers
         const have = new Map();
-        // seed with inventory persistent items
         for (const [k, v] of initialSupply.entries()) { if (isPersistent(k)) have.set(k, (have.get(k) || 0) + v); }
         const keepForward = new Array(path.length).fill(true);
         function produced(step) {
@@ -1062,85 +1183,7 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
                 addHave(prod);
             }
         }
-        const filtered = path.filter((_, idx) => keepForward[idx]);
-
-        // Pass 2: trim only suffix gather steps that are not demanded
-        const need = new Map();
-        // Note: Do not consume inventory during sanitization. We only use inventory at validation time.
-        function familyGenericKey(name) {
-            if (!name) return null;
-            const base = getSuffixTokenFromName(name);
-            return baseHasMultipleWoodSpecies(base) ? `generic_${base}` : null;
-        }
-        function takeFromFamilySpecifics(base, count) {
-            if (count <= 0) return 0;
-            let remaining = count;
-            if (!woodSpeciesTokens) return 0;
-            for (const species of woodSpeciesTokens) {
-                if (remaining <= 0) break;
-                const candidate = `${species}_${base}`;
-                if (!lastMcData?.itemsByName?.[candidate]) continue;
-                const cur = supply.get(candidate) || 0;
-                if (cur <= 0) continue;
-                const take = Math.min(cur, remaining);
-                supply.set(candidate, cur - take);
-                remaining -= take;
-            }
-            return count - remaining;
-        }
-        const keep = new Array(filtered.length).fill(false);
-        function takeFromSupply(name, count) { return 0; }
-        function incNeed(name, count) {
-            if (!name || count <= 0) return;
-            const covered = takeFromSupply(name, count);
-            const remain = count - covered;
-            if (remain > 0) need.set(name, (need.get(name) || 0) + remain);
-        }
-        function decNeed(name, count) { if (!name || count <= 0) return; const cur = need.get(name) || 0; const next = cur - count; if (next > 0) need.set(name, next); else need.delete(name); }
-        for (let i = filtered.length - 1; i >= 0; i--) {
-            const st = filtered[i];
-            if (!st) continue;
-            if (st.action === 'smelt') {
-                keep[i] = true;
-                const inCount = (st.input?.perSmelt || 1) * (st.count || 1);
-                incNeed(st.input?.item, inCount);
-                if (st.fuel) {
-                    try {
-                        const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0;
-                        const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1);
-                        incNeed(st.fuel, fuelNeed);
-                    } catch (_) { incNeed(st.fuel, 1); }
-                }
-                continue;
-            }
-            if (st.action === 'craft') {
-                keep[i] = true;
-                if (Array.isArray(st.ingredients)) {
-                    for (const ing of st.ingredients) incNeed(ing?.item, (ing?.perCraftCount || 0) * (st.count || 1));
-                }
-                const out = st.result?.item;
-                if (out) decNeed(out, (st.result?.perCraftCount || 1) * (st.count || 1));
-                continue;
-            }
-            if (st.action === 'mine' || st.action === 'hunt') {
-                const out = st.targetItem || st.what;
-                const demand = need.get(out) || 0;
-                if (demand > 0) {
-                    keep[i] = true;
-                    decNeed(out, st.count || 1);
-                } else {
-                    keep[i] = false;
-                }
-                continue;
-            }
-            keep[i] = true;
-        }
-        const out = filtered.filter((_, idx) => keep[idx]);
-        // Safety: never drop valid paths. If sanitization breaks feasibility, return original.
-        try {
-            if (!isPathValid(out)) return path;
-        } catch (_) { /* if validator throws, be conservative */ return path; }
-        return out;
+        return path.filter((_, idx) => keepForward[idx]);
     }
 
     function isPathValid(path) {
@@ -1254,11 +1297,10 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
                 const node = heap.pop();
                 const parts = []; for (let i = 0; i < node.idx.length; i++) parts.push(streams[i].buf[node.idx[i]].path);
                 let combined = parts.flat(); if (parentStepOrNull) combined = combined.concat([parentStepOrNull]);
+                // Dedup persistent acquisitions, then validate
                 let cleaned = sanitizePath(combined);
-                // If sanitizer returns an invalid result, fall back to combined. If combined invalid too, yield combined conservatively.
                 if (!isPathValid(cleaned)) cleaned = combined;
-                if (!isPathValid(cleaned)) { yield { path: combined, length: combined.length }; }
-                else { yield { path: cleaned, length: cleaned.length }; }
+                if (isPathValid(cleaned)) { yield { path: cleaned, length: cleaned.length }; }
                 for (let d = 0; d < streams.length; d++) {
                     const nextIdx = node.idx.slice(); nextIdx[d] += 1; if (!ensure(d, nextIdx[d])) continue; const k = idxKey(nextIdx); if (visited.has(k)) continue; visited.add(k); heap.push({ idx: nextIdx, length: sumLen(nextIdx) });
                 }
@@ -1338,21 +1380,8 @@ function enumerateLowestWeightPathsGenerator(tree, options = {}) {
         function addHave(name) { if (!name) return; have.set(name, (have.get(name) || 0) + 1); }
         function hasHave(name) { return have.has(name) && have.get(name) > 0; }
         for (let i = 0; i < path.length; i++) { const st = path[i]; const prod = produced(st); if (prod && isPersistent(prod)) { if (hasHave(prod)) { keepForward[i] = false; continue; } addHave(prod); } }
-        const filtered = path.filter((_, idx) => keepForward[idx]);
-        const need = new Map();
-        const supply = new Map(initialSupply);
-        const keep = new Array(filtered.length).fill(false);
-        function takeFromSupply(name, count) { if (!name || count <= 0) return 0; const cur = supply.get(name) || 0; if (cur <= 0) return 0; const take = Math.min(cur, count); supply.set(name, cur - take); return take; }
-        function incNeed(name, count) { if (!name || count <= 0) return; need.set(name, (need.get(name) || 0) + count); }
-        function decNeed(name, count) { if (!name || count <= 0) return; const cur = need.get(name) || 0; const next = cur - count; if (next > 0) need.set(name, next); else need.delete(name); }
-        for (let i = filtered.length - 1; i >= 0; i--) {
-            const st = filtered[i]; if (!st) continue;
-            if (st.action === 'smelt') { keep[i] = true; const inCount = (st.input?.perSmelt || 1) * (st.count || 1); incNeed(st.input?.item, inCount); if (st.fuel) { try { const perFuel = getSmeltsPerUnitForFuel(st.fuel) || 0; const fuelNeed = perFuel > 0 ? Math.ceil((st.count || 1) / perFuel) : (st.count || 1); incNeed(st.fuel, fuelNeed); } catch (_) { incNeed(st.fuel, 1); } } continue; }
-            if (st.action === 'craft') { keep[i] = true; if (Array.isArray(st.ingredients)) { for (const ing of st.ingredients) incNeed(ing?.item, (ing?.perCraftCount || 0) * (st.count || 1)); } const out = st.result?.item; if (out) decNeed(out, (st.result?.perCraftCount || 1) * (st.count || 1)); continue; }
-            if (st.action === 'mine' || st.action === 'hunt') { const out = st.targetItem || st.what; const demand = need.get(out) || 0; if (demand > 0) { keep[i] = true; decNeed(out, st.count || 1); } else { keep[i] = false; } continue; }
-            keep[i] = true;
-        }
-        return filtered.filter((_, idx) => keep[idx]);
+        // Only dedupe persistent item re-acquisitions; keep all gather steps to preserve feasibility for weighting
+        return path.filter((_, idx) => keepForward[idx]);
     }
 
     function isPathValid(path) {
@@ -1393,10 +1422,10 @@ function enumerateLowestWeightPathsGenerator(tree, options = {}) {
                 const node = heap.pop();
                 const parts = []; for (let i = 0; i < node.idx.length; i++) parts.push(streams[i].buf[node.idx[i]].path);
                 let combined = parts.flat(); if (parentStepOrNull) combined = combined.concat([parentStepOrNull]);
+                // Dedup persistent acquisitions, then validate
                 let cleaned = sanitizePath(combined);
                 if (!isPathValid(cleaned)) cleaned = combined;
-                if (!isPathValid(cleaned)) { yield { path: combined, weight: computePathWeight(combined) }; }
-                else { yield { path: cleaned, weight: computePathWeight(cleaned) }; }
+                if (isPathValid(cleaned)) { yield { path: cleaned, weight: computePathWeight(cleaned) }; }
                 for (let d = 0; d < streams.length; d++) {
                     const nextIdx = node.idx.slice(); nextIdx[d] += 1; if (!ensure(d, nextIdx[d])) continue; const k = idxKey(nextIdx); if (visited.has(k)) continue; visited.add(k); heap.push({ idx: nextIdx, weight: sumWeight(nextIdx) });
                 }

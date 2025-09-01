@@ -3,7 +3,7 @@ const { resolveMcData } = analyzeRecipes._internals;
 
 const mcData = resolveMcData('1.20.1');
 
-const item = 'cherry_stairs';
+const item = 'iron_ingot';
 const count = 1;
 const inventory = { /*crafting_table: 1, oak_planks: 3 */ };
 console.log(`Analyzing target item: ${item} x${count}`);

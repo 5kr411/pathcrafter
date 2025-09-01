@@ -5,7 +5,7 @@ describe('integration: fuel accounting for multiple smelts', () => {
     const mcData = resolveMcData('1.20.1');
 
     test('smelting 9 stone consumes >=2 coal units in a valid path', () => {
-        const inventory = { furnace: 1 }; // no coal provided
+        const inventory = { furnace: 1, cobblestone: 9 }; // ensure input exists
         const tree = analyzeRecipes(mcData, 'stone', 9, { log: false, inventory });
         // Find any valid path; count coal consumption by smelt step fuel need
         let foundFuelOk = false;

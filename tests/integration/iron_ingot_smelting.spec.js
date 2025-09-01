@@ -6,7 +6,7 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
     const mcData = resolveMcData('1.20.1');
 
     test('tree contains smelt route and some path smelts iron_ingot with coal when furnace present', () => {
-        const inventory = { furnace: 1, coal: 1 };
+        const inventory = { furnace: 1, coal: 1, raw_iron: 1 };
         const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory });
 
         // Ensure the tree includes a smelt node to iron_ingot

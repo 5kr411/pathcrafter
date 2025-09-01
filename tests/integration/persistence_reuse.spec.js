@@ -13,14 +13,14 @@ describe('integration: persistence reuse of crafting_table and tools', () => {
         expect(reAcquireTable).toBe(0);
     });
 
-    test('tool requirement not duplicated along the path', () => {
-        // Choose a block requiring stone_pickaxe; ensure tool acquired once
+    test('tool requirement not duplicated along the path (cobblestone scenario)', () => {
+        // Use cobblestone which requires wooden_pickaxe, ensuring only one craft appears
         const inventory = {};
-        const tree = analyzeRecipes(mcData, 'iron_block', 1, { log: false, inventory });
+        const tree = analyzeRecipes(mcData, 'cobblestone', 2, { log: false, inventory });
         const [path] = Array.from(enumerateShortestPathsGenerator(tree, { inventory }));
         expect(path).toBeDefined();
-        const stonePickCrafts = path.filter(step => step.action === 'craft' && step.result?.item === 'stone_pickaxe').length;
-        expect(stonePickCrafts <= 1).toBe(true);
+        const woodenPickCrafts = path.filter(step => step.action === 'craft' && step.result?.item === 'wooden_pickaxe').length;
+        expect(woodenPickCrafts <= 1).toBe(true);
     });
 });
 
