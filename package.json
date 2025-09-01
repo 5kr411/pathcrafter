@@ -4,7 +4,9 @@
   "description": "",
   "main": "webserver.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "jest --runInBand",
+    "test:watch": "jest --watch",
+    "test:ci": "jest --ci"
   },
   "author": "",
   "license": "ISC",
@@ -12,5 +14,8 @@
     "mineflayer": "^4.23.0",
     "mineflayer-collectblock": "^1.4.1",
     "mineflayer-statemachine": "^1.7.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
   }
 }

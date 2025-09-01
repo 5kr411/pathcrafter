@@ -3,9 +3,9 @@ const { resolveMcData } = analyzeRecipes._internals;
 
 const mcData = resolveMcData('1.20.1');
 
-const item = 'wooden_pickaxe';
+const item = 'cherry_stairs';
 const count = 1;
-const inventory = { crafting_table: 1, oak_planks: 3 };
+const inventory = { /*crafting_table: 1, oak_planks: 3 */ };
 console.log(`Analyzing target item: ${item} x${count}`);
 console.log(`Using inventory: ${JSON.stringify(inventory)}`);
 const tree = analyzeRecipes(mcData, item, count, { log: false, inventory });
@@ -40,4 +40,8 @@ console.log(`\nTotal paths: ${countActionPaths(tree)}`);
 
 // bug with bamboo saplings? coming back as generic sapling and saying it drops sticks.
 //
-// weighting algorithm for paths?
+// unit tests of current functionality to make sure we don't break when refactoring?
+// refactoring the code to make it more readable?
+// combining path requirements where possible?
+// add together the gathering requirements for each path?
+// prune paths where the gathering requirements are not possible based on world data?
