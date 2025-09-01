@@ -26,6 +26,55 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
         }
         expect(found).toBe(true);
     });
+
+    test('each generator yields at least 10 paths with empty inventory (bounded)', () => {
+        const N = 10;
+        const inventory = {};
+        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory });
+        const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, enumerateActionPathsGenerator } = analyzeRecipes._internals;
+
+        const firstGen = collectFirstN(enumerateActionPathsGenerator(tree, { inventory }), N);
+        const firstShortest = collectFirstN(enumerateShortestPathsGenerator(tree, { inventory }), N);
+        const firstLowest = collectFirstN(enumerateLowestWeightPathsGenerator(tree, { inventory }), N);
+
+        expect(firstGen.length).toBe(N);
+        expect(firstShortest.length).toBe(N);
+        expect(firstLowest.length).toBe(N);
+    });
+
+    test('top N paths in each generator do not duplicate persistent deps (crafting_table/furnace)', () => {
+        const N = 1000;
+        const inventory = {};
+        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory });
+        const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, enumerateActionPathsGenerator } = analyzeRecipes._internals;
+
+        function produced(step) {
+            if (!step) return null;
+            if (step.action === 'craft' && step.result && step.result.item) return step.result.item;
+            if (step.action === 'smelt' && step.result && step.result.item) return step.result.item;
+            if ((step.action === 'mine' || step.action === 'hunt') && (step.targetItem || step.what)) return (step.targetItem || step.what);
+            return null;
+        }
+
+        function countAcq(path, itemName) {
+            let c = 0;
+            for (const st of path) if (produced(st) === itemName) c++;
+            return c;
+        }
+
+        const gens = [
+            collectFirstN(enumerateActionPathsGenerator(tree, { inventory }), N),
+            collectFirstN(enumerateShortestPathsGenerator(tree, { inventory }), N),
+            collectFirstN(enumerateLowestWeightPathsGenerator(tree, { inventory }), N)
+        ];
+
+        for (const paths of gens) {
+            for (const p of paths) {
+                expect(countAcq(p, 'crafting_table')).toBeLessThanOrEqual(1);
+                expect(countAcq(p, 'furnace')).toBeLessThanOrEqual(1);
+            }
+        }
+    });
 });
 
 
