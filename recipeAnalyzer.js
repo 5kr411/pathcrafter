@@ -1447,6 +1447,9 @@ function computePathWeight(path) {
 analyzeRecipes._internals = {
     resolveMcData,
     requiresCraftingTable,
+    renderName,
+    genericizeItemName,
+    chooseMinimalToolName,
     findBlocksThatDrop,
     printMiningPath,
     getIngredientCounts,
