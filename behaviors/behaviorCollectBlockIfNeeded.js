@@ -4,7 +4,7 @@ const {
     NestedStateMachine
 } = require('mineflayer-statemachine')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 const behaviorCollectBlock = require('./behaviorCollectBlock')
 
@@ -57,3 +57,5 @@ function createCollectBlockIfNeededState(bot, targets) {
 }
 
 module.exports = createCollectBlockIfNeededState
+
+

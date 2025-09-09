@@ -1,10 +1,10 @@
 const {
     StateTransition,
     BehaviorIdle,
-    NestedStateMachine,
+    NestedStateMachine
 } = require('mineflayer-statemachine')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 const minecraftData = require('minecraft-data')
 
 function createCraftNoTableState(bot, targets) {
@@ -155,3 +155,5 @@ function createCraftNoTableState(bot, targets) {
 }
 
 module.exports = createCraftNoTableState;
+
+

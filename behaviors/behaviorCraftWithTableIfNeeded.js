@@ -6,7 +6,7 @@ const {
 
 const createCraftWithTable = require('./behaviorCraftWithTable')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 function createCraftWithTableIfNeeded(bot, targets) {
     const enter = new BehaviorIdle()
@@ -60,3 +60,5 @@ function createCraftWithTableIfNeeded(bot, targets) {
 }
 
 module.exports = createCraftWithTableIfNeeded
+
+

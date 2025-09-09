@@ -1,6 +1,3 @@
-const { getLastMcData, getWoodSpeciesTokens } = require('../utils/context');
-const { getSuffixTokenFromName } = require('../utils/items');
-const { baseHasMultipleWoodSpecies } = require('../utils/wood');
 const { getSmeltsPerUnitForFuel } = require('../smeltingConfig');
 
 function enumerateShortestPathsGenerator(tree, options = {}) {

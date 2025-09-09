@@ -12,7 +12,7 @@ const {
     BehaviorMineBlock,
 } = require('mineflayer-statemachine')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 const minecraftData = require('minecraft-data')
 
@@ -199,3 +199,5 @@ function createCollectBlockState(bot, targets) {
 }
 
 module.exports = createCollectBlockState
+
+

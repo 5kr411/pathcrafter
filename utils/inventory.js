@@ -8,6 +8,15 @@ function makeSupplyFromInventory(inv) {
     return m;
 }
 
+function mapToInventoryObject(map) {
+    const o = {};
+    if (!map) return o;
+    for (const [k, v] of map.entries()) {
+        if (v > 0) o[k] = v;
+    }
+    return o;
+}
+
 function produced(step) {
     if (!step) return null;
     if (step.action === 'craft' && step.result && step.result.item) return step.result.item;
@@ -18,6 +27,7 @@ function produced(step) {
 
 module.exports = {
     makeSupplyFromInventory,
+    mapToInventoryObject,
     produced
 };
 

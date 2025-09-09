@@ -4,7 +4,7 @@ const {
     NestedStateMachine,
 } = require('mineflayer-statemachine')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 const createAcquireCraftingTableState = require('./behaviorAcquireCraftingTable')
 
@@ -156,3 +156,5 @@ function createAcquireWoodenToolsState(bot, targets) {
 }
 
 module.exports = createAcquireWoodenToolsState
+
+

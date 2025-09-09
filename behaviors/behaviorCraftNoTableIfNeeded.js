@@ -6,7 +6,7 @@ const {
 
 const behaviorCraftNoTable = require('./behaviorCraftNoTable')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 function createCraftNoTableIfNeededState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -58,3 +58,5 @@ function createCraftNoTableIfNeededState(bot, targets) {
 }
 
 module.exports = createCraftNoTableIfNeededState
+
+

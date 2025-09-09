@@ -7,7 +7,7 @@ const {
 const createCollectBlockIfNeededState = require('./behaviorCollectBlockIfNeeded')
 const createCraftNoTableIfNeededState = require('./behaviorCraftNoTableIfNeeded')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 function createAcquireCraftingTableState(bot, targets) {
     if (targets == null) {
@@ -146,3 +146,5 @@ function createAcquireCraftingTableState(bot, targets) {
 }
 
 module.exports = createAcquireCraftingTableState
+
+

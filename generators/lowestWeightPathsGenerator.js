@@ -1,5 +1,3 @@
-const { getLastMcData } = require('../utils/context');
-const { getSuffixTokenFromName } = require('../utils/items');
 const { computePathWeight } = require('../utils/pathUtils');
 const { getSmeltsPerUnitForFuel } = require('../smeltingConfig');
 

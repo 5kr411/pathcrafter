@@ -6,7 +6,7 @@ const {
 
 const minecraftData = require('minecraft-data')
 
-const { getItemCountInInventory } = require('./util')
+const { getItemCountInInventory } = require('../util')
 
 const createCraftWithTableState = (bot, targets) => {
     const craftItemWithTable = async (itemName, additionalNeeded) => {
@@ -141,3 +141,5 @@ const createCraftWithTableState = (bot, targets) => {
 
 
 module.exports = createCraftWithTableState;
+
+
