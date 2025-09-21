@@ -5,7 +5,7 @@ const mcData = resolveMcData('1.20.1');
 
 const item = 'cobblestone';
 const count = 1;
-const inventory = { /*wooden_pickaxe: 1 */ };
+const inventory = { stone_pickaxe: 1 };
 console.log(`Analyzing target item: ${item} x${count}`);
 console.log(`Using inventory: ${JSON.stringify(inventory)}`);
 const tree = analyzeRecipes(mcData, item, count, { log: false, inventory });

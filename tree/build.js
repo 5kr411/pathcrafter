@@ -160,12 +160,14 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         action: 'mine', operator: 'OR', what: ingredientItem.name, count: neededCount, children: sources.flatMap(s => {
                             if (!s.tool || s.tool === 'any') { return [{ action: 'mine', what: s.block, targetItem: ingredientItem.name, count: neededCount, children: [] }]; }
                             let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
+                            // Prefer any acceptable tool that is already in inventory; otherwise fall back to minimal tool
+                            const existing = tools.filter(t => recipeInv && (recipeInv.get(t) || 0) > 0);
+                            if (existing.length > 0) {
+                                const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
+                                return [{ action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: chosen, count: neededCount, children: [] }];
+                            }
                             if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
-                            return tools.map(toolName => {
-                                const alreadyHaveTool = recipeInv && (recipeInv.get(toolName) || 0) > 0;
-                                if (alreadyHaveTool) { return { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }; }
-                                return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInventoryObject(recipeInv) }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] };
-                            });
+                            return tools.map(toolName => ({ action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInventoryObject(recipeInv) }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] }));
                         })
                     };
                     craftNode.children.push(miningGroup);
@@ -213,12 +215,14 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             action: 'mine', operator: 'OR', what: itemName, count: targetCount, children: miningPaths.flatMap(s => {
                 if (!s.tool || s.tool === 'any') { return [{ action: 'mine', what: s.block, targetItem: itemName, count: targetCount, children: [] }]; }
                 let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
+                // Prefer any acceptable tool already present in inventory
+                const existing = tools.filter(t => invMap && (invMap.get(t) || 0) > 0);
+                if (existing.length > 0) {
+                    const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
+                    return [{ action: 'mine', what: s.block, targetItem: itemName, tool: chosen, count: targetCount, children: [] }];
+                }
                 if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
-                return tools.map(toolName => {
-                    const alreadyHaveTool = invMap && (invMap.get(toolName) || 0) > 0;
-                    if (alreadyHaveTool) { return { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }; }
-                    return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInventoryObject(invMap) }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] };
-                });
+                return tools.map(toolName => ({ action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInventoryObject(invMap) }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] }));
             })
         };
         root.children.push(mineGroup);
