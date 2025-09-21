@@ -17,8 +17,8 @@ function enumerateShortestPathsGenerator(tree, options = {}) {
         });
     }
 
-    const { isPathValidWithFamilies } = require('../utils/pathValidation');
-    function isPathValid(path) { return isPathValidWithFamilies(path, initialSupply, getSmeltsPerUnitForFuel); }
+    const { isPathComposableWithFamilies } = require('../utils/pathValidation');
+    function isPathValid(path) { return isPathComposableWithFamilies(path, initialSupply, getSmeltsPerUnitForFuel); }
 
     const { createPriorityStreams } = require('../utils/priorityStreams');
     const { makeOrStream, makeAndStream } = createPriorityStreams({

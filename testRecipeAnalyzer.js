@@ -3,9 +3,9 @@ const { resolveMcData } = analyzeRecipes._internals;
 
 const mcData = resolveMcData('1.20.1');
 
-const item = 'gold_ingot';
+const item = 'cobblestone';
 const count = 1;
-const inventory = { /*crafting_table: 1, oak_planks: 3 */ };
+const inventory = { /*wooden_pickaxe: 1 */ };
 console.log(`Analyzing target item: ${item} x${count}`);
 console.log(`Using inventory: ${JSON.stringify(inventory)}`);
 const tree = analyzeRecipes(mcData, item, count, { log: false, inventory });

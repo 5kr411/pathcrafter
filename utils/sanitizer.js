@@ -58,6 +58,8 @@ function sanitizePath(path, opts) {
         if (!st) continue;
         if (st.action === 'smelt') {
             keep[i] = true;
+            // Smelting requires a furnace to be present; encode this as demand so its acquisition isn't dropped
+            incNeed('furnace', 1);
             const inCount = (st.input && st.input.perSmelt ? st.input.perSmelt : 1) * (st.count || 1);
             incNeed(st.input && st.input.item, inCount);
             if (st.fuel) {
@@ -74,6 +76,8 @@ function sanitizePath(path, opts) {
             continue;
         }
         if (st.action === 'craft') {
+            // If this craft uses the crafting table, require one to be present earlier in the path
+            if (st.what === 'table') { incNeed('crafting_table', 1); }
             const out = st.result && st.result.item;
             const outCount = (st.result && st.result.perCraftCount ? st.result.perCraftCount : 1) * (st.count || 1);
             const demand = out ? (need.get(out) || 0) : 0;
@@ -91,7 +95,13 @@ function sanitizePath(path, opts) {
         if (st.action === 'mine' || st.action === 'hunt') {
             const out = st.targetItem || st.what;
             const demand = need.get(out) || 0;
-            if (demand > 0) { keep[i] = true; decNeed(out, st.count || 1); } else { keep[i] = false; }
+            if (demand > 0) {
+                keep[i] = true;
+                decNeed(out, st.count || 1);
+                if (st.tool) incNeed(st.tool, 1);
+            } else {
+                keep[i] = false;
+            }
             continue;
         }
         keep[i] = true;

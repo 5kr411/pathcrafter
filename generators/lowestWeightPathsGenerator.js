@@ -20,8 +20,8 @@ function enumerateLowestWeightPathsGenerator(tree, options = {}) {
         });
     }
 
-    const { isPathValidBasic } = require('../utils/pathValidation');
-    function isPathValid(path) { return isPathValidBasic(path, initialSupply, getSmeltsPerUnitForFuel); }
+    const { isPathComposableBasic } = require('../utils/pathValidation');
+    function isPathValid(path) { return isPathComposableBasic(path, initialSupply, getSmeltsPerUnitForFuel); }
 
     const { createPriorityStreams } = require('../utils/priorityStreams');
     const { makeOrStream, makeAndStream } = createPriorityStreams({
