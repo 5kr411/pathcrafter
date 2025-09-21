@@ -1,6 +1,6 @@
 const { getLastMcData } = require('../utils/context');
 const { getSuffixTokenFromName } = require('../utils/items');
-const { getSmeltsPerUnitForFuel } = require('../smeltingConfig');
+const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 
 function enumerateActionPathsGenerator(tree, options = {}) {
     const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;

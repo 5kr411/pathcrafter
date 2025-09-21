@@ -1,4 +1,4 @@
-const { getSmeltsPerUnitForFuel } = require('../smeltingConfig');
+const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 
 function enumerateShortestPathsGenerator(tree, options = {}) {
     const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;

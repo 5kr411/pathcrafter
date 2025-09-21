@@ -1,4 +1,4 @@
-const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('../smeltingConfig');
+const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 const { chooseMinimalToolName, getSuffixTokenFromName } = require('../utils/items');
 const { extractSpeciesPrefix, baseHasMultipleWoodSpecies } = require('../utils/wood');
 const { renderName } = require('../utils/render');

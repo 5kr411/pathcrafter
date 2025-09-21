@@ -1,5 +1,5 @@
 const { computePathWeight } = require('../utils/pathUtils');
-const { getSmeltsPerUnitForFuel } = require('../smeltingConfig');
+const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 
 function enumerateLowestWeightPathsGenerator(tree, options = {}) {
     const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
