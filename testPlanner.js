@@ -39,3 +39,4 @@ for (const path of enumerateLowestWeightPathsGenerator(tree, { inventory })) {
 console.log(`\nTotal paths: ${countActionPaths(tree)}`);
 
 
+
