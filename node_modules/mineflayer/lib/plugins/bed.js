@@ -146,9 +146,10 @@ function inject (bot) {
         }
       }
 
+      // We need to register the listener before actually going to sleep to avoid race conditions
+      const waitingPromise = waitUntilSleep()
       bot.activateBlock(bedBlock)
-
-      await waitUntilSleep()
+      await waitingPromise
     }
   }
 
@@ -166,7 +167,7 @@ function inject (bot) {
   }
 
   bot._client.on('game_state_change', (packet) => {
-    if (packet.reason === 0) {
+    if (packet.reason === 0 || packet.reason === 'no_respawn_block_available') {
       // occurs when you can't spawn in your bed and your spawn point gets reset
       bot.emit('spawnReset')
     }

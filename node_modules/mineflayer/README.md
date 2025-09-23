@@ -17,7 +17,7 @@ First time using Node.js? You may want to start with the [tutorial](tutorial.md)
 
 ## Features
 
- * Supports Minecraft 1.8 to 1.21 (1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 1.18, 1.19, 1.20, and 1.21)
+ * Supports Minecraft 1.8 to 1.21 (1.8, 1.9, 1.10, 1.11, 1.12, 1.13, 1.14, 1.15, 1.16, 1.17, 1.18, 1.19, 1.20, 1.21) <!--version-->
  * Entity knowledge and tracking.
  * Block knowledge. You can query the world around you. Milliseconds to find any block.
  * Physics and movement - handle all bounding boxes
@@ -205,6 +205,7 @@ higher level API on top of Mineflayer.
 
 The most updated and useful are :
 
+ * [minecraft-mcp-server](https://github.com/yuniko-software/minecraft-mcp-server) A MCP server for mineflayer, allowing using mineflayer from an LLM
  * [pathfinder](https://github.com/Karang/mineflayer-pathfinder) - advanced A* pathfinding with a lot of configurable features
  * [prismarine-viewer](https://github.com/PrismarineJS/prismarine-viewer) - simple web chunk viewer
  * [web-inventory](https://github.com/ImHarvol/mineflayer-web-inventory) - web based inventory viewer
