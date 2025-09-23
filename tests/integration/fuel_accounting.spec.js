@@ -1,4 +1,4 @@
-const analyzeRecipes = require('../../recipeAnalyzer');
+const plan = require('../../planner');
 
 describe('integration: fuel accounting for multiple smelts', () => {
     const { resolveMcData, enumerateActionPathsGenerator } = analyzeRecipes._internals;

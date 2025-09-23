@@ -4,7 +4,7 @@ const {
     NestedStateMachine,
 } = require('mineflayer-statemachine')
 
-const analyzeRecipes = require('./recipeAnalyzer')
+const plan = require('./planner')
 
 function createAcquireItemState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -28,7 +28,7 @@ function createAcquireItemState(bot, targets) {
         shouldTransition: () => true,
         onTransition: () => {
             console.log('acquireItemState: enter -> evaluate:', targets.itemName, targets.amount)
-            analyzeRecipes(bot, targets.itemName, targets.amount)
+            plan(bot, targets.itemName, targets.amount)
         }
     })
 

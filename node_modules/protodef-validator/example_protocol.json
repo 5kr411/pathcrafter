@@ -23,6 +23,13 @@
       {
         "countType": "varint"
       }
+    ],
+    "string2": [
+      "pstring",
+      {
+        "encoding": "utf-16",
+        "countType": "i16"
+      }
     ]
   },
   "status": {
@@ -140,7 +147,7 @@
             },
             {
               "name": "username",
-              "type": "string"
+              "type": "string2"
             }
           ]
         ],

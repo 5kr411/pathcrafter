@@ -1,4 +1,4 @@
-const analyzeRecipes = require('../../recipeAnalyzer');
+const plan = require('../../planner');
 
 describe('integration: hunting feathers with no inventory', () => {
     const { resolveMcData, enumerateShortestPathsGenerator } = analyzeRecipes._internals;

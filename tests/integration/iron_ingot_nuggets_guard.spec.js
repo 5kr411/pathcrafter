@@ -1,4 +1,4 @@
-const analyzeRecipes = require('../../recipeAnalyzer');
+const plan = require('../../planner');
 
 describe('integration: prevent crafting iron_ingot from nuggets without obtaining them', () => {
     const { resolveMcData, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, enumerateActionPathsGenerator } = analyzeRecipes._internals;

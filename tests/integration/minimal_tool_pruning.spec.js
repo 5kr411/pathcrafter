@@ -1,4 +1,4 @@
-const analyzeRecipes = require('../../recipeAnalyzer');
+const plan = require('../../planner');
 
 describe('integration: minimal tool pruning for mining', () => {
     const { resolveMcData, enumerateShortestPathsGenerator } = analyzeRecipes._internals;

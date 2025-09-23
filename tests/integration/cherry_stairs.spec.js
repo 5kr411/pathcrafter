@@ -1,4 +1,4 @@
-const analyzeRecipes = require('../../recipeAnalyzer');
+const plan = require('../../planner');
 
 function normalizePath(path) {
     return path.map(s => {
@@ -15,11 +15,11 @@ function normalizePath(path) {
 }
 
 describe('integration: cherry_stairs generic vs species-specific wood', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator, renderName } = analyzeRecipes._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator, renderName } = plan._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('uses generic planks for crafting_table and cherry_planks for stairs', () => {
-        const tree = analyzeRecipes(mcData, 'cherry_stairs', 1, { log: false, inventory: {} });
+        const tree = plan(mcData, 'cherry_stairs', 1, { log: false, inventory: {} });
         const paths = Array.from(enumerateShortestPathsGenerator(tree, { inventory: {} })).map(p => ({ raw: p, s: normalizePath(p) }));
 
         // find a path that crafts a crafting_table with an ingredient rendered as generic_planks
