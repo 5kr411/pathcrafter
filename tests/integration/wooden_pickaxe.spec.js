@@ -1,4 +1,4 @@
-const plan = require('../../planner');
+const analyzeRecipes = require('../../recipeAnalyzer');
 
 function normalizePath(path) {
     return path.map(s => {
@@ -15,12 +15,12 @@ function normalizePath(path) {
 }
 
 describe('integration: wooden_pickaxe with inventory', () => {
-    const { resolveMcData, enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, computePathWeight } = plan._internals;
+    const { resolveMcData, enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, computePathWeight } = analyzeRecipes._internals;
     const mcData = resolveMcData('1.20.1');
     const inventory = { crafting_table: 1, oak_planks: 3 };
 
     test('all enumerators return identical path sets; ordering invariants hold', () => {
-        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
+        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
 
         const gen = Array.from(enumerateActionPathsGenerator(tree, { inventory })).map(normalizePath);
         const shortest = Array.from(enumerateShortestPathsGenerator(tree, { inventory })).map(p => ({ s: normalizePath(p), l: p.length }));

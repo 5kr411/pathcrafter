@@ -1,4 +1,4 @@
-const plan = require('../../planner');
+const analyzeRecipes = require('../../recipeAnalyzer');
 
 describe('integration: smelting stone with inventory items present', () => {
     const { resolveMcData, enumerateShortestPathsGenerator } = analyzeRecipes._internals;

@@ -1,4 +1,4 @@
-const plan = require('../../planner');
+const analyzeRecipes = require('../../recipeAnalyzer');
 const { collectFirstN } = require('../utils/helpers');
 
 describe('integration: smelting iron_ingot with furnace in inventory', () => {

@@ -1,7 +1,7 @@
-const plan = require('../../planner');
+const analyzeRecipes = require('../../recipeAnalyzer');
 
 describe('unit: helpers', () => {
-    const { chooseMinimalToolName, renderName, genericizeItemName, resolveMcData } = plan._internals;
+    const { chooseMinimalToolName, renderName, genericizeItemName, resolveMcData } = analyzeRecipes._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('chooseMinimalToolName prefers lower tier', () => {
@@ -10,7 +10,7 @@ describe('unit: helpers', () => {
 
     test('genericizeItemName turns oak_planks -> generic_planks (after context init)', () => {
         // Initialize context so wood species tokens are loaded
-        plan(mcData, 'crafting_table', 1, { log: false, inventory: {} });
+        analyzeRecipes(mcData, 'crafting_table', 1, { log: false, inventory: {} });
         expect(genericizeItemName('oak_planks')).toBe('generic_planks');
     });
 
@@ -20,8 +20,8 @@ describe('unit: helpers', () => {
 });
 
 describe('unit: crafting table dependency', () => {
-    const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = plan._internals;
-    const mcData = plan._internals.resolveMcData('1.20.1');
+    const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = analyzeRecipes._internals;
+    const mcData = analyzeRecipes._internals.resolveMcData('1.20.1');
 
     function usesTable(step) { return step && step.action === 'craft' && step.what === 'table'; }
     function produces(name, step) {
@@ -42,7 +42,7 @@ describe('unit: crafting table dependency', () => {
 
     test('shortest paths never use table before acquiring one (empty inventory)', () => {
         const inventory = {};
-        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
+        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         let checked = 0;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
             expect(hasTableBeforeUse(path)).toBe(true);
@@ -52,7 +52,7 @@ describe('unit: crafting table dependency', () => {
 
     test('lowest-weight paths never use table before acquiring one (empty inventory)', () => {
         const inventory = {};
-        const tree = plan(mcData, 'stone_pickaxe', 1, { log: false, inventory });
+        const tree = analyzeRecipes(mcData, 'stone_pickaxe', 1, { log: false, inventory });
         let checked = 0;
         for (const path of enumerateLowestWeightPathsGenerator(tree, { inventory })) {
             expect(hasTableBeforeUse(path)).toBe(true);

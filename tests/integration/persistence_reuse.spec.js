@@ -1,4 +1,4 @@
-const plan = require('../../planner');
+const analyzeRecipes = require('../../recipeAnalyzer');
 
 describe('integration: persistence reuse of crafting_table and tools', () => {
     const { resolveMcData, enumerateShortestPathsGenerator } = analyzeRecipes._internals;
