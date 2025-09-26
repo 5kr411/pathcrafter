@@ -6,12 +6,10 @@ const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator
 const lowestWeightPathsGenerator = require('./path_generators/lowestWeightPathsGenerator')
 const pathUtils = require('./utils/pathUtils')
 const { renderName } = require('./utils/render')
-const treeBuild = require('./dependency_tree/build')
-const treeLogger = require('./dependency_tree/logger')
-const treeEnumerate = require('./dependency_tree/enumerate')
-const treeMetrics = require('./dependency_tree/metrics')
-
-// (duplicate recipe logging moved to tree/logger)
+const treeBuild = require('./action_tree/build')
+const treeLogger = require('./action_tree/logger')
+const treeEnumerate = require('./action_tree/enumerate')
+const treeMetrics = require('./action_tree/metrics')
 
 function plan(ctx, itemName, targetCount = 1, options = {}) {
     const mc = treeBuild.resolveMcData(ctx);
@@ -35,11 +33,9 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
     }
     setCurrentSpeciesContext(ctxSpecies);
     const tree = treeBuild.buildRecipeTree(mc, itemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
-    if (!options || options.log !== false) treeLogger.logRecipeTree(tree);
+    if (!options || options.log !== false) treeLogger.logActionTree(tree);
     return tree;
 }
-
-// (action path logging moved to tree/logger)
 
 plan._internals = {
     resolveMcData: treeBuild.resolveMcData,
@@ -55,7 +51,7 @@ plan._internals = {
     findMobsThatDrop: treeBuild.findMobsThatDrop,
     printHuntingPath: treeLogger.printHuntingPath,
     buildRecipeTree: treeBuild.buildRecipeTree,
-    logRecipeTree: treeLogger.logRecipeTree,
+    logActionTree: treeLogger.logActionTree,
     enumerateActionPaths: treeEnumerate.enumerateActionPaths,
     enumerateShortestPathsGenerator: shortestPathsGenerator.enumerateShortestPathsGenerator,
     enumerateActionPathsGenerator: actionPathsGenerator.enumerateActionPathsGenerator,

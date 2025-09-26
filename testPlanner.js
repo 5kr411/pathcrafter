@@ -7,8 +7,11 @@ const item = 'cobblestone';
 const count = 1;
 const inventory = { stone_pickaxe: 1 };
 console.log(`Analyzing target item: ${item} x${count}`);
-console.log(`Using inventory: ${JSON.stringify(inventory)}`);
+console.log(`\nUsing inventory: ${JSON.stringify(inventory)}`);
 const tree = plan(mcData, item, count, { log: false, inventory });
+
+console.log(`\nAction tree:`);
+plan._internals.logActionTree(tree);
 
 const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = plan._internals;
 console.log(`\nGenerated action path tree with max depth: ${computeTreeMaxDepth(tree)}`);

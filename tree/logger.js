@@ -28,7 +28,7 @@ function printHuntingPath(sources, depth, targetCount) {
     });
 }
 
-function logRecipeTree(tree, depth = 1) {
+function logActionTree(tree, depth = 1) {
     if (!tree) return;
     const indent = ' '.repeat(depth * 2);
     if (tree.action === 'root') {
@@ -37,14 +37,14 @@ function logRecipeTree(tree, depth = 1) {
         const children = tree.children || [];
         children.forEach((child, idx) => {
             const isLast = idx === children.length - 1;
-            logRecipeNode(child, depth + 1, isLast);
+            logActionNode(child, depth + 1, isLast);
         });
         return;
     }
-    logRecipeNode(tree, depth, true);
+    logActionNode(tree, depth, true);
 }
 
-function logRecipeNode(node, depth, isLastAtThisLevel) {
+function logActionNode(node, depth, isLastAtThisLevel) {
     const indent = ' '.repeat(depth * 2);
     const branch = isLastAtThisLevel ? '└─' : '├─';
     if (node.action === 'craft') {
@@ -56,7 +56,7 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
             console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingredientsStr} to ${node.result.perCraftCount} ${resultName}`);
         }
         const children = node.children || [];
-        children.forEach((child, idx) => logRecipeTree(child, depth + 2));
+        children.forEach((child, idx) => logActionTree(child, depth + 2));
         return;
     }
     if (node.action === 'mine') {
@@ -66,7 +66,7 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
             console.log(`${indent}${branch} mine${targetInfo} (${node.count}x) [${op}]`);
             node.children.forEach((child, idx) => {
                 if (child.action === 'require') {
-                    logRecipeTree(child, depth + 1);
+                    logActionTree(child, depth + 1);
                 } else {
                     const subIndent = ' '.repeat((depth + 1) * 2);
                     const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
@@ -91,7 +91,7 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
                 const resStr = `${node.result.perSmelt} ${renderName(node.result.item)}`;
                 console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingStr} to ${resStr}`);
             }
-            node.children.forEach((child, idx) => logRecipeTree(child, depth + 1));
+            node.children.forEach((child, idx) => logActionTree(child, depth + 1));
         } else {
             console.log(`${indent}${branch} smelt ${renderName(node.what)}`);
         }
@@ -101,7 +101,7 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
         const op = node.operator === 'AND' ? 'ALL' : 'ANY';
         console.log(`${indent}${branch} require ${node.what.replace('tool:', '')} [${op}]`);
         const children = node.children || [];
-        children.forEach((child, idx) => logRecipeTree(child, depth + 1));
+        children.forEach((child, idx) => logActionTree(child, depth + 1));
         return;
     }
     if (node.action === 'hunt') {
@@ -122,10 +122,10 @@ function logRecipeNode(node, depth, isLastAtThisLevel) {
         return;
     }
     if (node.action === 'root') {
-        logRecipeTree(node, depth);
+        logActionTree(node, depth);
     }
 }
 
-module.exports = { logRecipeTree, printMiningPath, printRecipeConversion, printHuntingPath };
+module.exports = { logActionTree, printMiningPath, printRecipeConversion, printHuntingPath };
 
 
