@@ -5,6 +5,7 @@ const { renderName } = require('../utils/render');
 const { makeSupplyFromInventory, mapToInventoryObject } = require('../utils/inventory');
 const fs = require('fs');
 const path = require('path');
+const { isPersistentItemName } = require('../utils/persistence');
 
 function resolveMcData(ctx) {
     if (!ctx) return undefined;
@@ -168,6 +169,28 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const nextVisited = new Set(visited); nextVisited.add(itemName);
     const preferWoodFamilies = context.preferWoodFamilies !== false;
     let recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies).sort((a, b) => b.result.count - a.result.count);
+    // Prefer recipe variants that require fewer additional consumables given current inventory.
+    // Keep all variants as fallbacks to avoid dead ends with partial inventories.
+    try {
+        recipes = recipes
+            .map(r => {
+                const craftingsNeeded = Math.ceil(targetCount / r.result.count);
+                const ingredientCounts = getIngredientCounts(r);
+                let missingTotal = 0;
+                for (const [ingredientId, count] of ingredientCounts.entries()) {
+                    const ingredientItem = mcData.items[ingredientId];
+                    if (!ingredientItem) continue;
+                    const ingName = ingredientItem.name;
+                    const totalNeeded = count * craftingsNeeded;
+                    const haveIng = invMap ? (invMap.get(ingName) || 0) : 0;
+                    const missing = Math.max(0, totalNeeded - haveIng);
+                    missingTotal += missing;
+                }
+                return { recipe: r, missingTotal };
+            })
+            .sort((a, b) => a.missingTotal - b.missingTotal || (b.recipe.result.count - a.recipe.result.count))
+            .map(s => s.recipe);
+    } catch (_) { /* keep original ordering on scoring failure */ }
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
         const ingredientCounts = getIngredientCounts(recipe);
@@ -282,6 +305,9 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
         root.children.push(huntGroup);
     }
 
+    // Normalize persistent requirements to avoid duplicate acquisitions within AND contexts
+    try { normalizePersistentRequires(root, context && context.inventory ? context.inventory : null); } catch (_) {}
+    
     return root;
 }
 
@@ -296,6 +322,42 @@ module.exports = {
     findFurnaceSmeltsForItem,
     findMobsThatDrop
 };
+
+// Hoist and dedupe persistent requires inside AND contexts. Also skip requires satisfied by inventory.
+function normalizePersistentRequires(node, invObj) {
+    if (!node || !node.children || node.children.length === 0) return;
+    const isAndContext = node.action === 'craft' || node.action === 'require' || node.operator === 'AND';
+    if (isAndContext) {
+        const children = node.children;
+        const firstRequireByWhat = new Map();
+        for (let i = 0; i < children.length; i++) {
+            const child = children[i];
+            if (!child || child.action !== 'require' || child.operator !== 'AND') continue;
+            const what = String(child.what || '');
+            const parts = what.startsWith('tool:') ? what.slice('tool:'.length) : what;
+            const isPersistent = isPersistentItemName(parts);
+            if (!isPersistent) continue;
+            const hasContinuation = Array.isArray(child.children) && child.children.length >= 2;
+            const invHas = invObj && typeof invObj === 'object' ? ((invObj[parts] || 0) > 0) : false;
+            if (invHas && hasContinuation) {
+                // Inventory already satisfies the requirement; drop acquisition and keep continuation
+                children[i] = child.children[1];
+                i--; // re-check this position after replacement in case it nests
+                continue;
+            }
+            if (!hasContinuation) continue;
+            if (!firstRequireByWhat.has(what)) {
+                firstRequireByWhat.set(what, i);
+            } else {
+                // Duplicate require for the same persistent item within this AND; keep only continuation here
+                children[i] = child.children[1];
+                i--;
+            }
+        }
+    }
+    // Recurse into children
+    for (const ch of node.children) normalizePersistentRequires(ch, invObj);
+}
 
 
 

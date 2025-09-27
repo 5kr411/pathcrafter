@@ -5,17 +5,19 @@ const mcData = resolveMcData('1.20.1');
 
 const item = 'cobblestone';
 const count = 1;
-const inventory = { stone_pickaxe: 1 };
+const inventory = { wooden_pickaxe: 1 };
 console.log(`Analyzing target item: ${item} x${count}`);
 console.log(`\nUsing inventory: ${JSON.stringify(inventory)}`);
 const tree = plan(mcData, item, count, { log: false, inventory });
 
-console.log(`\nAction tree:`);
-plan._internals.logActionTree(tree);
+// console.log(`\nAction tree:`);
+// plan._internals.logActionTree(tree);
 
 const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = plan._internals;
-console.log(`\nGenerated action path tree with max depth: ${computeTreeMaxDepth(tree)}`);
+console.log(`\nGenerated action tree with max depth: ${computeTreeMaxDepth(tree)}`);
+
 let pathsToLog = 10;
+
 console.log(`\nFirst ${pathsToLog} generated action paths for ${item} x${count}:`);
 let i = 0;
 for (const path of enumerateActionPathsGenerator(tree, { inventory })) {
@@ -23,6 +25,7 @@ for (const path of enumerateActionPathsGenerator(tree, { inventory })) {
     logActionPath(path);
     if (i >= pathsToLog) break;
 }
+
 console.log(`\nFirst ${pathsToLog} shortest action paths for ${item} x${count}:`);
 let j = 0;
 for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
