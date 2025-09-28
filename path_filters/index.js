@@ -1,5 +1,6 @@
 const { buildWorldAvailability, computePathResourceDemand, isDemandSatisfiedByAvailability } = require('./worldResources');
 const { filterPathsByWorldSnapshot } = require('./filterByWorld');
+const { hoistMiningInPaths } = require('../path_optimizations/hoistMining');
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN');
 const plan = require('../planner');
 const { getGenericWoodEnabled } = require('../utils/config');
@@ -10,11 +11,14 @@ function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
     const mcData = plan._internals.resolveMcData(ctx);
     const tree = plan(mcData, itemName, targetCount, { inventory: options.inventory, log: options.log });
     const candidates = generateTopNPathsFromGenerators(tree, options, perGenerator);
-    if (!snapshot) return candidates;
+    if (!snapshot) {
+        return hoistMiningInPaths(candidates);
+    }
     const cfgEnabled = options && options.config && typeof options.config.genericWoodEnabled === 'boolean' ? options.config.genericWoodEnabled : undefined;
     const effectiveEnabled = (typeof cfgEnabled === 'boolean') ? cfgEnabled : getGenericWoodEnabled();
     const disableGenericWood = options.disableGenericWood === true ? true : !effectiveEnabled;
-    return filterPathsByWorldSnapshot(candidates, snapshot, { disableGenericWood });
+    const filtered = filterPathsByWorldSnapshot(candidates, snapshot, { disableGenericWood });
+    return hoistMiningInPaths(filtered);
 }
 
 module.exports = {
