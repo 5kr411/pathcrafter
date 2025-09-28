@@ -174,7 +174,9 @@ function create(bot, step) {
     });
 
     let breakFinishTime;
-    const t4 = new StateTransition({
+	let collectStartTime;
+	const COLLECT_TIMEOUT_MS = 2000;
+	const t4 = new StateTransition({
         name: 'craft-table: break -> get-drop',
         parent: breakTable,
         child: getDrop,
@@ -183,9 +185,22 @@ function create(bot, step) {
             return breakFinishTime && (Date.now() - breakFinishTime > 200);
         },
         onTransition: () => {
-            console.log('BehaviorGenerator(craft-table): break -> get-drop');
+			collectStartTime = Date.now();
+			console.log('BehaviorGenerator(craft-table): break -> get-drop');
         }
     });
+
+	// If the table item was already picked up (e.g., standing adjacent), skip collection states
+	const tBreakDirectExit = new StateTransition({
+		name: 'craft-table: break -> exit (already picked up)',
+		parent: breakTable,
+		child: exit,
+		shouldTransition: () => (typeof breakTable.isFinished === 'function' ? breakTable.isFinished() : true) && (getItemCountInInventory(bot, 'crafting_table') > startCount),
+		onTransition: () => {
+			const have = getItemCountInInventory(bot, 'crafting_table');
+			console.log(`BehaviorGenerator(craft-table): break -> exit (already have ${have - startCount})`);
+		}
+	});
 
     const t5 = new StateTransition({
         name: 'craft-table: get-drop -> follow-drop',
@@ -198,6 +213,27 @@ function create(bot, step) {
         }
     });
 
+	// Timeout or already-have fallback from get-drop directly to exit
+	const t5b = new StateTransition({
+		name: 'craft-table: get-drop -> exit (timeout/already have)',
+		parent: getDrop,
+		child: exit,
+		shouldTransition: () => {
+			const haveNow = getItemCountInInventory(bot, 'crafting_table') > startCount;
+			const timedOut = collectStartTime ? (Date.now() - collectStartTime > COLLECT_TIMEOUT_MS) : false;
+			return haveNow || timedOut;
+		},
+		onTransition: () => {
+			const have = getItemCountInInventory(bot, 'crafting_table');
+			const timedOut = collectStartTime ? (Date.now() - collectStartTime > COLLECT_TIMEOUT_MS) : false;
+			if (have > startCount) {
+				console.log(`BehaviorGenerator(craft-table): get-drop -> exit (already have ${have - startCount})`);
+			} else if (timedOut) {
+				console.log('BehaviorGenerator(craft-table): get-drop -> exit (timeout)');
+			}
+		}
+	});
+
     const t6 = new StateTransition({
         name: 'craft-table: follow-drop -> exit',
         parent: followDrop,
@@ -209,7 +245,7 @@ function create(bot, step) {
         }
     });
 
-    return new NestedStateMachine([t1, tEquipToPlace, t2, t3, t4, t5, t6], enter, exit);
+	return new NestedStateMachine([t1, tEquipToPlace, t2, t3, tBreakDirectExit, t4, t5b, t5, t6], enter, exit);
 }
 
 module.exports = { canHandle, computeTargetsForCraftInTable, create };

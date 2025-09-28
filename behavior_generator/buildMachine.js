@@ -32,7 +32,7 @@ function createStateForStep(bot, step, shared) {
     return { isFinished: () => true }
 }
 
-function buildStateMachineForPath(bot, pathSteps) {
+function buildStateMachineForPath(bot, pathSteps, onFinished) {
     const enter = new BehaviorIdle();
     const exit = new BehaviorIdle();
     const transitions = [];
@@ -56,6 +56,7 @@ function buildStateMachineForPath(bot, pathSteps) {
     }
     transitions.push(new StateTransition({ parent: prev, child: exit, name: 'final-exit', shouldTransition: () => (prev && typeof prev.isFinished === 'function' ? prev.isFinished() : true), onTransition: () => {
         console.log('PathBuilder: final-exit')
+        try { if (typeof onFinished === 'function') onFinished(); } catch (_) {}
     }}));
 
     return new NestedStateMachine(transitions, enter, exit);
