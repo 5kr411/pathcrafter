@@ -1,3 +1,5 @@
+const { getWoodSpeciesTokens } = require('../utils/context');
+
 function buildWorldAvailability(snapshot) {
     const blocks = new Map();
     const entities = new Map();
@@ -48,9 +50,44 @@ function computePathResourceDemand(path) {
     return { blocks, entities };
 }
 
+function getAvailableCountForName(name, availability) {
+    if (!name) return 0;
+    if (String(name).startsWith('generic_')) {
+        const base = String(name).slice('generic_'.length);
+        const speciesTokens = getWoodSpeciesTokens();
+        let sum = 0;
+        if (speciesTokens && speciesTokens.size > 0) {
+            for (const species of speciesTokens) {
+                sum += availability.blocks.get(`${species}_${base}`) || 0;
+            }
+            return sum;
+        }
+        // Fallback: sum any block ending with _<base>
+        for (const [key, value] of availability.blocks.entries()) {
+            if (typeof key === 'string' && key.endsWith(`_${base}`)) sum += value;
+        }
+        return sum;
+    }
+    // If name is species-specific like oak_log and species tokens are known, treat as family-flexible
+    const idx = String(name).lastIndexOf('_');
+    if (idx > 0) {
+        const prefix = String(name).slice(0, idx);
+        const base = String(name).slice(idx + 1);
+        const speciesTokens = getWoodSpeciesTokens();
+        if (speciesTokens && speciesTokens.has && speciesTokens.has(prefix)) {
+            let sum = 0;
+            for (const species of speciesTokens) {
+                sum += availability.blocks.get(`${species}_${base}`) || 0;
+            }
+            return sum;
+        }
+    }
+    return availability.blocks.get(name) || 0;
+}
+
 function isDemandSatisfiedByAvailability(demand, availability) {
     for (const [name, need] of demand.blocks.entries()) {
-        const have = availability.blocks.get(name) || 0;
+        const have = getAvailableCountForName(name, availability);
         if (have < need) return false;
     }
     for (const [name, need] of demand.entities.entries()) {
@@ -60,10 +97,24 @@ function isDemandSatisfiedByAvailability(demand, availability) {
     return true;
 }
 
+function explainDemandShortfall(demand, availability) {
+    const missing = { blocks: [], entities: [] };
+    for (const [name, need] of demand.blocks.entries()) {
+        const have = getAvailableCountForName(name, availability);
+        if (have < need) missing.blocks.push({ name, need, have });
+    }
+    for (const [name, need] of demand.entities.entries()) {
+        const have = availability.entities.get(name) || 0;
+        if (have < need) missing.entities.push({ name, need, have });
+    }
+    return missing;
+}
+
 module.exports = {
     buildWorldAvailability,
     computePathResourceDemand,
-    isDemandSatisfiedByAvailability
+    isDemandSatisfiedByAvailability,
+    explainDemandShortfall
 };
 
 
