@@ -4,7 +4,7 @@ const { resolveMcData } = plan._internals;
 const mcData = resolveMcData('1.20.1');
 
 const item = 'raw_iron';
-const count = 3;
+const count = 1;
 const inventory = { cobblestone: 2, stick: 2, crafting_table: 1 };
 console.log(`Analyzing target item: ${item} x${count}`);
 console.log(`\nUsing inventory: ${JSON.stringify(inventory)}`);
