@@ -1,4 +1,5 @@
 const { getLastMcData, getWoodSpeciesTokens, getCurrentSpeciesContext, getTargetItemNameGlobal } = require('./context');
+const { getGenericWoodEnabled } = require('./config');
 const { getSuffixTokenFromName } = require('./items');
 
 function extractSpeciesPrefix(name) {
@@ -25,6 +26,7 @@ function baseHasMultipleWoodSpecies(baseName) {
 }
 
 function genericizeItemName(name) {
+    if (!getGenericWoodEnabled()) return name;
     const lastMcData = getLastMcData();
     if (!lastMcData) return name;
     const targetItemNameGlobal = getTargetItemNameGlobal();

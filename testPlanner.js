@@ -1,12 +1,16 @@
 const plan = require('./planner');
 const { resolveMcData } = plan._internals;
+const { setGenericWoodEnabled, getGenericWoodEnabled } = require('./utils/config');
 const fs = require('fs');
 const path = require('path');
 const { filterPathsByWorldSnapshot, generateTopNAndFilter } = require('./path_filters');
 const { loadSnapshotFromFile } = require('./utils/worldSnapshot');
 const { generateTopNPathsFromGenerators } = require('./path_generators/generateTopN');
 
+// Project-wide config for this demo run
 const mcData = resolveMcData('1.20.1');
+const plannerConfig = { genericWoodEnabled: false };
+setGenericWoodEnabled(plannerConfig.genericWoodEnabled);
 
 const item = 'crafting_table';
 const count = 1;
@@ -22,6 +26,7 @@ const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerat
 console.log(`\nGenerated action tree with max depth: ${computeTreeMaxDepth(tree)}`);
 
 console.log(`\nTotal paths: ${countActionPaths(tree)}`);
+console.log(`\nConfig: { genericWoodEnabled: ${getGenericWoodEnabled()} }`);
 
 let pathsToLog = 10;
 
@@ -70,7 +75,7 @@ try {
         }).sort((a, b) => b.mtime - a.mtime);
         const latest = withTimes[0].full;
         const snapshot = loadSnapshotFromFile(latest);
-        const filtered = filterPathsByWorldSnapshot(aggregated, snapshot);
+        const filtered = filterPathsByWorldSnapshot(aggregated, snapshot, { disableGenericWood: !plannerConfig.genericWoodEnabled });
         console.log(`\nFiltered by world snapshot (${path.basename(latest)}), count=${filtered.length}:`);
         let n = 0;
         for (const p of filtered.slice(0, pathsToLog)) {
@@ -78,7 +83,7 @@ try {
             plan._internals.logActionPath(p);
         }
 
-        const filteredDirect = generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false });
+        const filteredDirect = generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false, config: plannerConfig });
         console.log(`\nOne-shot generate+filter count=${filteredDirect.length}`);
     } else {
         console.log(`\nNo world snapshot files found in ${snapshotsDir}`);

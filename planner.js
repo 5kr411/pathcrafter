@@ -1,6 +1,7 @@
 const { setLastMcData, setWoodSpeciesTokens, setCurrentSpeciesContext, setTargetItemNameGlobal, getWoodSpeciesTokens } = require('./utils/context')
 const { chooseMinimalToolName } = require('./utils/items')
 const { genericizeItemName } = require('./utils/wood')
+const { getGenericWoodEnabled } = require('./utils/config')
 const actionPathsGenerator = require('./path_generators/actionPathsGenerator')
 const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator')
 const lowestWeightPathsGenerator = require('./path_generators/lowestWeightPathsGenerator')
@@ -32,7 +33,8 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
         if (itemName.startsWith(species + '_')) { ctxSpecies = species; break; }
     }
     setCurrentSpeciesContext(ctxSpecies);
-    const tree = treeBuild.buildRecipeTree(mc, itemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
+    const effectiveItemName = getGenericWoodEnabled() ? itemName : itemName;
+    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
     if (!options || options.log !== false) treeLogger.logActionTree(tree);
     return tree;
 }

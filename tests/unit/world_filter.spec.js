@@ -35,12 +35,20 @@ describe('unit: world filtering', () => {
             yMax: 255,
             blocks: [
                 { x: 1, y: 64, z: 1, name: 'oak_log' },
-                { x: 2, y: 64, z: 2, name: 'spruce_log' }
+                { x: 2, y: 64, z: 2, name: 'spruce_log' },
+                { x: 3, y: 64, z: 3, name: 'oak_log' }
             ],
             entities: []
         };
-        const result = filterPathsByWorldSnapshot([path], snapshot);
-        expect(result.length).toBe(1);
+        const enabled = filterPathsByWorldSnapshot([path], snapshot);
+        expect(enabled.length).toBe(1);
+
+        const disabled = filterPathsByWorldSnapshot([path], snapshot, { disableGenericWood: true });
+        expect(disabled.length).toBe(0);
+
+        const speciesPath = [{ action: 'mine', what: 'oak_log', count: 2 }];
+        const speciesOk = filterPathsByWorldSnapshot([speciesPath], snapshot, { disableGenericWood: true });
+        expect(speciesOk.length).toBe(1);
     });
 
     test('missing block fails filter', () => {

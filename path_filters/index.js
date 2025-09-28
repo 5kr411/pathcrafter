@@ -2,6 +2,7 @@ const { buildWorldAvailability, computePathResourceDemand, isDemandSatisfiedByAv
 const { filterPathsByWorldSnapshot } = require('./filterByWorld');
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN');
 const plan = require('../planner');
+const { getGenericWoodEnabled } = require('../utils/config');
 
 function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
     const perGenerator = Number.isFinite(options.perGenerator) ? options.perGenerator : 50;
@@ -10,7 +11,10 @@ function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
     const tree = plan(mcData, itemName, targetCount, { inventory: options.inventory, log: options.log });
     const candidates = generateTopNPathsFromGenerators(tree, options, perGenerator);
     if (!snapshot) return candidates;
-    return filterPathsByWorldSnapshot(candidates, snapshot);
+    const cfgEnabled = options && options.config && typeof options.config.genericWoodEnabled === 'boolean' ? options.config.genericWoodEnabled : undefined;
+    const effectiveEnabled = (typeof cfgEnabled === 'boolean') ? cfgEnabled : getGenericWoodEnabled();
+    const disableGenericWood = options.disableGenericWood === true ? true : !effectiveEnabled;
+    return filterPathsByWorldSnapshot(candidates, snapshot, { disableGenericWood });
 }
 
 module.exports = {

@@ -30,6 +30,20 @@ describe('integration: cherry_stairs generic vs species-specific wood', () => {
         const hasCherryStairs = paths.some(({ raw }) => raw.some(step => step.action === 'craft' && step.result?.item === 'cherry_stairs' && (step.ingredients || []).some(i => renderName(i.item, i.meta) === 'cherry_planks')));
         expect(hasCherryStairs).toBe(true);
     });
+
+    test('disabling generic wood avoids generic_planks in crafting_table steps', () => {
+        const { setGenericWoodEnabled } = require('../../utils/config');
+        const prev = require('../../utils/config').getGenericWoodEnabled();
+        try {
+            setGenericWoodEnabled(false);
+            const tree = analyzeRecipes(mcData, 'cherry_stairs', 1, { log: false, inventory: {} });
+            const paths = Array.from(enumerateShortestPathsGenerator(tree, { inventory: {} }));
+            const hasGenericTable = paths.some(raw => raw.some(step => step.action === 'craft' && step.result?.item === 'crafting_table' && (step.ingredients || []).some(i => renderName(i.item, i.meta) === 'generic_planks')));
+            expect(hasGenericTable).toBe(false);
+        } finally {
+            setGenericWoodEnabled(prev);
+        }
+    });
 });
 
 

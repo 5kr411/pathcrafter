@@ -1,6 +1,7 @@
 const { getTargetItemNameGlobal, getLastMcData } = require('./context');
 const { getSuffixTokenFromName } = require('./items');
 const { genericizeItemName } = require('./wood');
+const { getGenericWoodEnabled } = require('./config');
 
 function renderName(name, meta) {
     if (!name) return name;
@@ -14,6 +15,7 @@ function renderName(name, meta) {
         return name;
     }
     if (meta && meta.generic) {
+        if (!getGenericWoodEnabled()) return name;
         const base = getSuffixTokenFromName(name);
         return `generic_${base}`;
     }
