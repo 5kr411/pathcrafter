@@ -175,7 +175,7 @@ function create(bot, step) {
 
     let breakFinishTime;
 	let collectStartTime;
-	const COLLECT_TIMEOUT_MS = 2000;
+	const COLLECT_TIMEOUT_MS = 1000;
 	const t4 = new StateTransition({
         name: 'craft-table: break -> get-drop',
         parent: breakTable,
@@ -202,12 +202,16 @@ function create(bot, step) {
 		}
 	});
 
-    const t5 = new StateTransition({
+	const t5 = new StateTransition({
         name: 'craft-table: get-drop -> follow-drop',
         parent: getDrop,
         child: followDrop,
-        shouldTransition: () => collectTargets.entity !== null,
-        onTransition: () => {
+		shouldTransition: () => {
+			const e = collectTargets.entity;
+			return !!(e && e.position && Number.isFinite(e.position.x) && Number.isFinite(e.position.y) && Number.isFinite(e.position.z));
+		},
+		onTransition: () => {
+			followStartTime = Date.now();
             const pos = collectTargets.entity && collectTargets.entity.position;
             console.log('BehaviorGenerator(craft-table): get-drop -> follow-drop', pos);
         }
@@ -245,7 +249,31 @@ function create(bot, step) {
         }
     });
 
-	return new NestedStateMachine([t1, tEquipToPlace, t2, t3, tBreakDirectExit, t4, t5b, t5, t6], enter, exit);
+	let followStartTime;
+	const FOLLOW_TIMEOUT_MS = 10000;
+	const t6b = new StateTransition({
+		name: 'craft-table: follow-drop -> exit (timeout/lost)',
+		parent: followDrop,
+		child: exit,
+		shouldTransition: () => {
+			const timedOut = followStartTime ? (Date.now() - followStartTime > FOLLOW_TIMEOUT_MS) : false;
+			const e = collectTargets.entity;
+			const invalid = !e || !e.position || !Number.isFinite(e.position.x) || !Number.isFinite(e.position.y) || !Number.isFinite(e.position.z);
+			return timedOut || invalid;
+		},
+		onTransition: () => {
+			const timedOut = followStartTime ? (Date.now() - followStartTime > FOLLOW_TIMEOUT_MS) : false;
+			const e = collectTargets.entity;
+			const invalid = !e || !e.position || !Number.isFinite(e.position.x) || !Number.isFinite(e.position.y) || !Number.isFinite(e.position.z);
+			if (timedOut) {
+				console.log('BehaviorGenerator(craft-table): follow-drop -> exit (timeout)');
+			} else if (invalid) {
+				console.log('BehaviorGenerator(craft-table): follow-drop -> exit (lost/invalid entity)');
+			}
+		}
+	});
+
+	return new NestedStateMachine([t1, tEquipToPlace, t2, t3, tBreakDirectExit, t4, t5b, t5, t6, t6b], enter, exit);
 }
 
 module.exports = { canHandle, computeTargetsForCraftInTable, create };
