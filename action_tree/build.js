@@ -3,6 +3,14 @@ const { chooseMinimalToolName, getSuffixTokenFromName } = require('../utils/item
 const { extractSpeciesPrefix, baseHasMultipleWoodSpecies } = require('../utils/wood');
 const { renderName } = require('../utils/render');
 const { makeSupplyFromInventory, mapToInventoryObject } = require('../utils/inventory');
+function mapToPersistentInventoryObject(map) {
+    const o = {};
+    if (!map) return o;
+    for (const [k, v] of map.entries()) {
+        if (v > 0 && isPersistentItemName(k)) o[k] = v;
+    }
+    return o;
+}
 const fs = require('fs');
 const path = require('path');
 const { isPersistentItemName } = require('../utils/persistence');
@@ -191,6 +199,8 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             .sort((a, b) => a.missingTotal - b.missingTotal || (b.recipe.result.count - a.recipe.result.count))
             .map(s => s.recipe);
     } catch (_) { /* keep original ordering on scoring failure */ }
+
+    // Do not filter to a single minimal-missing variant; keep all as fallbacks to avoid dead ends
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
         const ingredientCounts = getIngredientCounts(recipe);
@@ -208,7 +218,18 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             children: []
         };
         const recipeInv = new Map(invMap);
-        Array.from(ingredientCounts.entries()).sort(([a], [b]) => a - b).forEach(([ingredientId, count]) => {
+        // Prefer to satisfy ingredients we already have (lower missing amount) first
+        const plannedOrder = Array.from(ingredientCounts.entries())
+            .map(([ingredientId, count]) => {
+                const ingredientItem = mcData.items[ingredientId];
+                const ingNameAlloc = ingredientItem ? ingredientItem.name : null;
+                const totalNeeded = count * craftingsNeeded;
+                const haveIngSnapshot = invMap ? (invMap.get(ingNameAlloc) || 0) : 0;
+                const missingSnapshot = Math.max(0, totalNeeded - haveIngSnapshot);
+                return { ingredientId, count, missingSnapshot, totalNeeded };
+            })
+            .sort((a, b) => a.missingSnapshot - b.missingSnapshot || a.totalNeeded - b.totalNeeded);
+        plannedOrder.forEach(({ ingredientId, count }) => {
             const ingredientItem = mcData.items[ingredientId]; if (!ingredientItem) return;
             const ingNameAlloc = ingredientItem.name; const totalNeeded = count * craftingsNeeded; let neededAfterInv = totalNeeded;
             if (recipeInv && recipeInv.size > 0 && totalNeeded > 0) { const haveIng = recipeInv.get(ingNameAlloc) || 0; if (haveIng > 0) { const take = Math.min(haveIng, totalNeeded); recipeInv.set(ingNameAlloc, haveIng - take); neededAfterInv -= take; } }
