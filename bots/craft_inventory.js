@@ -71,10 +71,15 @@ bot.once('spawn', () => {
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') setTimeout(() => startTransition.trigger(), 0)
-    const parts = message.split(' ')
-    if (parts[0] === 'item' && parts[1]) targets.itemName = parts[1]
-    if (parts[0] === 'amount' && parts[1]) targets.amount = parseInt(parts[1])
+    const parts = message.trim().split(/\s+/)
+    if (parts[0] === 'craft') {
+      if (parts[1]) targets.itemName = parts[1]
+      if (parts[2]) {
+        const n = parseInt(parts[2])
+        if (!Number.isNaN(n)) targets.amount = n
+      }
+      setTimeout(() => startTransition.trigger(), 0)
+    }
   })
 
   new BotStateMachine(bot, root)

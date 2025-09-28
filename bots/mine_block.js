@@ -69,13 +69,19 @@ bot.once('spawn', () => {
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') {
+    const parts = message.trim().split(/\s+/)
+    if (parts[0] === 'mine') {
+      if (parts[1]) {
+        targets.blockName = parts[1]
+        // Default drop target to the block name unless an explicit third token is provided later
+        if (!targets.itemName) targets.itemName = parts[1]
+      }
+      if (parts[2]) {
+        const n = parseInt(parts[2])
+        if (!Number.isNaN(n)) targets.amount = n
+      }
       setTimeout(() => startTransition.trigger(), 0)
     }
-    const parts = message.split(' ')
-    if (parts[0] === 'block' && parts[1]) targets.blockName = parts[1]
-    if (parts[0] === 'item' && parts[1]) targets.itemName = parts[1]
-    if (parts[0] === 'amount' && parts[1]) targets.amount = parseInt(parts[1])
   })
 
   new BotStateMachine(bot, root)
