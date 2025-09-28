@@ -88,7 +88,11 @@ bot.once('spawn', () => {
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') startTransition.trigger()
+    if (message.trim() === 'go') {
+      // Allow re-trigger by resetting via a short exit->enter bounce
+      transitions.push(new StateTransition({ name: 'craft-table: exit -> enter (adhoc)', parent: exit, child: enter, shouldTransition: () => true }))
+      startTransition.trigger()
+    }
     const parts = message.split(' ')
     if (parts[0] === 'item' && parts[1]) craftTargets.itemName = parts[1]
     if (parts[0] === 'amount' && parts[1]) craftTargets.amount = parseInt(parts[1])

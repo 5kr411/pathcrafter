@@ -54,14 +54,27 @@ bot.once('spawn', () => {
     }
   })
 
-  const transitions = [startTransition, craftToExit]
+  const exitToEnter = new StateTransition({
+    name: 'craft-inventory: exit -> enter',
+    parent: exit,
+    child: enter,
+    shouldTransition: () => false,
+    onTransition: () => {
+      // reset/keep targets as-is; next startTransition will (re)use them
+    }
+  })
+
+  const transitions = [startTransition, craftToExit, exitToEnter]
   const root = new NestedStateMachine(transitions, enter)
   root.name = 'craft_inventory_root'
 
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') startTransition.trigger()
+    if (message.trim() === 'go') {
+      exitToEnter.trigger()
+      startTransition.trigger()
+    }
     const parts = message.split(' ')
     if (parts[0] === 'item' && parts[1]) targets.itemName = parts[1]
     if (parts[0] === 'amount' && parts[1]) targets.amount = parseInt(parts[1])

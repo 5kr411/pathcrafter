@@ -55,14 +55,24 @@ bot.once('spawn', () => {
     }
   })
 
-  const transitions = [startTransition, collectToExit]
+  const exitToEnter = new StateTransition({
+    name: 'mine-block: exit -> enter',
+    parent: exit,
+    child: enter,
+    shouldTransition: () => false
+  })
+
+  const transitions = [startTransition, collectToExit, exitToEnter]
   const root = new NestedStateMachine(transitions, enter)
   root.name = 'mine_block_root'
 
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') startTransition.trigger()
+    if (message.trim() === 'go') {
+      exitToEnter.trigger()
+      startTransition.trigger()
+    }
     const parts = message.split(' ')
     if (parts[0] === 'block' && parts[1]) targets.blockName = parts[1]
     if (parts[0] === 'item' && parts[1]) targets.itemName = parts[1]
