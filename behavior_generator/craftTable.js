@@ -1,5 +1,16 @@
+const {
+    StateTransition,
+    BehaviorIdle,
+    NestedStateMachine,
+    BehaviorEquipItem,
+    BehaviorGetClosestEntity,
+    BehaviorFollowEntity
+} = require('mineflayer-statemachine')
+
+const { getItemCountInInventory } = require('../util')
+
 const createPlaceNearState = require('../behaviors/behaviorPlaceNear');
-const createCraftWithTableState = require('../behaviors/behaviorCraftWithTable');
+const createCraftWithTableIfNeeded = require('../behaviors/behaviorCraftWithTableIfNeeded');
 const createBreakAtPositionState = require('../behaviors/behaviorBreakAtPosition');
 
 function canHandle(step) {
@@ -20,23 +31,34 @@ function create(bot, step) {
     const targets = computeTargetsForCraftInTable(step);
     if (!targets) return null;
 
-    // Place crafting_table near bot first
-    const placeTargets = { item: { name: 'crafting_table' } };
+    const enter = new BehaviorIdle();
+    const exit = new BehaviorIdle();
+
+    // Equip crafting_table first, then place near bot
+    const equipTargets = { item: null };
+    try {
+        const invItem = bot.inventory?.items?.().find(it => it && it.name === 'crafting_table');
+        if (invItem) equipTargets.item = invItem;
+    } catch (_) {}
+
+    const equip = new BehaviorEquipItem(bot, equipTargets);
+
+    const placeTargets = { item: equipTargets.item };
     let placeTable;
     try {
         placeTable = createPlaceNearState(bot, placeTargets);
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): place state unavailable, using no-op')
+        console.log('BehaviorGenerator(craft-table): place state unavailable, using no-op');
         placeTable = { isFinished: () => true };
     }
 
-    // Craft with table once present
+    // Craft with table (only if needed)
     const craftTargets = { itemName: targets.itemName, amount: targets.amount };
     let craftWithTable;
     try {
-        craftWithTable = createCraftWithTableState(bot, craftTargets);
+        craftWithTable = createCraftWithTableIfNeeded(bot, craftTargets);
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): craft state unavailable, using no-op')
+        console.log('BehaviorGenerator(craft-table): craft state unavailable, using no-op');
         craftWithTable = { isFinished: () => true };
     }
 
@@ -46,31 +68,123 @@ function create(bot, step) {
     try {
         breakTable = createBreakAtPositionState(bot, breakTargets);
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): break state unavailable, using no-op')
+        console.log('BehaviorGenerator(craft-table): break state unavailable, using no-op');
         breakTable = { isFinished: () => true };
     }
 
-    // Connect positions after placement
-    const seq = {
-        type: 'sequence',
-        states: [placeTable, craftWithTable, breakTable],
-        isFinished() {
-            return breakTable && typeof breakTable.isFinished === 'function' ? breakTable.isFinished() : true;
-        }
-    };
+    // Collect the dropped crafting table item nearby (small radius)
+    const collectTargets = { entity: null };
+    const startCount = getItemCountInInventory(bot, 'crafting_table');
+    const getDrop = new BehaviorGetClosestEntity(bot, collectTargets, (entity) => {
+        if (entity.displayName !== 'Item') return false;
+        if (!breakTargets.position) return entity.position.distanceTo(bot.entity.position) <= 3;
+        return entity.position.distanceTo(breakTargets.position) <= 3;
+    });
+    const followDrop = new BehaviorFollowEntity(bot, collectTargets);
 
-    // Provide a simple hook to propagate placed position to breaker
-    // Consumers can set break position using the placeTargets.placedPosition set by BehaviorPlaceNear
-    Object.defineProperty(seq, 'setBreakPositionFromPlace', {
-        value: function() {
+    // Transitions
+    let placeStartTime;
+    const t1 = new StateTransition({
+        name: 'craft-table: enter -> equip',
+        parent: enter,
+        child: equip,
+        shouldTransition: () => true,
+        onTransition: () => {
+            console.log('BehaviorGenerator(craft-table): enter -> equip (crafting_table)');
+        }
+    });
+
+    const tEquipToPlace = new StateTransition({
+        name: 'craft-table: equip -> place',
+        parent: equip,
+        child: placeTable,
+        shouldTransition: () => true,
+        onTransition: () => {
+            placeStartTime = Date.now();
+            // If equipTargets.item was not resolved earlier, try again before placing
+            if (!placeTargets.item) {
+                try {
+                    const invItem = bot.inventory?.items?.().find(it => it && it.name === 'crafting_table');
+                    if (invItem) placeTargets.item = invItem;
+                } catch (_) {}
+            }
+            console.log(`BehaviorGenerator(craft-table): equip -> place [${targets.itemName} x${targets.amount}]`);
+        }
+    });
+
+    const t2 = new StateTransition({
+        name: 'craft-table: place -> craft',
+        parent: placeTable,
+        child: craftWithTable,
+        shouldTransition: () => {
+            const done = typeof placeTable.isFinished === 'function' ? placeTable.isFinished() : true;
+            const timedOut = placeStartTime ? (Date.now() - placeStartTime > 3000) : false;
+            return done || timedOut;
+        },
+        onTransition: () => {
+            const timedOut = placeStartTime ? (Date.now() - placeStartTime > 3000) : false;
             if (placeTargets && placeTargets.placedPosition) {
                 breakTargets.position = placeTargets.placedPosition.clone();
-                console.log('BehaviorGenerator(craft-table): set break position from placed table')
+                console.log('BehaviorGenerator(craft-table): place -> craft (placed table detected)');
+            } else if (timedOut) {
+                console.log('BehaviorGenerator(craft-table): place -> craft (timeout)');
+            } else {
+                console.log('BehaviorGenerator(craft-table): place -> craft');
             }
         }
     });
 
-    return seq;
+    const t3 = new StateTransition({
+        name: 'craft-table: craft -> break',
+        parent: craftWithTable,
+        child: breakTable,
+        shouldTransition: () => typeof craftWithTable.isFinished === 'function' ? craftWithTable.isFinished() : true,
+        onTransition: () => {
+            console.log('BehaviorGenerator(craft-table): craft -> break');
+        }
+    });
+
+    let breakFinishTime;
+    const t4 = new StateTransition({
+        name: 'craft-table: break -> get-drop',
+        parent: breakTable,
+        child: getDrop,
+        shouldTransition: () => {
+            if (typeof breakTable.isFinished === 'function' && breakTable.isFinished() && !breakFinishTime) breakFinishTime = Date.now();
+            return breakFinishTime && (Date.now() - breakFinishTime > 200);
+        },
+        onTransition: () => {
+            console.log('BehaviorGenerator(craft-table): break -> get-drop');
+        }
+    });
+
+    const t5 = new StateTransition({
+        name: 'craft-table: get-drop -> follow-drop',
+        parent: getDrop,
+        child: followDrop,
+        shouldTransition: () => collectTargets.entity !== null,
+        onTransition: () => {
+            const pos = collectTargets.entity && collectTargets.entity.position;
+            console.log('BehaviorGenerator(craft-table): get-drop -> follow-drop', pos);
+        }
+    });
+
+    const t6 = new StateTransition({
+        name: 'craft-table: follow-drop -> exit',
+        parent: followDrop,
+        child: exit,
+        shouldTransition: () => {
+            const have = getItemCountInInventory(bot, 'crafting_table');
+            const close = typeof followDrop.distanceToTarget === 'function' ? followDrop.distanceToTarget() <= 0.75 : false;
+            return have > startCount || close;
+        },
+        onTransition: () => {
+            const have = getItemCountInInventory(bot, 'crafting_table');
+            console.log(`BehaviorGenerator(craft-table): follow-drop -> exit (${have - startCount} picked up)`);
+        }
+    });
+
+    return new NestedStateMachine([t1, tEquipToPlace, t2, t3, t4, t5, t6], enter, exit);
 }
 
 module.exports = { canHandle, computeTargetsForCraftInTable, create };

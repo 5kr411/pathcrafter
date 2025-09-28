@@ -126,7 +126,15 @@ const createCraftWithTableState = (bot, targets) => {
         name: 'BehaviorCraftWithTable: wait for craft -> exit',
         shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.amount || Date.now() - waitForCraftStartTime > 5000,
         onTransition: () => {
-            console.log('BehaviorCraftWithTable: wait for craft -> exit')
+            const have = getItemCountInInventory(bot, targets.itemName)
+            const timedOut = Date.now() - waitForCraftStartTime > 5000
+            if (have >= targets.amount) {
+                console.log(`BehaviorCraftWithTable: wait for craft -> exit (complete ${have}/${targets.amount})`)
+            } else if (timedOut) {
+                console.log(`BehaviorCraftWithTable: wait for craft -> exit (timeout ${have}/${targets.amount})`)
+            } else {
+                console.log('BehaviorCraftWithTable: wait for craft -> exit')
+            }
         }
     })
 
