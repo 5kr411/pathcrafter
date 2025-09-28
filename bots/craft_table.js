@@ -6,6 +6,7 @@ const {
   NestedStateMachine,
   BotStateMachine,
 } = require('mineflayer-statemachine')
+const { BehaviorEquipItem } = require('mineflayer-statemachine')
 
 const createPlaceNearState = require('../behaviors/behaviorPlaceNear')
 const createCraftWithTableState = require('../behaviors/behaviorCraftWithTable')
@@ -32,26 +33,43 @@ bot.once('spawn', () => {
 
   const enter = new BehaviorIdle()
   const placeTargets = { item: { name: 'crafting_table' } }
-  const place = new createPlaceNearState(bot, placeTargets)
+  const place = createPlaceNearState(bot, placeTargets)
 
   const craftTargets = {}
-  const craft = new createCraftWithTableState(bot, craftTargets)
+  const craft = createCraftWithTableState(bot, craftTargets)
 
   const breakTargets = {}
-  const breakBlock = new createBreakAtPositionState(bot, breakTargets)
+  const breakBlock = createBreakAtPositionState(bot, breakTargets)
 
   const exit = new BehaviorIdle()
 
+  const equipTargets = {}
+  const equip = new BehaviorEquipItem(bot, equipTargets)
+
   const startTransition = new StateTransition({
-    name: 'craft-table: enter -> place',
+    name: 'craft-table: enter -> equip',
     parent: enter,
-    child: place,
+    child: equip,
     shouldTransition: () => false,
     onTransition: () => {
       if (!craftTargets.itemName) craftTargets.itemName = 'wooden_pickaxe'
       if (!craftTargets.amount) craftTargets.amount = 1
+      const tableItem = bot.inventory.items().find(it => it.name === 'crafting_table')
+      if (tableItem) {
+        placeTargets.item = tableItem
+        equipTargets.item = tableItem
+      } else {
+        console.log('craft-table: no crafting_table in inventory to place')
+      }
       bot.chat(`Starting craft at table: ${craftTargets.amount} ${craftTargets.itemName}`)
     }
+  })
+
+  const equipToPlace = new StateTransition({
+    name: 'craft-table: equip -> place',
+    parent: equip,
+    child: place,
+    shouldTransition: () => true
   })
 
   const placeToCraft = new StateTransition({
@@ -88,7 +106,7 @@ bot.once('spawn', () => {
     shouldTransition: () => true
   })
 
-  const transitions = [startTransition, placeToCraft, craftToBreak, breakToExit, exitToEnter]
+  const transitions = [startTransition, equipToPlace, placeToCraft, craftToBreak, breakToExit, exitToEnter]
   const root = new NestedStateMachine(transitions, enter)
   root.name = 'craft_table_root'
 

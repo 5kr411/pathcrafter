@@ -29,7 +29,17 @@ bot.once('spawn', () => {
   const targets = {}
 
   const enter = new BehaviorIdle()
+  // Ensure defaults exist before constructing the collect behavior
+  if (!targets.blockName) targets.blockName = 'stone'
+  if (!targets.itemName) targets.itemName = 'cobblestone'
+  if (!targets.amount) targets.amount = 1
   const collect = new createCollectBlockState(bot, targets)
+  // Encourage movement: reduce pathfinder search radius a bit for responsiveness
+  try {
+    bot.pathfinder.searchRadius = 64
+    // Encourage basic movement options
+    bot.pathfinder.setMovements(new (require('mineflayer-pathfinder').Movements)(bot, require('minecraft-data')(bot.version)))
+  } catch (_) {}
   const exit = new BehaviorIdle()
 
   const startTransition = new StateTransition({
@@ -73,8 +83,8 @@ bot.once('spawn', () => {
     if (parts[0] === 'mine') {
       if (parts[1]) {
         targets.blockName = parts[1]
-        // Default drop target to the block name unless an explicit third token is provided later
-        if (!targets.itemName) targets.itemName = parts[1]
+        // Default drop target to the block name for e2e simplicity
+        targets.itemName = parts[1]
       }
       if (parts[2]) {
         const n = parseInt(parts[2])

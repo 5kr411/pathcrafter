@@ -9,7 +9,7 @@ const {
     BotStateMachine,
 } = require('mineflayer-statemachine')
 
-const createCollectItemState = require('./collectItemState')
+const createCollectItemState = require('../behaviors/behaviorCollectBlock')
 
 let botOptions = {
     host: 'localhost',
@@ -18,15 +18,12 @@ let botOptions = {
 }
 
 if (isMainThread) {
-    if (process.argv.length < 4 || process.argv.length > 6) {
-        console.log('Usage : node worker.js <host> <port> [<name>] [<password>]');
-        process.exit(1);
+    if (process.argv.length >= 4) {
+        botOptions.host = process.argv[2];
+        botOptions.port = parseInt(process.argv[3]);
+        if (process.argv[4]) botOptions.username = process.argv[4];
+        if (process.argv[5]) botOptions.password = process.argv[5];
     }
-
-    botOptions.host = process.argv[2];
-    botOptions.port = parseInt(process.argv[3]);
-    if (process.argv[4]) botOptions.username = process.argv[4];
-    if (process.argv[5]) botOptions.password = process.argv[5];
 } else if (workerData) {
     Object.assign(botOptions, {
         host: workerData.host,
@@ -53,6 +50,10 @@ async function main() {
 
         const enter = new BehaviorIdle()
 
+        if (!targets.itemName) targets.itemName = 'cobblestone'
+        if (!targets.amount) targets.amount = 1
+        if (!targets.blockName) targets.blockName = targets.itemName
+
         const collectItemState = createCollectItemState(bot, targets)
 
         const exit = new BehaviorIdle()
@@ -65,12 +66,9 @@ async function main() {
             shouldTransition: () => true,
             onTransition: () => {
                 console.log('worker: enter -> collect item')
-                if (!targets.itemName) {
-                    targets.itemName = 'gold_ingot'
-                }
-                if (!targets.amount) {
-                    targets.amount = 1
-                }
+                if (!targets.itemName) targets.itemName = 'cobblestone'
+                if (!targets.amount) targets.amount = 1
+                if (!targets.blockName) targets.blockName = targets.itemName
             }
         })
 
@@ -118,6 +116,7 @@ async function main() {
                 exitToEnter.trigger()
                 targets.itemName = parts[1]
                 targets.amount = parseInt(parts[2])
+                targets.blockName = targets.itemName
             }
         })
     })

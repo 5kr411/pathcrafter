@@ -21,7 +21,10 @@ const excludedPositionType = 'excludedPosition'
 
 function createCollectBlockState(bot, targets) {
     const mcData = minecraftData(bot.version)
-    const blockId = mcData.blocksByName[targets.blockName].id
+    let initialId = mcData.blocksByName[targets.blockName]?.id
+    try {
+        console.log(`BehaviorCollectBlock:init -> block=${targets.blockName}#${initialId}, item=${targets.itemName}, amount=${targets.amount}`)
+    } catch (_) {}
 
     const currentBlockCount = getItemCountInInventory(bot, targets.itemName)
 
@@ -32,18 +35,22 @@ function createCollectBlockState(bot, targets) {
     const enter = new BehaviorIdle()
 
     findBlock = new BehaviorFindBlock(bot, targets)
-    findBlock.blocks = [blockId]
+    if (initialId != null) findBlock.blocks = [initialId]
     findBlock.maxDistance = 64
 
     const findInteractPosition = new BehaviorFindInteractPosition(bot, targets)
 
     const goToBlock = new BehaviorMoveTo(bot, targets)
+    goToBlock.distance = 0.5
     goToBlock.movements.allow1by1towers = true
+    goToBlock.movements.canOpenDoors = true
+    goToBlock.movements.allowSprinting = true
+    goToBlock.movements.canDig = true
 
     const mineBlock = new BehaviorMineBlock(bot, targets)
 
     const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity) => {
-        return (entity.displayName === 'Item') && entity.position.distanceTo(bot.entity.position) < 6;
+        return (entity.displayName === 'Item') && entity.position.distanceTo(bot.entity.position) < 8;
     })
 
     const goToDrop = new BehaviorFollowEntity(bot, targets)
@@ -56,7 +63,13 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: enter -> find block',
         shouldTransition: () => collectedCount() < targets.amount,
         onTransition: () => {
-            console.log('BehaviorCollectBlock: enter -> find block')
+            try {
+                const currentId = mcData.blocksByName[targets.blockName]?.id
+                if (currentId != null) findBlock.blocks = [currentId]
+                console.log(`BehaviorCollectBlock: enter -> find block (target=${targets.blockName}#${currentId})`)
+            } catch (_) {
+                console.log('BehaviorCollectBlock: enter -> find block')
+            }
         }
     })
 
@@ -81,12 +94,14 @@ function createCollectBlockState(bot, targets) {
         }
     })
 
+    let moveStartTime
     const findInteractPositionToGoToBlock = new StateTransition({
         parent: findInteractPosition,
         child: goToBlock,
         name: 'BehaviorCollectBlock: find interact position -> go to block',
         shouldTransition: () => true,
         onTransition: () => {
+            moveStartTime = Date.now()
             if (targets.blockPosition) {
                 if (!isMainThread && parentPort) {
                     parentPort.postMessage({ from: workerData.username, type: excludedPositionType, data: targets.blockPosition });
@@ -94,7 +109,16 @@ function createCollectBlockState(bot, targets) {
                 } else {
                     console.log('BehaviorCollectBlock: Found block position (main thread): ', targets.blockPosition);
                 }
-                findBlock.addExcludedPosition(targets.blockPosition)
+                if (findBlock && typeof findBlock.addExcludedPosition === 'function') {
+                    findBlock.addExcludedPosition(targets.blockPosition)
+                }
+                // Ensure movement has a clear goal even if interact position is unavailable
+                if (!targets.position) {
+                    targets.position = targets.blockPosition
+                }
+                try {
+                    console.log('BehaviorCollectBlock: moving towards position ', targets.position)
+                } catch (_) {}
                 console.log('BehaviorCollectBlock: find interact position -> go to block')
             }
         }
@@ -134,7 +158,13 @@ function createCollectBlockState(bot, targets) {
         },
         onTransition: () => {
             mineBlockFinishTime = undefined
-            console.log('BehaviorCollectBlock: mine block -> find drop')
+            try {
+                const t = targets.blockPosition
+                const type = t ? bot.world.getBlockType(t) : undefined
+                console.log('BehaviorCollectBlock: mine block -> find drop (post-mine blockType=', type, ')')
+            } catch (_) {
+                console.log('BehaviorCollectBlock: mine block -> find drop')
+            }
         }
     })
 
@@ -146,7 +176,13 @@ function createCollectBlockState(bot, targets) {
         shouldTransition: () => targets.entity !== null,
         onTransition: () => {
             goToBlockStartTime = Date.now()
-            console.log('BehaviorCollectBlock: find drop -> go to drop')
+            try {
+                const pos = targets.entity && targets.entity.position
+                const dist = pos ? pos.distanceTo(bot.entity.position).toFixed(2) : 'n/a'
+                console.log('BehaviorCollectBlock: find drop -> go to drop at', pos, 'dist', dist)
+            } catch (_) {
+                console.log('BehaviorCollectBlock: find drop -> go to drop')
+            }
         }
     })
 
@@ -156,7 +192,12 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: find drop -> find block',
         shouldTransition: () => targets.entity === null,
         onTransition: () => {
-            console.log('BehaviorCollectBlock: find drop -> find block')
+            try {
+                const items = Object.values(bot.entities || {}).filter(e => e.displayName === 'Item')
+                console.log('BehaviorCollectBlock: find drop -> find block (no nearby items). Nearby items count=', items.length)
+            } catch (_) {
+                console.log('BehaviorCollectBlock: find drop -> find block')
+            }
         }
     })
 
