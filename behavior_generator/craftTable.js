@@ -26,6 +26,7 @@ function create(bot, step) {
     try {
         placeTable = createPlaceNearState(bot, placeTargets);
     } catch (_) {
+        console.log('BehaviorGenerator(craft-table): place state unavailable, using no-op')
         placeTable = { isFinished: () => true };
     }
 
@@ -35,6 +36,7 @@ function create(bot, step) {
     try {
         craftWithTable = createCraftWithTableState(bot, craftTargets);
     } catch (_) {
+        console.log('BehaviorGenerator(craft-table): craft state unavailable, using no-op')
         craftWithTable = { isFinished: () => true };
     }
 
@@ -44,6 +46,7 @@ function create(bot, step) {
     try {
         breakTable = createBreakAtPositionState(bot, breakTargets);
     } catch (_) {
+        console.log('BehaviorGenerator(craft-table): break state unavailable, using no-op')
         breakTable = { isFinished: () => true };
     }
 
@@ -62,6 +65,7 @@ function create(bot, step) {
         value: function() {
             if (placeTargets && placeTargets.placedPosition) {
                 breakTargets.position = placeTargets.placedPosition.clone();
+                console.log('BehaviorGenerator(craft-table): set break position from placed table')
             }
         }
     });

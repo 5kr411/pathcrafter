@@ -19,8 +19,10 @@ function create(bot, step) {
     if (!t) return null;
     const targets = { itemName: t.itemName, amount: t.amount, blockName: t.blockName };
     try {
+        console.log(`BehaviorGenerator(mine): targets -> block=${targets.blockName}, item=${targets.itemName}, amount=${targets.amount}`)
         return createCollectBlockState(bot, targets);
     } catch (_) {
+        console.log('BehaviorGenerator(mine): falling back to no-op behavior in test context')
         return { isFinished: () => true };
     }
 }

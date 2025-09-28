@@ -16,12 +16,23 @@ function createBreakAtPositionState(bot, targets) {
     const mine = new BehaviorMineBlock(bot, targets)
     const exit = new BehaviorIdle()
 
+    const enterToExit = new StateTransition({
+        name: 'BehaviorBreakAtPosition: enter -> exit',
+        parent: enter,
+        child: exit,
+        shouldTransition: () => targets.position == null,
+        onTransition: () => {
+            console.log('BehaviorBreakAtPosition: enter -> exit: position is null')
+        }
+    })
+
     const enterToFind = new StateTransition({
         name: 'BehaviorBreakAtPosition: enter -> find',
         parent: enter,
         child: findInteract,
         shouldTransition: () => targets.position != null,
         onTransition: () => {
+            console.log('BehaviorBreakAtPosition: enter -> find')
             targets.blockPosition = targets.position;
         }
     })
@@ -30,15 +41,21 @@ function createBreakAtPositionState(bot, targets) {
         name: 'BehaviorBreakAtPosition: find -> move',
         parent: findInteract,
         child: moveTo,
-        shouldTransition: () => true
+        shouldTransition: () => true,
+        onTransition: () => {
+            console.log('BehaviorBreakAtPosition: find -> move')
+        }
     })
 
+    let moveStartTime
     const moveToMine = new StateTransition({
         name: 'BehaviorBreakAtPosition: move -> mine',
         parent: moveTo,
         child: mine,
         shouldTransition: () => moveTo.isFinished() && moveTo.distanceToTarget() < 6,
         onTransition: () => {
+            moveStartTime = Date.now()
+            console.log('BehaviorBreakAtPosition: move -> mine')
             targets.position = targets.blockPosition;
         }
     })
@@ -51,10 +68,14 @@ function createBreakAtPositionState(bot, targets) {
         shouldTransition: () => {
             if (mine.isFinished && !mineFinishTime) mineFinishTime = Date.now();
             return Date.now() - mineFinishTime > 500;
+        },
+        onTransition: () => {
+            const moveDuration = moveStartTime ? (Date.now() - moveStartTime) : 0
+            console.log(`BehaviorBreakAtPosition: mine -> exit (move took ${moveDuration}ms)`)            
         }
     })
 
-    const transitions = [enterToFind, findToMove, moveToMine, mineToExit]
+    const transitions = [enterToExit, enterToFind, findToMove, moveToMine, mineToExit]
     return new NestedStateMachine(transitions, enter, exit)
 }
 
