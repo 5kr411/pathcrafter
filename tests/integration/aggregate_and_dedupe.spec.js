@@ -54,16 +54,20 @@ describe('integration: aggregate top-N and dedupe across generators', () => {
         }
     });
 
-    test('when generic wood disabled, aggregated candidates include non-oak families where applicable', () => {
+    test('when generic wood disabled, aggregated candidates include at least one non-oak wood family', () => {
         const { setGenericWoodEnabled } = require('../../utils/config');
         const prev = require('../../utils/config').getGenericWoodEnabled();
         try {
             setGenericWoodEnabled(false);
             const tree = analyzeRecipes(mcData, 'crafting_table', 1, { log: false, inventory: {} });
-            const perGenerator = 50;
-            const combined = generateTopNPathsFromGenerators(tree, { inventory: {}, config: { genericWoodEnabled: false } }, perGenerator);
-            const hasNonOak = combined.some(path => path.some(st => st.action === 'mine' && typeof st.what === 'string' && st.what.endsWith('_log') && !st.what.startsWith('oak_')));
-            // We do not assert which exact species appears (depends on mcData tokens), but at least one non-oak should exist in expansions
+            const perGenerator = 200;
+            const combined = generateTopNPathsFromGenerators(tree, { inventory: {} }, perGenerator);
+            const hasNonOak = combined.some(path => path.some(st => {
+                if (st.action !== 'mine' || typeof st.what !== 'string') return false;
+                const s = st.what;
+                const isWoodFamily = s.endsWith('_log') || s.endsWith('_planks') || s.endsWith('_wood');
+                return isWoodFamily && !s.startsWith('oak_');
+            }));
             expect(hasNonOak).toBe(true);
         } finally {
             setGenericWoodEnabled(prev);

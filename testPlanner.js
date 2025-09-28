@@ -9,12 +9,12 @@ const { generateTopNPathsFromGenerators } = require('./path_generators/generateT
 
 // Project-wide config for this demo run
 const mcData = resolveMcData('1.20.1');
-const plannerConfig = { genericWoodEnabled: false };
+const plannerConfig = { genericWoodEnabled: true };
 setGenericWoodEnabled(plannerConfig.genericWoodEnabled);
 
-const item = 'crafting_table';
+const item = 'raw_iron';
 const count = 1;
-const inventory = { /*cobblestone: 2, stick: 2, crafting_table: 1 */ };
+const inventory = { cobblestone: 2, stick: 2, crafting_table: 1 };
 console.log(`Analyzing target item: ${item} x${count}`);
 console.log(`\nUsing inventory: ${JSON.stringify(inventory)}`);
 const tree = plan(mcData, item, count, { log: false, inventory });
@@ -54,7 +54,7 @@ let pathsToLog = 10;
 //     if (k >= pathsToLog) break;
 // }
 
-const perGenerator = 20;
+const perGenerator = 10000;
 const aggregated = generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
 console.log(`\nAggregated top ${perGenerator} per generator (deduped and weight-ordered), count=${aggregated.length}:`);
 let m = 0;

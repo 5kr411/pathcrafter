@@ -1,6 +1,7 @@
 const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 const { chooseMinimalToolName, getSuffixTokenFromName } = require('../utils/items');
 const { extractSpeciesPrefix, baseHasMultipleWoodSpecies } = require('../utils/wood');
+const { getWoodSpeciesTokens } = require('../utils/context');
 const { getGenericWoodEnabled, getGenericWoodEnabled: _gwe } = require('../utils/config');
 const { renderName } = require('../utils/render');
 const { makeSupplyFromInventory, mapToInventoryObject } = require('../utils/inventory');
@@ -262,8 +263,24 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 const genericAllowed = getGenericWoodEnabled();
                 let selectedSpecies = null; if (resultSpecies && isFamily) { const candidate = `${resultSpecies}_${base}`; if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies; }
                 const nextFamilyGenerics = new Set(familyGenericBases); if (genericAllowed && isFamily && !selectedSpecies && preferWoodFamilies) nextFamilyGenerics.add(base);
-                const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv) });
-                craftNode.children.push(ingredientTree);
+
+                if (!genericAllowed && isFamily && !selectedSpecies) {
+                    const tokens = getWoodSpeciesTokens && getWoodSpeciesTokens();
+                    const speciesList = tokens ? Array.from(tokens) : [];
+                    const orChildren = speciesList
+                        .map(sp => `${sp}_${base}`)
+                        .filter(n => !!mcData.itemsByName[n])
+                        .map(nameVariant => buildRecipeTree(mcData, nameVariant, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies: false, familyGenericBases: new Set(), inventory: mapToInventoryObject(recipeInv) }));
+                    if (orChildren.length > 0) {
+                        craftNode.children.push({ action: 'ingredient', operator: 'OR', what: base, count: neededAfterInv, children: orChildren });
+                    } else {
+                        const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv) });
+                        craftNode.children.push(ingredientTree);
+                    }
+                } else {
+                    const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv) });
+                    craftNode.children.push(ingredientTree);
+                }
             }
         });
 
