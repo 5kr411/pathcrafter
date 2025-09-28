@@ -14,7 +14,7 @@ describe('unit: behavior_generator craft-in-inventory mapping', () => {
 
     test('createBehaviorForStep returns null for unsupported action', () => {
         const bot = {};
-        const behavior = createBehaviorForStep(bot, { action: 'mine', what: 'stone', count: 1 });
+        const behavior = createBehaviorForStep(bot, { action: 'teleport', what: 'nowhere', count: 1 });
         expect(behavior).toBeNull();
     });
 
