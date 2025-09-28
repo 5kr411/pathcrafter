@@ -1,6 +1,6 @@
 const plan = require('../../planner');
 
-describe('Top-up scenarios prefer minimal additional mining', () => {
+describe('unit: Top-up scenarios prefer minimal additional mining', () => {
     const mc = plan._internals.resolveMcData('1.20.1');
     const { computeTreeMaxDepth, countActionPaths, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = plan._internals;
 

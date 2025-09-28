@@ -1,6 +1,6 @@
 const plan = require('../../planner');
 
-describe('raw_iron choice with stone_pickaxe in inventory', () => {
+describe('unit: raw_iron choice with stone_pickaxe in inventory', () => {
     const mc = plan._internals.resolveMcData('1.20.1');
     const { enumerateLowestWeightPathsGenerator, enumerateShortestPathsGenerator } = plan._internals;
 

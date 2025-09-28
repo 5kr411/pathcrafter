@@ -1,6 +1,6 @@
 const { dedupePaths, serializePath } = require('../../path_generators/generateTopN');
 
-describe('dedupePaths', () => {
+describe('unit: dedupePaths', () => {
     test('removes exact duplicate paths', () => {
         const p1 = [{ action: 'mine', what: 'stone', count: 1 }];
         const p2 = [{ action: 'mine', what: 'stone', count: 1 }];
