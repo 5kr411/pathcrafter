@@ -58,7 +58,7 @@ bot.once('spawn', () => {
     name: 'craft-inventory: exit -> enter',
     parent: exit,
     child: enter,
-    shouldTransition: () => false,
+    shouldTransition: () => true,
     onTransition: () => {
       // reset/keep targets as-is; next startTransition will (re)use them
     }
@@ -71,10 +71,7 @@ bot.once('spawn', () => {
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') {
-      exitToEnter.trigger()
-      startTransition.trigger()
-    }
+    if (message.trim() === 'go') setTimeout(() => startTransition.trigger(), 0)
     const parts = message.split(' ')
     if (parts[0] === 'item' && parts[1]) targets.itemName = parts[1]
     if (parts[0] === 'amount' && parts[1]) targets.amount = parseInt(parts[1])

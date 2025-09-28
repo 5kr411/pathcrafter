@@ -81,18 +81,21 @@ bot.once('spawn', () => {
     onTransition: () => bot.chat('Craft at table complete (and table recovered)')
   })
 
-  const transitions = [startTransition, placeToCraft, craftToBreak, breakToExit]
+  const exitToEnter = new StateTransition({
+    name: 'craft-table: exit -> enter',
+    parent: exit,
+    child: enter,
+    shouldTransition: () => true
+  })
+
+  const transitions = [startTransition, placeToCraft, craftToBreak, breakToExit, exitToEnter]
   const root = new NestedStateMachine(transitions, enter)
   root.name = 'craft_table_root'
 
   // Wire chat control: wait for "go"
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
-    if (message.trim() === 'go') {
-      // Allow re-trigger by resetting via a short exit->enter bounce
-      transitions.push(new StateTransition({ name: 'craft-table: exit -> enter (adhoc)', parent: exit, child: enter, shouldTransition: () => true }))
-      startTransition.trigger()
-    }
+    if (message.trim() === 'go') setTimeout(() => startTransition.trigger(), 0)
     const parts = message.split(' ')
     if (parts[0] === 'item' && parts[1]) craftTargets.itemName = parts[1]
     if (parts[0] === 'amount' && parts[1]) craftTargets.amount = parseInt(parts[1])

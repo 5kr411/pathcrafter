@@ -59,7 +59,7 @@ bot.once('spawn', () => {
     name: 'mine-block: exit -> enter',
     parent: exit,
     child: enter,
-    shouldTransition: () => false
+    shouldTransition: () => true
   })
 
   const transitions = [startTransition, collectToExit, exitToEnter]
@@ -70,8 +70,7 @@ bot.once('spawn', () => {
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
     if (message.trim() === 'go') {
-      exitToEnter.trigger()
-      startTransition.trigger()
+      setTimeout(() => startTransition.trigger(), 0)
     }
     const parts = message.split(' ')
     if (parts[0] === 'block' && parts[1]) targets.blockName = parts[1]
