@@ -17,7 +17,8 @@ function safeExit(code) {
 bot.once('spawn', () => {
     setTimeout(() => {
         try {
-            const raw = captureRawWorldSnapshot(bot, { chunkRadius, includeAir: false });
+            const { getDefaultSnapshotChunkRadius } = require('./utils/config');
+            const raw = captureRawWorldSnapshot(bot, { chunkRadius: Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius(), includeAir: false });
             const dim = (bot.game && bot.game.dimension) ? String(bot.game.dimension).replace(/[^a-z0-9_\-]/gi, '_') : 'overworld';
             const outPath = `./world_snapshots/raw_${dim}_${Date.now()}.json`;
             saveSnapshotToFile(raw, outPath);

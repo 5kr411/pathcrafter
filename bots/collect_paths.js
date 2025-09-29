@@ -9,6 +9,14 @@ const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
 const { captureRawWorldSnapshot } = require('../utils/worldSnapshot')
 const { setGenericWoodEnabled } = require('../utils/config')
+// Centralized tunables for this bot. Adjust here.
+const RUNTIME = {
+  genericWoodEnabled: false,
+  pruneWithWorld: true,
+  perGenerator: 5000,
+  snapshotChunkRadius: 8
+}
+
 const { Worker } = require('worker_threads')
 const path = require('path')
 const { resolveWoodFlexibleName, resolveWithSnapshotFlexibleName } = require('../utils/woodRuntime')
@@ -35,10 +43,10 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions)
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
-let genericWoodEnabled = false
+// Apply runtime config
 
 bot.once('spawn', () => {
-  setGenericWoodEnabled(genericWoodEnabled)
+  setGenericWoodEnabled(RUNTIME.genericWoodEnabled)
   bot.chat('collector ready')
 
   let running = false
@@ -127,7 +135,7 @@ bot.once('spawn', () => {
 
     const version = bot.version || '1.20.1'
     const invObj = getInventoryObject(bot)
-    const snapshot = captureRawWorldSnapshot(bot, { chunkRadius: 8 })
+    const snapshot = captureRawWorldSnapshot(bot, { chunkRadius: RUNTIME.snapshotChunkRadius })
 
     const id = `${Date.now()}_${Math.random()}`
     ensureWorker()
@@ -140,8 +148,9 @@ bot.once('spawn', () => {
       count,
       inventory: invObj,
       snapshot,
-      perGenerator: 5000,
-      disableGenericWood: !genericWoodEnabled
+      perGenerator: RUNTIME.perGenerator,
+      disableGenericWood: !RUNTIME.genericWoodEnabled,
+      pruneWithWorld: RUNTIME.pruneWithWorld
     })
   })
 })

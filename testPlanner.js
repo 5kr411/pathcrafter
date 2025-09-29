@@ -4,6 +4,7 @@ const { setGenericWoodEnabled, getGenericWoodEnabled } = require('./utils/config
 const fs = require('fs');
 const path = require('path');
 const { filterPathsByWorldSnapshot, generateTopNAndFilter } = require('./path_filters');
+const { getDefaultPerGeneratorPaths, getPruneWithWorldEnabled } = require('./utils/config');
 const { hoistMiningInPaths } = require('./path_optimizations/hoistMining');
 const { loadSnapshotFromFile } = require('./utils/worldSnapshot');
 const { generateTopNPathsFromGenerators } = require('./path_generators/generateTopN');
@@ -56,7 +57,7 @@ let pathsToLog = 10;
 //     if (k >= pathsToLog) break;
 // }
 
-const perGenerator = 10000;
+const perGenerator = getDefaultPerGeneratorPaths();
 const aggregatedRaw = generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
 const aggregated = hoistMiningInPaths(aggregatedRaw);
 
@@ -87,7 +88,7 @@ try {
             plan._internals.logActionPath(p);
         }
 
-        const filteredDirect = generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false, config: plannerConfig });
+        const filteredDirect = generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false, config: plannerConfig, pruneWithWorld: getPruneWithWorldEnabled() });
         console.log(`\nOne-shot generate+filter count=${filteredDirect.length}`);
     } else {
         console.log(`\nNo world snapshot files found in ${snapshotsDir}`);
