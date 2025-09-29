@@ -34,9 +34,10 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions)
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
+let genericWoodEnabled = true
 
 bot.once('spawn', () => {
-  setGenericWoodEnabled(false)
+  setGenericWoodEnabled(genericWoodEnabled)
   bot.chat('collector ready')
 
   let running = false
@@ -66,6 +67,14 @@ bot.once('spawn', () => {
       }
       const best = ranked[0]
       bot.chat(`executing plan with ${best.length} steps`)
+      try {
+        console.log('Collector: selected path:')
+        if (planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
+          planner._internals.logActionPath(best)
+        } else {
+          console.log(JSON.stringify(best))
+        }
+      } catch (_) {}
       const sm = buildStateMachineForPath(bot, best, () => { running = false; bot.chat('plan complete') })
       new BotStateMachine(bot, sm)
     })
@@ -111,7 +120,7 @@ bot.once('spawn', () => {
       inventory: invObj,
       snapshot,
       perGenerator: 5000,
-      disableGenericWood: true
+      disableGenericWood: !genericWoodEnabled
     })
   })
 })

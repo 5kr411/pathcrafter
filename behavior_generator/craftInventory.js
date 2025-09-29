@@ -1,4 +1,6 @@
 const createCraftNoTableState = require('../behaviors/behaviorCraftNoTable');
+const { resolveWoodFlexibleName } = require('../utils/woodRuntime');
+const minecraftData = require('minecraft-data');
 
 function canHandle(step) {
     return !!step && step.action === 'craft' && step.what === 'inventory';
@@ -16,6 +18,10 @@ function computeTargetsForCraftInInventory(step) {
 function create(bot, step) {
     const targets = computeTargetsForCraftInInventory(step);
     if (!targets) return null;
+    try {
+        const mcData = minecraftData(bot.version);
+        if (targets.itemName) targets.itemName = resolveWoodFlexibleName(bot, mcData, targets.itemName);
+    } catch (_) {}
     return createCraftNoTableState(bot, targets);
 }
 
