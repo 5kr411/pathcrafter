@@ -18,10 +18,17 @@ const createCraftWithTableState = (bot, targets) => {
             return false;
         }
 
-        const craftingTable = bot.findBlock({
-            matching: block => block.name === 'crafting_table',
-            maxDistance: 3
-        });
+        let craftingTable = null;
+        try {
+            // Prefer placed position if provided (from craftTable behavior)
+            if (targets && targets.placedPosition) {
+                const maybe = bot.blockAt(targets.placedPosition, false)
+                if (maybe && maybe.name === 'crafting_table') craftingTable = maybe
+            }
+        } catch (_) {}
+        if (!craftingTable) {
+            craftingTable = bot.findBlock({ matching: block => block.name === 'crafting_table', maxDistance: 4 });
+        }
 
         if (!craftingTable) {
             console.log(`BehaviorCraftWithTable: No crafting table within range`);

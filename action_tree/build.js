@@ -208,7 +208,15 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     function canConsumeWorld(kind, name, amount) {
         if (!worldBudget || amount <= 0) return true;
         const pool = worldBudget[kind]; if (!pool) return true;
-        const have = pool[name] || 0; return have >= amount;
+        const have = pool[name] || 0;
+        // Distance guard: ensure at least one instance is within threshold if provided
+        if (have > 0 && worldBudget && worldBudget[`${kind}Info`]) {
+            const info = worldBudget[`${kind}Info`][name];
+            const closest = info && Number.isFinite(info.closestDistance) ? info.closestDistance : Infinity;
+            const thresh = Number.isFinite(worldBudget.distanceThreshold) ? worldBudget.distanceThreshold : Infinity;
+            if (!(closest <= thresh)) return false;
+        }
+        return have >= amount;
     }
     function consumeWorld(kind, name, amount) {
         if (!worldBudget || amount <= 0) return;
@@ -319,9 +327,14 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                     const tokens = getWoodSpeciesTokens && getWoodSpeciesTokens();
                     const speciesList = tokens ? Array.from(tokens) : [];
                     const orChildren = speciesList
+                        // Only include species whose logs appear available in world when pruning is enabled
+                        .filter(sp => {
+                            if (!worldBudget) return true;
+                            return canConsumeWorld('blocks', `${sp}_log`, neededAfterInv);
+                        })
                         .map(sp => `${sp}_${base}`)
                         .filter(n => !!mcData.itemsByName[n])
-                        .map(nameVariant => buildRecipeTree(mcData, nameVariant, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies: false, familyGenericBases: new Set(), inventory: mapToInventoryObject(recipeInv) }));
+                        .map(nameVariant => buildRecipeTree(mcData, nameVariant, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies: false, familyGenericBases: new Set(), inventory: mapToInventoryObject(recipeInv), worldBudget }));
                     if (orChildren.length > 0) {
                         craftNode.children.push({ action: 'ingredient', operator: 'OR', what: base, count: neededAfterInv, children: orChildren });
                     } else {
@@ -366,11 +379,12 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const miningPaths = findBlocksThatDrop(mcData, itemName);
     if (miningPaths.length > 0) {
         // Check and reserve world availability across all sources for target
+        let allowMineGroup = true;
         if (worldBudget) {
             const names = miningPaths.map(s => s.block);
             const totalAvail = sumAvailable('blocks', names);
             if (!(totalAvail >= targetCount)) {
-                // Not enough in world to mine target at requested count; skip adding mining
+                allowMineGroup = false;
             } else {
                 reserveFromSources('blocks', names, targetCount);
             }
@@ -396,7 +410,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 }).filter(Boolean);
             })
         };
-        root.children.push(mineGroup);
+        if (allowMineGroup && mineGroup.children.length > 0) root.children.push(mineGroup);
     }
 
     const huntingPaths = findMobsThatDrop(mcData, itemName);

@@ -136,14 +136,23 @@ function create(bot, step) {
         name: 'craft-table: equip -> place',
         parent: equip,
         child: placeTable,
-        shouldTransition: () => (typeof equip.isFinished === 'function' ? equip.isFinished() : true) && !!placeTargets.item,
+        shouldTransition: () => {
+            // Refresh inventory lookup just-in-time
+            if (!placeTargets.item || !equipTargets.item) {
+                try {
+                    const invItem = bot.inventory?.items?.().find(it => it && it.name === 'crafting_table');
+                    if (invItem) { placeTargets.item = invItem; equipTargets.item = invItem; }
+                } catch (_) {}
+            }
+            return (typeof equip.isFinished === 'function' ? equip.isFinished() : true) && !!placeTargets.item;
+        },
         onTransition: () => {
             placeStartTime = Date.now();
             // If equipTargets.item was not resolved earlier, try again before placing
             if (!placeTargets.item) {
                 try {
                     const invItem = bot.inventory?.items?.().find(it => it && it.name === 'crafting_table');
-                    if (invItem) placeTargets.item = invItem;
+                    if (invItem) { placeTargets.item = invItem; equipTargets.item = invItem; }
                 } catch (_) {}
             }
             console.log(`BehaviorGenerator(craft-table): equip -> place [${targets.itemName} x${targets.amount}]`);
@@ -173,6 +182,8 @@ function create(bot, step) {
             const timedOut = placeStartTime ? (Date.now() - placeStartTime > 3000) : false;
             if (placeTargets && placeTargets.placedPosition) {
                 breakTargets.position = placeTargets.placedPosition.clone();
+                // Hint craft-with-table of the placed location for reliable table lookup
+                try { craftTargets.placedPosition = placeTargets.placedPosition.clone(); } catch (_) {}
                 console.log('BehaviorGenerator(craft-table): place -> craft (placed table detected)');
             } else if (timedOut) {
                 console.log('BehaviorGenerator(craft-table): place -> craft (timeout)');

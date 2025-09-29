@@ -40,11 +40,16 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
         if (options && options.pruneWithWorld === true && options.worldSnapshot && typeof options.worldSnapshot === 'object') {
             const snap = options.worldSnapshot;
             const blocks = {};
+            const blocksInfo = {};
             const entities = {};
+            const entitiesInfo = {};
+            const distanceThreshold = Number.isFinite(snap.maxDistance) ? snap.maxDistance : (Number.isFinite(snap.chunkRadius) ? ((snap.chunkRadius * 16) + 15) : Infinity);
             if (snap.blocks && typeof snap.blocks === 'object' && !Array.isArray(snap.blocks)) {
                 for (const name of Object.keys(snap.blocks)) {
                     const rec = snap.blocks[name];
                     const c = rec && Number.isFinite(rec.count) ? rec.count : 0;
+                    const d = rec && Number.isFinite(rec.closestDistance) ? rec.closestDistance : Infinity;
+                    blocksInfo[name] = { closestDistance: d };
                     if (c > 0) blocks[name] = c;
                 }
             }
@@ -52,10 +57,12 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
                 for (const name of Object.keys(snap.entities)) {
                     const rec = snap.entities[name];
                     const c = rec && Number.isFinite(rec.count) ? rec.count : 0;
+                    const d = rec && Number.isFinite(rec.closestDistance) ? rec.closestDistance : Infinity;
+                    entitiesInfo[name] = { closestDistance: d };
                     if (c > 0) entities[name] = c;
                 }
             }
-            worldBudget = { blocks, entities };
+            worldBudget = { blocks, blocksInfo, entities, entitiesInfo, distanceThreshold };
         }
     } catch (_) {}
     const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget });
