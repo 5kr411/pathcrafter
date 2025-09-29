@@ -70,7 +70,7 @@ bot.once('spawn', () => {
     const tree = planner(mcData, item, count, { inventory: invObj, log: false })
 
     // Generate candidate paths (top-N from multiple generators)
-    const perGenerator = 10000
+    const perGenerator = 5000
     const candidates = generateTopNPathsFromGenerators(tree, { inventory: invObj }, perGenerator)
 
     // Capture in-memory world snapshot (no disk IO) and filter

@@ -9,7 +9,8 @@ const {
     BehaviorFindBlock,
     BehaviorFindInteractPosition,
     BehaviorMoveTo,
-    BehaviorMineBlock,
+	BehaviorMineBlock,
+	BehaviorEquipItem,
 } = require('mineflayer-statemachine')
 
 const { getItemCountInInventory } = require('../util')
@@ -40,14 +41,36 @@ function createCollectBlockState(bot, targets) {
 
     const findInteractPosition = new BehaviorFindInteractPosition(bot, targets)
 
-    const goToBlock = new BehaviorMoveTo(bot, targets)
+	const goToBlock = new BehaviorMoveTo(bot, targets)
     goToBlock.distance = 0.5
     goToBlock.movements.allow1by1towers = true
     goToBlock.movements.canOpenDoors = true
     goToBlock.movements.allowSprinting = true
     goToBlock.movements.canDig = true
 
+	const equipTargets = { item: null }
+	const equipBestTool = new BehaviorEquipItem(bot, equipTargets)
+
     const mineBlock = new BehaviorMineBlock(bot, targets)
+	function pickBestToolItemForBlock(bot, blockName) {
+		try {
+			const blockInfo = mcData.blocksByName[blockName]
+			const items = bot.inventory?.items?.() || []
+			const allowed = blockInfo && blockInfo.harvestTools ? new Set(Object.keys(blockInfo.harvestTools).map(id => Number(id))) : null
+			if (!allowed || allowed.size === 0) return null
+			let best = null
+			let bestScore = -1
+			for (const it of items) {
+				if (!it || typeof it.type !== 'number') continue
+				if (!allowed.has(it.type)) continue
+				const meta = mcData.itemsById[it.type]
+				const score = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability : 0
+				if (score > bestScore) { best = it; bestScore = score }
+			}
+			return best
+		} catch (_) { return null }
+	}
+
 
     const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity) => {
         return (entity.displayName === 'Item') && entity.position.distanceTo(bot.entity.position) < 8;
@@ -124,16 +147,32 @@ function createCollectBlockState(bot, targets) {
         }
     })
 
-    const goToBlockToMineBlock = new StateTransition({
+	const goToBlockToEquip = new StateTransition({
         parent: goToBlock,
-        child: mineBlock,
-        name: 'BehaviorCollectBlock: go to block -> mine block',
+		child: equipBestTool,
+		name: 'BehaviorCollectBlock: go to block -> equip best tool',
         shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() < 6,
         onTransition: () => {
             targets.position = targets.blockPosition
-            console.log('BehaviorCollectBlock: go to block -> mine block')
+			try {
+				equipTargets.item = pickBestToolItemForBlock(bot, targets.blockName)
+				const chosen = equipTargets.item ? equipTargets.item.name : 'none'
+				console.log('BehaviorCollectBlock: go to block -> equip best tool', chosen)
+			} catch (_) {
+				console.log('BehaviorCollectBlock: go to block -> equip best tool')
+			}
         }
     })
+
+	const equipToMineBlock = new StateTransition({
+		parent: equipBestTool,
+		child: mineBlock,
+		name: 'BehaviorCollectBlock: equip best tool -> mine block',
+		shouldTransition: () => true,
+		onTransition: () => {
+			console.log('BehaviorCollectBlock: equip best tool -> mine block')
+		}
+	})
 
     const goToBlockToFindBlock = new StateTransition({
         parent: goToBlock,
@@ -227,7 +266,8 @@ function createCollectBlockState(bot, targets) {
         findBlockToExit,
         findBlockToFindInteractPosition,
         findInteractPositionToGoToBlock,
-        goToBlockToMineBlock,
+		goToBlockToEquip,
+		equipToMineBlock,
         goToBlockToFindBlock,
         mineBlockToFindDrop,
         findDropToGoToDrop,
