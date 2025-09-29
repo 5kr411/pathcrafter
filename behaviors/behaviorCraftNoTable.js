@@ -123,6 +123,8 @@ function createCraftNoTableState(bot, targets) {
     })
 
     let waitForCraftStartTime
+    let craftingDone = false
+    let craftingOk = false
     const enterToWaitForCraft = new StateTransition({
         parent: enter,
         child: waitForCraft,
@@ -131,7 +133,12 @@ function createCraftNoTableState(bot, targets) {
         onTransition: () => {
             waitForCraftStartTime = Date.now()
             console.log('BehaviorCraftNoTable: enter -> wait for craft')
-            craftItemNoTable(targets.itemName, targets.amount)
+            craftingDone = false
+            craftingOk = false
+            Promise.resolve()
+                .then(() => craftItemNoTable(targets.itemName, targets.amount))
+                .then(ok => { craftingOk = !!ok; craftingDone = true })
+                .catch(err => { console.log('BehaviorCraftNoTable: craft promise error', err); craftingOk = false; craftingDone = true })
         }
     })
 
@@ -139,9 +146,23 @@ function createCraftNoTableState(bot, targets) {
         parent: waitForCraft,
         child: exit,
         name: 'BehaviorCraftNoTable: wait for craft -> exit',
-        shouldTransition: () => getItemCountInInventory(bot, targets.itemName) >= targets.amount || Date.now() - waitForCraftStartTime > 5000,
+        shouldTransition: () => {
+            const have = getItemCountInInventory(bot, targets.itemName)
+            if (have >= targets.amount) return true
+            const timedOut = Date.now() - waitForCraftStartTime > 20000
+            if (timedOut) return true
+            return craftingDone
+        },
         onTransition: () => {
-            console.log('BehaviorCraftNoTable: wait for craft -> exit')
+            const have = getItemCountInInventory(bot, targets.itemName)
+            const timedOut = Date.now() - waitForCraftStartTime > 20000
+            if (have >= targets.amount) {
+                console.log(`BehaviorCraftNoTable: wait for craft -> exit (complete ${have}/${targets.amount})`)
+            } else if (timedOut) {
+                console.log(`BehaviorCraftNoTable: wait for craft -> exit (timeout ${have}/${targets.amount})`)
+            } else {
+                console.log(`BehaviorCraftNoTable: wait for craft -> exit (craftingDone=${craftingDone}, ok=${craftingOk})`)
+            }
         }
     })
 
