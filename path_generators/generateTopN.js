@@ -1,5 +1,6 @@
 const plan = require('../planner');
 const { computePathWeight } = require('../utils/pathUtils');
+const { computePathResourceDemand } = require('../path_filters/worldResources');
 const { Worker } = require('worker_threads');
 const path = require('path');
 
@@ -30,6 +31,7 @@ function dedupePaths(paths) {
 
 function generateTopNPathsFromGenerators(tree, options, perGenerator) {
     const inventory = options && options.inventory ? options.inventory : undefined;
+    const snapshot = options && options.worldSnapshot ? options.worldSnapshot : null;
     const all = [];
 
     // Run three enumerators in parallel workers
@@ -82,7 +84,36 @@ function generateTopNPathsFromGenerators(tree, options, perGenerator) {
         } catch (_) {}
     }
     const unique = dedupePaths(all);
-    unique.sort((a, b) => computePathWeight(a) - computePathWeight(b));
+
+    function distanceScore(path) {
+        try {
+            if (!snapshot || !snapshot.blocks || typeof snapshot.blocks !== 'object') return Number.POSITIVE_INFINITY;
+            const demand = computePathResourceDemand(path);
+            let totalWeighted = 0;
+            let totalCount = 0;
+            if (demand && demand.blocks && demand.blocks.forEach) {
+                demand.blocks.forEach((count, name) => {
+                    const rec = snapshot.blocks[name];
+                    const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
+                    if (avg != null) {
+                        totalWeighted += avg * Math.max(1, count || 1);
+                        totalCount += Math.max(1, count || 1);
+                    }
+                });
+            }
+            if (totalCount === 0) return Number.POSITIVE_INFINITY;
+            return totalWeighted / totalCount;
+        } catch (_) { return Number.POSITIVE_INFINITY; }
+    }
+
+    unique.sort((a, b) => {
+        const wa = computePathWeight(a);
+        const wb = computePathWeight(b);
+        if (wa !== wb) return wa - wb;
+        const da = distanceScore(a);
+        const db = distanceScore(b);
+        return da - db;
+    });
     return unique;
 }
 

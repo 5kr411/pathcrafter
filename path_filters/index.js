@@ -10,7 +10,7 @@ function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
     const mcData = plan._internals.resolveMcData(ctx);
     const pruneWithWorld = options.pruneWithWorld === true ? true : getPruneWithWorldEnabled();
     const tree = plan(mcData, itemName, targetCount, { inventory: options.inventory, log: options.log, pruneWithWorld, worldSnapshot: snapshot });
-    const candidates = generateTopNPathsFromGenerators(tree, options, perGenerator);
+    const candidates = generateTopNPathsFromGenerators(tree, { ...options, worldSnapshot: snapshot }, perGenerator);
     return hoistMiningInPaths(candidates);
 }
 

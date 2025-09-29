@@ -18,6 +18,18 @@ function createPlaceNearState(bot, targets) {
     moveToPlaceCoords.distance = 0.05
 
     const placeBlock = new BehaviorPlaceBlock(bot, targets)
+    // Ensure the held item matches targets.item before placing (wrap original handler safely)
+    const originalOnStateEntered = typeof placeBlock.onStateEntered === 'function' ? placeBlock.onStateEntered.bind(placeBlock) : null
+    placeBlock.onStateEntered = async () => {
+        try {
+            const need = targets && targets.item
+            const held = bot.heldItem
+            if (need && (!held || held.name !== need.name)) {
+                await bot.equip(need, 'hand')
+            }
+        } catch (_) {}
+        if (originalOnStateEntered) return originalOnStateEntered()
+    }
 
     const exit = new BehaviorIdle()
 

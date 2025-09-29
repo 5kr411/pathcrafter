@@ -36,7 +36,32 @@ parentPort.on('message', async (msg) => {
 
     const [a, s, l] = await Promise.all([runEnum('action'), runEnum('shortest'), runEnum('lowest')])
     const merged = dedupePaths([].concat(a, s, l))
-    merged.sort((x, y) => computePathWeight(x) - computePathWeight(y))
+    // Tie-break equal weight paths using average distance score if snapshot provided
+    if (snapshot && snapshot.blocks && typeof snapshot.blocks === 'object') {
+      const { computePathResourceDemand } = require('../path_filters/worldResources')
+      const { computePathWeight } = require('../utils/pathUtils')
+      function distScore(path) {
+        try {
+          const demand = computePathResourceDemand(path)
+          let total = 0, cnt = 0
+          if (demand && demand.blocks && demand.blocks.forEach) {
+            demand.blocks.forEach((need, name) => {
+              const rec = snapshot.blocks[name]
+              const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null
+              if (avg != null) { total += avg * Math.max(1, need || 1); cnt += Math.max(1, need || 1) }
+            })
+          }
+          return cnt > 0 ? (total / cnt) : Number.POSITIVE_INFINITY
+        } catch (_) { return Number.POSITIVE_INFINITY }
+      }
+      merged.sort((x, y) => {
+        const wx = computePathWeight(x), wy = computePathWeight(y)
+        if (wx !== wy) return wx - wy
+        return distScore(x) - distScore(y)
+      })
+    } else {
+      merged.sort((x, y) => computePathWeight(x) - computePathWeight(y))
+    }
     const ranked = hoistMiningInPaths(merged)
 
     parentPort.postMessage({ type: 'result', id, ok: true, ranked })

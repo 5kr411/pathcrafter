@@ -155,7 +155,7 @@ function create(bot, step) {
                     if (invItem) { placeTargets.item = invItem; equipTargets.item = invItem; }
                 } catch (_) {}
             }
-            console.log(`BehaviorGenerator(craft-table): equip -> place [${targets.itemName} x${targets.amount}]`);
+            console.log('BehaviorGenerator(craft-table): equip -> place [crafting_table]');
         }
     });
 
