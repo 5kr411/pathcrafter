@@ -34,7 +34,31 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
     }
     setCurrentSpeciesContext(ctxSpecies);
     const effectiveItemName = getGenericWoodEnabled() ? itemName : itemName;
-    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
+    // Optional world-pruning: derive world budget from snapshot summary
+    let worldBudget = null;
+    try {
+        if (options && options.pruneWithWorld === true && options.worldSnapshot && typeof options.worldSnapshot === 'object') {
+            const snap = options.worldSnapshot;
+            const blocks = {};
+            const entities = {};
+            if (snap.blocks && typeof snap.blocks === 'object' && !Array.isArray(snap.blocks)) {
+                for (const name of Object.keys(snap.blocks)) {
+                    const rec = snap.blocks[name];
+                    const c = rec && Number.isFinite(rec.count) ? rec.count : 0;
+                    if (c > 0) blocks[name] = c;
+                }
+            }
+            if (snap.entities && typeof snap.entities === 'object' && !Array.isArray(snap.entities)) {
+                for (const name of Object.keys(snap.entities)) {
+                    const rec = snap.entities[name];
+                    const c = rec && Number.isFinite(rec.count) ? rec.count : 0;
+                    if (c > 0) entities[name] = c;
+                }
+            }
+            worldBudget = { blocks, entities };
+        }
+    } catch (_) {}
+    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget });
     if (!options || options.log !== false) treeLogger.logActionTree(tree);
     return tree;
 }

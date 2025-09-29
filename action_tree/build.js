@@ -203,6 +203,42 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     } catch (_) { /* keep original ordering on scoring failure */ }
 
     // Do not filter to a single minimal-missing variant; keep all as fallbacks to avoid dead ends
+    const worldBudget = (context && context.worldBudget && typeof context.worldBudget === 'object') ? context.worldBudget : null;
+
+    function canConsumeWorld(kind, name, amount) {
+        if (!worldBudget || amount <= 0) return true;
+        const pool = worldBudget[kind]; if (!pool) return true;
+        const have = pool[name] || 0; return have >= amount;
+    }
+    function consumeWorld(kind, name, amount) {
+        if (!worldBudget || amount <= 0) return;
+        const pool = worldBudget[kind]; if (!pool) return;
+        const have = pool[name] || 0; pool[name] = Math.max(0, have - amount);
+    }
+    function sumAvailable(kind, names) {
+        if (!worldBudget) return Number.POSITIVE_INFINITY;
+        const pool = worldBudget[kind]; if (!pool) return Number.POSITIVE_INFINITY;
+        let sum = 0;
+        for (const n of names) sum += pool[n] || 0;
+        return sum;
+    }
+    function reserveFromSources(kind, names, amount) {
+        if (!worldBudget || amount <= 0) return 0;
+        const pool = worldBudget[kind]; if (!pool) return 0;
+        // Sort names by available descending to consume from richest first
+        const ordered = Array.from(new Set(names)).sort((a, b) => (pool[b] || 0) - (pool[a] || 0));
+        let remaining = amount;
+        for (const n of ordered) {
+            if (remaining <= 0) break;
+            const have = pool[n] || 0;
+            if (have <= 0) continue;
+            const take = Math.min(have, remaining);
+            pool[n] = have - take;
+            remaining -= take;
+        }
+        return amount - remaining;
+    }
+
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
         const ingredientCounts = getIngredientCounts(recipe);
@@ -242,6 +278,17 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 const sources = findBlocksThatDrop(mcData, ingredientItem.name);
                 if (sources.length > 0) {
                     const neededCount = neededAfterInv;
+                    // World pruning against total supply across all source blocks
+                    if (worldBudget) {
+                        const sourceNames = sources.map(s => s.block);
+                        const totalAvail = sumAvailable('blocks', sourceNames);
+                        if (!(totalAvail >= neededCount)) {
+                            // Not enough blocks in world for this ingredient; skip adding mining group
+                            return;
+                        }
+                        // Reserve now so subsequent ingredients see reduced availability
+                        reserveFromSources('blocks', sourceNames, neededCount);
+                    }
                     const miningGroup = {
                         action: 'mine', operator: 'OR', what: ingredientItem.name, count: neededCount, children: sources.flatMap(s => {
                             if (!s.tool || s.tool === 'any') { return [{ action: 'mine', what: s.block, targetItem: ingredientItem.name, count: neededCount, children: [] }]; }
@@ -250,10 +297,14 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                             const existing = tools.filter(t => recipeInv && (recipeInv.get(t) || 0) > 0);
                             if (existing.length > 0) {
                                 const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
+                                if (worldBudget && !canConsumeWorld('blocks', s.block, neededCount)) return [];
                                 return [{ action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: chosen, count: neededCount, children: [] }];
                             }
                             if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
-                            return tools.map(toolName => ({ action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInventoryObject(recipeInv) }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] }));
+                            return tools.map(toolName => {
+                                if (worldBudget && !canConsumeWorld('blocks', s.block, neededCount)) return null;
+                                return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInventoryObject(recipeInv), worldBudget }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] };
+                            }).filter(Boolean);
                         })
                     };
                     craftNode.children.push(miningGroup);
@@ -278,7 +329,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         craftNode.children.push(ingredientTree);
                     }
                 } else {
-                    const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv) });
+                    const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv), worldBudget });
                     craftNode.children.push(ingredientTree);
                 }
             }
@@ -303,9 +354,9 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             action: 'smelt', operator: 'OR', what: itemName, count: targetCount, children: smeltInputs.map(inp => {
                 let inputNeeded = smeltsNeeded; if (invMap && invMap.size > 0 && inputNeeded > 0) { const haveInp = invMap.get(inp) || 0; if (haveInp > 0) inputNeeded = Math.max(0, inputNeeded - haveInp); }
                 const children = [];
-                if (!(invMap && (invMap.get('furnace') || 0) > 0)) { children.push({ action: 'require', operator: 'AND', what: 'furnace', count: 1, children: [buildRecipeTree(mcData, 'furnace', 1, { ...context, visited: nextVisited, inventory: mapToInventoryObject(invMap) })] }); }
-                if (fuelName && fuelTotal > 0) { children.push(buildRecipeTree(mcData, fuelName, fuelTotal, { ...context, visited: nextVisited, inventory: mapToInventoryObject(invMap) })); }
-                if (inputNeeded > 0) { children.push(buildRecipeTree(mcData, inp, inputNeeded, { ...context, visited: nextVisited, inventory: mapToInventoryObject(invMap) })); }
+                if (!(invMap && (invMap.get('furnace') || 0) > 0)) { children.push({ action: 'require', operator: 'AND', what: 'furnace', count: 1, children: [buildRecipeTree(mcData, 'furnace', 1, { ...context, visited: nextVisited, inventory: mapToInventoryObject(invMap), worldBudget })] }); }
+                if (fuelName && fuelTotal > 0) { children.push(buildRecipeTree(mcData, fuelName, fuelTotal, { ...context, visited: nextVisited, inventory: mapToInventoryObject(invMap), worldBudget })); }
+                if (inputNeeded > 0) { children.push(buildRecipeTree(mcData, inp, inputNeeded, { ...context, visited: nextVisited, inventory: mapToInventoryObject(invMap), worldBudget })); }
                 return { action: 'smelt', operator: 'AND', what: 'furnace', count: smeltsNeeded, input: { item: inp, perSmelt: 1 }, result: { item: itemName, perSmelt: perSmelt }, fuel: fuelName || null, children };
             })
         };
@@ -314,18 +365,35 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
 
     const miningPaths = findBlocksThatDrop(mcData, itemName);
     if (miningPaths.length > 0) {
+        // Check and reserve world availability across all sources for target
+        if (worldBudget) {
+            const names = miningPaths.map(s => s.block);
+            const totalAvail = sumAvailable('blocks', names);
+            if (!(totalAvail >= targetCount)) {
+                // Not enough in world to mine target at requested count; skip adding mining
+            } else {
+                reserveFromSources('blocks', names, targetCount);
+            }
+        }
         const mineGroup = {
             action: 'mine', operator: 'OR', what: itemName, count: targetCount, children: miningPaths.flatMap(s => {
-                if (!s.tool || s.tool === 'any') { return [{ action: 'mine', what: s.block, targetItem: itemName, count: targetCount, children: [] }]; }
+                if (!s.tool || s.tool === 'any') {
+                    if (worldBudget && !canConsumeWorld('blocks', s.block, targetCount)) return [];
+                    return [{ action: 'mine', what: s.block, targetItem: itemName, count: targetCount, children: [] }];
+                }
                 let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
                 // Prefer any acceptable tool already present in inventory
                 const existing = tools.filter(t => invMap && (invMap.get(t) || 0) > 0);
                 if (existing.length > 0) {
                     const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
+                    if (worldBudget && !canConsumeWorld('blocks', s.block, targetCount)) return [];
                     return [{ action: 'mine', what: s.block, targetItem: itemName, tool: chosen, count: targetCount, children: [] }];
                 }
                 if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
-                return tools.map(toolName => ({ action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInventoryObject(invMap) }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] }));
+                return tools.map(toolName => {
+                    if (worldBudget && !canConsumeWorld('blocks', s.block, targetCount)) return null;
+                    return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInventoryObject(invMap), worldBudget }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] };
+                }).filter(Boolean);
             })
         };
         root.children.push(mineGroup);
@@ -333,6 +401,22 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
 
     const huntingPaths = findMobsThatDrop(mcData, itemName);
     if (huntingPaths.length > 0) {
+        // Check and reserve world availability across mobs
+        if (worldBudget) {
+            const tokens = [];
+            let totalNeed = 0;
+            for (const s of huntingPaths) {
+                const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
+                totalNeed += Math.ceil(targetCount / p);
+                tokens.push(s.mob);
+            }
+            const totalAvail = sumAvailable('entities', tokens);
+            if (!(totalAvail >= totalNeed)) {
+                // Insufficient mobs; proceed but OR will be pruned by child checks. No reservation to avoid over-consuming across OR duplicates.
+            } else {
+                reserveFromSources('entities', tokens, totalNeed);
+            }
+        }
         const huntGroup = {
             action: 'hunt',
             operator: 'OR',
@@ -341,9 +425,12 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             children: huntingPaths.map(s => {
                 const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
                 const expectedKills = Math.ceil(targetCount / p);
+                if (worldBudget && !canConsumeWorld('entities', s.mob, expectedKills)) return null;
                 return { action: 'hunt', what: s.mob, targetItem: itemName, count: expectedKills, dropChance: s.dropChance, children: [] };
             })
         };
+        // Filter pruned nulls inside OR group
+        huntGroup.children = huntGroup.children.filter(Boolean);
         root.children.push(huntGroup);
     }
 
