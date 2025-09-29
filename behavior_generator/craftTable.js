@@ -127,7 +127,7 @@ function create(bot, step) {
         name: 'craft-table: equip -> place',
         parent: equip,
         child: placeTable,
-        shouldTransition: () => true,
+        shouldTransition: () => (typeof equip.isFinished === 'function' ? equip.isFinished() : true) && !!placeTargets.item,
         onTransition: () => {
             placeStartTime = Date.now();
             // If equipTargets.item was not resolved earlier, try again before placing
@@ -138,6 +138,16 @@ function create(bot, step) {
                 } catch (_) {}
             }
             console.log(`BehaviorGenerator(craft-table): equip -> place [${targets.itemName} x${targets.amount}]`);
+        }
+    });
+
+    const tEquipToCraft = new StateTransition({
+        name: 'craft-table: equip -> craft (no table to place)',
+        parent: equip,
+        child: craftWithTable,
+        shouldTransition: () => (typeof equip.isFinished === 'function' ? equip.isFinished() : true) && !placeTargets.item,
+        onTransition: () => {
+            console.log('BehaviorGenerator(craft-table): equip -> craft (no crafting_table in inventory)');
         }
     });
 
@@ -273,7 +283,7 @@ function create(bot, step) {
 		}
 	});
 
-	return new NestedStateMachine([t1, tEquipToPlace, t2, t3, tBreakDirectExit, t4, t5b, t5, t6, t6b], enter, exit);
+    return new NestedStateMachine([t1, tEquipToPlace, tEquipToCraft, t2, t3, tBreakDirectExit, t4, t5b, t5, t6, t6b], enter, exit);
 }
 
 module.exports = { canHandle, computeTargetsForCraftInTable, create };

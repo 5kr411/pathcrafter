@@ -9,6 +9,8 @@ const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
 const { captureRawWorldSnapshot } = require('../utils/worldSnapshot')
 const { setGenericWoodEnabled } = require('../utils/config')
+const { Worker } = require('worker_threads')
+const path = require('path')
 
 function getInventoryObject(bot) {
   const out = {}
@@ -39,6 +41,38 @@ bot.once('spawn', () => {
 
   let running = false
   let lastRequest = null
+  let worker = null
+  let pending = new Map()
+
+  function ensureWorker() {
+    if (worker) return worker
+    const workerPath = path.resolve(__dirname, '../workers/planning_worker.js')
+    worker = new Worker(workerPath)
+    worker.on('message', (msg) => {
+      if (!msg || msg.type !== 'result') return
+      const entry = pending.get(msg.id)
+      pending.delete(msg.id)
+      if (!entry) return
+      if (!msg.ok) {
+        running = false
+        bot.chat('planning failed')
+        return
+      }
+      const ranked = Array.isArray(msg.ranked) ? msg.ranked : []
+      if (ranked.length === 0) {
+        running = false
+        bot.chat('no viable paths found')
+        return
+      }
+      const best = ranked[0]
+      bot.chat(`executing plan with ${best.length} steps`)
+      const sm = buildStateMachineForPath(bot, best, () => { running = false; bot.chat('plan complete') })
+      new BotStateMachine(bot, sm)
+    })
+    worker.on('error', () => { running = false })
+    worker.on('exit', () => { worker = null; pending.clear(); running = false })
+    return worker
+  }
 
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
@@ -62,29 +96,23 @@ bot.once('spawn', () => {
     running = true
 
     const version = bot.version || '1.20.1'
-    const mcData = minecraftData(version)
-
     const invObj = getInventoryObject(bot)
-
-    // Build planning tree
-    const tree = planner(mcData, item, count, { inventory: invObj, log: false })
-
-    // Generate candidate paths (top-N from multiple generators)
-    const perGenerator = 5000
-    const candidates = generateTopNPathsFromGenerators(tree, { inventory: invObj }, perGenerator)
-
-    // Capture in-memory world snapshot (no disk IO) and filter
     const snapshot = captureRawWorldSnapshot(bot, { chunkRadius: 8 })
-    const filtered = filterPathsByWorldSnapshot(candidates, snapshot, { disableGenericWood: true })
-    const ranked = hoistMiningInPaths(filtered)
 
-    if (!ranked || ranked.length === 0) { bot.chat('no viable paths found'); running = false; return }
-
-    const best = ranked[0]
-    bot.chat(`executing plan with ${best.length} steps`)
-
-    const sm = buildStateMachineForPath(bot, best, () => { running = false; bot.chat('plan complete') })
-    new BotStateMachine(bot, sm)
+    const id = `${Date.now()}_${Math.random()}`
+    ensureWorker()
+    pending.set(id, true)
+    worker.postMessage({
+      type: 'plan',
+      id,
+      mcVersion: version,
+      item,
+      count,
+      inventory: invObj,
+      snapshot,
+      perGenerator: 5000,
+      disableGenericWood: true
+    })
   })
 })
 
