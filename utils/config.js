@@ -2,6 +2,7 @@ let genericWoodEnabled = true;
 let pruneWithWorldEnabled = false;
 let defaultPerGeneratorPaths = 50;
 let defaultSnapshotChunkRadius = 3;
+let planningTelemetryEnabled = false;
 
 // Initialize from environment variable if provided (truthy/falsey parsing)
 try {
@@ -34,6 +35,8 @@ module.exports = {
     getDefaultPerGeneratorPaths,
     setDefaultSnapshotChunkRadius,
     getDefaultSnapshotChunkRadius
+    , setPlanningTelemetryEnabled: (v) => { planningTelemetryEnabled = !!v; }
+    , getPlanningTelemetryEnabled: () => !!planningTelemetryEnabled
 };
 
 

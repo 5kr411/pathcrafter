@@ -14,7 +14,8 @@ const RUNTIME = {
   genericWoodEnabled: false,
   pruneWithWorld: true,
   perGenerator: 5000,
-  snapshotChunkRadius: 8
+  snapshotChunkRadius: 8,
+  telemetry: true
 }
 
 const { Worker } = require('worker_threads')
@@ -150,7 +151,8 @@ bot.once('spawn', () => {
       snapshot,
       perGenerator: RUNTIME.perGenerator,
       disableGenericWood: !RUNTIME.genericWoodEnabled,
-      pruneWithWorld: RUNTIME.pruneWithWorld
+      pruneWithWorld: RUNTIME.pruneWithWorld,
+      telemetry: RUNTIME.telemetry
     })
   })
 })

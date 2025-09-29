@@ -5,6 +5,7 @@ const {
     BehaviorEquipItem
 } = require('mineflayer-statemachine')
 const minecraftData = require('minecraft-data')
+const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig')
 const createPlaceNearState = require('./behaviorPlaceNear')
 const createBreakAtPositionState = require('./behaviorBreakAtPosition')
 
@@ -42,6 +43,7 @@ function createSmeltState(bot, targets) {
         onTransition: () => {
             wantItem = targets.itemName; wantCount = Number(targets.amount || 1)
             inputItem = targets.inputName; fuelItem = targets.fuelName || 'coal'
+            console.log(`BehaviorSmelt: enter -> find (want ${wantCount} ${wantItem}, input=${inputItem}, fuel=${fuelItem})`)
         }
     })
 
@@ -55,7 +57,7 @@ function createSmeltState(bot, targets) {
             try { equipFurnace.targets.item = bot.inventory?.items?.().find(it => it && it.name === 'furnace') || null } catch (_) {}
             return !!equipFurnace.targets.item
         },
-        onTransition: () => { placedByUs = true }
+        onTransition: () => { placedByUs = true; console.log('BehaviorSmelt: find -> equip furnace (no furnace nearby)') }
     })
 
     const findToSmelt = new StateTransition({
@@ -64,13 +66,13 @@ function createSmeltState(bot, targets) {
             foundFurnace = findNearbyFurnace(6)
             return !!foundFurnace
         },
-        onTransition: () => { placedByUs = false }
+        onTransition: () => { placedByUs = false; console.log('BehaviorSmelt: find -> run (using existing furnace)') }
     })
 
     const equipToPlace = new StateTransition({
         name: 'Smelt: equip -> place', parent: equipFurnace, child: placeFurnace,
         shouldTransition: () => (typeof equipFurnace.isFinished === 'function' ? equipFurnace.isFinished() : true) && !!equipFurnace.targets.item,
-        onTransition: () => { placeFurnaceTargets.item = equipFurnace.targets.item }
+        onTransition: () => { placeFurnaceTargets.item = equipFurnace.targets.item; console.log('BehaviorSmelt: equip -> place furnace') }
     })
 
     const placeToSmelt = new StateTransition({
@@ -80,6 +82,7 @@ function createSmeltState(bot, targets) {
             try {
                 if (placeFurnaceTargets && placeFurnaceTargets.placedPosition) {
                     breakTargets.position = placeFurnaceTargets.placedPosition.clone()
+                    console.log('BehaviorSmelt: place -> run (placed furnace at)', breakTargets.position)
                 }
             } catch (_) {}
         }
@@ -96,30 +99,58 @@ function createSmeltState(bot, targets) {
             if (!furnaceBlock) return
             const furnace = await bot.openFurnace(furnaceBlock)
             const outTarget = getItemCount(wantItem) + Math.max(1, wantCount)
+            console.log(`BehaviorSmelt: run start (have ${getItemCount(wantItem)} ${wantItem}, target ${outTarget})`)
             function idOf(name) { return mc.itemsByName[name]?.id }
             function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
             let lastTake = Date.now()
-            while (getItemCount(wantItem) < outTarget && Date.now() - startedAt < 60000) {
+            let lastProgress = 0
+            let prevOut = getItemCount(wantItem)
+            let lastIncrease = Date.now()
+            const STALL_TIMEOUT_MS = 20000
+            while (getItemCount(wantItem) < outTarget && Date.now() - lastIncrease < STALL_TIMEOUT_MS) {
+                let acted = false
                 try {
                     if (inputItem && getItemCount(inputItem) > 0 && !furnace.inputItem()) {
-                        await furnace.putInput(idOf(inputItem), null, Math.min(getItemCount(inputItem), outTarget - getItemCount(wantItem)))
+                        const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - getItemCount(wantItem)))
+                        await furnace.putInput(idOf(inputItem), null, toPut)
+                        console.log(`BehaviorSmelt: put input x${toPut} ${inputItem}`)
+                        acted = true
                     }
                 } catch (_) {}
                 try {
-                    if (fuelItem && getItemCount(fuelItem) > 0 && !furnace.fuelItem()) {
-                        await furnace.putFuel(idOf(fuelItem), null, 1)
+                    if (fuelItem && getItemCount(fuelItem) > 0) {
+                        const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0)
+                        const haveOut = getItemCount(wantItem)
+                        const remaining = Math.max(0, outTarget - haveOut)
+                        const desiredUnits = Math.ceil(remaining / perUnit)
+                        const currentUnits = furnace.fuelItem() ? (furnace.fuelItem().count || 0) : 0
+                        const available = getItemCount(fuelItem)
+                        const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits))
+                        if (topUp > 0) {
+                            await furnace.putFuel(idOf(fuelItem), null, topUp)
+                            console.log(`BehaviorSmelt: put fuel x${topUp} ${fuelItem} (perUnit=${perUnit})`)
+                            acted = true
+                        }
                     }
                 } catch (_) {}
                 try {
                     if (furnace.outputItem()) {
                         await furnace.takeOutput()
                         lastTake = Date.now()
+                        console.log(`BehaviorSmelt: took output (now have ${getItemCount(wantItem)}/${outTarget})`)
+                        acted = true
                     }
                 } catch (_) {}
-                await sleep(500)
+                const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0
+                const curOut = getItemCount(wantItem)
+                if (curOut > prevOut) { lastIncrease = Date.now(); prevOut = curOut }
+                lastProgress = prog
+                await sleep(400)
             }
             try { furnace.close() } catch (_) {}
             smeltSucceeded = getItemCount(wantItem) >= outTarget
+            const stalled = !smeltSucceeded
+            console.log(`BehaviorSmelt: run end (success=${smeltSucceeded}, stalled=${stalled}, have ${getItemCount(wantItem)}/${outTarget})`)
         } catch (err) {
             console.log('BehaviorSmelt: error during smelt run', err)
         } finally { smeltDone = true }
@@ -128,19 +159,19 @@ function createSmeltState(bot, targets) {
     const runToBreak = new StateTransition({
         name: 'Smelt: run -> break', parent: smeltRun, child: breakFurnace,
         shouldTransition: () => smeltDone && placedByUs,
-        onTransition: () => {}
+        onTransition: () => { console.log('BehaviorSmelt: run -> break (we placed furnace)') }
     })
 
     const breakToExit = new StateTransition({
         name: 'Smelt: break -> exit', parent: breakFurnace, child: exit,
         shouldTransition: () => typeof breakFurnace.isFinished === 'function' ? breakFurnace.isFinished() : true,
-        onTransition: () => {}
+        onTransition: () => { console.log('BehaviorSmelt: break -> exit') }
     })
 
     const runToExit = new StateTransition({
         name: 'Smelt: run -> exit (no break)', parent: smeltRun, child: exit,
         shouldTransition: () => smeltDone && !placedByUs,
-        onTransition: () => {}
+        onTransition: () => { console.log('BehaviorSmelt: run -> exit (did not place furnace)') }
     })
 
     return new NestedStateMachine([
