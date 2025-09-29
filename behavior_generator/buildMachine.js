@@ -7,12 +7,19 @@ const {
 const genMine = require('./mine')
 const genCraftInventory = require('./craftInventory')
 const genCraftTable = require('./craftTable')
+const genSmelt = require('./smelt')
 
 function createStateForStep(bot, step, shared) {
     if (!step || !step.action) return null;
     try {
         if (genMine && typeof genMine.canHandle === 'function' && genMine.canHandle(step)) {
             const s = genMine.create(bot, step)
+            if (s) return s
+        }
+    } catch (_) {}
+    try {
+        if (genSmelt && typeof genSmelt.canHandle === 'function' && genSmelt.canHandle(step)) {
+            const s = genSmelt.create(bot, step)
             if (s) return s
         }
     } catch (_) {}
