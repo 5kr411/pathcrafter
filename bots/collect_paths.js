@@ -48,7 +48,12 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
 
 bot.once('spawn', () => {
   setGenericWoodEnabled(RUNTIME.genericWoodEnabled)
-  bot.chat('collector ready')
+  const safeChat = (msg) => { try { if (bot && bot._client && !bot._client.ended) bot.chat(msg) } catch (_) {} }
+  let connected = true
+  bot.on('kicked', (reason) => { connected = false; console.log('Collector: kicked', reason) })
+  bot.on('end', () => { connected = false; console.log('Collector: connection ended') })
+  bot.on('error', (err) => { console.log('Collector: bot error', err && err.code ? err.code : err) })
+  safeChat('collector ready')
 
   let running = false
   let lastRequest = null
@@ -66,7 +71,7 @@ bot.once('spawn', () => {
       if (!entry) return
       if (!msg.ok) {
         running = false
-        bot.chat('planning failed')
+        safeChat('planning failed')
         return
       }
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : []
@@ -76,7 +81,7 @@ bot.once('spawn', () => {
         return
       }
       const best = ranked[0]
-      bot.chat(`executing plan with ${best.length} steps`)
+      safeChat(`executing plan with ${best.length} steps`)
       try {
         const mcData = minecraftData(bot.version || '1.20.1')
         const center = bot.entity && bot.entity.position ? bot.entity.position : null
@@ -105,7 +110,8 @@ bot.once('spawn', () => {
           console.log(JSON.stringify(resolved))
         }
       } catch (_) {}
-      const sm = buildStateMachineForPath(bot, best, () => { running = false; bot.chat('plan complete') })
+      if (!connected) { running = false; return }
+      const sm = buildStateMachineForPath(bot, best, () => { running = false; safeChat('plan complete') })
       new BotStateMachine(bot, sm)
     })
     worker.on('error', () => { running = false })
@@ -128,10 +134,10 @@ bot.once('spawn', () => {
       count = lastRequest.count
     }
 
-    if (!item || !Number.isFinite(count) || count <= 0) { bot.chat('usage: collect <item> <count>'); return }
+    if (!item || !Number.isFinite(count) || count <= 0) { safeChat('usage: collect <item> <count>'); return }
     lastRequest = { item, count }
 
-    if (running) { bot.chat('already running, please wait'); return }
+    if (running) { safeChat('already running, please wait'); return }
     running = true
 
     const version = bot.version || '1.20.1'

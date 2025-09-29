@@ -91,6 +91,7 @@ function createSmeltState(bot, targets) {
     let startedAt = 0
     let smeltDone = false
     let smeltSucceeded = false
+    let breakRecommended = false
     smeltRun.onStateEntered = async () => {
         startedAt = Date.now()
         try {
@@ -105,9 +106,12 @@ function createSmeltState(bot, targets) {
             let lastTake = Date.now()
             let lastProgress = 0
             let prevOut = getItemCount(wantItem)
-            let lastIncrease = Date.now()
+            let lastActivity = Date.now()
+            let lastFuelPut = 0
             const STALL_TIMEOUT_MS = 20000
-            while (getItemCount(wantItem) < outTarget && Date.now() - lastIncrease < STALL_TIMEOUT_MS) {
+            // Track fuel locally to avoid duplicate top-ups due to delayed window updates
+            let localFuelCount = furnace.fuelItem() ? (furnace.fuelItem().count || 0) : 0
+            while (getItemCount(wantItem) < outTarget && Date.now() - lastActivity < STALL_TIMEOUT_MS) {
                 let acted = false
                 try {
                     if (inputItem && getItemCount(inputItem) > 0 && !furnace.inputItem()) {
@@ -123,11 +127,17 @@ function createSmeltState(bot, targets) {
                         const haveOut = getItemCount(wantItem)
                         const remaining = Math.max(0, outTarget - haveOut)
                         const desiredUnits = Math.ceil(remaining / perUnit)
-                        const currentUnits = furnace.fuelItem() ? (furnace.fuelItem().count || 0) : 0
+                        // Sync local fuel count from furnace when available
+                        const fuelSlot = furnace.fuelItem()
+                        const currentUnits = fuelSlot ? (fuelSlot.count || 0) : localFuelCount
+                        localFuelCount = currentUnits
                         const available = getItemCount(fuelItem)
                         const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits))
-                        if (topUp > 0) {
+                        const now = Date.now()
+                        if (topUp > 0 && (now - lastFuelPut > 800)) {
                             await furnace.putFuel(idOf(fuelItem), null, topUp)
+                            localFuelCount += topUp
+                            lastFuelPut = now
                             console.log(`BehaviorSmelt: put fuel x${topUp} ${fuelItem} (perUnit=${perUnit})`)
                             acted = true
                         }
@@ -143,22 +153,35 @@ function createSmeltState(bot, targets) {
                 } catch (_) {}
                 const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0
                 const curOut = getItemCount(wantItem)
-                if (curOut > prevOut) { lastIncrease = Date.now(); prevOut = curOut }
+                if (curOut > prevOut) { lastActivity = Date.now(); prevOut = curOut }
+                if (acted || prog > lastProgress || furnace.inputItem() || furnace.outputItem()) {
+                    lastActivity = Date.now()
+                }
                 lastProgress = prog
                 await sleep(400)
             }
-            try { furnace.close() } catch (_) {}
             smeltSucceeded = getItemCount(wantItem) >= outTarget
+            const preIn = furnace.inputItem()
+            const preOut = furnace.outputItem()
+            const preFuel = furnace.fuelItem()
+            const noInputInInv = !inputItem || getItemCount(inputItem) === 0
+            const noFuelInInv = !fuelItem || getItemCount(fuelItem) === 0
+            const furnaceIdle = !preIn && !preOut
+            // Break if: target reached, or we have no input left, or furnace is idle and we have no fuel left
+            breakRecommended = placedByUs && (smeltSucceeded || noInputInInv || (furnaceIdle && noFuelInInv))
+            try { furnace.close() } catch (_) {}
             const stalled = !smeltSucceeded
             console.log(`BehaviorSmelt: run end (success=${smeltSucceeded}, stalled=${stalled}, have ${getItemCount(wantItem)}/${outTarget})`)
         } catch (err) {
             console.log('BehaviorSmelt: error during smelt run', err)
+            // Break even on error if we placed the furnace
+            breakRecommended = placedByUs || breakRecommended
         } finally { smeltDone = true }
     }
 
     const runToBreak = new StateTransition({
         name: 'Smelt: run -> break', parent: smeltRun, child: breakFurnace,
-        shouldTransition: () => smeltDone && placedByUs,
+        shouldTransition: () => smeltDone && breakRecommended,
         onTransition: () => { console.log('BehaviorSmelt: run -> break (we placed furnace)') }
     })
 
@@ -170,7 +193,7 @@ function createSmeltState(bot, targets) {
 
     const runToExit = new StateTransition({
         name: 'Smelt: run -> exit (no break)', parent: smeltRun, child: exit,
-        shouldTransition: () => smeltDone && !placedByUs,
+        shouldTransition: () => smeltDone && !breakRecommended,
         onTransition: () => { console.log('BehaviorSmelt: run -> exit (did not place furnace)') }
     })
 
