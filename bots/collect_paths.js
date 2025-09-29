@@ -11,7 +11,7 @@ const { captureRawWorldSnapshot } = require('../utils/worldSnapshot')
 const { setGenericWoodEnabled } = require('../utils/config')
 const { Worker } = require('worker_threads')
 const path = require('path')
-const { resolveWoodFlexibleName } = require('../utils/woodRuntime')
+const { resolveWoodFlexibleName, resolveWithSnapshotFlexibleName } = require('../utils/woodRuntime')
 
 function getInventoryObject(bot) {
   const out = {}
@@ -35,7 +35,7 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions)
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
-let genericWoodEnabled = true
+let genericWoodEnabled = false
 
 bot.once('spawn', () => {
   setGenericWoodEnabled(genericWoodEnabled)
@@ -70,18 +70,20 @@ bot.once('spawn', () => {
       bot.chat(`executing plan with ${best.length} steps`)
       try {
         const mcData = minecraftData(bot.version || '1.20.1')
+        const center = bot.entity && bot.entity.position ? bot.entity.position : null
+        const blocks = Array.isArray(snapshot && snapshot.blocks) ? snapshot.blocks : []
         const resolved = best.map((s) => {
           if (!s || typeof s !== 'object') return s
           const copy = { ...s }
           if (copy.action === 'mine') {
-            if (copy.what) copy.what = resolveWoodFlexibleName(bot, mcData, copy.what)
-            if (copy.targetItem) copy.targetItem = resolveWoodFlexibleName(bot, mcData, copy.targetItem)
+            if (copy.what) copy.what = resolveWithSnapshotFlexibleName(mcData, copy.what, blocks, { center })
+            if (copy.targetItem) copy.targetItem = resolveWithSnapshotFlexibleName(mcData, copy.targetItem, blocks, { center })
           } else if (copy.action === 'craft' && copy.result && copy.result.item) {
             const meta = copy.result.meta || {}
             if (meta && meta.selectedSpecies) {
               // keep species-specific as-is
             } else if (meta && meta.generic === true) {
-              copy.result = { ...copy.result, item: resolveWoodFlexibleName(bot, mcData, copy.result.item) }
+              copy.result = { ...copy.result, item: resolveWithSnapshotFlexibleName(mcData, copy.result.item, blocks, { center }) }
             }
           }
           return copy

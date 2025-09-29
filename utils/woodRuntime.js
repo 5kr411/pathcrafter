@@ -115,4 +115,52 @@ function buildSpeciesCandidates(mcData, tokensMaybe) {
 module.exports.__debugSpeciesCandidates = (mcData) => buildSpeciesCandidates(mcData, null)
 module.exports.__debugPickNearest = (bot, mcData, base) => pickNearestSpeciesInWorld(bot, buildSpeciesCandidates(mcData, null), base, mcData, { radius: 48 })
 
+// Snapshot-based resolution (fast, avoids bot.findBlocks). Pass in snapshot.blocks array.
+function resolveWithSnapshotFlexibleName(mcData, name, snapshotBlocks, opts = {}) {
+  try {
+    if (!getGenericWoodEnabled()) return name
+    if (!name || typeof name !== 'string') return name
+
+    // Determine base from generic_* or species-specific name
+    let base = null
+    if (name.startsWith('generic_')) {
+      base = name.slice('generic_'.length)
+    } else {
+      const idx = name.lastIndexOf('_')
+      if (idx <= 0) return name
+      base = name.slice(idx + 1)
+    }
+
+    const speciesTokens = buildSpeciesCandidates(mcData, getWoodSpeciesTokens())
+    if (!speciesTokens || speciesTokens.length === 0) return name
+
+    // Inventory preference is not available here; use nearest by snapshot
+    const center = opts.center || null
+    function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z; return dx*dx + dy*dy + dz*dz }
+    let best = null
+    let bestD2 = Infinity
+    const blocks = Array.isArray(snapshotBlocks) ? snapshotBlocks : []
+    for (const s of speciesTokens) {
+      const logName = `${s}_log`
+      for (const b of blocks) {
+        if (!b || !b.name) continue
+        if (b.name === logName || b.name === `${s}_${base}`) {
+          const d2 = center && b ? dist2(center, b) : 0
+          if (d2 < bestD2) { bestD2 = d2; best = s }
+        }
+      }
+    }
+    if (best) return `${best}_${base}`
+
+    // Planner context species fallback
+    const ctx = getCurrentSpeciesContext()
+    if (ctx) return `${ctx}_${base}`
+
+    if (mcData.itemsByName[`oak_${base}`]) return `oak_${base}`
+    return name
+  } catch (_) { return name }
+}
+
+module.exports.resolveWithSnapshotFlexibleName = resolveWithSnapshotFlexibleName
+
 

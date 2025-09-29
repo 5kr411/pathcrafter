@@ -269,7 +269,7 @@ function create(bot, step) {
     });
 
 	let followStartTime;
-	const FOLLOW_TIMEOUT_MS = 10000;
+	const FOLLOW_TIMEOUT_MS = 3000;
 	const t6b = new StateTransition({
 		name: 'craft-table: follow-drop -> exit (timeout/lost)',
 		parent: followDrop,
