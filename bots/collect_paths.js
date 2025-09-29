@@ -14,7 +14,7 @@ const RUNTIME = {
   genericWoodEnabled: false,
   pruneWithWorld: true,
   perGenerator: 5000,
-  snapshotChunkRadius: 8,
+  snapshotRadius: 384,
   telemetry: true
 }
 
@@ -142,7 +142,7 @@ bot.once('spawn', () => {
 
     const version = bot.version || '1.20.1'
     const invObj = getInventoryObject(bot)
-    const snapshot = captureRawWorldSnapshot(bot, { chunkRadius: RUNTIME.snapshotChunkRadius })
+    const snapshot = captureRawWorldSnapshot(bot, { radius: RUNTIME.snapshotRadius })
 
     const id = `${Date.now()}_${Math.random()}`
     ensureWorker()

@@ -8,7 +8,8 @@ const minecraftData = require('minecraft-data');
  * { count, closestDistance, averageDistance } relative to the bot center.
  *
  * Options:
- * - chunkRadius: chunk radius to scan (default 2, clamped to [0, 8])
+ * - radius: max Euclidean distance in blocks to scan (preferred)
+ * - chunkRadius: legacy option; converted to radius via radius = chunkRadius*16 + 15
  * - includeAir: include air blocks (default false)
  * - yMin, yMax: vertical scan bounds (defaults to chunk min/max for the version if known, else [0, 255])
  * - version/mcData: override mcData resolution
@@ -17,8 +18,11 @@ function captureRawWorldSnapshot(bot, opts = {}) {
     const version = bot && bot.version ? bot.version : (opts.version || '1.20.1');
     const mc = typeof opts.mcData === 'object' && opts.mcData ? opts.mcData : minecraftData(version);
     const includeAir = !!opts.includeAir;
-    const chunkRadius = Math.max(0, Math.min((opts.chunkRadius || 2), 8));
-    const maxDistance = Math.max(1, Math.min(((chunkRadius * 16) + 15), 1024));
+    const legacyChunkRadius = Number.isFinite(opts.chunkRadius) ? Math.max(0, Math.min(opts.chunkRadius, 8)) : null;
+    const explicitRadius = Number.isFinite(opts.radius) ? Math.max(1, Math.min(opts.radius, 1024)) : null;
+    const maxDistance = explicitRadius != null
+        ? explicitRadius
+        : Math.max(1, Math.min((((legacyChunkRadius != null ? legacyChunkRadius : 2) * 16) + 15), 1024));
 
     const center = bot && bot.entity && bot.entity.position ? bot.entity.position.floored() : { x: 0, y: 64, z: 0 };
     const cx = center.x || 0;
@@ -109,7 +113,7 @@ function captureRawWorldSnapshot(bot, opts = {}) {
         version,
         dimension: bot && bot.game && bot.game.dimension ? bot.game.dimension : 'overworld',
         center: { x: cx, y: cy, z: cz },
-        chunkRadius,
+        radius: maxDistance,
         yMin,
         yMax,
         blocks: blockStats,
