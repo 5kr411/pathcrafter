@@ -52,7 +52,15 @@ function createBreakAtPositionState(bot, targets) {
         name: 'BehaviorBreakAtPosition: move -> mine',
         parent: moveTo,
         child: mine,
-        shouldTransition: () => moveTo.isFinished() && moveTo.distanceToTarget() < 6,
+        shouldTransition: () => {
+            if (!moveTo.isFinished() || moveTo.distanceToTarget() >= 6) return false
+            try {
+                const blk = bot.blockAt(targets.blockPosition, false)
+                if (!blk) return false
+                if (typeof bot.canDigBlock === 'function' && !bot.canDigBlock(blk)) return false
+            } catch (_) { return false }
+            return true
+        },
         onTransition: () => {
             moveStartTime = Date.now()
             console.log('BehaviorBreakAtPosition: move -> mine')
@@ -67,7 +75,11 @@ function createBreakAtPositionState(bot, targets) {
         child: exit,
         shouldTransition: () => {
             if (mine.isFinished && !mineFinishTime) mineFinishTime = Date.now();
-            return Date.now() - mineFinishTime > 500;
+            try {
+                const broken = targets.blockPosition && bot.world.getBlockType(targets.blockPosition) === 0
+                if (broken) return true
+            } catch (_) {}
+            return Date.now() - mineFinishTime > 750;
         },
         onTransition: () => {
             const moveDuration = moveStartTime ? (Date.now() - moveStartTime) : 0

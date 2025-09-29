@@ -175,18 +175,19 @@ function create(bot, step) {
         child: craftWithTable,
         shouldTransition: () => {
             const done = typeof placeTable.isFinished === 'function' ? placeTable.isFinished() : true;
-            const timedOut = placeStartTime ? (Date.now() - placeStartTime > 3000) : false;
-            return done || timedOut;
+            const timedOut = placeStartTime ? (Date.now() - placeStartTime > 12000) : false;
+            // Only allow timeout transition if placement was actually confirmed
+            return done || (timedOut && targets.placedConfirmed === true);
         },
         onTransition: () => {
-            const timedOut = placeStartTime ? (Date.now() - placeStartTime > 3000) : false;
+            const timedOut = placeStartTime ? (Date.now() - placeStartTime > 12000) : false;
             if (placeTargets && placeTargets.placedPosition) {
                 breakTargets.position = placeTargets.placedPosition.clone();
                 // Hint craft-with-table of the placed location for reliable table lookup
                 try { craftTargets.placedPosition = placeTargets.placedPosition.clone(); } catch (_) {}
                 console.log('BehaviorGenerator(craft-table): place -> craft (placed table detected)');
             } else if (timedOut) {
-                console.log('BehaviorGenerator(craft-table): place -> craft (timeout)');
+                console.log('BehaviorGenerator(craft-table): place -> craft (timeout, proceed if confirmed)');
             } else {
                 console.log('BehaviorGenerator(craft-table): place -> craft');
             }
