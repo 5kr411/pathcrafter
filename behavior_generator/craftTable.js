@@ -35,6 +35,9 @@ function create(bot, step) {
     try {
         const mcData = minecraftData(bot.version);
         if (targets.itemName) targets.itemName = resolveWoodFlexibleName(bot, mcData, targets.itemName);
+        if (step && step.result && step.result.item && step.result.item !== targets.itemName) {
+            step.result.item = targets.itemName;
+        }
     } catch (_) {}
 
     const enter = new BehaviorIdle();

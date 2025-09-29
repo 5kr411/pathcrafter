@@ -11,6 +11,7 @@ const { captureRawWorldSnapshot } = require('../utils/worldSnapshot')
 const { setGenericWoodEnabled } = require('../utils/config')
 const { Worker } = require('worker_threads')
 const path = require('path')
+const { resolveWoodFlexibleName } = require('../utils/woodRuntime')
 
 function getInventoryObject(bot) {
   const out = {}
@@ -68,11 +69,28 @@ bot.once('spawn', () => {
       const best = ranked[0]
       bot.chat(`executing plan with ${best.length} steps`)
       try {
-        console.log('Collector: selected path:')
+        const mcData = minecraftData(bot.version || '1.20.1')
+        const resolved = best.map((s) => {
+          if (!s || typeof s !== 'object') return s
+          const copy = { ...s }
+          if (copy.action === 'mine') {
+            if (copy.what) copy.what = resolveWoodFlexibleName(bot, mcData, copy.what)
+            if (copy.targetItem) copy.targetItem = resolveWoodFlexibleName(bot, mcData, copy.targetItem)
+          } else if (copy.action === 'craft' && copy.result && copy.result.item) {
+            const meta = copy.result.meta || {}
+            if (meta && meta.selectedSpecies) {
+              // keep species-specific as-is
+            } else if (meta && meta.generic === true) {
+              copy.result = { ...copy.result, item: resolveWoodFlexibleName(bot, mcData, copy.result.item) }
+            }
+          }
+          return copy
+        })
+        console.log('Collector: selected path (resolved):')
         if (planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
-          planner._internals.logActionPath(best)
+          planner._internals.logActionPath(resolved)
         } else {
-          console.log(JSON.stringify(best))
+          console.log(JSON.stringify(resolved))
         }
       } catch (_) {}
       const sm = buildStateMachineForPath(bot, best, () => { running = false; bot.chat('plan complete') })

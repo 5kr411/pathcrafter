@@ -24,7 +24,14 @@ function create(bot, step) {
     try {
         const mcData = minecraftData(bot.version);
         if (itemName) itemName = resolveWoodFlexibleName(bot, mcData, itemName);
-        if (blockName) blockName = resolveWoodFlexibleName(bot, mcData, blockName);
+        if (blockName) {
+            const before = blockName;
+            blockName = resolveWoodFlexibleName(bot, mcData, blockName);
+            if (before !== blockName) {
+                // Keep targetItem aligned with new block if they matched before
+                if (t.itemName === before) itemName = blockName;
+            }
+        }
     } catch (_) {}
     const targets = { itemName, amount: t.amount, blockName };
     try {

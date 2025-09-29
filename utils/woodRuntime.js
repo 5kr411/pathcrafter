@@ -84,10 +84,7 @@ function resolveWoodFlexibleName(bot, mcData, name, opts = {}) {
     if (idx <= 0) return name
     const prefix = name.slice(0, idx)
     const base = name.slice(idx + 1)
-    const speciesTokens = getWoodSpeciesTokens()
-    if (!speciesTokens || !speciesTokens.has || !speciesTokens.has(prefix)) return name
-
-    // We have a species-specific wood name; choose best available species for this base
+    // Map any species-specific wood name to best available species for this base
     const resolved = resolveGenericName(bot, mcData, `generic_${base}`, opts)
     return resolved.startsWith('generic_') ? name : resolved
   } catch (_) { return name }
