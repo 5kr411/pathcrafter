@@ -266,6 +266,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             children: []
         };
         const recipeInv = new Map(invMap);
+        let recipeFeasible = true;
         // Prefer to satisfy ingredients we already have (lower missing amount) first
         const plannedOrder = Array.from(ingredientCounts.entries())
             .map(([ingredientId, count]) => {
@@ -292,10 +293,9 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         const totalAvail = sumAvailable('blocks', sourceNames);
                         if (!(totalAvail >= neededCount)) {
                             // Not enough blocks in world for this ingredient; skip adding mining group
-                            return;
+                            recipeFeasible = false; return;
                         }
-                        // Reserve now so subsequent ingredients see reduced availability
-                        reserveFromSources('blocks', sourceNames, neededCount);
+                        // Do NOT reserve here: this is an OR across sources and reservation would bias child checks.
                     }
                     const miningGroup = {
                         action: 'mine', operator: 'OR', what: ingredientItem.name, count: neededCount, children: sources.flatMap(s => {
@@ -316,7 +316,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         })
                     };
                     craftNode.children.push(miningGroup);
-                }
+                } else { recipeFeasible = false; }
             } else {
                 const ingName = ingredientItem.name; const base = getSuffixTokenFromName(ingName); const isFamily = baseHasMultipleWoodSpecies(base);
                 const genericAllowed = getGenericWoodEnabled();
@@ -348,7 +348,9 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             }
         });
 
-        if (craftNode.what === 'table') {
+        if (!recipeFeasible) {
+            // Skip infeasible recipe variant (ingredient acquisition could not be planned)
+        } else if (craftNode.what === 'table') {
             const alreadyHaveTable = invMap && (invMap.get('crafting_table') || 0) > 0;
             if (alreadyHaveTable) { root.children.push(craftNode); }
             else {
@@ -385,9 +387,8 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             const totalAvail = sumAvailable('blocks', names);
             if (!(totalAvail >= targetCount)) {
                 allowMineGroup = false;
-            } else {
-                reserveFromSources('blocks', names, targetCount);
             }
+            // Do NOT reserve here: this is an OR across sources; reservation would incorrectly reduce child viability.
         }
         const mineGroup = {
             action: 'mine', operator: 'OR', what: itemName, count: targetCount, children: miningPaths.flatMap(s => {

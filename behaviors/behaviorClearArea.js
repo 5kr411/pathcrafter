@@ -20,7 +20,7 @@ function createClearAreaState(bot, targets) {
     function gatherObstructions() {
         const base = getPlacePosition()
         if (!base) return []
-        const h = Number.isFinite(targets.clearRadiusHorizontal) ? Math.max(0, Math.floor(targets.clearRadiusHorizontal)) : 2
+        const h = Number.isFinite(targets.clearRadiusHorizontal) ? Math.max(0, Math.floor(targets.clearRadiusHorizontal)) : 1
         const v = Number.isFinite(targets.clearRadiusVertical) ? Math.max(1, Math.floor(targets.clearRadiusVertical)) : 2
         const head = base.offset(0, 1, 0)
         const list = []
@@ -56,6 +56,9 @@ function createClearAreaState(bot, targets) {
     let idx = 0
     let current = null
     let startTime = 0
+    let plannedTargetsCount = 0
+    let mineOps = 0
+    let maxMineOps = 0
 
     const enterToExit = new StateTransition({
         name: 'ClearArea: enter -> exit (no placePosition)',
@@ -71,16 +74,20 @@ function createClearAreaState(bot, targets) {
         child: init,
         shouldTransition: () => !!getPlacePosition(),
         onTransition: () => {
+            const initial = gatherObstructions().filter(p => bot.world.getBlockType(p) !== 0)
+            plannedTargetsCount = initial.length
+            maxMineOps = Math.max(1, Math.ceil(plannedTargetsCount * 1.5))
+            mineOps = 0
             queue = sortedObstructions().slice(0, 48)
             idx = 0
         }
     })
 
     const initToExit = new StateTransition({
-        name: 'ClearArea: init -> exit (already clear)',
+        name: 'ClearArea: init -> exit (clear or cap)',
         parent: init,
         child: exit,
-        shouldTransition: () => queue.length === 0 || isAreaClear(),
+        shouldTransition: () => queue.length === 0 || isAreaClear() || mineOps >= maxMineOps,
         onTransition: () => {}
     })
 
@@ -88,13 +95,14 @@ function createClearAreaState(bot, targets) {
         name: 'ClearArea: init -> break',
         parent: init,
         child: breaker,
-        shouldTransition: () => idx < queue.length,
+        shouldTransition: () => idx < queue.length && mineOps < maxMineOps,
         onTransition: () => {
             while (idx < queue.length && bot.world.getBlockType(queue[idx]) === 0) idx++
             if (idx < queue.length) {
                 current = queue[idx]
                 breakTargets.position = current
                 startTime = Date.now()
+                mineOps++
             }
         }
     })
@@ -114,7 +122,7 @@ function createClearAreaState(bot, targets) {
         shouldTransition: () => {
             const removed = current && bot.world.getBlockType(current) === 0
             const timed = Date.now() - startTime > 2500
-            return removed || timed
+            return (removed || timed) && mineOps < maxMineOps && !isAreaClear()
         },
         onTransition: () => {
             idx++
@@ -126,13 +134,22 @@ function createClearAreaState(bot, targets) {
         }
     })
 
+    const awaitToExit = new StateTransition({
+        name: 'ClearArea: await -> exit (clear or cap)',
+        parent: awaitConfirm,
+        child: exit,
+        shouldTransition: () => isAreaClear() || mineOps >= maxMineOps,
+        onTransition: () => {}
+    })
+
     const transitions = [
         enterToExit,
         enterToInit,
         initToExit,
         initToBreak,
         breakToAwait,
-        awaitToInit
+        awaitToInit,
+        awaitToExit
     ]
 
     return new NestedStateMachine(transitions, enter, exit)

@@ -41,11 +41,38 @@ function createPlaceNearState(bot, targets) {
     function getHeadroom() {
         return targets.placePosition.clone().offset(0, 1, 0)
     }
+    function isSolidBlock(pos) {
+        try {
+            const b = bot.blockAt(pos, false)
+            if (!b) return false
+            if (b.type === 0) return false
+            return b.boundingBox === 'block'
+        } catch (_) { return false }
+    }
+    function findSolidBaseNear(pos, maxRadius = 2) {
+        const base = pos.clone(); base.x = Math.floor(base.x); base.y = Math.floor(base.y); base.z = Math.floor(base.z)
+        let best = null
+        for (let r = 0; r <= maxRadius; r++) {
+            for (let dx = -r; dx <= r; dx++) {
+                for (let dz = -r; dz <= r; dz++) {
+                    const p = base.clone().offset(dx, -1, dz)
+                    const above = p.clone().offset(0, 1, 0)
+                    if (isSolidBlock(p) && bot.world.getBlockType(above) === 0) {
+                        if (!best || p.distanceTo(bot.entity.position) < best.distanceTo(bot.entity.position)) best = p
+                    }
+                }
+            }
+            if (best) break
+        }
+        return best
+    }
     function gatherCandidateObstructions() {
         const head = getHeadroom()
         const list = []
-        for (let dy = 0; dy <= 1; dy++) {
-            for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) list.push(head.clone().offset(dx, dy, dz))
+        const h = Number.isFinite(targets.clearRadiusHorizontal) ? Math.max(0, Math.floor(targets.clearRadiusHorizontal)) : 1
+        const v = Number.isFinite(targets.clearRadiusVertical) ? Math.max(1, Math.floor(targets.clearRadiusVertical)) : 2
+        for (let dy = 0; dy < v; dy++) {
+            for (let dx = -h; dx <= h; dx++) for (let dz = -h; dz <= h; dz++) list.push(head.clone().offset(dx, dy, dz))
         }
         return list
     }
@@ -59,8 +86,27 @@ function createPlaceNearState(bot, targets) {
         } catch (_) {}
         return list
     }
-    function isAreaClear() {
-        return gatherCandidateObstructions().every(p => bot.world.getBlockType(p) === 0)
+    function obstructedDirectionsCount() {
+        const head = getHeadroom()
+        const obstructed = { E: false, W: false, S: false, N: false }
+        const list = gatherCandidateObstructions()
+        for (const p of list) {
+            if (bot.world.getBlockType(p) === 0) continue
+            const dx = p.x - head.x
+            const dz = p.z - head.z
+            if (Math.abs(dx) >= Math.abs(dz)) {
+                if (dx > 0) obstructed.E = true; else if (dx < 0) obstructed.W = true
+            } else {
+                if (dz > 0) obstructed.S = true; else if (dz < 0) obstructed.N = true
+            }
+        }
+        return (obstructed.E|0) + (obstructed.W|0) + (obstructed.S|0) + (obstructed.N|0)
+    }
+    function canPlaceNow() {
+        return obstructedDirectionsCount() < 2
+    }
+    function shouldClearArea() {
+        return obstructedDirectionsCount() >= 2
     }
 
     const enterToExit = new StateTransition({
@@ -87,15 +133,22 @@ function createPlaceNearState(bot, targets) {
             const base = bot.entity.position.clone()
             const offsetX = (Math.random() < 0.5 ? -1.5 : 1.5)
             const offsetZ = (Math.random() < 0.5 ? -1.5 : 1.5)
-            const target = base.clone(); target.x += offsetX; target.z += offsetZ
-            const placePos = target.clone()
-            placePos.x = Math.floor(placePos.x) + 0.5
-            placePos.y = Math.floor(placePos.y) - 1
-            placePos.z = Math.floor(placePos.z) + 0.5
-            targets.placePosition = placePos.clone();
-            targets.position = target
-            console.log('BehaviorPlaceNear: Set place position:', targets.placePosition)
-            console.log('BehaviorPlaceNear: Set target position:', targets.position)
+            const rough = base.clone(); rough.x += offsetX; rough.z += offsetZ
+            const ground = findSolidBaseNear(rough) || findSolidBaseNear(base) || findSolidBaseNear(base.offset(0, 0, 0))
+            if (ground) {
+                const placePos = ground.clone()
+                targets.placePosition = placePos
+                const center = placePos.clone(); center.x += 0.5; center.y += 1; center.z += 0.5
+                targets.position = placePos.clone(); targets.position.x += 0.5; targets.position.y += 0; targets.position.z += 0.5
+                console.log('BehaviorPlaceNear: Set place base:', placePos)
+                console.log('BehaviorPlaceNear: Set target position:', targets.position)
+            } else {
+                const fallback = base.floored()
+                fallback.y -= 1
+                targets.placePosition = fallback
+                targets.position = fallback.clone(); targets.position.x += 0.5; targets.position.z += 0.5
+                console.log('BehaviorPlaceNear: Fallback place base:', targets.placePosition)
+            }
         }
     })
 
@@ -114,7 +167,15 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: move to place coords -> place block',
         parent: moveToPlaceCoords,
         child: placeBlock,
-        shouldTransition: () => moveToPlaceCoords.isFinished() && isAreaClear(),
+        shouldTransition: () => {
+            if (!moveToPlaceCoords.isFinished()) return false
+            if (!canPlaceNow()) return false
+            try {
+                const ref = bot.blockAt(targets.placePosition, false)
+                if (!ref || ref.type === 0) return false
+            } catch (_) { return false }
+            return true
+        },
         onTransition: () => {
             placeStartTime = Date.now()
             console.log('BehaviorPlaceNear: move to place coords -> place block')
@@ -123,6 +184,7 @@ function createPlaceNearState(bot, targets) {
 
             targets.placedPosition = targets.position.clone()
             targets.placedPosition.y += 1
+            try { targets.referenceBlock = bot.blockAt(targets.placePosition, false) } catch (_) {}
         }
     })
 
@@ -131,11 +193,15 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: move to place coords -> clear init',
         parent: moveToPlaceCoords,
         child: clearInit,
-        shouldTransition: () => moveToPlaceCoords.isFinished() && !isAreaClear() && placeTries < 3,
+        shouldTransition: () => moveToPlaceCoords.isFinished() && shouldClearArea() && placeTries < 3,
         onTransition: () => {
             clearTargets.placePosition = targets.placePosition.clone()
-            clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal) ? targets.clearRadiusHorizontal : 2
-            clearTargets.clearRadiusVertical = Number.isFinite(targets.clearRadiusVertical) ? targets.clearRadiusVertical : 2
+            clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal)
+                ? targets.clearRadiusHorizontal
+                : (Number.isFinite(clearTargets.clearRadiusHorizontal) ? clearTargets.clearRadiusHorizontal : 1)
+            clearTargets.clearRadiusVertical = Number.isFinite(targets.clearRadiusVertical)
+                ? targets.clearRadiusVertical
+                : (Number.isFinite(clearTargets.clearRadiusVertical) ? clearTargets.clearRadiusVertical : 2)
             console.log('BehaviorPlaceNear: clear init -> queued area with radii', clearTargets.clearRadiusHorizontal, clearTargets.clearRadiusVertical)
         }
     })
@@ -152,8 +218,22 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: clear area -> place gate',
         parent: clearArea,
         child: moveToPlaceCoords,
-        shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() && isAreaClear() : isAreaClear(),
+        shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() && canPlaceNow() : canPlaceNow(),
         onTransition: () => { console.log('BehaviorPlaceNear: clearing complete') }
+    })
+
+    const clearAreaToReposition = new StateTransition({
+        name: 'BehaviorPlaceNear: clear area -> reposition',
+        parent: clearArea,
+        child: findPlaceCoords,
+        shouldTransition: () => {
+            const finished = typeof clearArea.isFinished === 'function' ? clearArea.isFinished() : true
+            return finished && !canPlaceNow()
+        },
+        onTransition: () => {
+            console.log('BehaviorPlaceNear: clearing capped or still obstructed -> reposition')
+            placeTries++
+        }
     })
 
     const placeUtilityBlockToFindPlaceCoords = new StateTransition({
@@ -191,7 +271,8 @@ function createPlaceNearState(bot, targets) {
         clearAreaToPlaceGate,
         moveToPlaceCoordsToPlaceUtilityBlock,
         placeUtilityBlockToFindPlaceCoords,
-        placeUtilityBlockToExit
+        placeUtilityBlockToExit,
+        clearAreaToReposition
     ]
 
     return new NestedStateMachine(transitions, enter, exit)
