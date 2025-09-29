@@ -35,7 +35,10 @@ function createCollectBlockState(bot, targets) {
 
     const enter = new BehaviorIdle()
 
-    findBlock = new BehaviorFindBlock(bot, targets)
+    // Prefer safe find behavior which avoids looping over repeated positions
+    let createSafeFind
+    try { createSafeFind = require('./behaviorSafeFindBlock') } catch (_) { createSafeFind = null }
+    findBlock = createSafeFind ? createSafeFind(bot, targets) : new BehaviorFindBlock(bot, targets)
     if (initialId != null) findBlock.blocks = [initialId]
     findBlock.maxDistance = 64
 

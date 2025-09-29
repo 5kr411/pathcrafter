@@ -193,7 +193,7 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: move to place coords -> clear init',
         parent: moveToPlaceCoords,
         child: clearInit,
-        shouldTransition: () => moveToPlaceCoords.isFinished() && shouldClearArea() && placeTries < 3,
+        shouldTransition: () => moveToPlaceCoords.isFinished() && shouldClearArea() && placeTries < 5,
         onTransition: () => {
             clearTargets.placePosition = targets.placePosition.clone()
             clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal)
@@ -240,7 +240,7 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: place block -> find place coords',
         parent: placeBlock,
         child: findPlaceCoords,
-        shouldTransition: () => Date.now() - placeStartTime > 1000 && placeTries < 5 && bot.world.getBlockType(targets.placedPosition) === 0,
+        shouldTransition: () => Date.now() - placeStartTime > 1000 && placeTries < 8 && bot.world.getBlockType(targets.placedPosition) === 0,
         onTransition: () => {
             console.log(`BehaviorPlaceNear: place block -> find place coords (retry ${placeTries})`)
             placeTries++
@@ -251,7 +251,7 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: place block -> exit',
         parent: placeBlock,
         child: exit,
-        shouldTransition: () => Date.now() - placeStartTime > 500 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 5),
+        shouldTransition: () => Date.now() - placeStartTime > 500 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 8),
         onTransition: () => {
             console.log('BehaviorPlaceNear: place block -> exit')
             console.log('Block at place position:', bot.world.getBlockType(targets.placedPosition))

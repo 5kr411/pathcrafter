@@ -8,6 +8,7 @@ const minecraftData = require('minecraft-data')
 const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig')
 const createPlaceNearState = require('./behaviorPlaceNear')
 const createBreakAtPositionState = require('./behaviorBreakAtPosition')
+const { getItemCountInInventory } = require('../util')
 
 function createSmeltState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -32,6 +33,17 @@ function createSmeltState(bot, targets) {
     function findNearbyFurnace(maxDistance = 6) {
         try {
             const ids = ['furnace', 'lit_furnace'].filter(n => bot.registry.blocksByName[n] !== undefined).map(n => bot.registry.blocksByName[n].id)
+            // Use safe finder if available to avoid repeating unreachable furnaces
+            if (typeof bot.findBlocks === 'function') {
+                const list = bot.findBlocks({ matching: ids, maxDistance, count: 8 }) || []
+                for (const p of list) {
+                    try {
+                        const b = bot.blockAt(p, false)
+                        if (b && (b.name === 'furnace' || b.name === 'lit_furnace')) return b
+                    } catch (_) {}
+                }
+                return null
+            }
             return bot.findBlock({ matching: ids, maxDistance })
         } catch (_) { return null }
     }
@@ -99,13 +111,14 @@ function createSmeltState(bot, targets) {
             let furnaceBlock = findNearbyFurnace(6)
             if (!furnaceBlock) return
             const furnace = await bot.openFurnace(furnaceBlock)
-            const outTarget = getItemCount(wantItem) + Math.max(1, wantCount)
-            console.log(`BehaviorSmelt: run start (have ${getItemCount(wantItem)} ${wantItem}, target ${outTarget})`)
+            const have0 = getItemCountInInventory(bot, wantItem)
+            const outTarget = have0 + Math.max(1, wantCount)
+            console.log(`BehaviorSmelt: run start (have ${have0} ${wantItem}, target ${outTarget})`)
             function idOf(name) { return mc.itemsByName[name]?.id }
             function sleep(ms) { return new Promise(r => setTimeout(r, ms)) }
             let lastTake = Date.now()
             let lastProgress = 0
-            let prevOut = getItemCount(wantItem)
+            let prevOut = have0
             let lastActivity = Date.now()
             let lastFuelPut = 0
             const STALL_TIMEOUT_MS = 20000
@@ -145,14 +158,16 @@ function createSmeltState(bot, targets) {
                 } catch (_) {}
                 try {
                     if (furnace.outputItem()) {
+                        const before = getItemCountInInventory(bot, wantItem)
                         await furnace.takeOutput()
+                        const after = getItemCountInInventory(bot, wantItem)
                         lastTake = Date.now()
-                        console.log(`BehaviorSmelt: took output (now have ${getItemCount(wantItem)}/${outTarget})`)
+                        console.log(`BehaviorSmelt: took output (now have ${after}/${outTarget})`)
                         acted = true
                     }
                 } catch (_) {}
                 const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0
-                const curOut = getItemCount(wantItem)
+                const curOut = getItemCountInInventory(bot, wantItem)
                 if (curOut > prevOut) { lastActivity = Date.now(); prevOut = curOut }
                 if (acted || prog > lastProgress || furnace.inputItem() || furnace.outputItem()) {
                     lastActivity = Date.now()
@@ -160,18 +175,18 @@ function createSmeltState(bot, targets) {
                 lastProgress = prog
                 await sleep(400)
             }
-            smeltSucceeded = getItemCount(wantItem) >= outTarget
+            smeltSucceeded = getItemCountInInventory(bot, wantItem) >= outTarget
             const preIn = furnace.inputItem()
             const preOut = furnace.outputItem()
             const preFuel = furnace.fuelItem()
-            const noInputInInv = !inputItem || getItemCount(inputItem) === 0
-            const noFuelInInv = !fuelItem || getItemCount(fuelItem) === 0
+            const noInputInInv = !inputItem || getItemCountInInventory(bot, inputItem) === 0
+            const noFuelInInv = !fuelItem || getItemCountInInventory(bot, fuelItem) === 0
             const furnaceIdle = !preIn && !preOut
             // Break if: target reached, or we have no input left, or furnace is idle and we have no fuel left
             breakRecommended = placedByUs && (smeltSucceeded || noInputInInv || (furnaceIdle && noFuelInInv))
             try { furnace.close() } catch (_) {}
             const stalled = !smeltSucceeded
-            console.log(`BehaviorSmelt: run end (success=${smeltSucceeded}, stalled=${stalled}, have ${getItemCount(wantItem)}/${outTarget})`)
+            console.log(`BehaviorSmelt: run end (success=${smeltSucceeded}, stalled=${stalled}, have ${getItemCountInInventory(bot, wantItem)}/${outTarget})`)
         } catch (err) {
             console.log('BehaviorSmelt: error during smelt run', err)
             // Break even on error if we placed the furnace

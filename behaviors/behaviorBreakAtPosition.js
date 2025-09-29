@@ -74,6 +74,9 @@ function createBreakAtPositionState(bot, targets) {
         }
     })
 
+    const MOVE_TIMEOUT_MS = 15000
+    const MINE_TIMEOUT_MS = 12000
+
     let moveStartTime
     let brokenObserved = false
     let digRetries = 0
@@ -91,7 +94,7 @@ function createBreakAtPositionState(bot, targets) {
             return true
         },
         onTransition: () => {
-            moveStartTime = Date.now()
+            moveStartTime = moveStartTime || Date.now()
             console.log('BehaviorBreakAtPosition: move -> mine')
             targets.position = targets.blockPosition;
             brokenObserved = false
@@ -101,7 +104,25 @@ function createBreakAtPositionState(bot, targets) {
         }
     })
 
+    // If we can't reach the block or moving takes too long, exit gracefully
+    const moveToExit = new StateTransition({
+        name: 'BehaviorBreakAtPosition: move -> exit (timeout/unreachable)',
+        parent: moveTo,
+        child: exit,
+        shouldTransition: () => {
+            const started = moveStartTime != null
+            const tookTooLong = started && (Date.now() - moveStartTime > MOVE_TIMEOUT_MS)
+            const stuckFar = moveTo.isFinished() && moveTo.distanceToTarget() >= 6
+            return tookTooLong || stuckFar
+        },
+        onTransition: () => {
+            const elapsed = moveStartTime ? (Date.now() - moveStartTime) : 0
+            console.log(`BehaviorBreakAtPosition: move -> exit (elapsed=${elapsed}ms, dist=${moveTo.distanceToTarget && moveTo.distanceToTarget()})`)
+        }
+    })
+
     let mineFinishTime
+    let mineStartTime
     const mineToExit = new StateTransition({
         name: 'BehaviorBreakAtPosition: mine -> exit',
         parent: mine,
@@ -112,12 +133,19 @@ function createBreakAtPositionState(bot, targets) {
                 const broken = targets.blockPosition && bot.world.getBlockType(targets.blockPosition) === 0
                 if (broken || brokenObserved) return true
             } catch (_) {}
-            // Only allow exit if we've been mining for a long time and still no update
-            return false;
+            // Exit if mining is taking too long or the target is invalid
+            const timedOut = mineStartTime != null && (Date.now() - mineStartTime > MINE_TIMEOUT_MS)
+            let invalidTarget = false
+            try {
+                const blk = targets.blockPosition && bot.blockAt(targets.blockPosition, false)
+                invalidTarget = !blk || (typeof bot.canDigBlock === 'function' && !bot.canDigBlock(blk))
+            } catch (_) { invalidTarget = true }
+            return timedOut || invalidTarget;
         },
         onTransition: () => {
             const moveDuration = moveStartTime ? (Date.now() - moveStartTime) : 0
-            console.log(`BehaviorBreakAtPosition: mine -> exit (move took ${moveDuration}ms)`)            
+            const mineDuration = mineStartTime ? (Date.now() - mineStartTime) : 0
+            console.log(`BehaviorBreakAtPosition: mine -> exit (move took ${moveDuration}ms, mine took ${mineDuration}ms)`)            
         }
     })
 
@@ -138,7 +166,20 @@ function createBreakAtPositionState(bot, targets) {
         }
     })
 
-    const transitions = [enterToExit, enterToFind, findToMove, moveToMine, mineToExit, mineToRetry]
+    // Capture when we enter moving to start timeout tracking
+    findToMove.onTransition = () => {
+        console.log('BehaviorBreakAtPosition: find -> move')
+        moveStartTime = Date.now()
+    }
+
+    // Capture mining start to enable timeout
+    const originalMoveToMineOnTransition = moveToMine.onTransition
+    moveToMine.onTransition = () => {
+        mineStartTime = Date.now()
+        originalMoveToMineOnTransition()
+    }
+
+    const transitions = [enterToExit, enterToFind, findToMove, moveToMine, moveToExit, mineToExit, mineToRetry]
     return new NestedStateMachine(transitions, enter, exit)
 }
 

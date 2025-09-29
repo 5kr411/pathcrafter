@@ -3,6 +3,7 @@ let pruneWithWorldEnabled = false;
 let defaultPerGeneratorPaths = 50;
 let defaultSnapshotChunkRadius = 3;
 let planningTelemetryEnabled = false;
+let safeFindRepeatThreshold = 3;
 
 // Initialize from environment variable if provided (truthy/falsey parsing)
 try {
@@ -37,6 +38,8 @@ module.exports = {
     getDefaultSnapshotChunkRadius
     , setPlanningTelemetryEnabled: (v) => { planningTelemetryEnabled = !!v; }
     , getPlanningTelemetryEnabled: () => !!planningTelemetryEnabled
+    , setSafeFindRepeatThreshold: (n) => { if (Number.isFinite(n) && n >= 1) safeFindRepeatThreshold = Math.floor(n); }
+    , getSafeFindRepeatThreshold: () => safeFindRepeatThreshold
 };
 
 

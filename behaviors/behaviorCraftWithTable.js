@@ -27,7 +27,14 @@ const createCraftWithTableState = (bot, targets) => {
             }
         } catch (_) {}
         if (!craftingTable) {
-            craftingTable = bot.findBlock({ matching: block => block.name === 'crafting_table', maxDistance: 4 });
+            try {
+                const list = bot.findBlocks({ matching: b => b.name === 'crafting_table', maxDistance: 4, count: 4 }) || []
+                for (const p of list) {
+                    const b = bot.blockAt(p, false)
+                    if (b && b.name === 'crafting_table') { craftingTable = b; break }
+                }
+            } catch (_) {}
+            if (!craftingTable) craftingTable = bot.findBlock({ matching: block => block.name === 'crafting_table', maxDistance: 4 });
         }
 
         if (!craftingTable) {

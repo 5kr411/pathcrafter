@@ -7,15 +7,17 @@ const planner = require('../planner')
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN')
 const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
-const { captureRawWorldSnapshot } = require('../utils/worldSnapshot')
-const { setGenericWoodEnabled } = require('../utils/config')
+const { beginSnapshotScan, stepSnapshotScan, snapshotFromState } = require('../utils/worldSnapshot')
+const { setGenericWoodEnabled, setSafeFindRepeatThreshold } = require('../utils/config')
 // Centralized tunables for this bot. Adjust here.
 const RUNTIME = {
   genericWoodEnabled: false,
   pruneWithWorld: true,
   perGenerator: 5000,
-  snapshotRadius: 384,
-  telemetry: true
+  snapshotRadius: 100,
+  snapshotYHalf: null,
+  telemetry: true,
+  safeFindRepeatThreshold: 10
 }
 
 const { Worker } = require('worker_threads')
@@ -48,6 +50,9 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
 
 bot.once('spawn', () => {
   setGenericWoodEnabled(RUNTIME.genericWoodEnabled)
+  if (Number.isFinite(RUNTIME.safeFindRepeatThreshold)) {
+    setSafeFindRepeatThreshold(Math.max(1, Math.floor(RUNTIME.safeFindRepeatThreshold)))
+  }
   const safeChat = (msg) => { try { if (bot && bot._client && !bot._client.ended) bot.chat(msg) } catch (_) {} }
   let connected = true
   bot.on('kicked', (reason) => { connected = false; console.log('Collector: kicked', reason) })
@@ -56,9 +61,12 @@ bot.once('spawn', () => {
   safeChat('collector ready')
 
   let running = false
-  let lastRequest = null
+let lastRequest = null
+let lastSequence = null
   let worker = null
   let pending = new Map()
+let sequenceTargets = []
+let sequenceIndex = 0
 
   function ensureWorker() {
     if (worker) return worker
@@ -86,7 +94,7 @@ bot.once('spawn', () => {
         const mcData = minecraftData(bot.version || '1.20.1')
         const center = bot.entity && bot.entity.position ? bot.entity.position : null
         // New snapshot format: map of name -> stats
-        const blocks = snapshot && snapshot.blocks && typeof snapshot.blocks === 'object' ? snapshot.blocks : {}
+        const blocks = entry && entry.snapshot && entry.snapshot.blocks && typeof entry.snapshot.blocks === 'object' ? entry.snapshot.blocks : {}
         const resolved = best.map((s) => {
           if (!s || typeof s !== 'object') return s
           const copy = { ...s }
@@ -111,12 +119,85 @@ bot.once('spawn', () => {
         }
       } catch (_) {}
       if (!connected) { running = false; return }
-      const sm = buildStateMachineForPath(bot, best, () => { running = false; safeChat('plan complete') })
+      const sm = buildStateMachineForPath(bot, best, () => {
+        running = false
+        safeChat('plan complete')
+        // Advance to next target if present
+        try { startNextTarget() } catch (_) {}
+      })
       new BotStateMachine(bot, sm)
     })
     worker.on('error', () => { running = false })
     worker.on('exit', () => { worker = null; pending.clear(); running = false })
     return worker
+  }
+
+  function parseTargetsFromMessage(message) {
+    const afterCmd = message.replace(/^\s*(collect|go)\s*/i, '')
+    return afterCmd.split(',').map(seg => seg.trim()).filter(Boolean).map(seg => {
+      const parts = seg.split(/\s+/).filter(Boolean)
+      const item = parts[0]
+      const count = Number.parseInt(parts[1])
+      return (item && Number.isFinite(count) && count > 0) ? { item, count } : null
+    }).filter(Boolean)
+  }
+
+  async function startNextTarget() {
+    if (running) return
+    if (!Array.isArray(sequenceTargets) || sequenceTargets.length === 0) return
+    if (sequenceIndex >= sequenceTargets.length) {
+      safeChat('all targets complete')
+      sequenceTargets = []
+      sequenceIndex = 0
+      return
+    }
+    const target = sequenceTargets[sequenceIndex]
+    sequenceIndex++
+    const version = bot.version || '1.20.1'
+    const invObj = getInventoryObject(bot)
+    const snapOpts = { radius: RUNTIME.snapshotRadius }
+    if (Number.isFinite(RUNTIME.snapshotYHalf)) {
+      const y0 = Math.floor((bot.entity && bot.entity.position && bot.entity.position.y) || 64)
+      snapOpts.yMin = y0 - RUNTIME.snapshotYHalf
+      snapOpts.yMax = y0 + RUNTIME.snapshotYHalf
+    }
+    const tSnapStart = Date.now()
+    const scan = beginSnapshotScan(bot, snapOpts)
+    // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
+    const budgetMs = 10
+    const sleepBetween = 20
+    let lastProgressLog = Date.now()
+    while (!(await stepSnapshotScan(scan, budgetMs))) {
+      if (!connected) { running = false; return }
+      if (RUNTIME.telemetry && Date.now() - lastProgressLog > 1000) {
+        const pct = Math.min(100, Math.floor((scan.r / scan.maxRadius) * 100))
+        console.log(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
+        lastProgressLog = Date.now()
+      }
+      await new Promise(resolve => setTimeout(resolve, sleepBetween))
+    }
+    const snapshot = snapshotFromState(scan)
+    if (RUNTIME.telemetry) {
+      const dur = Date.now() - tSnapStart
+      console.log(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
+    }
+    const id = `${Date.now()}_${Math.random()}`
+    ensureWorker()
+    pending.set(id, { snapshot, target })
+    running = true
+    worker.postMessage({
+      type: 'plan',
+      id,
+      mcVersion: version,
+      item: target.item,
+      count: target.count,
+      inventory: invObj,
+      snapshot,
+      perGenerator: RUNTIME.perGenerator,
+      disableGenericWood: !RUNTIME.genericWoodEnabled,
+      pruneWithWorld: RUNTIME.pruneWithWorld,
+      telemetry: RUNTIME.telemetry
+    })
   }
 
   bot.on('chat', (username, message) => {
@@ -125,41 +206,22 @@ bot.once('spawn', () => {
     const parts = m.split(/\s+/)
     if (parts[0] !== 'collect' && parts[0] !== 'go') return
 
-    let item = parts[1]
-    let count = Number.parseInt(parts[2])
-
     if (parts[0] === 'go') {
-      if (!lastRequest) { bot.chat('no previous collect request'); return }
-      item = lastRequest.item
-      count = lastRequest.count
+      if (!Array.isArray(lastSequence) || lastSequence.length === 0) { safeChat('no previous collect request'); return }
+      sequenceTargets = lastSequence.slice()
+      sequenceIndex = 0
+      if (running) { safeChat('already running, please wait'); return }
+      startNextTarget().catch(() => {})
+      return
     }
 
-    if (!item || !Number.isFinite(count) || count <= 0) { safeChat('usage: collect <item> <count>'); return }
-    lastRequest = { item, count }
-
+    const parsed = parseTargetsFromMessage(message)
+    if (!parsed || parsed.length === 0) { safeChat('usage: collect <item> <count>[, <item> <count> ...]'); return }
+    lastSequence = parsed.slice()
+    sequenceTargets = parsed.slice()
+    sequenceIndex = 0
     if (running) { safeChat('already running, please wait'); return }
-    running = true
-
-    const version = bot.version || '1.20.1'
-    const invObj = getInventoryObject(bot)
-    const snapshot = captureRawWorldSnapshot(bot, { radius: RUNTIME.snapshotRadius })
-
-    const id = `${Date.now()}_${Math.random()}`
-    ensureWorker()
-    pending.set(id, true)
-    worker.postMessage({
-      type: 'plan',
-      id,
-      mcVersion: version,
-      item,
-      count,
-      inventory: invObj,
-      snapshot,
-      perGenerator: RUNTIME.perGenerator,
-      disableGenericWood: !RUNTIME.genericWoodEnabled,
-      pruneWithWorld: RUNTIME.pruneWithWorld,
-      telemetry: RUNTIME.telemetry
-    })
+    startNextTarget().catch(() => {})
   })
 })
 
