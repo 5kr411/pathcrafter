@@ -71,7 +71,8 @@ bot.once('spawn', () => {
       try {
         const mcData = minecraftData(bot.version || '1.20.1')
         const center = bot.entity && bot.entity.position ? bot.entity.position : null
-        const blocks = Array.isArray(snapshot && snapshot.blocks) ? snapshot.blocks : []
+        // New snapshot format: map of name -> stats
+        const blocks = snapshot && snapshot.blocks && typeof snapshot.blocks === 'object' ? snapshot.blocks : {}
         const resolved = best.map((s) => {
           if (!s || typeof s !== 'object') return s
           const copy = { ...s }

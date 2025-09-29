@@ -3,11 +3,12 @@ const path = require('path');
 const minecraftData = require('minecraft-data');
 
 /**
- * Capture a raw snapshot of world data by scanning blocks within a radius and listing entities.
- * This enumerates positions and block state for all matching blocks (optionally including air).
+ * Capture a summarized snapshot of world data near the bot.
+ * Instead of returning every block/entity position, aggregate by type with statistics:
+ * { count, closestDistance, averageDistance } relative to the bot center.
  *
  * Options:
- * - radius: scan radius from bot position (default 96, clamped to [8, 512])
+ * - chunkRadius: chunk radius to scan (default 2, clamped to [0, 8])
  * - includeAir: include air blocks (default false)
  * - yMin, yMax: vertical scan bounds (defaults to chunk min/max for the version if known, else [0, 255])
  * - version/mcData: override mcData resolution
@@ -46,44 +47,62 @@ function captureRawWorldSnapshot(bot, opts = {}) {
         ? bot.findBlocks({ matching, maxDistance, count: maxCount })
         : [];
 
-    // Materialize block data
-    const blocks = [];
+    function dist(ax, ay, az, bx, by, bz) {
+        const dx = ax - bx; const dy = ay - by; const dz = az - bz;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+
+    // Aggregate block statistics by name
+    const blockAgg = new Map(); // name -> { count, sumDist, closest }
     for (const pos of positions) {
         const blk = bot.blockAt(pos, false);
         if (!blk) continue;
         if (!includeAir && blk.name === 'air') continue;
-        const base = {
-            x: blk.position.x,
-            y: blk.position.y,
-            z: blk.position.z,
-            name: blk.name,
-            id: typeof blk.type === 'number' ? blk.type : undefined,
-            stateId: typeof blk.stateId === 'number' ? blk.stateId : undefined
-        };
-        // Try to include block properties if available
-        try {
-            if (typeof blk.getProperties === 'function') {
-                const props = blk.getProperties();
-                if (props && typeof props === 'object') base.properties = props;
-            }
-        } catch (_) {}
-        blocks.push(base);
+        const name = blk.name;
+        if (!name) continue;
+        const d = dist(cx, cy, cz, pos.x, pos.y, pos.z);
+        const rec = blockAgg.get(name) || { count: 0, sumDist: 0, closest: Infinity };
+        rec.count += 1;
+        rec.sumDist += d;
+        if (d < rec.closest) rec.closest = d;
+        blockAgg.set(name, rec);
     }
 
-    // Entities with basic fields
-    const entities = [];
+    const blockStats = {};
+    for (const [name, rec] of blockAgg.entries()) {
+        const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
+        blockStats[name] = {
+            count: rec.count,
+            closestDistance: rec.closest === Infinity ? null : rec.closest,
+            averageDistance: avg
+        };
+    }
+
+    // Aggregate entity statistics by preferred name
+    const entityAgg = new Map(); // name -> { count, sumDist, closest }
     if (bot && bot.entities) {
         for (const key in bot.entities) {
             const e = bot.entities[key];
             if (!e || !e.position) continue;
-            entities.push({
-                id: e.id,
-                name: e.name,
-                type: e.type,
-                kind: e.kind,
-                position: { x: e.position.x, y: e.position.y, z: e.position.z }
-            });
+            const n = e.name || e.type || e.kind;
+            if (!n) continue;
+            const d = dist(cx, cy, cz, e.position.x, e.position.y, e.position.z);
+            const rec = entityAgg.get(n) || { count: 0, sumDist: 0, closest: Infinity };
+            rec.count += 1;
+            rec.sumDist += d;
+            if (d < rec.closest) rec.closest = d;
+            entityAgg.set(n, rec);
         }
+    }
+
+    const entityStats = {};
+    for (const [name, rec] of entityAgg.entries()) {
+        const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
+        entityStats[name] = {
+            count: rec.count,
+            closestDistance: rec.closest === Infinity ? null : rec.closest,
+            averageDistance: avg
+        };
     }
 
     return {
@@ -93,8 +112,8 @@ function captureRawWorldSnapshot(bot, opts = {}) {
         chunkRadius,
         yMin,
         yMax,
-        blocks,
-        entities
+        blocks: blockStats,
+        entities: entityStats
     };
 }
 

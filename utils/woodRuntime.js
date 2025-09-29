@@ -115,8 +115,8 @@ function buildSpeciesCandidates(mcData, tokensMaybe) {
 module.exports.__debugSpeciesCandidates = (mcData) => buildSpeciesCandidates(mcData, null)
 module.exports.__debugPickNearest = (bot, mcData, base) => pickNearestSpeciesInWorld(bot, buildSpeciesCandidates(mcData, null), base, mcData, { radius: 48 })
 
-// Snapshot-based resolution (fast, avoids bot.findBlocks). Pass in snapshot.blocks array.
-function resolveWithSnapshotFlexibleName(mcData, name, snapshotBlocks, opts = {}) {
+// Snapshot-based resolution (fast, avoids bot.findBlocks). Pass in snapshot.blocks map.
+function resolveWithSnapshotFlexibleName(mcData, name, snapshotBlocksMap, opts = {}) {
   try {
     if (!getGenericWoodEnabled()) return name
     if (!name || typeof name !== 'string') return name
@@ -134,20 +134,31 @@ function resolveWithSnapshotFlexibleName(mcData, name, snapshotBlocks, opts = {}
     const speciesTokens = buildSpeciesCandidates(mcData, getWoodSpeciesTokens())
     if (!speciesTokens || speciesTokens.length === 0) return name
 
-    // Inventory preference is not available here; use nearest by snapshot
-    const center = opts.center || null
-    function dist2(a, b) { const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z; return dx*dx + dy*dy + dz*dz }
+    // Inventory preference is not available here; use snapshot summary stats
     let best = null
-    let bestD2 = Infinity
-    const blocks = Array.isArray(snapshotBlocks) ? snapshotBlocks : []
+    let bestClosest = Infinity
+    const blocks = (snapshotBlocksMap && typeof snapshotBlocksMap === 'object') ? snapshotBlocksMap : {}
     for (const s of speciesTokens) {
       const logName = `${s}_log`
-      for (const b of blocks) {
-        if (!b || !b.name) continue
-        if (b.name === logName || b.name === `${s}_${base}`) {
-          const d2 = center && b ? dist2(center, b) : 0
-          if (d2 < bestD2) { bestD2 = d2; best = s }
-        }
+      const baseName = `${s}_${base}`
+      const logRec = blocks[logName]
+      const baseRec = blocks[baseName]
+      // Prefer logs as clearer signal; pick whichever has smaller closest distance
+      const cand = (logRec && Number.isFinite(logRec.closestDistance)) ? { name: s, closest: logRec.closestDistance, count: logRec.count } :
+                   (baseRec && Number.isFinite(baseRec.closestDistance)) ? { name: s, closest: baseRec.closestDistance, count: baseRec.count } :
+                   (logRec && Number.isFinite(logRec.count) && logRec.count > 0) ? { name: s, closest: Number.POSITIVE_INFINITY, count: logRec.count } :
+                   (baseRec && Number.isFinite(baseRec.count) && baseRec.count > 0) ? { name: s, closest: Number.POSITIVE_INFINITY, count: baseRec.count } : null
+      if (!cand) continue
+      if (cand.closest < bestClosest) { bestClosest = cand.closest; best = s }
+      else if (cand.closest === bestClosest) {
+        // tie-breaker: higher count
+        const bestCount = (() => {
+          const logB = blocks[`${best}_log`]
+          const baseB = blocks[`${best}_${base}`]
+          return (logB && Number.isFinite(logB.count) ? logB.count : 0) + (baseB && Number.isFinite(baseB.count) ? baseB.count : 0)
+        })()
+        const candCount = cand.count || 0
+        if (candCount > bestCount) best = s
       }
     }
     if (best) return `${best}_${base}`

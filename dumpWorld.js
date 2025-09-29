@@ -19,7 +19,7 @@ bot.once('spawn', () => {
         try {
             const raw = captureRawWorldSnapshot(bot, { chunkRadius, includeAir: false });
             const dim = (bot.game && bot.game.dimension) ? String(bot.game.dimension).replace(/[^a-z0-9_\-]/gi, '_') : 'overworld';
-            const outPath = `./world-snapshots/raw_${dim}_${Date.now()}.json`;
+            const outPath = `./world_snapshots/raw_${dim}_${Date.now()}.json`;
             saveSnapshotToFile(raw, outPath);
             console.log(`Saved world snapshot to ${outPath}`);
             safeExit(0);

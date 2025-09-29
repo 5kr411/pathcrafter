@@ -12,10 +12,10 @@ describe('unit: world filtering', () => {
             chunkRadius: 1,
             yMin: 0,
             yMax: 255,
-            blocks: [
-                { x: 10, y: 60, z: 10, name: 'iron_ore', id: 44, stateId: 131 }
-            ],
-            entities: []
+            blocks: {
+                iron_ore: { count: 1, closestDistance: 15, averageDistance: 15 }
+            },
+            entities: {}
         };
         const result = filterPathsByWorldSnapshot([path], snapshot);
         expect(result.length).toBe(1);
@@ -33,12 +33,11 @@ describe('unit: world filtering', () => {
             chunkRadius: 1,
             yMin: 0,
             yMax: 255,
-            blocks: [
-                { x: 1, y: 64, z: 1, name: 'oak_log' },
-                { x: 2, y: 64, z: 2, name: 'spruce_log' },
-                { x: 3, y: 64, z: 3, name: 'oak_log' }
-            ],
-            entities: []
+            blocks: {
+                oak_log: { count: 2, closestDistance: 1, averageDistance: 2 },
+                spruce_log: { count: 1, closestDistance: 2, averageDistance: 2 }
+            },
+            entities: {}
         };
         const enabled = filterPathsByWorldSnapshot([path], snapshot);
         expect(enabled.length).toBe(1);
@@ -53,7 +52,7 @@ describe('unit: world filtering', () => {
 
     test('missing block fails filter', () => {
         const path = [ { action: 'mine', what: 'iron_ore', count: 1 } ];
-        const snapshot = { version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, yMin: 0, yMax: 255, blocks: [], entities: [] };
+        const snapshot = { version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, yMin: 0, yMax: 255, blocks: {}, entities: {} };
         const result = filterPathsByWorldSnapshot([path], snapshot);
         expect(result.length).toBe(0);
     });

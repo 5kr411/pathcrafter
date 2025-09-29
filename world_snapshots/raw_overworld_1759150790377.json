@@ -1,0 +1,336 @@
+{
+  "version": "1.21.4",
+  "dimension": "overworld",
+  "center": {
+    "x": 63,
+    "y": 70,
+    "z": -97
+  },
+  "chunkRadius": 3,
+  "yMin": 0,
+  "yMax": 255,
+  "blocks": {
+    "podzol": {
+      "count": 5237,
+      "closestDistance": 1,
+      "averageDistance": 36.61425052831839
+    },
+    "coarse_dirt": {
+      "count": 1256,
+      "closestDistance": 1.4142135623730951,
+      "averageDistance": 29.228601930297568
+    },
+    "dirt": {
+      "count": 30097,
+      "closestDistance": 2,
+      "averageDistance": 35.89644495729595
+    },
+    "fern": {
+      "count": 834,
+      "closestDistance": 2.23606797749979,
+      "averageDistance": 36.9884019054727
+    },
+    "spruce_leaves": {
+      "count": 18100,
+      "closestDistance": 3.4641016151377544,
+      "averageDistance": 35.652862189273925
+    },
+    "dead_bush": {
+      "count": 22,
+      "closestDistance": 5.0990195135927845,
+      "averageDistance": 33.43838516199269
+    },
+    "spruce_log": {
+      "count": 3781,
+      "closestDistance": 5.385164807134504,
+      "averageDistance": 34.15353876095956
+    },
+    "stone": {
+      "count": 201723,
+      "closestDistance": 5.744562646538029,
+      "averageDistance": 43.75127835865543
+    },
+    "mossy_cobblestone": {
+      "count": 590,
+      "closestDistance": 7,
+      "averageDistance": 36.16430696601685
+    },
+    "short_grass": {
+      "count": 224,
+      "closestDistance": 8.306623862918075,
+      "averageDistance": 41.21756726118683
+    },
+    "brown_mushroom": {
+      "count": 158,
+      "closestDistance": 9.643650760992955,
+      "averageDistance": 38.57818537404502
+    },
+    "coal_ore": {
+      "count": 2299,
+      "closestDistance": 10.246950765959598,
+      "averageDistance": 40.34822349181845
+    },
+    "copper_ore": {
+      "count": 1886,
+      "closestDistance": 11.704699910719626,
+      "averageDistance": 43.94586705282737
+    },
+    "gravel": {
+      "count": 3727,
+      "closestDistance": 12.727922061357855,
+      "averageDistance": 44.654870392830475
+    },
+    "granite": {
+      "count": 16748,
+      "closestDistance": 14.177446878757825,
+      "averageDistance": 44.89970322654283
+    },
+    "diorite": {
+      "count": 14225,
+      "closestDistance": 14.317821063276353,
+      "averageDistance": 41.59578489637227
+    },
+    "iron_ore": {
+      "count": 650,
+      "closestDistance": 14.866068747318506,
+      "averageDistance": 47.456790504819345
+    },
+    "andesite": {
+      "count": 19890,
+      "closestDistance": 15,
+      "averageDistance": 42.68946434675655
+    },
+    "water": {
+      "count": 12197,
+      "closestDistance": 22.825424421026653,
+      "averageDistance": 47.539717662534436
+    },
+    "large_fern": {
+      "count": 170,
+      "closestDistance": 24.55605831561735,
+      "averageDistance": 37.32175662546444
+    },
+    "grass_block": {
+      "count": 1434,
+      "closestDistance": 25.179356624028344,
+      "averageDistance": 44.60449443152746
+    },
+    "lapis_ore": {
+      "count": 178,
+      "closestDistance": 25.729360660537214,
+      "averageDistance": 45.3270320788698
+    },
+    "sand": {
+      "count": 8281,
+      "closestDistance": 26.115129714401192,
+      "averageDistance": 47.385920781203296
+    },
+    "sweet_berry_bush": {
+      "count": 3,
+      "closestDistance": 26.248809496813376,
+      "averageDistance": 26.58608569904204
+    },
+    "sandstone": {
+      "count": 6089,
+      "closestDistance": 27.586228448267445,
+      "averageDistance": 49.78556410846584
+    },
+    "glow_lichen": {
+      "count": 28,
+      "closestDistance": 30.28200785945344,
+      "averageDistance": 43.82690125131959
+    },
+    "cave_air": {
+      "count": 202,
+      "closestDistance": 39.319206502675,
+      "averageDistance": 44.390544390114755
+    },
+    "lava": {
+      "count": 95,
+      "closestDistance": 40.91454509095757,
+      "averageDistance": 45.39437182656714
+    },
+    "raw_copper_block": {
+      "count": 5,
+      "closestDistance": 41.701318923986086,
+      "averageDistance": 50.23412178097551
+    },
+    "kelp": {
+      "count": 24,
+      "closestDistance": 46.04345773288535,
+      "averageDistance": 51.43533794401866
+    },
+    "clay": {
+      "count": 580,
+      "closestDistance": 46.14108798023731,
+      "averageDistance": 60.28872777082488
+    },
+    "kelp_plant": {
+      "count": 187,
+      "closestDistance": 46.22769732530488,
+      "averageDistance": 52.14916104883033
+    },
+    "seagrass": {
+      "count": 25,
+      "closestDistance": 49.31531202375181,
+      "averageDistance": 57.075463586137886
+    },
+    "poppy": {
+      "count": 6,
+      "closestDistance": 50.08991914547278,
+      "averageDistance": 53.387387345627864
+    },
+    "smooth_basalt": {
+      "count": 212,
+      "closestDistance": 50.76416058598822,
+      "averageDistance": 55.561599403207424
+    },
+    "calcite": {
+      "count": 206,
+      "closestDistance": 51.468436929831086,
+      "averageDistance": 56.53806134411166
+    },
+    "amethyst_block": {
+      "count": 149,
+      "closestDistance": 52.32590180780452,
+      "averageDistance": 56.91248844393225
+    },
+    "tall_seagrass": {
+      "count": 20,
+      "closestDistance": 52.364109846344185,
+      "averageDistance": 56.642726314454436
+    },
+    "tall_grass": {
+      "count": 20,
+      "closestDistance": 52.933921071464184,
+      "averageDistance": 56.72056833119408
+    },
+    "gold_ore": {
+      "count": 23,
+      "closestDistance": 52.952809179494906,
+      "averageDistance": 58.228080145989274
+    },
+    "dandelion": {
+      "count": 2,
+      "closestDistance": 53.24471804789655,
+      "averageDistance": 53.84826580407224
+    },
+    "budding_amethyst": {
+      "count": 15,
+      "closestDistance": 54.3415126767741,
+      "averageDistance": 56.42903947489414
+    },
+    "amethyst_cluster": {
+      "count": 13,
+      "closestDistance": 54.53439281774392,
+      "averageDistance": 56.27371938305362
+    },
+    "moss_carpet": {
+      "count": 16,
+      "closestDistance": 54.662601474865795,
+      "averageDistance": 58.22346652472
+    },
+    "moss_block": {
+      "count": 89,
+      "closestDistance": 54.7905101272109,
+      "averageDistance": 58.866837362235486
+    },
+    "large_amethyst_bud": {
+      "count": 2,
+      "closestDistance": 56.36488268416781,
+      "averageDistance": 57.80506782928116
+    },
+    "azalea": {
+      "count": 2,
+      "closestDistance": 56.83308895353129,
+      "averageDistance": 57.06091565157065
+    },
+    "small_dripleaf": {
+      "count": 2,
+      "closestDistance": 58.25804665451803,
+      "averageDistance": 58.71364771223305
+    },
+    "big_dripleaf": {
+      "count": 2,
+      "closestDistance": 58.60034129593445,
+      "averageDistance": 60.17491761049308
+    },
+    "cave_vines_plant": {
+      "count": 3,
+      "closestDistance": 59.06775770248944,
+      "averageDistance": 59.96770875962735
+    },
+    "cave_vines": {
+      "count": 1,
+      "closestDistance": 61.773780845922005,
+      "averageDistance": 61.773780845922005
+    },
+    "flowering_azalea": {
+      "count": 1,
+      "closestDistance": 62.64982043070834,
+      "averageDistance": 62.64982043070834
+    }
+  },
+  "entities": {
+    "player": {
+      "count": 1,
+      "closestDistance": 0.7071067811865476,
+      "averageDistance": 0.7071067811865476
+    },
+    "bat": {
+      "count": 12,
+      "closestDistance": 49.57015533602715,
+      "averageDistance": 79.85128929676613
+    },
+    "cod": {
+      "count": 14,
+      "closestDistance": 56.27900191106618,
+      "averageDistance": 59.22080638263488
+    },
+    "salmon": {
+      "count": 9,
+      "closestDistance": 44.66063145030552,
+      "averageDistance": 57.12318894718393
+    },
+    "item": {
+      "count": 11,
+      "closestDistance": 93.56832396703491,
+      "averageDistance": 97.86038192998097
+    },
+    "turtle": {
+      "count": 7,
+      "closestDistance": 32.24107257323688,
+      "averageDistance": 84.03006036485655
+    },
+    "axolotl": {
+      "count": 6,
+      "closestDistance": 98.24251777135527,
+      "averageDistance": 101.012734869572
+    },
+    "pig": {
+      "count": 12,
+      "closestDistance": 44.73416818375265,
+      "averageDistance": 97.51415102853605
+    },
+    "fox": {
+      "count": 2,
+      "closestDistance": 54.30399502263324,
+      "averageDistance": 69.22871072291393
+    },
+    "glow_squid": {
+      "count": 7,
+      "closestDistance": 97.06619446798378,
+      "averageDistance": 107.36257821195622
+    },
+    "squid": {
+      "count": 9,
+      "closestDistance": 69.9043572431081,
+      "averageDistance": 96.54298866646488
+    },
+    "wolf": {
+      "count": 7,
+      "closestDistance": 102.86221732483855,
+      "averageDistance": 130.90927466009157
+    }
+  }
+}

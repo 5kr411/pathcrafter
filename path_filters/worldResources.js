@@ -4,19 +4,21 @@ function buildWorldAvailability(snapshot) {
     const blocks = new Map();
     const entities = new Map();
 
-    if (snapshot && Array.isArray(snapshot.blocks)) {
-        for (const b of snapshot.blocks) {
-            const name = b && b.name;
-            if (!name) continue;
-            blocks.set(name, (blocks.get(name) || 0) + 1);
+    // New snapshot shape: snapshot.blocks is an object map name -> { count, closestDistance, averageDistance }
+    if (snapshot && snapshot.blocks && typeof snapshot.blocks === 'object' && !Array.isArray(snapshot.blocks)) {
+        for (const name of Object.keys(snapshot.blocks)) {
+            const rec = snapshot.blocks[name];
+            const count = rec && Number.isFinite(rec.count) ? rec.count : 0;
+            if (name && count > 0) blocks.set(name, count);
         }
     }
 
-    if (snapshot && Array.isArray(snapshot.entities)) {
-        for (const e of snapshot.entities) {
-            const name = e && (e.name || e.type || e.kind);
-            if (!name) continue;
-            entities.set(name, (entities.get(name) || 0) + 1);
+    // Entities similarly summarized by name
+    if (snapshot && snapshot.entities && typeof snapshot.entities === 'object' && !Array.isArray(snapshot.entities)) {
+        for (const name of Object.keys(snapshot.entities)) {
+            const rec = snapshot.entities[name];
+            const count = rec && Number.isFinite(rec.count) ? rec.count : 0;
+            if (name && count > 0) entities.set(name, count);
         }
     }
 
