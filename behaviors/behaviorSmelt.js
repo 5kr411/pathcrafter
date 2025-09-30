@@ -94,6 +94,7 @@ function createSmeltState(bot, targets) {
             try {
                 if (placeFurnaceTargets && placeFurnaceTargets.placedPosition) {
                     breakTargets.position = placeFurnaceTargets.placedPosition.clone()
+                    if (placeFurnaceTargets.placedConfirmed) placedByUs = true
                     console.log('BehaviorSmelt: place -> run (placed furnace at)', breakTargets.position)
                 }
             } catch (_) {}
@@ -108,7 +109,14 @@ function createSmeltState(bot, targets) {
         startedAt = Date.now()
         try {
             const mc = getMc()
-            let furnaceBlock = findNearbyFurnace(6)
+            let furnaceBlock = null
+            try {
+                if (breakTargets && breakTargets.position) {
+                    const maybe = bot.blockAt(breakTargets.position, false)
+                    if (maybe && (maybe.name === 'furnace' || maybe.name === 'lit_furnace')) furnaceBlock = maybe
+                }
+            } catch (_) {}
+            if (!furnaceBlock) furnaceBlock = findNearbyFurnace(6)
             if (!furnaceBlock) return
             const furnace = await bot.openFurnace(furnaceBlock)
             const have0 = getItemCountInInventory(bot, wantItem)
@@ -124,7 +132,11 @@ function createSmeltState(bot, targets) {
             const STALL_TIMEOUT_MS = 20000
             // Track fuel locally to avoid duplicate top-ups due to delayed window updates
             let localFuelCount = furnace.fuelItem() ? (furnace.fuelItem().count || 0) : 0
-            while (getItemCount(wantItem) < outTarget && Date.now() - lastActivity < STALL_TIMEOUT_MS) {
+            let localOutputTaken = 0
+            while (Date.now() - lastActivity < STALL_TIMEOUT_MS) {
+                const invDelta = Math.max(0, getItemCount(wantItem) - have0)
+                const produced = Math.max(invDelta, localOutputTaken)
+                if (have0 + produced >= outTarget) break
                 let acted = false
                 try {
                     if (inputItem && getItemCount(inputItem) > 0 && !furnace.inputItem()) {
@@ -158,8 +170,11 @@ function createSmeltState(bot, targets) {
                 } catch (_) {}
                 try {
                     if (furnace.outputItem()) {
-                        const before = getItemCountInInventory(bot, wantItem)
+                        const outStack = furnace.outputItem()
+                        const stackCount = outStack ? (outStack.count || 0) : 0
                         await furnace.takeOutput()
+                        localOutputTaken += stackCount > 0 ? stackCount : 1
+                        await sleep(100)
                         const after = getItemCountInInventory(bot, wantItem)
                         lastTake = Date.now()
                         console.log(`BehaviorSmelt: took output (now have ${after}/${outTarget})`)
@@ -175,11 +190,15 @@ function createSmeltState(bot, targets) {
                 lastProgress = prog
                 await sleep(400)
             }
-            smeltSucceeded = getItemCountInInventory(bot, wantItem) >= outTarget
+            const finalInvDelta = Math.max(0, getItemCountInInventory(bot, wantItem) - have0)
+            const finalProduced = Math.max(finalInvDelta, localOutputTaken)
+            smeltSucceeded = have0 + finalProduced >= outTarget
             const preIn = furnace.inputItem()
             const preOut = furnace.outputItem()
             const preFuel = furnace.fuelItem()
-            const noInputInInv = !inputItem || getItemCountInInventory(bot, inputItem) === 0
+            const invInputCount = inputItem ? getItemCountInInventory(bot, inputItem) : 0
+            const furnaceInputCount = preIn ? (preIn.count || 0) : 0
+            const noInputInInv = !inputItem || ((invInputCount + furnaceInputCount) === 0)
             const noFuelInInv = !fuelItem || getItemCountInInventory(bot, fuelItem) === 0
             const furnaceIdle = !preIn && !preOut
             // Break if: target reached, or we have no input left, or furnace is idle and we have no fuel left
