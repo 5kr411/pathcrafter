@@ -14,7 +14,7 @@ const RUNTIME = {
   genericWoodEnabled: false,
   pruneWithWorld: true,
   perGenerator: 5000,
-  snapshotRadius: 100,
+  snapshotRadius: 128,
   snapshotYHalf: null,
   telemetry: true,
   safeFindRepeatThreshold: 10

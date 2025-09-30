@@ -221,7 +221,8 @@ function createCollectBlockState(bot, targets) {
             try {
                 const pos = targets.entity && targets.entity.position
                 const dist = pos ? pos.distanceTo(bot.entity.position).toFixed(2) : 'n/a'
-                console.log('BehaviorCollectBlock: find drop -> go to drop at', pos, 'dist', dist)
+                const posStr = pos ? `(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)})` : 'n/a'
+                console.log(`BehaviorCollectBlock: find drop -> go to drop at ${posStr} dist ${dist}`)
             } catch (_) {
                 console.log('BehaviorCollectBlock: find drop -> go to drop')
             }
