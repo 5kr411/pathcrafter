@@ -84,8 +84,48 @@ let sequenceIndex = 0
       }
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : []
       if (ranked.length === 0) {
+        // Treat as success if inventory already satisfies the target request
+        try {
+          const target = entry && entry.target ? entry.target : null
+          const invNow = getInventoryObject(bot)
+          let have = 0
+          if (target && target.item) {
+            const name = String(target.item)
+            if (name.startsWith('generic_')) {
+              const base = name.slice('generic_'.length)
+              try {
+                const mcDataNow = minecraftData(bot.version || '1.20.1')
+                const speciesTokens = new Set()
+                try {
+                  const names = Object.keys(mcDataNow.itemsByName || {})
+                  for (const n of names) {
+                    if (n.endsWith('_planks')) {
+                      const s = n.slice(0, -('_planks'.length))
+                      if (s) speciesTokens.add(s)
+                    }
+                  }
+                } catch (_) {}
+                for (const [k, v] of Object.entries(invNow)) {
+                  const idx = k.lastIndexOf('_')
+                  if (idx <= 0) continue
+                  const prefix = k.slice(0, idx)
+                  const suffix = k.slice(idx + 1)
+                  if (suffix === base && speciesTokens.has(prefix)) have += v
+                }
+              } catch (_) {}
+            } else {
+              have = invNow[name] || 0
+            }
+          }
+          if (target && Number.isFinite(target.count) && have >= target.count) {
+            running = false
+            safeChat('target already satisfied')
+            try { startNextTarget() } catch (_) {}
+            return
+          }
+        } catch (_) {}
         running = false
-        bot.chat('no viable paths found')
+        safeChat('no viable paths found')
         return
       }
       const best = ranked[0]
