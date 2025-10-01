@@ -244,7 +244,7 @@ function create(bot, step) {
 		onTransition: () => {
 			followStartTime = Date.now();
             const pos = collectTargets.entity && collectTargets.entity.position;
-            console.log('BehaviorGenerator(craft-table): get-drop -> follow-drop', pos);
+            console.log(`BehaviorGenerator(craft-table): get-drop -> follow-drop (x=${pos?.x}, y=${pos?.y}, z=${pos?.z})`);
         }
     });
 

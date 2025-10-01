@@ -169,11 +169,12 @@ function createPlaceNearState(bot, targets) {
         child: placeBlock,
         shouldTransition: () => {
             if (!moveToPlaceCoords.isFinished()) return false
-            if (!canPlaceNow()) return false
             try {
                 const ref = bot.blockAt(targets.placePosition, false)
                 if (!ref || ref.type === 0) return false
             } catch (_) { return false }
+            if (placeTries <= 2) return true
+            if (!canPlaceNow()) return false
             return true
         },
         onTransition: () => {
@@ -193,7 +194,7 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: move to place coords -> clear init',
         parent: moveToPlaceCoords,
         child: clearInit,
-        shouldTransition: () => moveToPlaceCoords.isFinished() && shouldClearArea() && placeTries < 5,
+        shouldTransition: () => moveToPlaceCoords.isFinished() && placeTries >= 3 && shouldClearArea() && placeTries < 5,
         onTransition: () => {
             clearTargets.placePosition = targets.placePosition.clone()
             clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal)
