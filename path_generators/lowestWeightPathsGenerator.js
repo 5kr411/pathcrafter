@@ -1,28 +1,16 @@
 const { computePathWeight } = require('../utils/pathUtils');
 const { getSuffixTokenFromName } = require('../utils/items');
-const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
+const { createEnumeratorContext } = require('../utils/enumeratorFactory');
 
 function enumerateLowestWeightPathsGenerator(tree, options = {}) {
-    const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
+    const ctx = createEnumeratorContext(options, 'composableBasic');
 
     const { stepWeight } = require('../utils/pathUtils');
 
     function makeLeafStream(step) { const w = stepWeight(step); return function* () { yield { path: [step], weight: w }; }; }
 
-    const { buildPersistentNamesSet, isPersistentItemName } = require('../utils/persistence');
-    const persistentNames = buildPersistentNamesSet();
-    const { makeSupplyFromInventory } = require('../utils/inventory');
-    const initialSupply = makeSupplyFromInventory(invObj);
-
-    const { sanitizePath: sanitizePathShared } = require('../utils/sanitizer');
-    function sanitizePath(path) {
-        return sanitizePathShared(path, {
-            isPersistentName: name => isPersistentItemName(name, persistentNames)
-        });
-    }
-
-    const { isPathComposableBasic } = require('../utils/pathValidation');
-    function isPathValid(path) { return isPathComposableBasic(path, initialSupply, getSmeltsPerUnitForFuel); }
+    const sanitizePath = ctx.sanitizePath;
+    const isPathValid = ctx.isPathValid;
 
     function missingConsumablesScoreForCraft(step) {
         if (!step || step.action !== 'craft') return 0;
@@ -33,7 +21,7 @@ function enumerateLowestWeightPathsGenerator(tree, options = {}) {
         let missing = 0;
         for (const i of ing) {
             const need = (i && i.perCraftCount ? i.perCraftCount : 0) * (step.count || 1);
-            const have = initialSupply.get(i && i.item) || 0;
+            const have = ctx.initialSupply.get(i && i.item) || 0;
             if (need > have) missing += (need - have);
         }
         const bias = isTool ? 0.01 : 0.001;
@@ -51,7 +39,7 @@ function enumerateLowestWeightPathsGenerator(tree, options = {}) {
         let missing = 0;
         for (const i of ing) {
             const need = (i && i.perCraftCount ? i.perCraftCount : 0) * (last.count || 1);
-            const have = initialSupply.get(i && i.item) || 0;
+            const have = ctx.initialSupply.get(i && i.item) || 0;
             if (need > have) missing += (need - have);
         }
         const bias = isTool ? 0.01 : 0.001;
@@ -72,8 +60,7 @@ function enumerateLowestWeightPathsGenerator(tree, options = {}) {
         finalizeItem: (cleaned) => ({ path: cleaned, weight: computePathWeight(cleaned) })
     });
 
-    const { createMakeStream } = require('../utils/streamFactory');
-    const makeStream = createMakeStream(makeLeafStream, makeOrStream, makeAndStream);
+    const makeStream = ctx.createMakeStream(makeLeafStream, makeOrStream, makeAndStream);
     const stream = makeStream(tree);
     return (function* () { for (const item of stream()) yield item.path; })();
 }

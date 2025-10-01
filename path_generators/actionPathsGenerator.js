@@ -1,28 +1,9 @@
 const { getLastMcData } = require('../utils/context');
 const { getSuffixTokenFromName } = require('../utils/items');
-const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
+const { createEnumeratorContext } = require('../utils/enumeratorFactory');
 
 function enumerateActionPathsGenerator(tree, options = {}) {
-    const invObj = options && options.inventory && typeof options.inventory === 'object' ? options.inventory : null;
-
-    const { buildPersistentNamesSet, isPersistentItemName } = require('../utils/persistence');
-    const persistentNames = buildPersistentNamesSet();
-    function isPersistentItemNameLocal(name) { return isPersistentItemName(name, persistentNames); }
-
-    const { makeSupplyFromInventory } = require('../utils/inventory');
-    const initialSupply = makeSupplyFromInventory(invObj);
-
-    const { isPathValidBasic } = require('../utils/pathValidation');
-    function isPathValid(path) { return isPathValidBasic(path, initialSupply, getSmeltsPerUnitForFuel); }
-
-    const { sanitizePath: sanitizePathShared } = require('../utils/sanitizer');
-    function sanitizePath(path) {
-        return sanitizePathShared(path, {
-            isPersistentName: isPersistentItemNameLocal,
-            isPathValid,
-            getSmeltsPerUnitForFuel
-        });
-    }
+    const ctx = createEnumeratorContext(options, 'basic');
 
     function makeLeafStream(step) { return function* () { yield { path: [step] }; }; }
     function makeOrStream(childStreams) { return function* () { for (const s of childStreams) for (const item of s()) yield item; }; }
@@ -35,10 +16,9 @@ function enumerateActionPathsGenerator(tree, options = {}) {
             yield* product(0, []);
         };
     }
-    const { createMakeStream } = require('../utils/streamFactory');
-    const makeStream = createMakeStream(makeLeafStream, makeOrStream, makeAndStream);
+    const makeStream = ctx.createMakeStream(makeLeafStream, makeOrStream, makeAndStream);
     const stream = makeStream(tree);
-    return (function* () { for (const item of stream()) { let cleaned = sanitizePath(item.path); if (!isPathValid(cleaned)) cleaned = item.path; if (isPathValid(cleaned)) yield cleaned; } })();
+    return (function* () { for (const item of stream()) { let cleaned = ctx.sanitizePath(item.path); if (!ctx.isPathValid(cleaned)) cleaned = item.path; if (ctx.isPathValid(cleaned)) yield cleaned; } })();
 }
 
 module.exports = { enumerateActionPathsGenerator };
