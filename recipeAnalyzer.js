@@ -7,10 +7,10 @@ const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator
 const lowestWeightPathsGenerator = require('./path_generators/lowestWeightPathsGenerator')
 const pathUtils = require('./utils/pathUtils')
 const { renderName } = require('./utils/render')
-const treeBuild = require('./tree/build')
-const treeLogger = require('./tree/logger')
-const treeEnumerate = require('./tree/enumerate')
-const treeMetrics = require('./tree/metrics')
+const treeBuild = require('./action_tree/build')
+const treeLogger = require('./action_tree/logger')
+const treeEnumerate = require('./action_tree/enumerate')
+const treeMetrics = require('./action_tree/metrics')
 
 function logActionTree(tree, depth = 1) {
     if (!tree) return;
