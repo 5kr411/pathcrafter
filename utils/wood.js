@@ -1,4 +1,4 @@
-const { getLastMcData, getWoodSpeciesTokens, getCurrentSpeciesContext, getTargetItemNameGlobal } = require('./context');
+const { getLastMcData, getWoodSpeciesTokens, setWoodSpeciesTokens, getCurrentSpeciesContext, getTargetItemNameGlobal } = require('./context');
 const { getGenericWoodEnabled } = require('./config');
 const { getSuffixTokenFromName } = require('./items');
 
@@ -50,7 +50,45 @@ function genericizeItemName(name) {
 module.exports = {
     extractSpeciesPrefix,
     baseHasMultipleWoodSpecies,
-    genericizeItemName
+    genericizeItemName,
+    ensureWoodSpeciesTokens,
+    getAvailableSpeciesForBase,
+    maybeSelectIngredientSpecies
 };
+
+function ensureWoodSpeciesTokens(mcData) {
+    let tokens = getWoodSpeciesTokens();
+    if (!tokens) {
+        tokens = new Set();
+        try {
+            const names = Object.keys(mcData?.itemsByName || {});
+            for (const n of names) {
+                if (n.endsWith('_planks')) {
+                    const species = n.slice(0, -('_planks'.length));
+                    if (species && species.length > 0) tokens.add(species);
+                }
+            }
+        } catch (_) {}
+        try { setWoodSpeciesTokens(tokens); } catch (_) {}
+    }
+    return tokens;
+}
+
+function getAvailableSpeciesForBase(mcData, base) {
+    const out = [];
+    try {
+        const tokens = ensureWoodSpeciesTokens(mcData);
+        for (const s of tokens) { if (mcData?.itemsByName?.[`${s}_${base}`]) out.push(s); }
+    } catch (_) {}
+    return out;
+}
+
+function maybeSelectIngredientSpecies(resultSpecies, base, mcData) {
+    try {
+        if (!resultSpecies) return null;
+        const candidate = `${resultSpecies}_${base}`;
+        return mcData && mcData.itemsByName && mcData.itemsByName[candidate] ? resultSpecies : null;
+    } catch (_) { return null; }
+}
 
 

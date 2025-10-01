@@ -1,6 +1,6 @@
 const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 const { chooseMinimalToolName, getSuffixTokenFromName } = require('../utils/items');
-const { extractSpeciesPrefix, baseHasMultipleWoodSpecies } = require('../utils/wood');
+const { extractSpeciesPrefix, baseHasMultipleWoodSpecies, ensureWoodSpeciesTokens, maybeSelectIngredientSpecies } = require('../utils/wood');
 const { getWoodSpeciesTokens } = require('../utils/context');
 const { getGenericWoodEnabled, getGenericWoodEnabled: _gwe } = require('../utils/config');
 const { renderName } = require('../utils/render');

@@ -1,6 +1,6 @@
 const { setLastMcData, setWoodSpeciesTokens, setCurrentSpeciesContext, setTargetItemNameGlobal, getWoodSpeciesTokens } = require('./utils/context')
 const { chooseMinimalToolName } = require('./utils/items')
-const { genericizeItemName } = require('./utils/wood')
+const { genericizeItemName, ensureWoodSpeciesTokens } = require('./utils/wood')
 const { getGenericWoodEnabled } = require('./utils/config')
 const actionPathsGenerator = require('./path_generators/actionPathsGenerator')
 const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator')
@@ -17,17 +17,7 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
     setLastMcData(mc);
     setTargetItemNameGlobal(itemName);
     let speciesTokens = getWoodSpeciesTokens();
-    if (!speciesTokens) {
-        speciesTokens = new Set();
-        const names = Object.keys(mc.itemsByName || {});
-        for (const n of names) {
-            if (n.endsWith('_planks')) {
-                const species = n.slice(0, -('_planks'.length));
-                if (species.length > 0) speciesTokens.add(species);
-            }
-        }
-        setWoodSpeciesTokens(speciesTokens);
-    }
+    if (!speciesTokens) { speciesTokens = ensureWoodSpeciesTokens(mc); }
     let ctxSpecies = null;
     for (const species of speciesTokens) {
         if (itemName.startsWith(species + '_')) { ctxSpecies = species; break; }

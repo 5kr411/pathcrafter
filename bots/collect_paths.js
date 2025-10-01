@@ -100,13 +100,9 @@ let sequenceIndex = 0
                 const mcDataNow = minecraftData(bot.version || '1.20.1')
                 const speciesTokens = new Set()
                 try {
-                  const names = Object.keys(mcDataNow.itemsByName || {})
-                  for (const n of names) {
-                    if (n.endsWith('_planks')) {
-                      const s = n.slice(0, -('_planks'.length))
-                      if (s) speciesTokens.add(s)
-                    }
-                  }
+                  const { ensureWoodSpeciesTokens } = require('../utils/wood')
+                  const ensured = ensureWoodSpeciesTokens(mcDataNow)
+                  ensured && ensured.forEach && ensured.forEach(t => speciesTokens.add(t))
                 } catch (_) {}
                 for (const [k, v] of Object.entries(invNow)) {
                   const idx = k.lastIndexOf('_')
