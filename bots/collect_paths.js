@@ -7,7 +7,8 @@ const planner = require('../planner')
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN')
 const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
-const { beginSnapshotScan, stepSnapshotScan, snapshotFromState } = require('../utils/worldSnapshot')
+const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState } = require('../utils/worldSnapshot')
+const { setLastSnapshotRadius } = require('../utils/context')
 const { setGenericWoodEnabled, setSafeFindRepeatThreshold } = require('../utils/config')
 // Centralized tunables for this bot. Adjust here.
 const RUNTIME = {
@@ -15,8 +16,10 @@ const RUNTIME = {
   pruneWithWorld: true,
   perGenerator: 5000,
   snapshotRadius: 128,
+  snapshotStep: null,
   snapshotYHalf: null,
   telemetry: true,
+  progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10
 }
 
@@ -196,6 +199,9 @@ let sequenceIndex = 0
     const version = bot.version || '1.20.1'
     const invObj = getInventoryObject(bot)
     const snapOpts = { radius: RUNTIME.snapshotRadius }
+    if (Number.isFinite(RUNTIME.snapshotStep) && RUNTIME.snapshotStep > 0) {
+      snapOpts.step = Math.floor(RUNTIME.snapshotStep)
+    }
     if (Number.isFinite(RUNTIME.snapshotYHalf)) {
       const y0 = Math.floor((bot.entity && bot.entity.position && bot.entity.position.y) || 64)
       snapOpts.yMin = y0 - RUNTIME.snapshotYHalf
@@ -206,17 +212,19 @@ let sequenceIndex = 0
     // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
     const budgetMs = 10
     const sleepBetween = 20
-    let lastProgressLog = Date.now()
+    let lastProgressLog = 0
     while (!(await stepSnapshotScan(scan, budgetMs))) {
       if (!connected) { running = false; return }
-      if (RUNTIME.telemetry && Date.now() - lastProgressLog > 1000) {
-        const pct = Math.min(100, Math.floor((scan.r / scan.maxRadius) * 100))
+      if (RUNTIME.telemetry && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
+        const ratio = scanProgressFromState(scan)
+        const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
         console.log(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
         lastProgressLog = Date.now()
       }
       await new Promise(resolve => setTimeout(resolve, sleepBetween))
     }
     const snapshot = snapshotFromState(scan)
+    try { setLastSnapshotRadius(snapshot && Number.isFinite(snapshot.radius) ? snapshot.radius : (snapOpts && snapOpts.radius)) } catch (_) {}
     if (RUNTIME.telemetry) {
       const dur = Date.now() - tSnapStart
       console.log(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)

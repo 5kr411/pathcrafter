@@ -172,7 +172,9 @@ async function captureRawWorldSnapshotAsync(bot, opts = {}) {
     const seen = new Set();
     const blockAgg = new Map();
 
-    const step = Math.max(32, Math.min(96, Math.floor(maxRadius / 4) || 32));
+    const step = (Number.isFinite(opts.step) && opts.step > 0)
+        ? Math.max(1, Math.min(Math.floor(opts.step), maxRadius))
+        : Math.max(32, Math.min(96, Math.floor(maxRadius / 4) || 32));
     for (let r = step; r <= maxRadius + 1; r += step) {
         const shellMax = Math.min(r, maxRadius);
         const positions = (bot && typeof bot.findBlocks === 'function')
@@ -302,6 +304,40 @@ function snapshotFromState(st) {
     };
 }
 
+// Compute accurate scan progress as the ratio of scanned spherical segment volume
+// to total spherical segment volume within [yMin, yMax].
+// This treats the scanned region as a sphere of radius r centered at cy, clipped
+// by vertical bounds. Progress is continuous-volume based and reflects r^3 growth.
+function scanProgressFromState(st) {
+    if (!st || typeof st.maxRadius !== 'number' || typeof st.r !== 'number') return 0;
+    const R = Math.max(0, st.maxRadius || 0);
+    if (R === 0) return 1;
+    const r = Math.max(0, Math.min(st.r || 0, R));
+    const cy = (st.center && typeof st.center.cy === 'number') ? st.center.cy : 64;
+    const yMin = (typeof st.yMin === 'number') ? st.yMin : (cy - R);
+    const yMax = (typeof st.yMax === 'number') ? st.yMax : (cy + R);
+
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    // Relative coordinates to sphere center
+    const t1R = clamp(yMin - cy, -R, R);
+    const t2R = clamp(yMax - cy, -R, R);
+    if (!(t2R > t1R)) return 1; // degenerate or out-of-range => treat as done
+
+    const t1r = clamp(yMin - cy, -r, r);
+    const t2r = clamp(yMax - cy, -r, r);
+    const PI = Math.PI;
+    const segmentVolume = (rad, a, b) => {
+        if (!(b > a)) return 0;
+        // ∫_a^b π(rad^2 - t^2) dt = π [ rad^2 t - t^3/3 ]_a^b
+        return PI * ((rad * rad) * (b - a) - ((b * b * b) - (a * a * a)) / 3);
+    };
+    const Vtot = segmentVolume(R, t1R, t2R);
+    if (Vtot <= 0) return 1;
+    const Vnow = segmentVolume(r, t1r, t2r);
+    const ratio = Math.max(0, Math.min(1, Vnow / Vtot));
+    return ratio;
+}
+
 async function stepSnapshotScan(st, budgetMs = 20) {
     const t0 = Date.now();
     if (st.done) return true;
@@ -344,6 +380,7 @@ module.exports = {
     beginSnapshotScan,
     stepSnapshotScan,
     snapshotFromState,
+    scanProgressFromState,
     saveSnapshotToFile,
     loadSnapshotFromFile
 };

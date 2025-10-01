@@ -40,7 +40,17 @@ function createCollectBlockState(bot, targets) {
     try { createSafeFind = require('./behaviorSafeFindBlock') } catch (_) { createSafeFind = null }
     findBlock = createSafeFind ? createSafeFind(bot, targets) : new BehaviorFindBlock(bot, targets)
     if (initialId != null) findBlock.blocks = [initialId]
-    findBlock.maxDistance = 64
+    try {
+        const { getLastSnapshotRadius } = require('../utils/context')
+        const r = Number(getLastSnapshotRadius && getLastSnapshotRadius())
+        if (Number.isFinite(r) && r > 0) {
+            findBlock.maxDistance = r
+        } else {
+            findBlock.maxDistance = 64
+        }
+    } catch (_) {
+        findBlock.maxDistance = 64
+    }
 
     const findInteractPosition = new BehaviorFindInteractPosition(bot, targets)
 
@@ -92,6 +102,12 @@ function createCollectBlockState(bot, targets) {
             try {
                 const currentId = mcData.blocksByName[targets.blockName]?.id
                 if (currentId != null) findBlock.blocks = [currentId]
+                // Keep search radius in sync with snapshot radius on each entry
+                try {
+                    const { getLastSnapshotRadius } = require('../utils/context')
+                    const r = Number(getLastSnapshotRadius && getLastSnapshotRadius())
+                    if (Number.isFinite(r) && r > 0) findBlock.maxDistance = r
+                } catch (_) {}
                 console.log(`BehaviorCollectBlock: enter -> find block (target=${targets.blockName}#${currentId})`)
             } catch (_) {
                 console.log('BehaviorCollectBlock: enter -> find block')

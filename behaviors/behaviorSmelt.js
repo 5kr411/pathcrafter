@@ -140,7 +140,7 @@ function createSmeltState(bot, targets) {
                 let acted = false
                 try {
                     if (inputItem && getItemCount(inputItem) > 0 && !furnace.inputItem()) {
-                        const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - getItemCount(wantItem)))
+                        const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - (have0 + produced)))
                         await furnace.putInput(idOf(inputItem), null, toPut)
                         console.log(`BehaviorSmelt: put input x${toPut} ${inputItem}`)
                         acted = true
@@ -149,8 +149,7 @@ function createSmeltState(bot, targets) {
                 try {
                     if (fuelItem && getItemCount(fuelItem) > 0) {
                         const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0)
-                        const haveOut = getItemCount(wantItem)
-                        const remaining = Math.max(0, outTarget - haveOut)
+                        const remaining = Math.max(0, outTarget - (have0 + produced))
                         const desiredUnits = Math.ceil(remaining / perUnit)
                         // Sync local fuel count from furnace when available
                         const fuelSlot = furnace.fuelItem()
@@ -174,10 +173,15 @@ function createSmeltState(bot, targets) {
                         const stackCount = outStack ? (outStack.count || 0) : 0
                         await furnace.takeOutput()
                         localOutputTaken += stackCount > 0 ? stackCount : 1
-                        await sleep(100)
-                        const after = getItemCountInInventory(bot, wantItem)
+                        const beforeWaitHave = getItemCountInInventory(bot, wantItem)
+                        let waited = 0
+                        while (waited < 600 && getItemCountInInventory(bot, wantItem) === beforeWaitHave) {
+                            await sleep(50)
+                            waited += 50
+                        }
+                        const estHave = have0 + Math.max(localOutputTaken, Math.max(0, getItemCountInInventory(bot, wantItem) - have0))
                         lastTake = Date.now()
-                        console.log(`BehaviorSmelt: took output (now have ${after}/${outTarget})`)
+                        console.log(`BehaviorSmelt: took output (have ~${estHave}/${outTarget})`)
                         acted = true
                     }
                 } catch (_) {}
@@ -205,7 +209,9 @@ function createSmeltState(bot, targets) {
             breakRecommended = placedByUs && (smeltSucceeded || noInputInInv || (furnaceIdle && noFuelInInv))
             try { furnace.close() } catch (_) {}
             const stalled = !smeltSucceeded
-            console.log(`BehaviorSmelt: run end (success=${smeltSucceeded}, stalled=${stalled}, have ${getItemCountInInventory(bot, wantItem)}/${outTarget})`)
+            const finalHave = getItemCountInInventory(bot, wantItem)
+            const finalEst = have0 + finalProduced
+            console.log(`BehaviorSmelt: run end (success=${smeltSucceeded}, stalled=${stalled}, have ${finalHave}/${outTarget}, est ${finalEst}/${outTarget})`)
         } catch (err) {
             console.log('BehaviorSmelt: error during smelt run', err)
             // Break even on error if we placed the furnace

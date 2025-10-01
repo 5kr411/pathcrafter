@@ -43,7 +43,11 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
             const blocksInfo = {};
             const entities = {};
             const entitiesInfo = {};
-            const distanceThreshold = Number.isFinite(snap.maxDistance) ? snap.maxDistance : (Number.isFinite(snap.chunkRadius) ? ((snap.chunkRadius * 16) + 15) : Infinity);
+            const distanceThreshold = Number.isFinite(snap.radius)
+                ? snap.radius
+                : (Number.isFinite(snap.maxDistance)
+                    ? snap.maxDistance
+                    : (Number.isFinite(snap.chunkRadius) ? ((snap.chunkRadius * 16) + 15) : Infinity));
             if (snap.blocks && typeof snap.blocks === 'object' && !Array.isArray(snap.blocks)) {
                 for (const name of Object.keys(snap.blocks)) {
                     const rec = snap.blocks[name];
