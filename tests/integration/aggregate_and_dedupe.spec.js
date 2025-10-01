@@ -40,12 +40,12 @@ describe('integration: aggregate top-N and dedupe across generators', () => {
         expect(unique.length).toBeLessThan(aggregated.length);
     });
 
-    test('aggregated paths are returned sorted by non-decreasing weight', () => {
+    test('aggregated paths are returned sorted by non-decreasing weight', async () => {
         const { computePathWeight } = analyzeRecipes._internals;
         const inventory = { crafting_table: 1, oak_planks: 3 };
         const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const perGenerator = 20;
-        const combinedSorted = generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
+        const combinedSorted = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
         expect(combinedSorted.length).toBeGreaterThan(0);
         for (let i = 1; i < combinedSorted.length; i++) {
             const prev = computePathWeight(combinedSorted[i - 1]);
@@ -54,14 +54,14 @@ describe('integration: aggregate top-N and dedupe across generators', () => {
         }
     });
 
-    test('when generic wood disabled, aggregated candidates include at least one non-oak wood family', () => {
+    test('when generic wood disabled, aggregated candidates include at least one non-oak wood family', async () => {
         const { setGenericWoodEnabled } = require('../../utils/config');
         const prev = require('../../utils/config').getGenericWoodEnabled();
         try {
             setGenericWoodEnabled(false);
             const tree = analyzeRecipes(mcData, 'crafting_table', 1, { log: false, inventory: {} });
             const perGenerator = 200;
-            const combined = generateTopNPathsFromGenerators(tree, { inventory: {} }, perGenerator);
+            const combined = await generateTopNPathsFromGenerators(tree, { inventory: {} }, perGenerator);
             const hasNonOak = combined.some(path => path.some(st => {
                 if (st.action !== 'mine' || typeof st.what !== 'string') return false;
                 const s = st.what;

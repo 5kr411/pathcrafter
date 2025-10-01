@@ -4,13 +4,13 @@ const { generateTopNPathsFromGenerators } = require('../path_generators/generate
 const plan = require('../planner');
 const { getGenericWoodEnabled, getPruneWithWorldEnabled, getDefaultPerGeneratorPaths } = require('../utils/config');
 
-function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
+async function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
     const perGenerator = Number.isFinite(options.perGenerator) ? options.perGenerator : getDefaultPerGeneratorPaths();
     const snapshot = options.worldSnapshot;
     const mcData = plan._internals.resolveMcData(ctx);
     const pruneWithWorld = options.pruneWithWorld === true ? true : getPruneWithWorldEnabled();
     const tree = plan(mcData, itemName, targetCount, { inventory: options.inventory, log: options.log, pruneWithWorld, worldSnapshot: snapshot });
-    const candidates = generateTopNPathsFromGenerators(tree, { ...options, worldSnapshot: snapshot }, perGenerator);
+    const candidates = await generateTopNPathsFromGenerators(tree, { ...options, worldSnapshot: snapshot }, perGenerator);
     return hoistMiningInPaths(candidates);
 }
 

@@ -58,7 +58,8 @@ let pathsToLog = 10;
 // }
 
 const perGenerator = getDefaultPerGeneratorPaths();
-const aggregatedRaw = generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
+;(async () => {
+const aggregatedRaw = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
 const aggregated = hoistMiningInPaths(aggregatedRaw);
 
 // console.log(`\nAggregated top ${perGenerator} per generator (deduped and weight-ordered), count=${aggregated.length}:`);
@@ -88,7 +89,7 @@ try {
             plan._internals.logActionPath(p);
         }
 
-        const filteredDirect = generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false, config: plannerConfig, pruneWithWorld: getPruneWithWorldEnabled() });
+        const filteredDirect = await generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false, config: plannerConfig, pruneWithWorld: getPruneWithWorldEnabled() });
         console.log(`\nOne-shot generate+filter count=${filteredDirect.length}`);
     } else {
         console.log(`\nNo world snapshot files found in ${snapshotsDir}`);
@@ -96,6 +97,7 @@ try {
 } catch (err) {
     console.error('World filtering demo error:', err && err.stack ? err.stack : err);
 }
+})().catch(() => {})
 
 
 

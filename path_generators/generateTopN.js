@@ -29,12 +29,10 @@ function dedupePaths(paths) {
     return out;
 }
 
-function generateTopNPathsFromGenerators(tree, options, perGenerator) {
+async function generateTopNPathsFromGenerators(tree, options, perGenerator) {
     const inventory = options && options.inventory ? options.inventory : undefined;
     const snapshot = options && options.worldSnapshot ? options.worldSnapshot : null;
-    const all = [];
 
-    // Run three enumerators in parallel workers
     const workerPath = path.resolve(__dirname, '../workers/enumerator_worker.js');
     const jobs = [
         { generator: 'action', tree, inventory, limit: perGenerator },
@@ -42,47 +40,34 @@ function generateTopNPathsFromGenerators(tree, options, perGenerator) {
         { generator: 'lowest', tree, inventory, limit: perGenerator }
     ];
 
-    const promises = jobs.map(job => new Promise((resolve) => {
-        try {
-            const w = new Worker(workerPath);
-            w.once('message', (msg) => {
-                try { w.terminate(); } catch (_) {}
-                if (!msg || msg.type !== 'result' || msg.ok !== true) return resolve([]);
-                resolve(Array.isArray(msg.paths) ? msg.paths : []);
-            });
-            w.once('error', () => { try { w.terminate(); } catch (_) {} resolve([]); });
-            w.postMessage({ type: 'enumerate', ...job });
-        } catch (_) { resolve([]); }
-    }));
-
+    let results = [];
     try {
-        const results = require('worker_threads').isMainThread ? require('worker_threads') : null;
-        // Wait all
-    } catch (_) {}
-    // Await all promises synchronously via Promise.all in Node
-    // Note: generateTopNPathsFromGenerators is sync today; we collect via deasync-like join by blocking event loop
-    // For simplicity, we will use Atomics.wait via worker_threads is not needed; instead convert to sync using childPromise.then
-    // However, tests expect sync; so we fallback to sequential when worker threads unavailable
-
-    let batches = [];
-    try {
-        // Simple sync wait: we cannot actually block; fallback to sequential
-        throw new Error('fallback');
+        const batches = await Promise.all(jobs.map(job => new Promise((resolve) => {
+            try {
+                const w = new Worker(workerPath);
+                w.once('message', (msg) => {
+                    try { w.terminate(); } catch (_) {}
+                    if (!msg || msg.type !== 'result' || msg.ok !== true) return resolve([]);
+                    resolve(Array.isArray(msg.paths) ? msg.paths : []);
+                });
+                w.once('error', () => { try { w.terminate(); } catch (_) {} resolve([]); });
+                w.postMessage({ type: 'enumerate', ...job });
+            } catch (_) { resolve([]); }
+        })));
+        results = batches;
     } catch (_) {
-        // Fallback to previous sequential behavior
         try {
-            const iterA = plan._internals.enumerateActionPathsGenerator(tree, { inventory });
-            for (const p of takeN(iterA, perGenerator)) all.push(p);
-        } catch (_) {}
-        try {
-            const iterS = plan._internals.enumerateShortestPathsGenerator(tree, { inventory });
-            for (const p of takeN(iterS, perGenerator)) all.push(p);
-        } catch (_) {}
-        try {
-            const iterL = plan._internals.enumerateLowestWeightPathsGenerator(tree, { inventory });
-            for (const p of takeN(iterL, perGenerator)) all.push(p);
-        } catch (_) {}
+            const a = []; const iterA = plan._internals.enumerateActionPathsGenerator(tree, { inventory });
+            for (const p of takeN(iterA, perGenerator)) a.push(p);
+            const b = []; const iterS = plan._internals.enumerateShortestPathsGenerator(tree, { inventory });
+            for (const p of takeN(iterS, perGenerator)) b.push(p);
+            const c = []; const iterL = plan._internals.enumerateLowestWeightPathsGenerator(tree, { inventory });
+            for (const p of takeN(iterL, perGenerator)) c.push(p);
+            results = [a, b, c];
+        } catch (_) { results = [[], [], []]; }
     }
+
+    const all = ([]).concat(...results);
     const unique = dedupePaths(all);
 
     function distanceScore(path) {

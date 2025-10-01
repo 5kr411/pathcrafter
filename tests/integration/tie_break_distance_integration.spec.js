@@ -14,12 +14,12 @@ describe('integration: Top-N tie-break prefers closer blocks from snapshot', () 
     return JSON.parse(fs.readFileSync(withTimes[0].full, 'utf8'))
   }
 
-  test('wooden_pickaxe mines closer valid species first', () => {
+  test('wooden_pickaxe mines closer valid species first', async () => {
     const snapshot = loadLatestSnapshot()
     const present = snapshot && snapshot.blocks ? Object.keys(snapshot.blocks) : []
     if (!present.some(n => /_log$/.test(n))) return // skip if snapshot has no logs
     const inventory = {}
-    const paths = generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
+    const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
       inventory,
       worldSnapshot: snapshot,
       perGenerator: 500,

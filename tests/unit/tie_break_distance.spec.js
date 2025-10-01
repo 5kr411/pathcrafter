@@ -4,7 +4,7 @@ const { setGenericWoodEnabled } = require('../../utils/config')
 describe('unit: Top-N tie-break by snapshot distance', () => {
   beforeEach(() => setGenericWoodEnabled(false))
 
-  test('prefers closer wood species when weights are equal', () => {
+  test('prefers closer wood species when weights are equal', async () => {
     const snapshot = {
       version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 3, yMin: 0, yMax: 255,
       blocks: {
@@ -14,7 +14,7 @@ describe('unit: Top-N tie-break by snapshot distance', () => {
       entities: {}
     }
     const inventory = {}
-    const paths = generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
+    const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
       inventory,
       worldSnapshot: snapshot,
       perGenerator: 200,

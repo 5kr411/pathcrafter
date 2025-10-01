@@ -19,10 +19,10 @@ describe('integration: mining hoist applied post generation/filtering', () => {
     const { resolveMcData } = analyzeRecipes._internals;
     const mcData = resolveMcData('1.20.1');
 
-    test('wooden_pickaxe: repeated generic/species log mining is hoisted into first occurrence', () => {
+    test('wooden_pickaxe: repeated generic/species log mining is hoisted into first occurrence', async () => {
         const inventory = {};
         const perGenerator = 300;
-        const paths = generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false });
+        const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false });
         expect(paths.length).toBeGreaterThan(0);
         const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && (((s.targetItem || s.what) === 'generic_log') || ((s.targetItem || s.what).endsWith('_log')))));
         expect(!!p).toBe(true);
@@ -40,10 +40,10 @@ describe('integration: mining hoist applied post generation/filtering', () => {
         expect(hasEarlierSameKey).toBe(false);
     });
 
-    test('hoisting respects tool differences', () => {
+    test('hoisting respects tool differences', async () => {
         const inventory = {};
         const perGenerator = 200;
-        const paths = generateTopNAndFilter('1.20.1', 'stone', 3, { inventory, perGenerator, log: false });
+        const paths = await generateTopNAndFilter('1.20.1', 'stone', 3, { inventory, perGenerator, log: false });
         expect(paths.length).toBeGreaterThan(0);
         const anyWithMultipleMines = paths.find(path => path.filter(s => s.action === 'mine').length >= 1);
         expect(anyWithMultipleMines).toBeTruthy();
@@ -59,13 +59,13 @@ describe('integration: mining hoist applied post generation/filtering', () => {
         }
     });
 
-    test('hoisting works with generic wood enabled', () => {
+    test('hoisting works with generic wood enabled', async () => {
         const prev = getGenericWoodEnabled();
         try {
             setGenericWoodEnabled(true);
             const inventory = {};
             const perGenerator = 200;
-            const paths = generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false });
+            const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false });
             expect(paths.length).toBeGreaterThan(0);
             const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && (((s.targetItem || s.what) === 'generic_log') || ((s.targetItem || s.what).endsWith('_log')))));
             expect(!!p).toBe(true);
@@ -77,13 +77,13 @@ describe('integration: mining hoist applied post generation/filtering', () => {
         }
     });
 
-    test('hoisting works with generic wood disabled (species-specific)', () => {
+    test('hoisting works with generic wood disabled (species-specific)', async () => {
         const prev = getGenericWoodEnabled();
         try {
             setGenericWoodEnabled(false);
             const inventory = {};
             const perGenerator = 150;
-            const paths = generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, config: { genericWoodEnabled: false } });
+            const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, config: { genericWoodEnabled: false } });
             expect(paths.length).toBeGreaterThan(0);
             const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log'))));
             expect(!!p).toBe(true);
