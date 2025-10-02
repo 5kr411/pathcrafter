@@ -2,7 +2,10 @@ function canConsumeWorld(worldBudget, kind, name, amount) {
     if (!worldBudget || amount <= 0) return true;
     const pool = worldBudget[kind]; if (!pool) return true;
     const have = pool[name] || 0;
-    if (have > 0 && worldBudget && worldBudget[`${kind}Info`]) {
+    const allowSet = kind === 'blocks' ? worldBudget.allowedBlocksWithinThreshold : worldBudget.allowedEntitiesWithinThreshold;
+    if (allowSet && allowSet.has && have > 0) {
+        if (!allowSet.has(name)) return false;
+    } else if (have > 0 && worldBudget && worldBudget[`${kind}Info`]) {
         const info = worldBudget[`${kind}Info`][name];
         const closest = info && Number.isFinite(info.closestDistance) ? info.closestDistance : Infinity;
         const thresh = Number.isFinite(worldBudget.distanceThreshold) ? worldBudget.distanceThreshold : Infinity;

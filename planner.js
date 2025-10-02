@@ -38,6 +38,7 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
                 : (Number.isFinite(snap.maxDistance)
                     ? snap.maxDistance
                     : (Number.isFinite(snap.chunkRadius) ? ((snap.chunkRadius * 16) + 15) : Infinity));
+            const allowedBlocksWithinThreshold = new Set();
             if (snap.blocks && typeof snap.blocks === 'object' && !Array.isArray(snap.blocks)) {
                 for (const name of Object.keys(snap.blocks)) {
                     const rec = snap.blocks[name];
@@ -45,8 +46,10 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
                     const d = rec && Number.isFinite(rec.closestDistance) ? rec.closestDistance : Infinity;
                     blocksInfo[name] = { closestDistance: d };
                     if (c > 0) blocks[name] = c;
+                    if (d <= distanceThreshold) allowedBlocksWithinThreshold.add(name);
                 }
             }
+            const allowedEntitiesWithinThreshold = new Set();
             if (snap.entities && typeof snap.entities === 'object' && !Array.isArray(snap.entities)) {
                 for (const name of Object.keys(snap.entities)) {
                     const rec = snap.entities[name];
@@ -54,9 +57,10 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
                     const d = rec && Number.isFinite(rec.closestDistance) ? rec.closestDistance : Infinity;
                     entitiesInfo[name] = { closestDistance: d };
                     if (c > 0) entities[name] = c;
+                    if (d <= distanceThreshold) allowedEntitiesWithinThreshold.add(name);
                 }
             }
-            worldBudget = { blocks, blocksInfo, entities, entitiesInfo, distanceThreshold };
+            worldBudget = { blocks, blocksInfo, entities, entitiesInfo, distanceThreshold, allowedBlocksWithinThreshold, allowedEntitiesWithinThreshold };
         }
     } catch (_) {}
     const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget });
