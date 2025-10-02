@@ -9,7 +9,7 @@ async function generateTopNAndFilter(ctx, itemName, targetCount, options = {}) {
     const snapshot = options.worldSnapshot;
     const mcData = plan._internals.resolveMcData(ctx);
     const pruneWithWorld = options.pruneWithWorld === true ? true : getPruneWithWorldEnabled();
-    const tree = plan(mcData, itemName, targetCount, { inventory: options.inventory, log: options.log, pruneWithWorld, worldSnapshot: snapshot });
+    const tree = plan(mcData, itemName, targetCount, { inventory: options.inventory, log: options.log, pruneWithWorld, worldSnapshot: snapshot, config: options && options.config ? options.config : undefined });
     const candidates = await generateTopNPathsFromGenerators(tree, { ...options, worldSnapshot: snapshot }, perGenerator);
     return hoistMiningInPaths(candidates);
 }

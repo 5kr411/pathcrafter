@@ -63,7 +63,7 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
             worldBudget = { blocks, blocksInfo, entities, entitiesInfo, distanceThreshold, allowedBlocksWithinThreshold, allowedEntitiesWithinThreshold };
         }
     } catch (_) {}
-    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget });
+    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget, config: options && options.config ? options.config : undefined });
     if (!options || options.log !== false) treeLogger.logActionTree(tree);
     return tree;
 }

@@ -177,7 +177,13 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const familyGenericBases = context.familyGenericBases instanceof Set ? context.familyGenericBases : new Set();
     if (visited.has(itemName)) return root;
     const nextVisited = new Set(visited); nextVisited.add(itemName);
-    const preferWoodFamilies = (context.preferWoodFamilies !== false) && getGenericWoodEnabled();
+    function genericWoodEnabled() {
+        const injected = context && context.config && Object.prototype.hasOwnProperty.call(context.config, 'genericWoodEnabled')
+            ? !!context.config.genericWoodEnabled
+            : null;
+        return injected !== null ? injected : getGenericWoodEnabled();
+    }
+    const preferWoodFamilies = (context.preferWoodFamilies !== false) && genericWoodEnabled();
     let recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies).sort((a, b) => b.result.count - a.result.count);
     // Prefer recipe variants that require fewer additional consumables given current inventory.
     // Keep all variants as fallbacks to avoid dead ends with partial inventories.
@@ -219,7 +225,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             result: { item: itemName, perCraftCount: recipe.result.count, meta: { generic: baseForcedGeneric || false, selectedSpecies: baseForcedGeneric ? null : (resultSpecies || null) } },
             ingredients: Array.from(ingredientCounts.entries()).sort(([a], [b]) => a - b).map(([id, count]) => {
                 const ingName = mcData.items[id]?.name; const base = getSuffixTokenFromName(ingName); const isFamily = baseHasMultipleWoodSpecies(base);
-                const genericAllowed = getGenericWoodEnabled();
+                const genericAllowed = genericWoodEnabled();
                 let selectedSpecies = null; if (resultSpecies && isFamily) { const candidate = `${resultSpecies}_${base}`; if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies; }
                 const useGeneric = genericAllowed && ((isFamily && !selectedSpecies && preferWoodFamilies) || familyGenericBases.has(base));
                 return { item: ingName, perCraftCount: count, meta: { generic: useGeneric, selectedSpecies } };
@@ -280,7 +286,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 } else { recipeFeasible = false; }
             } else {
                 const ingName = ingredientItem.name; const base = getSuffixTokenFromName(ingName); const isFamily = baseHasMultipleWoodSpecies(base);
-                const genericAllowed = getGenericWoodEnabled();
+                const genericAllowed = genericWoodEnabled();
                 let selectedSpecies = null; if (resultSpecies && isFamily) { const candidate = `${resultSpecies}_${base}`; if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies; }
                 const nextFamilyGenerics = new Set(familyGenericBases); if (genericAllowed && isFamily && !selectedSpecies && preferWoodFamilies) nextFamilyGenerics.add(base);
 
