@@ -186,7 +186,6 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const preferWoodFamilies = (context.preferWoodFamilies !== false) && genericWoodEnabled();
     let recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies).sort((a, b) => b.result.count - a.result.count);
     // Prefer recipe variants that require fewer additional consumables given current inventory.
-    // Keep all variants as fallbacks to avoid dead ends with partial inventories.
     try {
         recipes = recipes
             .map(r => {

@@ -23,8 +23,7 @@ const tree = plan(mcData, item, count, { log: false, inventory });
 
 console.log(`\nConfig: { genericWoodEnabled: ${getGenericWoodEnabled()} }`);
 
-// console.log(`\nAction tree:`);
-// plan._internals.logActionTree(tree);
+// demo logging disabled
 
 const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = plan._internals;
 console.log(`\nGenerated action tree with max depth: ${computeTreeMaxDepth(tree)}`);
@@ -33,41 +32,18 @@ console.log(`\nTotal paths: ${countActionPaths(tree)}`);
 
 let pathsToLog = 10;
 
-// console.log(`\nFirst ${pathsToLog} generated action paths for ${item} x${count}:`);
-// let i = 0;
-// for (const path of enumerateActionPathsGenerator(tree, { inventory })) {
-//     process.stdout.write(`#${++i} `);
-//     logActionPath(path);
-//     if (i >= pathsToLog) break;
-// }
+// listing disabled
 
-// console.log(`\nFirst ${pathsToLog} shortest action paths for ${item} x${count}:`);
-// let j = 0;
-// for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
-//     process.stdout.write(`#${++j} `);
-//     logActionPath(path);
-//     if (j >= pathsToLog) break;
-// }
+// listing disabled
 
-// console.log(`\nFirst ${pathsToLog} lowest-weight action paths for ${item} x${count}:`);
-// let k = 0;
-// for (const path of enumerateLowestWeightPathsGenerator(tree, { inventory })) {
-//     process.stdout.write(`#${++k} `);
-//     logActionPath(path);
-//     if (k >= pathsToLog) break;
-// }
+// listing disabled
 
 const perGenerator = getDefaultPerGeneratorPaths();
 ;(async () => {
 const aggregatedRaw = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
 const aggregated = hoistMiningInPaths(aggregatedRaw);
 
-// console.log(`\nAggregated top ${perGenerator} per generator (deduped and weight-ordered), count=${aggregated.length}:`);
-// let m = 0;
-// for (const p of aggregated.slice(0, pathsToLog)) {
-//     process.stdout.write(`#${++m} `);
-//     plan._internals.logActionPath(p);
-// }
+// listing disabled
 
 // World filtering demo using snapshot from world-snapshots directory
 try {
