@@ -45,8 +45,35 @@ module.exports = {
     canConsumeWorld,
     consumeWorld,
     sumAvailable,
-    reserveFromSources
+    reserveFromSources,
+    createWorldBudgetAccessors
 };
+
+function createWorldBudgetAccessors(worldBudget) {
+    const memoCan = new Map();
+    const memoSum = new Map();
+    function can(kind, name, amount) {
+        if (!worldBudget) return true;
+        const key = `${kind}|${name}|${amount}`;
+        if (memoCan.has(key)) return memoCan.get(key);
+        const ok = canConsumeWorld(worldBudget, kind, name, amount);
+        memoCan.set(key, ok);
+        return ok;
+    }
+    function sum(kind, names) {
+        if (!worldBudget) return Number.POSITIVE_INFINITY;
+        const uniq = Array.from(new Set(names)).sort();
+        const key = `${kind}|${uniq.join(',')}`;
+        if (memoSum.has(key)) return memoSum.get(key);
+        const s = sumAvailable(worldBudget, kind, uniq);
+        memoSum.set(key, s);
+        return s;
+    }
+    function reserve(kind, names, amount) {
+        return reserveFromSources(worldBudget, kind, names, amount);
+    }
+    return { can, sum, reserve };
+}
 
 
 

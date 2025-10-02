@@ -205,7 +205,8 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     // Do not filter to a single minimal-missing variant; keep all as fallbacks to avoid dead ends
     const worldBudget = (context && context.worldBudget && typeof context.worldBudget === 'object') ? context.worldBudget : null;
 
-    const { canConsumeWorld, consumeWorld, sumAvailable, reserveFromSources } = require('../utils/worldBudget');
+    const { createWorldBudgetAccessors } = require('../utils/worldBudget');
+    const wb = createWorldBudgetAccessors(worldBudget);
 
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
@@ -250,7 +251,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                     // World pruning against total supply across all source blocks
                     if (worldBudget) {
                         const sourceNames = sources.map(s => s.block);
-                        const totalAvail = sumAvailable(worldBudget, 'blocks', sourceNames);
+                        const totalAvail = wb.sum('blocks', sourceNames);
                         if (!(totalAvail >= neededCount)) {
                             // Not enough blocks in world for this ingredient; skip adding mining group
                             recipeFeasible = false; return;
@@ -265,12 +266,12 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                             const existing = tools.filter(t => recipeInv && (recipeInv.get(t) || 0) > 0);
                             if (existing.length > 0) {
                                 const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
-                                if (worldBudget && !canConsumeWorld(worldBudget, 'blocks', s.block, neededCount)) return [];
+                                if (!wb.can('blocks', s.block, neededCount)) return [];
                                 return [{ action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: chosen, count: neededCount, children: [] }];
                             }
                             if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
                             return tools.map(toolName => {
-                                if (worldBudget && !canConsumeWorld(worldBudget, 'blocks', s.block, neededCount)) return null;
+                                if (!wb.can('blocks', s.block, neededCount)) return null;
                                 return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInventoryObject(recipeInv), worldBudget }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] };
                             }).filter(Boolean);
                         })
@@ -290,7 +291,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                         // Only include species whose logs appear available in world when pruning is enabled
                         .filter(sp => {
                             if (!worldBudget) return true;
-                            return canConsumeWorld(worldBudget, 'blocks', `${sp}_log`, neededAfterInv);
+                            return wb.can('blocks', `${sp}_log`, neededAfterInv);
                         })
                         .map(sp => `${sp}_${base}`)
                         .filter(n => !!mcData.itemsByName[n])
@@ -344,7 +345,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
         let allowMineGroup = true;
         if (worldBudget) {
             const names = miningPaths.map(s => s.block);
-            const totalAvail = sumAvailable(worldBudget, 'blocks', names);
+            const totalAvail = wb.sum('blocks', names);
             if (!(totalAvail >= targetCount)) {
                 allowMineGroup = false;
             }
@@ -353,7 +354,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
         const mineGroup = {
             action: 'mine', operator: 'OR', what: itemName, count: targetCount, children: miningPaths.flatMap(s => {
                 if (!s.tool || s.tool === 'any') {
-                    if (worldBudget && !canConsumeWorld(worldBudget, 'blocks', s.block, targetCount)) return [];
+                    if (!wb.can('blocks', s.block, targetCount)) return [];
                     return [{ action: 'mine', what: s.block, targetItem: itemName, count: targetCount, children: [] }];
                 }
                 let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
@@ -361,12 +362,12 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 const existing = tools.filter(t => invMap && (invMap.get(t) || 0) > 0);
                 if (existing.length > 0) {
                     const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
-                    if (worldBudget && !canConsumeWorld(worldBudget, 'blocks', s.block, targetCount)) return [];
+                    if (!wb.can('blocks', s.block, targetCount)) return [];
                     return [{ action: 'mine', what: s.block, targetItem: itemName, tool: chosen, count: targetCount, children: [] }];
                 }
                 if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
                 return tools.map(toolName => {
-                    if (worldBudget && !canConsumeWorld(worldBudget, 'blocks', s.block, targetCount)) return null;
+                    if (!wb.can('blocks', s.block, targetCount)) return null;
                     return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInventoryObject(invMap), worldBudget }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] };
                 }).filter(Boolean);
             })
@@ -385,11 +386,11 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 totalNeed += Math.ceil(targetCount / p);
                 tokens.push(s.mob);
             }
-            const totalAvail = sumAvailable('entities', tokens);
+            const totalAvail = wb.sum('entities', tokens);
             if (!(totalAvail >= totalNeed)) {
                 // Insufficient mobs; proceed but OR will be pruned by child checks. No reservation to avoid over-consuming across OR duplicates.
             } else {
-                reserveFromSources(worldBudget, 'entities', tokens, totalNeed);
+                wb.reserve('entities', tokens, totalNeed);
             }
         }
         const huntGroup = {
@@ -400,7 +401,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
             children: huntingPaths.map(s => {
                 const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
                 const expectedKills = Math.ceil(targetCount / p);
-                if (worldBudget && !canConsumeWorld(worldBudget, 'entities', s.mob, expectedKills)) return null;
+                if (!wb.can('entities', s.mob, expectedKills)) return null;
                 return { action: 'hunt', what: s.mob, targetItem: itemName, count: expectedKills, dropChance: s.dropChance, children: [] };
             })
         };
