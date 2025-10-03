@@ -7,7 +7,7 @@ const planner = require('../planner')
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN')
 const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
-const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState, captureWorldSnapshotParallel } = require('../utils/worldSnapshot')
+const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState } = require('../utils/worldSnapshot')
 const { setLastSnapshotRadius } = require('../utils/context')
 const { setSafeFindRepeatThreshold } = require('../utils/config')
 const logger = require('../utils/logger')
@@ -15,15 +15,14 @@ const logger = require('../utils/logger')
 const RUNTIME = {
   pruneWithWorld: true,
   perGenerator: 1000,
-  snapshotRadius: 256,
+  snapshotRadius: 64, // Reasonable default for most gameplay (256+ causes exponential slowdown)
   snapshotStep: null,
   snapshotYHalf: null,
   botLogLevel: 'normal', // 'quiet', 'normal', 'verbose'
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10,
   // Worker pool settings (enumerator pool size is set in planning_worker.ts)
-  usePersistentWorker: true, // Keep planning worker alive between commands
-  useParallelSnapshot: true // Use parallel workers for world snapshotting (faster for large radii)
+  usePersistentWorker: true // Keep planning worker alive between commands
 }
 
 const { Worker } = require('worker_threads')
@@ -259,33 +258,26 @@ let sequenceIndex = 0
     const tSnapStart = Date.now()
     logDebug(`Collector: beginning snapshot scan with options ${JSON.stringify(snapOpts)}`)
     
-    let snapshot
-    if (RUNTIME.useParallelSnapshot) {
-      logDebug('Collector: using parallel snapshot')
-      snapshot = await captureWorldSnapshotParallel(bot, snapOpts)
-    } else {
-      logDebug('Collector: using incremental snapshot')
-      const scan = beginSnapshotScan(bot, snapOpts)
-      // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
-      const budgetMs = 10
-      const sleepBetween = 20
-      let lastProgressLog = 0
-      while (!(await stepSnapshotScan(scan, budgetMs))) {
-        if (!connected) {
-          logDebug('Collector: disconnected during snapshot')
-          running = false
-          return
-        }
-        if (shouldLog('info') && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
-          const ratio = scanProgressFromState(scan)
-          const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
-          logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
-          lastProgressLog = Date.now()
-        }
-        await new Promise(resolve => setTimeout(resolve, sleepBetween))
+    const scan = beginSnapshotScan(bot, snapOpts)
+    // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
+    const budgetMs = 10
+    const sleepBetween = 20
+    let lastProgressLog = 0
+    while (!(await stepSnapshotScan(scan, budgetMs))) {
+      if (!connected) {
+        logDebug('Collector: disconnected during snapshot')
+        running = false
+        return
       }
-      snapshot = snapshotFromState(scan)
+      if (shouldLog('info') && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
+        const ratio = scanProgressFromState(scan)
+        const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
+        logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
+        lastProgressLog = Date.now()
+      }
+      await new Promise(resolve => setTimeout(resolve, sleepBetween))
     }
+    const snapshot = snapshotFromState(scan)
     
     try { setLastSnapshotRadius(snapshot && Number.isFinite(snapshot.radius) ? snapshot.radius : (snapOpts && snapOpts.radius)) } catch (_) {}
     const dur = Date.now() - tSnapStart
