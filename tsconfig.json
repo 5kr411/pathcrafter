@@ -29,6 +29,7 @@
     "path_optimizations/**/*.ts",
     "path_filters/**/*.ts",
     "behavior_generator/**/*.ts",
+    "behaviors/**/*.ts",
     "workers/**/*.ts",
     "utils/**/*.ts"
   ],
