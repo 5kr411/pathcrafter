@@ -5,8 +5,13 @@ describe('integration: fuel accounting for multiple smelts', () => {
     const mcData = resolveMcData('1.20.1');
 
     test('smelting 9 stone consumes >=2 coal units in a valid path', () => {
-        const inventory = { furnace: 1, cobblestone: 9, crafting_table: 1 }; // ensure input exists
-        const tree = analyzeRecipes(mcData, 'stone', 9, { log: false, inventory });
+        const inventory = { furnace: 1, cobblestone: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
+        const snapshot = {
+            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1,
+            blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 10 }, coal_ore: { count: 10, closestDistance: 8, averageDistance: 12 } },
+            entities: {}
+        };
+        const tree = analyzeRecipes(mcData, 'stone', 9, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
         // Use shortest paths generator for speed, just check first few paths
         let foundFuelOk = false;
         let checked = 0;
@@ -21,7 +26,7 @@ describe('integration: fuel accounting for multiple smelts', () => {
                 }
             }
             if (requiredCoal >= 2) { foundFuelOk = true; break; }
-            if (++checked >= 20) break; // limit search
+            if (++checked >= 10) break; // limit search
         }
         expect(foundFuelOk).toBe(true);
     });

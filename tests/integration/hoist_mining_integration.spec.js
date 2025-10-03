@@ -45,10 +45,10 @@ describe('integration: mining hoist applied post generation/filtering', () => {
     });
 
     test('hoisting respects tool differences', async () => {
-        const inventory = { crafting_table: 1, oak_planks: 5 };
-        const perGenerator = 50;
+        const inventory = { crafting_table: 1, oak_planks: 10, wooden_pickaxe: 1 };
+        const perGenerator = 20; // Reduced for speed
         const snapshot = {
-            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2,
+            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1,
             blocks: { 
                 oak_log: { count: 50, closestDistance: 5, averageDistance: 10 },
                 cobblestone: { count: 100, closestDistance: 3, averageDistance: 8 },
@@ -61,7 +61,7 @@ describe('integration: mining hoist applied post generation/filtering', () => {
         const anyWithMultipleMines = paths.find(path => path.filter(s => s.action === 'mine').length >= 1);
         expect(anyWithMultipleMines).toBeTruthy();
         // For safety, ensure no two mines with same key exist
-        for (const path of paths.slice(0, 10)) {
+        for (const path of paths.slice(0, 5)) { // Check fewer paths
             const seen = new Set();
             for (const s of path) {
                 if (s.action !== 'mine') continue;

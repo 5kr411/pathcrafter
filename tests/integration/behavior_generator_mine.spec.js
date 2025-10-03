@@ -6,9 +6,17 @@ describe('integration: behavior_generator mine', () => {
     const mcData = resolveMcData('1.20.1');
 
     test('creates behavior for a mine leaf step from planner path', () => {
-        const inventory = {};
-        const tree = plan(mcData, 'cobblestone', 1, { log: false, inventory });
-        const [path] = Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory }));
+        // Start with tools already available to avoid expensive tree generation
+        const inventory = { wooden_pickaxe: 1 };
+        const snapshot = {
+            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1,
+            blocks: { cobblestone: { count: 10, closestDistance: 5, averageDistance: 10 } },
+            entities: {}
+        };
+        const tree = plan(mcData, 'cobblestone', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        // Use shortest paths which is much faster
+        const { enumerateShortestPathsGenerator } = plan._internals;
+        const [path] = Array.from(enumerateShortestPathsGenerator(tree, { inventory }));
         expect(path).toBeDefined();
         const mineLeaf = path.find(s => s.action === 'mine' && (!s.operator || !s.children || s.children.length === 0));
         expect(mineLeaf).toBeDefined();

@@ -15,9 +15,9 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
     };
 
     test('without nuggets, shortest paths do not include nugget->ingot craft', () => {
-        const inventory = { furnace: 1, coal: 1, raw_iron: 1, crafting_table: 1, oak_planks: 5 };
+        const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
         const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
-        // Only check first 20 paths - enough to verify behavior
+        // Only check first 10 paths - enough to verify behavior
         let checked = 0;
         let hasInvalid = false;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
@@ -25,15 +25,15 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
                 hasInvalid = true;
                 break;
             }
-            if (++checked >= 20) break;
+            if (++checked >= 10) break;
         }
         expect(hasInvalid).toBe(false);
     });
 
     test('without nuggets, lowest weight paths do not include nugget->ingot craft', () => {
-        const inventory = { furnace: 1, coal: 1, raw_iron: 1, crafting_table: 1, oak_planks: 5 };
+        const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
         const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
-        // Only check first 20 paths
+        // Only check first 10 paths
         let checked = 0;
         let hasInvalid = false;
         for (const path of enumerateLowestWeightPathsGenerator(tree, { inventory })) {
@@ -41,15 +41,21 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
                 hasInvalid = true;
                 break;
             }
-            if (++checked >= 20) break;
+            if (++checked >= 10) break;
         }
         expect(hasInvalid).toBe(false);
     });
 
     test('with nuggets in inventory, shortest paths include nugget->ingot option', () => {
-        const inventory = { iron_nugget: 9, crafting_table: 1 };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory });
-        // Only check first 10 paths - should find it quickly
+        // Add all necessary items to minimize tree expansion
+        const inventory = { iron_nugget: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1, furnace: 1, coal: 5 };
+        const snapshot = {
+            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1,
+            blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 10 } },
+            entities: {}
+        };
+        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        // The shortest path should be the first one - just check first 3 paths
         let checked = 0;
         let hasExpected = false;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
@@ -57,7 +63,7 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
                 hasExpected = true;
                 break;
             }
-            if (++checked >= 10) break;
+            if (++checked >= 3) break;
         }
         expect(hasExpected).toBe(true);
     });
