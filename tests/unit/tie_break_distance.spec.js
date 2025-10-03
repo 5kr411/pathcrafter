@@ -1,8 +1,6 @@
 const { generateTopNAndFilter } = require('../../path_filters')
-const { setGenericWoodEnabled } = require('../../utils/config')
 
 describe('unit: Top-N tie-break by snapshot distance', () => {
-  beforeEach(() => setGenericWoodEnabled(false))
 
   test('prefers closer wood species when weights are equal', async () => {
     const snapshot = {
@@ -13,13 +11,12 @@ describe('unit: Top-N tie-break by snapshot distance', () => {
       },
       entities: {}
     }
-    const inventory = {}
+    const inventory = { crafting_table: 1 }
     const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
       inventory,
       worldSnapshot: snapshot,
-      perGenerator: 200,
+      perGenerator: 50,
       log: false,
-      config: { genericWoodEnabled: false },
       pruneWithWorld: true
     })
     expect(paths.length).toBeGreaterThan(0)

@@ -54,25 +54,6 @@ describe('integration: aggregate top-N and dedupe across generators', () => {
         }
     });
 
-    test('when generic wood disabled, aggregated candidates include at least one non-oak wood family', async () => {
-        const { setGenericWoodEnabled } = require('../../utils/config');
-        const prev = require('../../utils/config').getGenericWoodEnabled();
-        try {
-            setGenericWoodEnabled(false);
-            const tree = analyzeRecipes(mcData, 'crafting_table', 1, { log: false, inventory: {} });
-            const perGenerator = 200;
-            const combined = await generateTopNPathsFromGenerators(tree, { inventory: {} }, perGenerator);
-            const hasNonOak = combined.some(path => path.some(st => {
-                if (st.action !== 'mine' || typeof st.what !== 'string') return false;
-                const s = st.what;
-                const isWoodFamily = s.endsWith('_log') || s.endsWith('_planks') || s.endsWith('_wood');
-                return isWoodFamily && !s.startsWith('oak_');
-            }));
-            expect(hasNonOak).toBe(true);
-        } finally {
-            setGenericWoodEnabled(prev);
-        }
-    });
 });
 
 

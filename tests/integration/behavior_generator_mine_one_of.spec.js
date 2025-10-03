@@ -1,13 +1,9 @@
 const { createBehaviorForStep } = require('../../behavior_generator')
-const { setGenericWoodEnabled, setSafeFindRepeatThreshold } = require('../../utils/config')
-const { setWoodSpeciesTokens, setCurrentSpeciesContext } = require('../../utils/context')
+const { setSafeFindRepeatThreshold } = require('../../utils/config')
 
 describe('integration: behavior_generator mineOneOf', () => {
   beforeEach(() => {
-    setGenericWoodEnabled(true)
     setSafeFindRepeatThreshold(5)
-    setWoodSpeciesTokens(new Set(['oak','spruce','birch']))
-    setCurrentSpeciesContext(null)
   })
 
   test('creates behavior for a mine OR step with oneOfCandidates', () => {

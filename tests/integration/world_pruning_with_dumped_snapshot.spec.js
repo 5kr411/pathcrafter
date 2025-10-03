@@ -2,12 +2,9 @@ const fs = require('fs')
 const path = require('path')
 const plan = require('../../planner')
 const { enumerateLowestWeightPathsGenerator } = require('../../path_generators/lowestWeightPathsGenerator')
-const { setGenericWoodEnabled } = require('../../utils/config')
 
-describe('integration: world pruning with real dumped snapshot (generic disabled)', () => {
+describe('integration: world pruning with real dumped snapshot', () => {
   const ctx = '1.20.1'
-
-  beforeEach(() => { setGenericWoodEnabled(false) })
 
   function loadLatestSnapshot() {
     const dir = path.resolve(__dirname, '../../world_snapshots')

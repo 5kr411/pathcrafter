@@ -15,7 +15,7 @@ describe('integration: persistence reuse of crafting_table and tools', () => {
 
     test('tool requirement not duplicated along the path (cobblestone scenario)', () => {
         // Use cobblestone which requires wooden_pickaxe, ensuring only one craft appears
-        const inventory = {};
+        const inventory = { crafting_table: 1, oak_planks: 5 };
         const tree = analyzeRecipes(mcData, 'cobblestone', 2, { log: false, inventory });
         const [path] = Array.from(enumerateShortestPathsGenerator(tree, { inventory }));
         expect(path).toBeDefined();

@@ -1,8 +1,5 @@
 const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 const { chooseMinimalToolName, getSuffixTokenFromName } = require('../utils/items');
-const { extractSpeciesPrefix, baseHasMultipleWoodSpecies, ensureWoodSpeciesTokens, maybeSelectIngredientSpecies } = require('../utils/wood');
-const { getWoodSpeciesTokens } = require('../utils/context');
-const { getGenericWoodEnabled, getGenericWoodEnabled: _gwe } = require('../utils/config');
 const { renderName } = require('../utils/render');
 const { makeSupplyFromInventory, mapToInventoryObject } = require('../utils/inventory');
 function mapToPersistentInventoryObject(map) {
@@ -177,14 +174,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     const familyGenericBases = context.familyGenericBases instanceof Set ? context.familyGenericBases : new Set();
     if (visited.has(itemName)) return root;
     const nextVisited = new Set(visited); nextVisited.add(itemName);
-    function genericWoodEnabled() {
-        const injected = context && context.config && Object.prototype.hasOwnProperty.call(context.config, 'genericWoodEnabled')
-            ? !!context.config.genericWoodEnabled
-            : null;
-        return injected !== null ? injected : getGenericWoodEnabled();
-    }
-    const preferWoodFamilies = (context.preferWoodFamilies !== false) && genericWoodEnabled();
-    let recipes = dedupeRecipesForItem(mcData, item.id, preferWoodFamilies).sort((a, b) => b.result.count - a.result.count);
+    let recipes = dedupeRecipesForItem(mcData, item.id, false).sort((a, b) => b.result.count - a.result.count);
     // Prefer recipe variants that require fewer additional consumables given current inventory.
     try {
         recipes = recipes
@@ -216,18 +206,12 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
     recipes.forEach(recipe => {
         const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
         const ingredientCounts = getIngredientCounts(recipe);
-        const resultBase = getSuffixTokenFromName(itemName);
-        const baseForcedGeneric = familyGenericBases.has(resultBase);
-        const resultSpecies = baseForcedGeneric ? null : extractSpeciesPrefix(itemName);
         const craftNode = {
             action: 'craft', operator: 'AND', what: requiresCraftingTable(recipe) ? 'table' : 'inventory', count: craftingsNeeded,
-            result: { item: itemName, perCraftCount: recipe.result.count, meta: { generic: baseForcedGeneric || false, selectedSpecies: baseForcedGeneric ? null : (resultSpecies || null) } },
+            result: { item: itemName, perCraftCount: recipe.result.count, meta: { generic: false, selectedSpecies: null } },
             ingredients: Array.from(ingredientCounts.entries()).sort(([a], [b]) => a - b).map(([id, count]) => {
-                const ingName = mcData.items[id]?.name; const base = getSuffixTokenFromName(ingName); const isFamily = baseHasMultipleWoodSpecies(base);
-                const genericAllowed = genericWoodEnabled();
-                let selectedSpecies = null; if (resultSpecies && isFamily) { const candidate = `${resultSpecies}_${base}`; if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies; }
-                const useGeneric = genericAllowed && ((isFamily && !selectedSpecies && preferWoodFamilies) || familyGenericBases.has(base));
-                return { item: ingName, perCraftCount: count, meta: { generic: useGeneric, selectedSpecies } };
+                const ingName = mcData.items[id]?.name;
+                return { item: ingName, perCraftCount: count, meta: { generic: false, selectedSpecies: null } };
             }),
             children: []
         };
@@ -277,40 +261,16 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                             if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
                             return tools.map(toolName => {
                                 if (!wb.can('blocks', s.block, neededCount)) return null;
-                                return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, inventory: mapToInventoryObject(recipeInv), worldBudget }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] };
+                                return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { avoidTool: toolName, visited: nextVisited, preferMinimalTools, inventory: mapToInventoryObject(recipeInv), worldBudget }), { action: 'mine', what: s.block, targetItem: ingredientItem.name, tool: toolName, count: neededCount, children: [] }] };
                             }).filter(Boolean);
                         })
                     };
                     craftNode.children.push(miningGroup);
                 } else { recipeFeasible = false; }
             } else {
-                const ingName = ingredientItem.name; const base = getSuffixTokenFromName(ingName); const isFamily = baseHasMultipleWoodSpecies(base);
-                const genericAllowed = genericWoodEnabled();
-                let selectedSpecies = null; if (resultSpecies && isFamily) { const candidate = `${resultSpecies}_${base}`; if (mcData.itemsByName[candidate]) selectedSpecies = resultSpecies; }
-                const nextFamilyGenerics = new Set(familyGenericBases); if (genericAllowed && isFamily && !selectedSpecies && preferWoodFamilies) nextFamilyGenerics.add(base);
-
-                if (!genericAllowed && isFamily && !selectedSpecies) {
-                    const tokens = getWoodSpeciesTokens && getWoodSpeciesTokens();
-                    const speciesList = tokens ? Array.from(tokens) : [];
-                    const orChildren = speciesList
-                        // Only include species whose logs appear available in world when pruning is enabled
-                        .filter(sp => {
-                            if (!worldBudget) return true;
-                            return wb.can('blocks', `${sp}_log`, neededAfterInv);
-                        })
-                        .map(sp => `${sp}_${base}`)
-                        .filter(n => !!mcData.itemsByName[n])
-                        .map(nameVariant => buildRecipeTree(mcData, nameVariant, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies: false, familyGenericBases: new Set(), inventory: mapToInventoryObject(recipeInv), worldBudget }));
-                    if (orChildren.length > 0) {
-                        craftNode.children.push({ action: 'ingredient', operator: 'OR', what: base, count: neededAfterInv, children: orChildren });
-                    } else {
-                        const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv) });
-                        craftNode.children.push(ingredientTree);
-                    }
-                } else {
-                    const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases: nextFamilyGenerics, inventory: mapToInventoryObject(recipeInv), worldBudget });
-                    craftNode.children.push(ingredientTree);
-                }
+                const ingName = ingredientItem.name;
+                const ingredientTree = buildRecipeTree(mcData, ingName, neededAfterInv, { ...context, visited: nextVisited, preferMinimalTools, inventory: mapToInventoryObject(recipeInv), worldBudget });
+                craftNode.children.push(ingredientTree);
             }
         });
 
@@ -373,7 +333,7 @@ function buildRecipeTree(ctx, itemName, targetCount = 1, context = {}) {
                 if (preferMinimalTools && tools.length > 1) tools = [chooseMinimalToolName(tools)];
                 return tools.map(toolName => {
                     if (!wb.can('blocks', s.block, targetCount)) return null;
-                    return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, preferWoodFamilies, familyGenericBases, inventory: mapToInventoryObject(invMap), worldBudget }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] };
+                    return { action: 'require', operator: 'AND', what: `tool:${toolName}`, count: 1, children: [buildRecipeTree(mcData, toolName, 1, { ...context, avoidTool: toolName, visited: nextVisited, preferMinimalTools, inventory: mapToInventoryObject(invMap), worldBudget }), { action: 'mine', what: s.block, targetItem: itemName, tool: toolName, count: targetCount, children: [] }] };
                 }).filter(Boolean);
             })
         };

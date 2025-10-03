@@ -9,10 +9,9 @@ const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
 const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState } = require('../utils/worldSnapshot')
 const { setLastSnapshotRadius } = require('../utils/context')
-const { setGenericWoodEnabled, setSafeFindRepeatThreshold } = require('../utils/config')
+const { setSafeFindRepeatThreshold } = require('../utils/config')
 // Centralized tunables for this bot. Adjust here.
 const RUNTIME = {
-  genericWoodEnabled: false,
   pruneWithWorld: true,
   perGenerator: 5000,
   snapshotRadius: 128,
@@ -25,7 +24,6 @@ const RUNTIME = {
 
 const { Worker } = require('worker_threads')
 const path = require('path')
-const { resolveWoodFlexibleName, resolveWithSnapshotFlexibleName } = require('../utils/woodRuntime')
 
 function getInventoryObject(bot) {
   const out = {}
@@ -52,7 +50,6 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
 // Apply runtime config
 
 bot.once('spawn', () => {
-  setGenericWoodEnabled(RUNTIME.genericWoodEnabled)
   if (Number.isFinite(RUNTIME.safeFindRepeatThreshold)) {
     setSafeFindRepeatThreshold(Math.max(1, Math.floor(RUNTIME.safeFindRepeatThreshold)))
   }
@@ -134,22 +131,7 @@ let sequenceIndex = 0
         const center = bot.entity && bot.entity.position ? bot.entity.position : null
         // New snapshot format: map of name -> stats
         const blocks = entry && entry.snapshot && entry.snapshot.blocks && typeof entry.snapshot.blocks === 'object' ? entry.snapshot.blocks : {}
-        const resolved = best.map((s) => {
-          if (!s || typeof s !== 'object') return s
-          const copy = { ...s }
-          if (copy.action === 'mine') {
-            if (copy.what) copy.what = resolveWithSnapshotFlexibleName(mcData, copy.what, blocks, { center })
-            if (copy.targetItem) copy.targetItem = resolveWithSnapshotFlexibleName(mcData, copy.targetItem, blocks, { center })
-          } else if (copy.action === 'craft' && copy.result && copy.result.item) {
-            const meta = copy.result.meta || {}
-            if (meta && meta.selectedSpecies) {
-              // keep species-specific as-is
-            } else if (meta && meta.generic === true) {
-              copy.result = { ...copy.result, item: resolveWithSnapshotFlexibleName(mcData, copy.result.item, blocks, { center }) }
-            }
-          }
-          return copy
-        })
+        const resolved = best.map(s => s)
         console.log('Collector: selected path (resolved):')
         if (planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
           planner._internals.logActionPath(resolved)
@@ -238,7 +220,6 @@ let sequenceIndex = 0
       inventory: invObj,
       snapshot,
       perGenerator: RUNTIME.perGenerator,
-      disableGenericWood: !RUNTIME.genericWoodEnabled,
       pruneWithWorld: RUNTIME.pruneWithWorld,
       telemetry: RUNTIME.telemetry
     })

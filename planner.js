@@ -1,7 +1,5 @@
-const { setLastMcData, setWoodSpeciesTokens, setCurrentSpeciesContext, setTargetItemNameGlobal, getWoodSpeciesTokens } = require('./utils/context')
+const { setLastMcData, setTargetItemNameGlobal } = require('./utils/context')
 const { chooseMinimalToolName } = require('./utils/items')
-const { genericizeItemName, ensureWoodSpeciesTokens } = require('./utils/wood')
-const { getGenericWoodEnabled } = require('./utils/config')
 const actionPathsGenerator = require('./path_generators/actionPathsGenerator')
 const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator')
 const lowestWeightPathsGenerator = require('./path_generators/lowestWeightPathsGenerator')
@@ -16,14 +14,6 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
     const mc = treeBuild.resolveMcData(ctx);
     setLastMcData(mc);
     setTargetItemNameGlobal(itemName);
-    let speciesTokens = getWoodSpeciesTokens();
-    if (!speciesTokens) { speciesTokens = ensureWoodSpeciesTokens(mc); }
-    let ctxSpecies = null;
-    for (const species of speciesTokens) {
-        if (itemName.startsWith(species + '_')) { ctxSpecies = species; break; }
-    }
-    setCurrentSpeciesContext(ctxSpecies);
-    const effectiveItemName = getGenericWoodEnabled() ? itemName : itemName;
     // Optional world-pruning: derive world budget from snapshot summary
     let worldBudget = null;
     try {
@@ -63,7 +53,7 @@ function plan(ctx, itemName, targetCount = 1, options = {}) {
             worldBudget = { blocks, blocksInfo, entities, entitiesInfo, distanceThreshold, allowedBlocksWithinThreshold, allowedEntitiesWithinThreshold };
         }
     } catch (_) {}
-    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget, config: options && options.config ? options.config : undefined });
+    const tree = treeBuild.buildRecipeTree(mc, itemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined, worldBudget, config: options && options.config ? options.config : undefined });
     if (!options || options.log !== false) treeLogger.logActionTree(tree);
     return tree;
 }
@@ -72,7 +62,6 @@ plan._internals = {
     resolveMcData: treeBuild.resolveMcData,
     requiresCraftingTable: treeBuild.requiresCraftingTable,
     renderName,
-    genericizeItemName,
     chooseMinimalToolName,
     findBlocksThatDrop: treeBuild.findBlocksThatDrop,
     printMiningPath: treeLogger.printMiningPath,

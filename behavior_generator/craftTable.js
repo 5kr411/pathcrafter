@@ -11,8 +11,6 @@ const { getItemCountInInventory } = require('../util')
 
 const createPlaceNearState = require('../behaviors/behaviorPlaceNear');
 const createCraftWithTableIfNeeded = require('../behaviors/behaviorCraftWithTableIfNeeded');
-const { resolveWoodFlexibleName } = require('../utils/woodRuntime');
-const minecraftData = require('minecraft-data');
 const createBreakAtPositionState = require('../behaviors/behaviorBreakAtPosition');
 
 function canHandle(step) {
@@ -32,13 +30,6 @@ function computeTargetsForCraftInTable(step) {
 function create(bot, step) {
     const targets = computeTargetsForCraftInTable(step);
     if (!targets) return null;
-    try {
-        const mcData = minecraftData(bot.version);
-        if (targets.itemName) targets.itemName = resolveWoodFlexibleName(bot, mcData, targets.itemName);
-        if (step && step.result && step.result.item && step.result.item !== targets.itemName) {
-            step.result.item = targets.itemName;
-        }
-    } catch (_) {}
 
     const enter = new BehaviorIdle();
     const exit = new BehaviorIdle();

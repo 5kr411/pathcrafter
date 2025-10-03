@@ -11,16 +11,12 @@ function createEnumeratorContext(options = {}, validation = 'basic') {
     const { getSmeltsPerUnitForFuel } = require('./smeltingConfig');
     const {
         isPathValidBasic,
-        isPathComposableBasic,
-        isPathComposableWithFamilies,
-        isPathValidWithFamilies
+        isPathComposableBasic
     } = require('./pathValidation');
 
     function selectValidator(kind) {
         if (kind === 'basic') return (path) => isPathValidBasic(path, initialSupply, getSmeltsPerUnitForFuel);
         if (kind === 'composableBasic') return (path) => isPathComposableBasic(path, initialSupply, getSmeltsPerUnitForFuel);
-        if (kind === 'composableWithFamilies') return (path) => isPathComposableWithFamilies(path, initialSupply, getSmeltsPerUnitForFuel);
-        if (kind === 'validWithFamilies') return (path) => isPathValidWithFamilies(path, initialSupply, getSmeltsPerUnitForFuel);
         return (path) => isPathValidBasic(path, initialSupply, getSmeltsPerUnitForFuel);
     }
 

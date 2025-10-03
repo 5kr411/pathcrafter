@@ -1,7 +1,5 @@
-const { setLastMcData, setWoodSpeciesTokens, setCurrentSpeciesContext, setTargetItemNameGlobal, getWoodSpeciesTokens } = require('./utils/context')
+const { setLastMcData, setTargetItemNameGlobal } = require('./utils/context')
 const { chooseMinimalToolName } = require('./utils/items')
-const { genericizeItemName, ensureWoodSpeciesTokens } = require('./utils/wood')
-const { getGenericWoodEnabled } = require('./utils/config')
 const actionPathsGenerator = require('./path_generators/actionPathsGenerator')
 const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator')
 const lowestWeightPathsGenerator = require('./path_generators/lowestWeightPathsGenerator')
@@ -114,15 +112,7 @@ function analyzeRecipes(ctx, itemName, targetCount = 1, options = {}) {
     const mc = treeBuild.resolveMcData(ctx);
     setLastMcData(mc);
     setTargetItemNameGlobal(itemName);
-    let speciesTokens = getWoodSpeciesTokens();
-    if (!speciesTokens) { speciesTokens = ensureWoodSpeciesTokens(mc); }
-    let ctxSpecies = null;
-    for (const species of speciesTokens) {
-        if (itemName.startsWith(species + '_')) { ctxSpecies = species; break; }
-    }
-    setCurrentSpeciesContext(ctxSpecies);
-    const effectiveItemName = getGenericWoodEnabled() ? itemName : itemName;
-    const tree = treeBuild.buildRecipeTree(mc, effectiveItemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
+    const tree = treeBuild.buildRecipeTree(mc, itemName, targetCount, { inventory: options && options.inventory ? options.inventory : undefined });
     if (!options || options.log !== false) treeLogger.logActionTree(tree);
     return tree;
 }
@@ -173,7 +163,6 @@ analyzeRecipes._internals = {
     resolveMcData: treeBuild.resolveMcData,
     requiresCraftingTable: treeBuild.requiresCraftingTable,
     renderName,
-    genericizeItemName,
     chooseMinimalToolName,
     findBlocksThatDrop: treeBuild.findBlocksThatDrop,
     printMiningPath: treeLogger.printMiningPath,

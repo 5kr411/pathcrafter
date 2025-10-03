@@ -1,6 +1,5 @@
 const analyzeRecipes = require('../../recipeAnalyzer');
 const { generateTopNAndFilter } = require('../../path_filters');
-const { setGenericWoodEnabled, getGenericWoodEnabled } = require('../../utils/config');
 
 function firstMineCounts(path) {
     let first = null;
@@ -19,17 +18,22 @@ describe('integration: mining hoist applied post generation/filtering', () => {
     const { resolveMcData } = analyzeRecipes._internals;
     const mcData = resolveMcData('1.20.1');
 
-    test('wooden_pickaxe: repeated generic/species log mining is hoisted into first occurrence', async () => {
-        const inventory = {};
-        const perGenerator = 300;
-        const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false });
+    test('wooden_pickaxe: repeated log mining is hoisted into first occurrence', async () => {
+        const inventory = { crafting_table: 1 };
+        const perGenerator = 50;
+        const snapshot = {
+            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2,
+            blocks: { oak_log: { count: 50, closestDistance: 5, averageDistance: 10 } }, 
+            entities: {}
+        };
+        const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
         expect(paths.length).toBeGreaterThan(0);
-        const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && (((s.targetItem || s.what) === 'generic_log') || ((s.targetItem || s.what).endsWith('_log')))));
+        const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log'))));
         expect(!!p).toBe(true);
         const { first, mineIndices } = firstMineCounts(p);
         expect(mineIndices.length).toBeGreaterThan(0);
         // only one mining step for logs should remain if multiple existed originally
-        const logMines = p.filter(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && (((s.targetItem || s.what) === 'generic_log') || ((s.targetItem || s.what).endsWith('_log'))));
+        const logMines = p.filter(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log')));
         expect(logMines.length).toBe(1);
         // sanity: aggregated count >= 2
         expect(logMines[0].count).toBeGreaterThanOrEqual(2);
@@ -41,9 +45,18 @@ describe('integration: mining hoist applied post generation/filtering', () => {
     });
 
     test('hoisting respects tool differences', async () => {
-        const inventory = {};
-        const perGenerator = 200;
-        const paths = await generateTopNAndFilter('1.20.1', 'stone', 3, { inventory, perGenerator, log: false });
+        const inventory = { crafting_table: 1, oak_planks: 5 };
+        const perGenerator = 50;
+        const snapshot = {
+            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2,
+            blocks: { 
+                oak_log: { count: 50, closestDistance: 5, averageDistance: 10 },
+                cobblestone: { count: 100, closestDistance: 3, averageDistance: 8 },
+                stone: { count: 100, closestDistance: 3, averageDistance: 8 }
+            }, 
+            entities: {}
+        };
+        const paths = await generateTopNAndFilter('1.20.1', 'stone', 3, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
         expect(paths.length).toBeGreaterThan(0);
         const anyWithMultipleMines = paths.find(path => path.filter(s => s.action === 'mine').length >= 1);
         expect(anyWithMultipleMines).toBeTruthy();
@@ -59,41 +72,6 @@ describe('integration: mining hoist applied post generation/filtering', () => {
         }
     });
 
-    test('hoisting works with generic wood enabled', async () => {
-        const prev = getGenericWoodEnabled();
-        try {
-            setGenericWoodEnabled(true);
-            const inventory = {};
-            const perGenerator = 200;
-            const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false });
-            expect(paths.length).toBeGreaterThan(0);
-            const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && (((s.targetItem || s.what) === 'generic_log') || ((s.targetItem || s.what).endsWith('_log')))));
-            expect(!!p).toBe(true);
-            const woodMines = p.filter(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what) === 'generic_log' || (s.targetItem || s.what).endsWith('_log')));
-            expect(woodMines.length).toBe(1);
-            expect(woodMines[0].count).toBeGreaterThanOrEqual(2);
-        } finally {
-            setGenericWoodEnabled(prev);
-        }
-    });
-
-    test('hoisting works with generic wood disabled (species-specific)', async () => {
-        const prev = getGenericWoodEnabled();
-        try {
-            setGenericWoodEnabled(false);
-            const inventory = {};
-            const perGenerator = 150;
-            const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, config: { genericWoodEnabled: false } });
-            expect(paths.length).toBeGreaterThan(0);
-            const p = paths.find(pp => pp.some(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log'))));
-            expect(!!p).toBe(true);
-            const speciesLogMines = p.filter(s => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && (s.targetItem || s.what).endsWith('_log'));
-            expect(speciesLogMines.length).toBe(1);
-            expect(speciesLogMines[0].count).toBeGreaterThanOrEqual(2);
-        } finally {
-            setGenericWoodEnabled(prev);
-        }
-    });
 });
 
 

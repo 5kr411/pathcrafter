@@ -1,5 +1,3 @@
-const { getWoodSpeciesTokens } = require('../utils/context');
-
 function buildWorldAvailability(snapshot) {
     const blocks = new Map();
     const entities = new Map();
@@ -54,37 +52,6 @@ function computePathResourceDemand(path) {
 
 function getAvailableCountForName(name, availability, options = {}) {
     if (!name) return 0;
-    const disableGenericWood = !!options.disableGenericWood;
-    if (!disableGenericWood && String(name).startsWith('generic_')) {
-        const base = String(name).slice('generic_'.length);
-        const speciesTokens = getWoodSpeciesTokens();
-        let sum = 0;
-        if (speciesTokens && speciesTokens.size > 0) {
-            for (const species of speciesTokens) {
-                sum += availability.blocks.get(`${species}_${base}`) || 0;
-            }
-            return sum;
-        }
-        // Fallback: sum any block ending with _<base>
-        for (const [key, value] of availability.blocks.entries()) {
-            if (typeof key === 'string' && key.endsWith(`_${base}`)) sum += value;
-        }
-        return sum;
-    }
-    // If name is species-specific like oak_log and species tokens are known, treat as family-flexible (unless disabled)
-    const idx = String(name).lastIndexOf('_');
-    if (idx > 0) {
-        const prefix = String(name).slice(0, idx);
-        const base = String(name).slice(idx + 1);
-        const speciesTokens = getWoodSpeciesTokens();
-        if (!disableGenericWood && speciesTokens && speciesTokens.has && speciesTokens.has(prefix)) {
-            let sum = 0;
-            for (const species of speciesTokens) {
-                sum += availability.blocks.get(`${species}_${base}`) || 0;
-            }
-            return sum;
-        }
-    }
     return availability.blocks.get(name) || 0;
 }
 

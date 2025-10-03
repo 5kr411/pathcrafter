@@ -1,12 +1,7 @@
-const { getLastMcData, getWoodSpeciesTokens } = require('./context');
-const { getSuffixTokenFromName } = require('./items');
-const { baseHasMultipleWoodSpecies } = require('./wood');
-
 function simulatePath(path, options) {
     const initialSupply = options && options.initialSupply instanceof Map ? options.initialSupply : new Map(options && options.initialSupply ? options.initialSupply : []);
     const getSmeltsPerUnitForFuel = options && typeof options.getSmeltsPerUnitForFuel === 'function' ? options.getSmeltsPerUnitForFuel : null;
     const requireStations = options && options.requireStations !== undefined ? !!options.requireStations : true;
-    const useFamilies = options && options.useFamilies === true;
 
     const supply = new Map(initialSupply);
 
@@ -15,45 +10,11 @@ function simulatePath(path, options) {
         supply.set(name, (supply.get(name) || 0) + count);
     }
 
-    function familyGenericKey(name) {
-        if (!useFamilies || !name) return null;
-        const base = getSuffixTokenFromName(name);
-        return baseHasMultipleWoodSpecies(base) ? `generic_${base}` : null;
-    }
-
-    function takeFromFamilySpecifics(base, count) {
-        if (!useFamilies || count <= 0) return 0;
-        let remaining = count;
-        const lastMcData = getLastMcData();
-        const woodSpeciesTokens = getWoodSpeciesTokens();
-        if (!woodSpeciesTokens) return 0;
-        for (const species of woodSpeciesTokens) {
-            if (remaining <= 0) break;
-            const candidate = `${species}_${base}`;
-            if (!lastMcData?.itemsByName?.[candidate]) continue;
-            const cur = supply.get(candidate) || 0;
-            if (cur <= 0) continue;
-            const t = Math.min(cur, remaining);
-            supply.set(candidate, cur - t);
-            remaining -= t;
-        }
-        return count - remaining;
-    }
-
     function take(name, count) {
         if (!name || count <= 0) return true;
         let cur = supply.get(name) || 0;
         if (cur >= count) { supply.set(name, cur - count); return true; }
-        const fam = familyGenericKey(name);
-        if (!fam) return false;
-        let missing = count - cur;
-        if (cur > 0) supply.set(name, 0);
-        let gcur = supply.get(fam) || 0;
-        if (gcur > 0) { const use = Math.min(gcur, missing); gcur -= use; supply.set(fam, gcur); missing -= use; }
-        if (missing <= 0) return true;
-        const base = getSuffixTokenFromName(name);
-        const took = takeFromFamilySpecifics(base, missing);
-        return took >= missing;
+        return false;
     }
 
     function produced(step) { return step && (step.targetItem || step.what); }
@@ -106,27 +67,17 @@ function simulatePath(path, options) {
 }
 
 function isPathValidBasic(path, initialSupply, getSmeltsPerUnitForFuel) {
-    return simulatePath(path, { initialSupply, getSmeltsPerUnitForFuel, requireStations: true, useFamilies: false });
+    return simulatePath(path, { initialSupply, getSmeltsPerUnitForFuel, requireStations: true });
 }
 
 function isPathComposableBasic(path, initialSupply, getSmeltsPerUnitForFuel) {
-    return simulatePath(path, { initialSupply, getSmeltsPerUnitForFuel, requireStations: false, useFamilies: false });
-}
-
-function isPathValidWithFamilies(path, initialSupply, getSmeltsPerUnitForFuel) {
-    return simulatePath(path, { initialSupply, getSmeltsPerUnitForFuel, requireStations: true, useFamilies: true });
-}
-
-function isPathComposableWithFamilies(path, initialSupply, getSmeltsPerUnitForFuel) {
-    return simulatePath(path, { initialSupply, getSmeltsPerUnitForFuel, requireStations: false, useFamilies: true });
+    return simulatePath(path, { initialSupply, getSmeltsPerUnitForFuel, requireStations: false });
 }
 
 module.exports = {
     simulatePath,
     isPathValidBasic,
-    isPathComposableBasic,
-    isPathValidWithFamilies,
-    isPathComposableWithFamilies
+    isPathComposableBasic
 };
 
 

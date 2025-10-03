@@ -1,6 +1,4 @@
 const createCollectBlockState = require('../behaviors/behaviorCollectBlock');
-const { resolveGenericName, resolveWoodFlexibleName } = require('../utils/woodRuntime');
-const minecraftData = require('minecraft-data');
 
 function canHandle(step) {
     // Accept direct mine steps with concrete block names (leaf mine actions under OR groups)
@@ -19,21 +17,7 @@ function computeTargetsForMine(step) {
 function create(bot, step) {
     const t = computeTargetsForMine(step);
     if (!t) return null;
-    let itemName = t.itemName;
-    let blockName = t.blockName;
-    try {
-        const mcData = minecraftData(bot.version);
-        if (itemName) itemName = resolveWoodFlexibleName(bot, mcData, itemName);
-        if (blockName) {
-            const before = blockName;
-            blockName = resolveWoodFlexibleName(bot, mcData, blockName);
-            if (before !== blockName) {
-                // Keep targetItem aligned with new block if they matched before
-                if (t.itemName === before) itemName = blockName;
-            }
-        }
-    } catch (_) {}
-    const targets = { itemName, amount: t.amount, blockName };
+    const targets = { itemName: t.itemName, amount: t.amount, blockName: t.blockName };
     try {
         console.log(`BehaviorGenerator(mine): targets -> block=${targets.blockName}, item=${targets.itemName}, amount=${targets.amount}`)
         return createCollectBlockState(bot, targets);

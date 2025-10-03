@@ -1,10 +1,8 @@
 const fs = require('fs')
 const path = require('path')
 const { generateTopNAndFilter } = require('../../path_filters')
-const { setGenericWoodEnabled } = require('../../utils/config')
 
 describe('integration: Top-N tie-break prefers closer blocks from snapshot', () => {
-  beforeEach(() => setGenericWoodEnabled(false))
 
   function loadLatestSnapshot() {
     const dir = path.resolve(__dirname, '../../world_snapshots')
@@ -24,7 +22,6 @@ describe('integration: Top-N tie-break prefers closer blocks from snapshot', () 
       worldSnapshot: snapshot,
       perGenerator: 500,
       log: false,
-      config: { genericWoodEnabled: false },
       pruneWithWorld: true
     })
     expect(paths.length).toBeGreaterThan(0)

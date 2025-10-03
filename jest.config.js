@@ -3,7 +3,7 @@ module.exports = {
     roots: ['<rootDir>/tests'],
     moduleDirectories: ['node_modules', '<rootDir>'],
     verbose: true,
-    testTimeout: 60000,
+    testTimeout: 30000,
     forceExit: true,
     detectOpenHandles: true,
 };

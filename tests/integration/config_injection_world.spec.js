@@ -9,7 +9,7 @@ describe('integration: config injection with world pruning', () => {
       version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 3, yMin: 0, yMax: 255,
       blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 12 } }, entities: {}
     }
-    const tree = plan(mc, 'oak_planks', 2, { log: false, inventory: {}, pruneWithWorld: true, worldSnapshot: snapshot, config: { genericWoodEnabled: false } })
+    const tree = plan(mc, 'oak_planks', 2, { log: false, inventory: {}, pruneWithWorld: true, worldSnapshot: snapshot })
     // Walk tree to find ingredient selection node if present
     const craftNode = (tree.children || []).find(ch => ch && ch.action === 'craft')
     expect(!!craftNode).toBe(true)
