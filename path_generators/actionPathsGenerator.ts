@@ -1,7 +1,6 @@
 import { ActionPath, ActionStep, TreeNode } from '../action_tree/types';
 import { GeneratorOptions, PathItem, StreamFunction } from './types';
-
-const { createEnumeratorContext } = require('../../utils/enumeratorFactory');
+import { createEnumeratorContext } from '../utils/enumeratorFactory';
 
 /**
  * Enumerates action paths from a tree using a basic generator strategy

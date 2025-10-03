@@ -1,9 +1,8 @@
 import { ActionPath, ActionStep, TreeNode } from '../action_tree/types';
 import { GeneratorOptions, LengthPathItem, StreamFunction } from './types';
-
-const { getSuffixTokenFromName } = require('../../utils/items');
-const { createEnumeratorContext } = require('../../utils/enumeratorFactory');
-const { createPriorityStreams } = require('../../utils/priorityStreams');
+import { getSuffixTokenFromName } from '../utils/items';
+import { createEnumeratorContext } from '../utils/enumeratorFactory';
+import { createPriorityStreams } from '../utils/priorityStreams';
 
 /**
  * Enumerates paths from a tree in shortest-first order
@@ -33,7 +32,7 @@ export function* enumerateShortestPathsGenerator(
     if (!step || step.action !== 'craft') return 0;
 
     const resultItem = step.result && step.result.item;
-    const suffix = getSuffixTokenFromName(resultItem);
+    const suffix = getSuffixTokenFromName(resultItem || '');
     const isTool = suffix && new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']).has(suffix);
     const ing = Array.isArray(step.ingredients) ? step.ingredients : [];
 
@@ -60,7 +59,7 @@ export function* enumerateShortestPathsGenerator(
     if (!last || last.action !== 'craft') return 0;
 
     const resultItem = last.result && last.result.item;
-    const suffix = getSuffixTokenFromName(resultItem);
+    const suffix = getSuffixTokenFromName(resultItem || '');
     const isTool = suffix && new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']).has(suffix);
     const ing = Array.isArray(last.ingredients) ? last.ingredients : [];
 
