@@ -12,7 +12,7 @@ const logger = require('./utils/logger')
 // Project-wide config for this demo run
 const mcData = resolveMcData('1.20.1');
 
-const item = 'wooden_pickaxe';
+const item = 'stone_pickaxe';
 const count = 1;
 const inventory = { /*cobblestone: 2, stick: 2, crafting_table: 1 */ };
 logger.info(`Analyzing target item: ${item} x${count}`);

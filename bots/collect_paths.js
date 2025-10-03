@@ -18,13 +18,27 @@ const RUNTIME = {
   snapshotRadius: 64,
   snapshotStep: null,
   snapshotYHalf: null,
-  telemetry: true,
+  botLogLevel: 'verbose', // 'quiet', 'normal', 'verbose'
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10
 }
 
 const { Worker } = require('worker_threads')
 const path = require('path')
+
+function shouldLog(level) {
+  if (RUNTIME.botLogLevel === 'quiet') return false
+  if (RUNTIME.botLogLevel === 'verbose') return true
+  return level !== 'debug' // 'normal' mode: log info/warn/error but not debug
+}
+
+function logDebug(msg, ...args) {
+  if (shouldLog('debug')) logger.info(`[DEBUG] ${msg}`, ...args)
+}
+
+function logInfo(msg, ...args) {
+  if (shouldLog('info')) logger.info(msg, ...args)
+}
 
 function getInventoryObject(bot) {
   const out = {}
@@ -70,20 +84,35 @@ let sequenceTargets = []
 let sequenceIndex = 0
 
   function ensureWorker() {
-    if (worker) return worker
+    if (worker) {
+      logDebug('Collector: reusing existing worker')
+      return worker
+    }
     const workerPath = path.resolve(__dirname, '../workers/planning_worker.js')
+    logDebug(`Collector: creating worker at ${workerPath}`)
     worker = new Worker(workerPath)
     worker.on('message', (msg) => {
-      if (!msg || msg.type !== 'result') return
+      logDebug(`Collector: worker message received: ${JSON.stringify(msg?.type)}`)
+      if (!msg || msg.type !== 'result') {
+        logDebug(`Collector: ignoring non-result message`)
+        return
+      }
       const entry = pending.get(msg.id)
       pending.delete(msg.id)
-      if (!entry) return
+      if (!entry) {
+        logDebug(`Collector: no pending entry for id ${msg.id}`)
+        return
+      }
+      logDebug(`Collector: processing result for id ${msg.id}, ok=${msg.ok}`)
       if (!msg.ok) {
         running = false
+        const errorMsg = msg.error ? String(msg.error) : 'unknown error'
+        logger.info(`Collector: planning failed - ${errorMsg}`)
         safeChat('planning failed')
         return
       }
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : []
+      logDebug(`Collector: received ${ranked.length} ranked paths`)
       if (ranked.length === 0) {
         // Treat as success if inventory already satisfies the target request
         try {
@@ -126,6 +155,7 @@ let sequenceIndex = 0
         return
       }
       const best = ranked[0]
+      logInfo(`Collector: executing plan with ${best.length} steps`)
       safeChat(`executing plan with ${best.length} steps`)
       try {
         const mcData = minecraftData(bot.version || '1.20.1')
@@ -149,8 +179,17 @@ let sequenceIndex = 0
       })
       new BotStateMachine(bot, sm)
     })
-    worker.on('error', () => { running = false })
-    worker.on('exit', () => { worker = null; pending.clear(); running = false })
+    worker.on('error', (err) => {
+      logger.info(`Collector: worker error - ${err && err.message ? err.message : err}`)
+      running = false
+    })
+    worker.on('exit', (code) => {
+      logDebug(`Collector: worker exited with code ${code}`)
+      worker = null
+      pending.clear()
+      running = false
+    })
+    logDebug('Collector: worker created successfully')
     return worker
   }
 
@@ -165,9 +204,16 @@ let sequenceIndex = 0
   }
 
   async function startNextTarget() {
-    if (running) return
-    if (!Array.isArray(sequenceTargets) || sequenceTargets.length === 0) return
+    if (running) {
+      logDebug('Collector: startNextTarget called but already running')
+      return
+    }
+    if (!Array.isArray(sequenceTargets) || sequenceTargets.length === 0) {
+      logDebug('Collector: no targets in sequence')
+      return
+    }
     if (sequenceIndex >= sequenceTargets.length) {
+      logInfo('Collector: all targets complete')
       safeChat('all targets complete')
       sequenceTargets = []
       sequenceIndex = 0
@@ -175,6 +221,7 @@ let sequenceIndex = 0
     }
     const target = sequenceTargets[sequenceIndex]
     sequenceIndex++
+    logInfo(`Collector: starting target ${sequenceIndex}/${sequenceTargets.length}: ${target.item} x${target.count}`)
     const version = bot.version || '1.20.1'
     const invObj = getInventoryObject(bot)
     const snapOpts = { radius: RUNTIME.snapshotRadius }
@@ -187,14 +234,19 @@ let sequenceIndex = 0
       snapOpts.yMax = y0 + RUNTIME.snapshotYHalf
     }
     const tSnapStart = Date.now()
+    logDebug(`Collector: beginning snapshot scan with options ${JSON.stringify(snapOpts)}`)
     const scan = beginSnapshotScan(bot, snapOpts)
     // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
     const budgetMs = 10
     const sleepBetween = 20
     let lastProgressLog = 0
     while (!(await stepSnapshotScan(scan, budgetMs))) {
-      if (!connected) { running = false; return }
-      if (RUNTIME.telemetry && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
+      if (!connected) {
+        logDebug('Collector: disconnected during snapshot')
+        running = false
+        return
+      }
+      if (shouldLog('info') && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
         const ratio = scanProgressFromState(scan)
         const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
         logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
@@ -204,15 +256,26 @@ let sequenceIndex = 0
     }
     const snapshot = snapshotFromState(scan)
     try { setLastSnapshotRadius(snapshot && Number.isFinite(snapshot.radius) ? snapshot.radius : (snapOpts && snapOpts.radius)) } catch (_) {}
-    if (RUNTIME.telemetry) {
-      const dur = Date.now() - tSnapStart
-      logger.info(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
+    const dur = Date.now() - tSnapStart
+    logInfo(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
+    
+    // Log snapshot statistics
+    if (snapshot && snapshot.blocks) {
+      const blockTypes = Object.keys(snapshot.blocks).length
+      logDebug(`Collector: snapshot contains ${blockTypes} block types`)
     }
+    if (snapshot && snapshot.entities) {
+      const entityTypes = Object.keys(snapshot.entities).length
+      logDebug(`Collector: snapshot contains ${entityTypes} entity types`)
+    }
+    
     const id = `${Date.now()}_${Math.random()}`
+    logDebug(`Collector: creating planning job with id ${id}`)
     ensureWorker()
     pending.set(id, { snapshot, target })
     running = true
-    worker.postMessage({
+    
+    const planMessage = {
       type: 'plan',
       id,
       mcVersion: version,
@@ -222,8 +285,11 @@ let sequenceIndex = 0
       snapshot,
       perGenerator: RUNTIME.perGenerator,
       pruneWithWorld: RUNTIME.pruneWithWorld,
-      telemetry: RUNTIME.telemetry
-    })
+      telemetry: (RUNTIME.botLogLevel === 'verbose')
+    }
+    logDebug(`Collector: posting planning message to worker`)
+    logDebug(`Collector: inventory contains ${Object.keys(invObj).length} item types`)
+    worker.postMessage(planMessage)
   }
 
   bot.on('chat', (username, message) => {
