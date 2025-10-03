@@ -2,6 +2,8 @@
  * Type definitions for the action tree and recipe tree system
  */
 
+import type { WorldBudget } from '../utils/worldBudget';
+
 /**
  * Represents metadata about an item, including whether it's generic and its selected species
  */
@@ -164,6 +166,7 @@ export type ActionPath = ActionStep[];
 export interface BuildContext {
   inventory?: Record<string, number>;
   worldBudget?: WorldBudget;
+  config?: any;
   avoidTool?: string;
   visited?: Set<string>;
   preferMinimalTools?: boolean;
@@ -173,10 +176,6 @@ export interface BuildContext {
 /**
  * World budget for tracking available resources
  */
-export interface WorldBudget {
-  blocks?: Record<string, number>;
-  entities?: Record<string, number>;
-}
 
 /**
  * Minecraft data interface (simplified, only including what we use)

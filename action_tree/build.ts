@@ -18,11 +18,11 @@ import {
   MobSource
 } from './types';
 
-const { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } = require('../../utils/smeltingConfig');
-const { chooseMinimalToolName, getSuffixTokenFromName } = require('../../utils/items');
-const { makeSupplyFromInventory, mapToInventoryObject } = require('../../utils/inventory');
-const { isPersistentItemName } = require('../../utils/persistence');
-const { createWorldBudgetAccessors } = require('../../utils/worldBudget');
+import { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } from '../utils/smeltingConfig';
+import { chooseMinimalToolName, getSuffixTokenFromName } from '../utils/items';
+import { makeSupplyFromInventory, mapToInventoryObject } from '../utils/inventory';
+import { isPersistentItemName } from '../utils/persistence';
+import { createWorldBudgetAccessors } from '../utils/worldBudget';
 
 /**
  * Resolves Minecraft data from various input formats
@@ -445,7 +445,8 @@ export function buildRecipeTree(
               }
 
               if (preferMinimalTools && tools.length > 1) {
-                tools = [chooseMinimalToolName(tools)];
+                const minimalTool = chooseMinimalToolName(tools);
+                if (minimalTool) tools = [minimalTool];
               }
 
               const toolNodes = tools.map(toolName => {
@@ -665,7 +666,8 @@ export function buildRecipeTree(
         }
 
         if (preferMinimalTools && tools.length > 1) {
-          tools = [chooseMinimalToolName(tools)];
+          const minimalTool = chooseMinimalToolName(tools);
+          if (minimalTool) tools = [minimalTool];
         }
 
         const toolNodes = tools.map(toolName => {

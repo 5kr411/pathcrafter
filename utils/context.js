@@ -1,25 +1,3 @@
-let lastMcData = null;
-let targetItemNameGlobal = null;
-let lastSnapshotRadius = null;
-
-function setLastMcData(v) { lastMcData = v; }
-function getLastMcData() { return lastMcData; }
-
-function setTargetItemNameGlobal(v) { targetItemNameGlobal = v; }
-function getTargetItemNameGlobal() { return targetItemNameGlobal; }
-
-function setLastSnapshotRadius(v) {
-    if (Number.isFinite(v) && v > 0) lastSnapshotRadius = Math.floor(v);
-}
-function getLastSnapshotRadius() { return lastSnapshotRadius; }
-
-module.exports = {
-    setLastMcData,
-    getLastMcData,
-    setTargetItemNameGlobal,
-    getTargetItemNameGlobal,
-    setLastSnapshotRadius,
-    getLastSnapshotRadius
-};
-
-
+// This file has been ported to TypeScript
+// Import from the compiled TypeScript version
+module.exports = require('../dist/utils/context');
