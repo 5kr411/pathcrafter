@@ -7,7 +7,7 @@ const planner = require('../planner')
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN')
 const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
-const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState } = require('../utils/worldSnapshot')
+const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState, captureWorldSnapshotParallel } = require('../utils/worldSnapshot')
 const { setLastSnapshotRadius } = require('../utils/context')
 const { setSafeFindRepeatThreshold } = require('../utils/config')
 const logger = require('../utils/logger')
@@ -15,12 +15,15 @@ const logger = require('../utils/logger')
 const RUNTIME = {
   pruneWithWorld: true,
   perGenerator: 1000,
-  snapshotRadius: 64,
+  snapshotRadius: 256,
   snapshotStep: null,
   snapshotYHalf: null,
-  botLogLevel: 'verbose', // 'quiet', 'normal', 'verbose'
+  botLogLevel: 'normal', // 'quiet', 'normal', 'verbose'
   progressLogIntervalMs: 250,
-  safeFindRepeatThreshold: 10
+  safeFindRepeatThreshold: 10,
+  // Worker pool settings (enumerator pool size is set in planning_worker.ts)
+  usePersistentWorker: true, // Keep planning worker alive between commands
+  useParallelSnapshot: true // Use parallel workers for world snapshotting (faster for large radii)
 }
 
 const { Worker } = require('worker_threads')
@@ -82,15 +85,21 @@ let lastSequence = null
   let pending = new Map()
 let sequenceTargets = []
 let sequenceIndex = 0
+  let workerReady = false
 
   function ensureWorker() {
-    if (worker) {
+    if (worker && workerReady) {
       logDebug('Collector: reusing existing worker')
       return worker
     }
+    if (worker && !workerReady) {
+      logDebug('Collector: worker exists but not ready yet')
+      return worker
+    }
     const workerPath = path.resolve(__dirname, '../workers/planning_worker.js')
-    logDebug(`Collector: creating worker at ${workerPath}`)
+    logDebug(`Collector: creating persistent planning worker at ${workerPath}`)
     worker = new Worker(workerPath)
+    workerReady = true
     worker.on('message', (msg) => {
       logDebug(`Collector: worker message received: ${JSON.stringify(msg?.type)}`)
       if (!msg || msg.type !== 'result') {
@@ -181,17 +190,31 @@ let sequenceIndex = 0
     })
     worker.on('error', (err) => {
       logger.info(`Collector: worker error - ${err && err.message ? err.message : err}`)
-      running = false
+      workerReady = false
+      // Don't set running = false here, let the message handler deal with it
     })
     worker.on('exit', (code) => {
       logDebug(`Collector: worker exited with code ${code}`)
       worker = null
+      workerReady = false
       pending.clear()
       running = false
     })
-    logDebug('Collector: worker created successfully')
+    logDebug('Collector: persistent planning worker created successfully')
     return worker
   }
+
+  // Cleanup on bot disconnect
+  bot.on('end', () => {
+    if (worker) {
+      logDebug('Collector: terminating worker on bot disconnect')
+      try {
+        worker.terminate()
+      } catch (_) {}
+      worker = null
+      workerReady = false
+    }
+  })
 
   function parseTargetsFromMessage(message) {
     const afterCmd = message.replace(/^\s*(collect|go)\s*/i, '')
@@ -235,26 +258,35 @@ let sequenceIndex = 0
     }
     const tSnapStart = Date.now()
     logDebug(`Collector: beginning snapshot scan with options ${JSON.stringify(snapOpts)}`)
-    const scan = beginSnapshotScan(bot, snapOpts)
-    // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
-    const budgetMs = 10
-    const sleepBetween = 20
-    let lastProgressLog = 0
-    while (!(await stepSnapshotScan(scan, budgetMs))) {
-      if (!connected) {
-        logDebug('Collector: disconnected during snapshot')
-        running = false
-        return
+    
+    let snapshot
+    if (RUNTIME.useParallelSnapshot) {
+      logDebug('Collector: using parallel snapshot')
+      snapshot = await captureWorldSnapshotParallel(bot, snapOpts)
+    } else {
+      logDebug('Collector: using incremental snapshot')
+      const scan = beginSnapshotScan(bot, snapOpts)
+      // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
+      const budgetMs = 10
+      const sleepBetween = 20
+      let lastProgressLog = 0
+      while (!(await stepSnapshotScan(scan, budgetMs))) {
+        if (!connected) {
+          logDebug('Collector: disconnected during snapshot')
+          running = false
+          return
+        }
+        if (shouldLog('info') && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
+          const ratio = scanProgressFromState(scan)
+          const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
+          logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
+          lastProgressLog = Date.now()
+        }
+        await new Promise(resolve => setTimeout(resolve, sleepBetween))
       }
-      if (shouldLog('info') && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
-        const ratio = scanProgressFromState(scan)
-        const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
-        logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
-        lastProgressLog = Date.now()
-      }
-      await new Promise(resolve => setTimeout(resolve, sleepBetween))
+      snapshot = snapshotFromState(scan)
     }
-    const snapshot = snapshotFromState(scan)
+    
     try { setLastSnapshotRadius(snapshot && Number.isFinite(snapshot.radius) ? snapshot.radius : (snapOpts && snapOpts.radius)) } catch (_) {}
     const dur = Date.now() - tSnapStart
     logInfo(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)

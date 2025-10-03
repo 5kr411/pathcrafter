@@ -9,7 +9,7 @@ clean:
 	rm -rf dist/
 
 # Run test suite
-test: build
+tests: build
 	npm test
 
 # Test scripts

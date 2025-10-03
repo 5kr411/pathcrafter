@@ -7,6 +7,7 @@ import { dedupePaths } from '../path_generators/generateTopN';
 import { computePathWeight } from '../utils/pathUtils';
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { computePathResourceDemand } from '../path_filters/worldResources';
+import { WorkerPool } from '../utils/workerPool';
 
 const planner = require('../../planner');
 const logger = require('../../utils/logger');
@@ -24,6 +25,13 @@ const logger = require('../../utils/logger');
 if (!parentPort) {
   throw new Error('This module must be run as a worker thread');
 }
+
+// Create a persistent worker pool for enumerators
+const workerPath = path.resolve(__dirname, './enumerator_worker.js');
+const enumeratorPool = new WorkerPool(workerPath, 3);
+
+// Initialize pool on first use
+let poolInitialized = false;
 
 parentPort.on('message', async (msg: PlanMessage) => {
   logger.info(`PlanningWorker: received message type=${msg?.type}`);
@@ -66,28 +74,35 @@ parentPort.on('message', async (msg: PlanMessage) => {
     
     logger.info(`PlanningWorker: tree action=${tree.action}, operator=${tree.operator}`);
 
+    // Initialize pool on first use
+    if (!poolInitialized) {
+      logger.info(`PlanningWorker: initializing enumerator pool`);
+      await enumeratorPool.init();
+      poolInitialized = true;
+      const stats = enumeratorPool.getStats();
+      logger.info(`PlanningWorker: pool initialized (${stats.total} workers)`);
+    }
+
     const limit = Number.isFinite(perGenerator) ? perGenerator : 200;
-    const workerPath = path.resolve(__dirname, './enumerator_worker.js');
-    logger.info(`PlanningWorker: enumerator worker path=${workerPath}, limit=${limit}`);
+    logger.info(`PlanningWorker: using enumerator pool, limit=${limit}`);
 
     /**
-     * Runs path enumeration in a separate worker thread
+     * Runs path enumeration using a worker from the pool
      */
     function runEnum(gen: 'action' | 'shortest' | 'lowest'): Promise<ActionPath[]> {
-      return new Promise((resolve) => {
-        const started = Date.now();
-        logger.info(`PlanningWorker: spawning ${gen} enumerator worker`);
-        try {
-          const w = new Worker(workerPath);
-          logger.info(`PlanningWorker: ${gen} worker created, posting message`);
+      return enumeratorPool.execute<ActionPath[]>((w: Worker) => {
+        return new Promise((resolve) => {
+          const started = Date.now();
+          logger.info(`PlanningWorker: acquired worker for ${gen} enumeration`);
 
-          w.once('message', (msg: any) => {
+          const timeout = setTimeout(() => {
+            logger.info(`PlanningWorker: ${gen} enumeration timeout after 30s`);
+            resolve([]);
+          }, 30000); // 30 second timeout
+
+          const messageHandler = (msg: any) => {
+            clearTimeout(timeout);
             logger.info(`PlanningWorker: ${gen} worker message received, type=${msg?.type}, ok=${msg?.ok}`);
-            try {
-              w.terminate();
-            } catch (_) {
-              // Ignore termination errors
-            }
 
             const ok = msg && msg.type === 'result' && msg.ok === true;
             const paths = ok && Array.isArray(msg.paths) ? msg.paths : [];
@@ -97,25 +112,25 @@ parentPort.on('message', async (msg: PlanMessage) => {
               logger.info(`PlanningWorker: enum[${gen}] finished in ${dt} ms (${paths.length} paths)`);
             }
 
+            w.removeListener('message', messageHandler);
+            w.removeListener('error', errorHandler);
             resolve(paths);
-          });
+          };
 
-          w.once('error', (err) => {
-            logger.info(`PlanningWorker: ${gen} worker error - ${err && (err as Error).message ? (err as Error).message : err}`);
-            try {
-              w.terminate();
-            } catch (_) {
-              // Ignore termination errors
-            }
+          const errorHandler = (err: Error) => {
+            clearTimeout(timeout);
+            logger.info(`PlanningWorker: ${gen} worker error - ${err && err.message ? err.message : err}`);
+            w.removeListener('message', messageHandler);
+            w.removeListener('error', errorHandler);
             resolve([]);
-          });
+          };
+
+          w.once('message', messageHandler);
+          w.once('error', errorHandler);
 
           w.postMessage({ type: 'enumerate', generator: gen, tree, inventory, limit });
-          logger.info(`PlanningWorker: ${gen} message posted to worker`);
-        } catch (err) {
-          logger.info(`PlanningWorker: ${gen} worker spawn failed - ${err && (err as Error).message ? (err as Error).message : err}`);
-          resolve([]);
-        }
+          logger.info(`PlanningWorker: ${gen} message posted to pooled worker`);
+        });
       });
     }
 

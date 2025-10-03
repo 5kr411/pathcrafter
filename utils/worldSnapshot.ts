@@ -8,8 +8,22 @@ import {
   AggregationRecord,
   ResourceStats
 } from './worldSnapshotTypes';
+import { WorkerPool } from './workerPool';
 
 const minecraftData = require('minecraft-data');
+const logger = require(path.resolve(__dirname, '../../utils/logger'));
+
+// Global snapshot worker pool (lazy initialized)
+let snapshotWorkerPool: WorkerPool | null = null;
+
+function getSnapshotWorkerPool(): WorkerPool {
+  if (!snapshotWorkerPool) {
+    const workerPath = path.resolve(__dirname, '../workers/snapshot_worker.js');
+    snapshotWorkerPool = new WorkerPool(workerPath, 4); // 4 workers for parallel processing
+    logger.info('WorldSnapshot: created snapshot worker pool (4 workers)');
+  }
+  return snapshotWorkerPool;
+}
 
 /**
  * Calculates Euclidean distance between two 3D points
@@ -542,5 +556,254 @@ export async function stepSnapshotScan(st: ScanState, budgetMs: number = 20): Pr
   }
 
   return st.done;
+}
+
+/**
+ * Fast parallel world snapshot using worker pool
+ * 
+ * This version:
+ * 1. Quickly collects all block/entity positions in main thread
+ * 2. Divides work into batches
+ * 3. Processes batches in parallel workers (distance calc + aggregation)
+ * 4. Merges results
+ * 
+ * @param bot - Mineflayer bot instance
+ * @param opts - Snapshot capture options
+ * @returns Promise resolving to world snapshot
+ */
+export async function captureWorldSnapshotParallel(bot: Bot, opts: SnapshotOptions = {}): Promise<WorldSnapshot> {
+  const version = bot && bot.version ? bot.version : (opts.version || '1.20.1');
+  const mc = typeof opts.mcData === 'object' && opts.mcData ? opts.mcData : minecraftData(version);
+  const includeAir = !!opts.includeAir;
+
+  const legacyChunkRadius = Number.isFinite(opts.chunkRadius) 
+    ? Math.max(0, Math.min(opts.chunkRadius!, 8)) 
+    : null;
+  const explicitRadius = Number.isFinite(opts.radius) 
+    ? Math.max(1, Math.min(opts.radius!, 1024)) 
+    : null;
+  const maxRadius = explicitRadius != null
+    ? explicitRadius
+    : Math.max(1, Math.min((((legacyChunkRadius != null ? legacyChunkRadius : 2) * 16) + 15), 1024));
+
+  const center = bot && bot.entity && bot.entity.position 
+    ? bot.entity.position.floored() 
+    : { x: 0, y: 64, z: 0 };
+  const cx = center.x || 0;
+  const cy = center.y || 64;
+  const cz = center.z || 0;
+
+  const defaultYMax = typeof mc?.features?.yMax === 'number' ? mc.features.yMax : 255;
+  const defaultYMin = typeof mc?.features?.yMin === 'number' ? mc.features.yMin : 0;
+  const yMin = Number.isFinite(opts.yMin) ? opts.yMin! : defaultYMin;
+  const yMax = Number.isFinite(opts.yMax) ? opts.yMax! : defaultYMax;
+
+  const maxCount = 2147483647;
+  const matching = (b: any) => {
+    if (!b) return false;
+    if (!includeAir && b.name === 'air') return false;
+    const y = b.position?.y;
+    if (typeof y === 'number') {
+      if (y < yMin || y > yMax) return false;
+    }
+    return true;
+  };
+
+  // Step 1: Collect all block positions (fast, main thread)
+  const t0 = Date.now();
+  logger.info(`WorldSnapshot: collecting block positions (radius=${maxRadius})`);
+  const positions = (bot && typeof bot.findBlocks === 'function')
+    ? bot.findBlocks({ matching, maxDistance: maxRadius, count: maxCount })
+    : [];
+  
+  const t1 = Date.now();
+  logger.info(`WorldSnapshot: found ${positions.length} block positions in ${t1 - t0} ms`);
+
+  // Extract block data
+  const blocks: Array<{ name: string; x: number; y: number; z: number }> = [];
+  for (const pos of positions) {
+    const blk = bot.blockAt!(pos, false);
+    if (!blk || !blk.name) continue;
+    blocks.push({ name: blk.name, x: pos.x, y: pos.y, z: pos.z });
+  }
+  
+  const t2 = Date.now();
+  logger.info(`WorldSnapshot: extracted ${blocks.length} block details in ${t2 - t1} ms`);
+
+  // Collect entity data
+  const entities: Array<{ name: string; x: number; y: number; z: number }> = [];
+  try {
+    if (bot && bot.entities && typeof bot.entities === 'object') {
+      const st = bot.entities as { [id: string]: any };
+      for (const id in st) {
+        const e: any = st[id];
+        if (!e || !e.position || !e.name) continue;
+        const ex = e.position.x;
+        const ey = e.position.y;
+        const ez = e.position.z;
+        if (typeof ex !== 'number' || typeof ey !== 'number' || typeof ez !== 'number') continue;
+        const d = dist(ex, ey, ez, cx, cy, cz);
+        if (d > maxRadius) continue;
+        entities.push({ name: e.name, x: ex, y: ey, z: ez });
+      }
+    }
+  } catch (_) {
+    // Ignore entity collection errors
+  }
+  
+  const t3 = Date.now();
+  logger.info(`WorldSnapshot: collected ${entities.length} entities in ${t3 - t2} ms`)
+
+  // Step 2: Divide into batches for parallel processing
+  const pool = getSnapshotWorkerPool();
+  await pool.init();
+  
+  const poolStats = pool.getStats();
+  logger.info(`WorldSnapshot: worker pool ready (${poolStats.total} workers, ${poolStats.available} available)`);
+
+  const batchSize = Math.max(100, Math.ceil(blocks.length / 4)); // Divide among workers
+  const batches: Array<{
+    blocks: Array<{ name: string; x: number; y: number; z: number }>;
+    entities: Array<{ name: string; x: number; y: number; z: number }>;
+  }> = [];
+
+  for (let i = 0; i < blocks.length; i += batchSize) {
+    batches.push({
+      blocks: blocks.slice(i, i + batchSize),
+      entities: i === 0 ? entities : [] // Only send entities with first batch
+    });
+  }
+  
+  logger.info(`WorldSnapshot: divided into ${batches.length} batches (${batchSize} blocks/batch)`)
+
+  // Step 3: Process batches in parallel
+  const t4 = Date.now();
+  logger.info(`WorldSnapshot: starting parallel processing of ${batches.length} batches`);
+  
+  const results = await Promise.all(
+    batches.map((batch, idx) =>
+      pool.execute(worker => {
+        return new Promise<any>((resolve) => {
+          const id = `${Date.now()}_${idx}`;
+          const batchStart = Date.now();
+          
+          const timeout = setTimeout(() => {
+            logger.info(`WorldSnapshot: batch ${idx} timeout after 10s`);
+            resolve({ blockStats: {}, entityStats: {} });
+          }, 10000); // 10 second timeout per batch
+
+          const messageHandler = (msg: any) => {
+            clearTimeout(timeout);
+            const batchTime = Date.now() - batchStart;
+            
+            if (msg && msg.type === 'result' && msg.id === id && msg.ok) {
+              const blockCount = Object.keys(msg.blockStats || {}).length;
+              const entityCount = Object.keys(msg.entityStats || {}).length;
+              logger.info(`WorldSnapshot: batch ${idx} complete in ${batchTime} ms (${blockCount} block types, ${entityCount} entity types)`);
+              worker.removeListener('message', messageHandler);
+              resolve({
+                blockStats: msg.blockStats || {},
+                entityStats: msg.entityStats || {}
+              });
+            } else {
+              logger.info(`WorldSnapshot: batch ${idx} failed after ${batchTime} ms`);
+              worker.removeListener('message', messageHandler);
+              resolve({ blockStats: {}, entityStats: {} });
+            }
+          };
+
+          worker.on('message', messageHandler);
+          worker.postMessage({
+            type: 'process',
+            id,
+            blocks: batch.blocks,
+            entities: batch.entities,
+            centerX: cx,
+            centerY: cy,
+            centerZ: cz
+          });
+        });
+      })
+    )
+  );
+  
+  const t5 = Date.now();
+  logger.info(`WorldSnapshot: all batches processed in ${t5 - t4} ms`);
+
+  // Step 4: Merge results from all workers
+  const t6 = Date.now();
+  logger.info(`WorldSnapshot: merging results from ${results.length} batches`);
+  
+  const blockAgg = new Map<string, AggregationRecord>();
+  const entityAgg = new Map<string, AggregationRecord>();
+
+  for (const result of results) {
+    // Merge blocks
+    for (const [name, stats] of Object.entries(result.blockStats)) {
+      const s = stats as AggregationRecord;
+      const existing = blockAgg.get(name);
+      if (existing) {
+        existing.count += s.count;
+        existing.sumDist += s.sumDist;
+        if (s.closest < existing.closest) {
+          existing.closest = s.closest;
+        }
+      } else {
+        blockAgg.set(name, { ...s });
+      }
+    }
+
+    // Merge entities
+    for (const [name, stats] of Object.entries(result.entityStats)) {
+      const s = stats as AggregationRecord;
+      const existing = entityAgg.get(name);
+      if (existing) {
+        existing.count += s.count;
+        existing.sumDist += s.sumDist;
+        if (s.closest < existing.closest) {
+          existing.closest = s.closest;
+        }
+      } else {
+        entityAgg.set(name, { ...s });
+      }
+    }
+  }
+  
+  const t7 = Date.now();
+  logger.info(`WorldSnapshot: merged results in ${t7 - t6} ms (${blockAgg.size} block types, ${entityAgg.size} entity types)`);
+
+  // Convert to final format
+  const blockStats: Record<string, ResourceStats> = {};
+  blockAgg.forEach((agg, name) => {
+    blockStats[name] = {
+      count: agg.count,
+      closestDistance: agg.closest,
+      averageDistance: agg.count > 0 ? agg.sumDist / agg.count : agg.closest
+    };
+  });
+
+  const entityStats: Record<string, ResourceStats> = {};
+  entityAgg.forEach((agg, name) => {
+    entityStats[name] = {
+      count: agg.count,
+      closestDistance: agg.closest,
+      averageDistance: agg.count > 0 ? agg.sumDist / agg.count : agg.closest
+    };
+  });
+
+  const totalTime = Date.now() - t0;
+  logger.info(`WorldSnapshot: parallel snapshot complete in ${totalTime} ms total`);
+  logger.info(`WorldSnapshot: breakdown - collect:${t1-t0}ms, extract:${t2-t1}ms, entities:${t3-t2}ms, process:${t5-t4}ms, merge:${t7-t6}ms`);
+
+  return {
+    version,
+    dimension: 'overworld',
+    center: { x: cx, y: cy, z: cz },
+    radius: maxRadius,
+    yMin,
+    yMax,
+    blocks: blockStats,
+    entities: entityStats
+  };
 }
 
