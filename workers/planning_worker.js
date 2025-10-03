@@ -6,14 +6,13 @@ const { getPlanningTelemetryEnabled, setPlanningTelemetryEnabled } = require('..
 const { dedupePaths } = require('../path_generators/generateTopN')
 const { computePathWeight } = require('../utils/pathUtils')
 const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
-const { setGenericWoodEnabled } = require('../utils/config')
+const logger = require('../utils/logger')
 
 parentPort.on('message', async (msg) => {
   if (!msg || msg.type !== 'plan') return
-  const { id, mcVersion, item, count, inventory, snapshot, perGenerator, disableGenericWood, pruneWithWorld, telemetry } = msg
+  const { id, mcVersion, item, count, inventory, snapshot, perGenerator, pruneWithWorld, telemetry } = msg
 
   try {
-    if (disableGenericWood === true) setGenericWoodEnabled(false)
     if (typeof telemetry !== 'undefined') setPlanningTelemetryEnabled(!!telemetry)
 
     const t0 = Date.now()
@@ -53,8 +52,6 @@ parentPort.on('message', async (msg) => {
     // Tie-break equal weight paths using average distance score if snapshot provided
     if (snapshot && snapshot.blocks && typeof snapshot.blocks === 'object') {
       const { computePathResourceDemand } = require('../path_filters/worldResources')
-      const { computePathWeight } = require('../utils/pathUtils')
-const logger = require('../utils/logger')
       function distScore(path) {
         try {
           const demand = computePathResourceDemand(path)

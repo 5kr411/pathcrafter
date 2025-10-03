@@ -10,11 +10,12 @@ const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
 const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState } = require('../utils/worldSnapshot')
 const { setLastSnapshotRadius } = require('../utils/context')
 const { setSafeFindRepeatThreshold } = require('../utils/config')
+const logger = require('../utils/logger')
 // Centralized tunables for this bot. Adjust here.
 const RUNTIME = {
   pruneWithWorld: true,
-  perGenerator: 5000,
-  snapshotRadius: 128,
+  perGenerator: 1000,
+  snapshotRadius: 64,
   snapshotStep: null,
   snapshotYHalf: null,
   telemetry: true,
@@ -98,7 +99,6 @@ let sequenceIndex = 0
                 const speciesTokens = new Set()
                 try {
                   const { ensureWoodSpeciesTokens } = require('../utils/wood')
-const logger = require('../utils/logger')
                   const ensured = ensureWoodSpeciesTokens(mcDataNow)
                   ensured && ensured.forEach && ensured.forEach(t => speciesTokens.add(t))
                 } catch (_) {}
