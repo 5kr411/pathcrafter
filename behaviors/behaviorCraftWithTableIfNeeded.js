@@ -7,6 +7,7 @@ const {
 const createCraftWithTable = require('./behaviorCraftWithTable')
 
 const { getItemCountInInventory } = require('../util')
+const logger = require('../utils/logger')
 
 function createCraftWithTableIfNeeded(bot, targets) {
     const enter = new BehaviorIdle()
@@ -23,7 +24,7 @@ function createCraftWithTableIfNeeded(bot, targets) {
             return getItemCountInInventory(bot, targets.itemName) >= targets.amount
         },
         onTransition: () => {
-            console.log(`BehaviorCraftWithTableIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
+            logger.info(`BehaviorCraftWithTableIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -36,7 +37,7 @@ function createCraftWithTableIfNeeded(bot, targets) {
         },
         onTransition: () => {
             targets.amount = targets.amount - getItemCountInInventory(bot, targets.itemName)
-            console.log(`BehaviorCraftWithTableIfNeeded: enter -> craft with table: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
+            logger.info(`BehaviorCraftWithTableIfNeeded: enter -> craft with table: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -46,7 +47,7 @@ function createCraftWithTableIfNeeded(bot, targets) {
         name: 'BehaviorCraftWithTableIfNeeded: craft with table -> exit',
         shouldTransition: () => craftWithTableState.isFinished(),
         onTransition: () => {
-            console.log('BehaviorCraftWithTableIfNeeded: craft with table -> exit')
+            logger.info('BehaviorCraftWithTableIfNeeded: craft with table -> exit')
         }
     })
 

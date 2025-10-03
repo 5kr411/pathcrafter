@@ -8,6 +8,7 @@ const createCollectBlockIfNeededState = require('./behaviorCollectBlockIfNeeded'
 const createCraftNoTableIfNeededState = require('./behaviorCraftNoTableIfNeeded')
 
 const { getItemCountInInventory } = require('../util')
+const logger = require('../utils/logger')
 
 function createAcquireCraftingTableState(bot, targets) {
     if (targets == null) {
@@ -35,7 +36,7 @@ function createAcquireCraftingTableState(bot, targets) {
         shouldTransition: () => getItemCountInInventory(bot, 'crafting_table') >= 1,
         onTransition: () => {
             targets.item = bot.inventory.items().find(item => item.name === 'crafting_table');
-            console.log('BehaviorAcquireCraftingTable: enter -> exit: Crafting table in inventory')
+            logger.info('BehaviorAcquireCraftingTable: enter -> exit: Crafting table in inventory')
         }
     })
 
@@ -47,7 +48,7 @@ function createAcquireCraftingTableState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'crafting_table'
             targets.amount = 1
-            console.log('BehaviorAcquireCraftingTable: enter -> craft crafting table: Already have enough planks')
+            logger.info('BehaviorAcquireCraftingTable: enter -> craft crafting table: Already have enough planks')
         }
     })
 
@@ -59,7 +60,7 @@ function createAcquireCraftingTableState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'oak_planks'
             targets.amount = 4
-            console.log('BehaviorAcquireCraftingTable: enter -> craft planks: Already have a log')
+            logger.info('BehaviorAcquireCraftingTable: enter -> craft planks: Already have a log')
         }
     })
 
@@ -71,7 +72,7 @@ function createAcquireCraftingTableState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'oak_log'
             targets.amount = 1
-            console.log('BehaviorAcquireCraftingTable: enter -> collect logs: Need a log')
+            logger.info('BehaviorAcquireCraftingTable: enter -> collect logs: Need a log')
         }
     })
 
@@ -81,7 +82,7 @@ function createAcquireCraftingTableState(bot, targets) {
         child: exit,
         shouldTransition: () => collectLogsIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_log') < 1,
         onTransition: () => {
-            console.log('BehaviorAcquireCraftingTable: collect logs -> exit: Could not collect any logs')
+            logger.info('BehaviorAcquireCraftingTable: collect logs -> exit: Could not collect any logs')
         }
     })
 
@@ -93,7 +94,7 @@ function createAcquireCraftingTableState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'oak_planks'
             targets.amount = 4
-            console.log('BehaviorAcquireCraftingTable: collect logs -> craft planks: Collected logs')
+            logger.info('BehaviorAcquireCraftingTable: collect logs -> craft planks: Collected logs')
         }
     })
 
@@ -103,7 +104,7 @@ function createAcquireCraftingTableState(bot, targets) {
         child: exit,
         shouldTransition: () => craftPlanksIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_planks') < 4,
         onTransition: () => {
-            console.log('BehaviorAcquireCraftingTable: craft planks -> exit: Could not craft planks')
+            logger.info('BehaviorAcquireCraftingTable: craft planks -> exit: Could not craft planks')
         }
     })
 
@@ -115,7 +116,7 @@ function createAcquireCraftingTableState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'crafting_table'
             targets.amount = 1
-            console.log('BehaviorAcquireCraftingTable: craft planks -> craft crafting table: Crafted planks')
+            logger.info('BehaviorAcquireCraftingTable: craft planks -> craft crafting table: Crafted planks')
         }
     })
 
@@ -126,7 +127,7 @@ function createAcquireCraftingTableState(bot, targets) {
         shouldTransition: () => craftCraftingTableIfNeededState.isFinished(),
         onTransition: () => {
             targets.item = bot.inventory.items().find(item => item.name === 'crafting_table');
-            console.log('BehaviorAcquireCraftingTable: craft crafting table -> exit: Crafted crafting table')
+            logger.info('BehaviorAcquireCraftingTable: craft crafting table -> exit: Crafted crafting table')
         }
     })
 

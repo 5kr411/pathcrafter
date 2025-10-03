@@ -1,7 +1,8 @@
 const { Worker } = require('worker_threads');
+const logger = require('../utils/logger')
 
 if (process.argv.length < 4 || process.argv.length > 6) {
-    console.log('Usage : node main.js <num> <host> <port> [<name>] [<password>]');
+    logger.info('Usage : node main.js <num> <host> <port> [<name>] [<password>]');
     process.exit(1);
 }
 
@@ -26,14 +27,14 @@ function createWorker(i) {
     const worker = new Worker('./worker.js', { workerData });
     workers.push(worker);
 
-    worker.on('error', err => console.error(`Worker error: ${err}`));
+    worker.on('error', err => logger.error(`Worker error: ${err}`));
     worker.on('exit', code => {
         if (code !== 0)
-            console.error(`Worker stopped with exit code ${code}`);
+            logger.error(`Worker stopped with exit code ${code}`);
     });
 
     worker.on('message', message => {
-        // console.log(`Message from worker ${i}:`, message);
+        // logger.info(`Message from worker ${i}:`, message);
         workers.forEach((w, index) => {
             if (w !== worker) {
                 w.postMessage({ from: message.from, type: message.type, data: message.data });

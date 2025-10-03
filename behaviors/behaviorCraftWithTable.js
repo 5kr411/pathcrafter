@@ -7,6 +7,7 @@ const {
 const minecraftData = require('minecraft-data')
 
 const { getItemCountInInventory } = require('../util')
+const logger = require('../utils/logger')
 
 const createCraftWithTableState = (bot, targets) => {
     const craftItemWithTable = async (itemName, additionalNeeded) => {
@@ -14,7 +15,7 @@ const createCraftWithTableState = (bot, targets) => {
         const item = mcData.itemsByName[itemName];
 
         if (!item) {
-            console.log(`BehaviorCraftWithTable: Item ${itemName} not found`);
+            logger.info(`BehaviorCraftWithTable: Item ${itemName} not found`);
             return false;
         }
 
@@ -38,18 +39,18 @@ const createCraftWithTableState = (bot, targets) => {
         }
 
         if (!craftingTable) {
-            console.log(`BehaviorCraftWithTable: No crafting table within range`);
+            logger.info(`BehaviorCraftWithTable: No crafting table within range`);
             return false;
         }
 
-        console.log(`BehaviorCraftWithTable: Searching for recipes for ${itemName} (id: ${item.id})`);
+        logger.info(`BehaviorCraftWithTable: Searching for recipes for ${itemName} (id: ${item.id})`);
         const recipes = bot.recipesFor(item.id, null, 1, craftingTable);
-        console.log(`BehaviorCraftWithTable: Found ${recipes.length} recipes`);
+        logger.info(`BehaviorCraftWithTable: Found ${recipes.length} recipes`);
 
         const recipe = recipes[0];
 
         if (!recipe) {
-            console.log(`BehaviorCraftWithTable: No recipe found for ${itemName}. Available recipes: ${recipes.length}`);
+            logger.info(`BehaviorCraftWithTable: No recipe found for ${itemName}. Available recipes: ${recipes.length}`);
             return false;
         }
 
@@ -57,7 +58,7 @@ const createCraftWithTableState = (bot, targets) => {
         const targetCount = startingCount + additionalNeeded;
         let currentCount = startingCount;
 
-        console.log(`BehaviorCraftWithTable: Starting with ${startingCount} ${itemName}, need ${additionalNeeded} more (target: ${targetCount})`);
+        logger.info(`BehaviorCraftWithTable: Starting with ${startingCount} ${itemName}, need ${additionalNeeded} more (target: ${targetCount})`);
 
         const hasIngredients = recipe.delta.filter(item => item.count < 0)
             .every(item => {
@@ -66,14 +67,14 @@ const createCraftWithTableState = (bot, targets) => {
                 const hasEnough = availableCount >= requiredCount;
 
                 if (!hasEnough) {
-                    console.log(`BehaviorCraftWithTable: Missing ingredients. Need ${requiredCount} ${mcData.items[item.id].name} but only have ${availableCount}`);
+                    logger.info(`BehaviorCraftWithTable: Missing ingredients. Need ${requiredCount} ${mcData.items[item.id].name} but only have ${availableCount}`);
                 }
 
                 return hasEnough;
             });
 
         if (!hasIngredients) {
-            console.log(`BehaviorCraftWithTable: Cannot craft ${itemName} - missing ingredients`);
+            logger.info(`BehaviorCraftWithTable: Cannot craft ${itemName} - missing ingredients`);
             return false;
         }
 
@@ -81,22 +82,22 @@ const createCraftWithTableState = (bot, targets) => {
             const remainingNeeded = targetCount - currentCount;
             const timesToCraft = Math.min(Math.ceil(remainingNeeded / recipe.result.count), Math.floor(64 / recipe.result.count));
 
-            console.log(`BehaviorCraftWithTable: Attempting to craft ${timesToCraft} times`);
+            logger.info(`BehaviorCraftWithTable: Attempting to craft ${timesToCraft} times`);
 
             await bot.craft(recipe, timesToCraft, craftingTable);
 
             const newCount = getItemCountInInventory(bot, itemName);
-            console.log(`BehaviorCraftWithTable: Successfully crafted. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`);
+            logger.info(`BehaviorCraftWithTable: Successfully crafted. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`);
 
             if (newCount === currentCount) {
-                console.log('BehaviorCraftWithTable: Crafting did not increase item count');
+                logger.info('BehaviorCraftWithTable: Crafting did not increase item count');
                 return false;
             }
 
             return newCount >= targetCount;
 
         } catch (err) {
-            console.log(`BehaviorCraftWithTable: Error crafting ${itemName}:`, err);
+            logger.info(`BehaviorCraftWithTable: Error crafting ${itemName}:`, err);
             return false;
         }
     }
@@ -112,12 +113,12 @@ const createCraftWithTableState = (bot, targets) => {
         shouldTransition: () => targets.itemName == null || targets.amount == null,
         onTransition: () => {
             if (targets.itemName == null) {
-                console.log('BehaviorCraftWithTable: Error: No item name')
+                logger.info('BehaviorCraftWithTable: Error: No item name')
             }
             if (targets.amount == null) {
-                console.log('BehaviorCraftWithTable: Error: No amount')
+                logger.info('BehaviorCraftWithTable: Error: No amount')
             }
-            console.log('BehaviorCraftWithTable: enter -> exit')
+            logger.info('BehaviorCraftWithTable: enter -> exit')
         }
     })
 
@@ -131,13 +132,13 @@ const createCraftWithTableState = (bot, targets) => {
         shouldTransition: () => targets.itemName != null && targets.amount != null,
         onTransition: () => {
             waitForCraftStartTime = Date.now()
-            console.log('BehaviorCraftWithTable: enter -> wait for craft')
+            logger.info('BehaviorCraftWithTable: enter -> wait for craft')
             craftingDone = false
             craftingOk = false
             Promise.resolve()
                 .then(() => craftItemWithTable(targets.itemName, targets.amount))
                 .then(ok => { craftingOk = !!ok; craftingDone = true })
-                .catch(err => { console.log('BehaviorCraftWithTable: craft promise error', err); craftingOk = false; craftingDone = true })
+                .catch(err => { logger.info('BehaviorCraftWithTable: craft promise error', err); craftingOk = false; craftingDone = true })
         }
     })
 
@@ -156,11 +157,11 @@ const createCraftWithTableState = (bot, targets) => {
             const have = getItemCountInInventory(bot, targets.itemName)
             const timedOut = Date.now() - waitForCraftStartTime > 20000
             if (have >= targets.amount) {
-                console.log(`BehaviorCraftWithTable: wait for craft -> exit (complete ${have}/${targets.amount})`)
+                logger.info(`BehaviorCraftWithTable: wait for craft -> exit (complete ${have}/${targets.amount})`)
             } else if (timedOut) {
-                console.log(`BehaviorCraftWithTable: wait for craft -> exit (timeout ${have}/${targets.amount})`)
+                logger.info(`BehaviorCraftWithTable: wait for craft -> exit (timeout ${have}/${targets.amount})`)
             } else {
-                console.log(`BehaviorCraftWithTable: wait for craft -> exit (craftingDone=${craftingDone}, ok=${craftingOk})`)
+                logger.info(`BehaviorCraftWithTable: wait for craft -> exit (craftingDone=${craftingDone}, ok=${craftingOk})`)
             }
         }
     })

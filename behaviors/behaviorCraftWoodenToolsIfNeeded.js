@@ -6,6 +6,7 @@ const {
 
 const createCraftNoTableIfNeeded = require('./behaviorCraftNoTableIfNeeded')
 const createCraftWithTableIfNeeded = require('./behaviorCraftWithTableIfNeeded')
+const logger = require('../utils/logger')
 
 function createCraftWoodenToolsIfNeededState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -28,7 +29,7 @@ function createCraftWoodenToolsIfNeededState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'oak_planks'
             targets.amount = 8
-            console.log('BehaviorCraftWoodenToolsIfNeeded: enter -> craft planks')
+            logger.info('BehaviorCraftWoodenToolsIfNeeded: enter -> craft planks')
         }
     })
 
@@ -40,7 +41,7 @@ function createCraftWoodenToolsIfNeededState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'stick'
             targets.amount = 4
-            console.log('BehaviorCraftWoodenToolsIfNeeded: craft planks -> craft sticks')
+            logger.info('BehaviorCraftWoodenToolsIfNeeded: craft planks -> craft sticks')
         }
     })
 
@@ -52,7 +53,7 @@ function createCraftWoodenToolsIfNeededState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'wooden_pickaxe'
             targets.amount = 1
-            console.log('BehaviorCraftWoodenToolsIfNeeded: craft sticks -> craft wooden pickaxe')
+            logger.info('BehaviorCraftWoodenToolsIfNeeded: craft sticks -> craft wooden pickaxe')
         }
     })
 
@@ -64,7 +65,7 @@ function createCraftWoodenToolsIfNeededState(bot, targets) {
         onTransition: () => {
             targets.itemName = 'wooden_axe'
             targets.amount = 1
-            console.log('BehaviorCraftWoodenToolsIfNeeded: craft wooden pickaxe -> craft wooden axe')
+            logger.info('BehaviorCraftWoodenToolsIfNeeded: craft wooden pickaxe -> craft wooden axe')
         }
     })
 
@@ -74,7 +75,7 @@ function createCraftWoodenToolsIfNeededState(bot, targets) {
         name: 'BehaviorCraftWoodenToolsIfNeeded: craft wooden axe -> exit',
         shouldTransition: () => craftWoodenAxeIfNeededState.isFinished(),
         onTransition: () => {
-            console.log('BehaviorCraftWoodenToolsIfNeeded: craft wooden axe -> exit')
+            logger.info('BehaviorCraftWoodenToolsIfNeeded: craft wooden axe -> exit')
         }
     })
 

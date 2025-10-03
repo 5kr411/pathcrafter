@@ -6,6 +6,7 @@ module.exports = {
     testTimeout: 30000,
     forceExit: true,
     detectOpenHandles: true,
+    setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
 };
 
 

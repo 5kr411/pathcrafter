@@ -8,6 +8,7 @@ const genMine = require('./mine')
 const genCraftInventory = require('./craftInventory')
 const genCraftTable = require('./craftTable')
 const genSmelt = require('./smelt')
+const logger = require('../utils/logger')
 
 function createStateForStep(bot, step, shared) {
     if (!step || !step.action) return null;
@@ -35,7 +36,7 @@ function createStateForStep(bot, step, shared) {
             if (s) return s
         }
     } catch (_) {}
-    console.log('PathBuilder: No generator could handle step', step)
+    logger.info('PathBuilder: No generator could handle step', step)
     return { isFinished: () => true }
 }
 
@@ -55,14 +56,14 @@ function buildStateMachineForPath(bot, pathSteps, onFinished) {
         const should = isFirst ? () => true : () => (parent && typeof parent.isFinished === 'function' ? parent.isFinished() : true);
         const stepIndex = index;
         transitions.push(new StateTransition({ parent, child: st, name: `step:${stepIndex}:${step.action}:${step.what}`, shouldTransition: should, onTransition: () => {
-            console.log(`PathBuilder: step ${stepIndex} -> ${step.action}:${step.what}`)
+            logger.info(`PathBuilder: step ${stepIndex} -> ${step.action}:${step.what}`)
         }}));
         prev = st;
         isFirst = false;
         index++;
     }
     transitions.push(new StateTransition({ parent: prev, child: exit, name: 'final-exit', shouldTransition: () => (prev && typeof prev.isFinished === 'function' ? prev.isFinished() : true), onTransition: () => {
-        console.log('PathBuilder: final-exit')
+        logger.info('PathBuilder: final-exit')
         try { if (typeof onFinished === 'function') onFinished(); } catch (_) {}
     }}));
 

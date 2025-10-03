@@ -27,6 +27,7 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions)
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
+const logger = require('../utils/logger')
 
 bot.once('spawn', () => {
   const targets = {}
@@ -59,7 +60,7 @@ bot.once('spawn', () => {
         placeTargets.item = tableItem
         equipTargets.item = tableItem
       } else {
-        console.log('craft-table: no crafting_table in inventory to place')
+        logger.info('craft-table: no crafting_table in inventory to place')
       }
       bot.chat(`Starting craft at table: ${craftTargets.amount} ${craftTargets.itemName}`)
     }

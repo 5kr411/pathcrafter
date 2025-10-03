@@ -55,9 +55,9 @@ bot.once('spawn', () => {
   }
   const safeChat = (msg) => { try { if (bot && bot._client && !bot._client.ended) bot.chat(msg) } catch (_) {} }
   let connected = true
-  bot.on('kicked', (reason) => { connected = false; console.log('Collector: kicked', reason) })
-  bot.on('end', () => { connected = false; console.log('Collector: connection ended') })
-  bot.on('error', (err) => { console.log('Collector: bot error', err && err.code ? err.code : err) })
+  bot.on('kicked', (reason) => { connected = false; logger.info('Collector: kicked', reason) })
+  bot.on('end', () => { connected = false; logger.info('Collector: connection ended') })
+  bot.on('error', (err) => { logger.info('Collector: bot error', err && err.code ? err.code : err) })
   safeChat('collector ready')
 
   let running = false
@@ -98,6 +98,7 @@ let sequenceIndex = 0
                 const speciesTokens = new Set()
                 try {
                   const { ensureWoodSpeciesTokens } = require('../utils/wood')
+const logger = require('../utils/logger')
                   const ensured = ensureWoodSpeciesTokens(mcDataNow)
                   ensured && ensured.forEach && ensured.forEach(t => speciesTokens.add(t))
                 } catch (_) {}
@@ -132,11 +133,11 @@ let sequenceIndex = 0
         // New snapshot format: map of name -> stats
         const blocks = entry && entry.snapshot && entry.snapshot.blocks && typeof entry.snapshot.blocks === 'object' ? entry.snapshot.blocks : {}
         const resolved = best.map(s => s)
-        console.log('Collector: selected path (resolved):')
+        logger.info('Collector: selected path (resolved):')
         if (planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
           planner._internals.logActionPath(resolved)
         } else {
-          console.log(JSON.stringify(resolved))
+          logger.info(JSON.stringify(resolved))
         }
       } catch (_) {}
       if (!connected) { running = false; return }
@@ -196,7 +197,7 @@ let sequenceIndex = 0
       if (RUNTIME.telemetry && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
         const ratio = scanProgressFromState(scan)
         const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
-        console.log(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
+        logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
         lastProgressLog = Date.now()
       }
       await new Promise(resolve => setTimeout(resolve, sleepBetween))
@@ -205,7 +206,7 @@ let sequenceIndex = 0
     try { setLastSnapshotRadius(snapshot && Number.isFinite(snapshot.radius) ? snapshot.radius : (snapOpts && snapOpts.radius)) } catch (_) {}
     if (RUNTIME.telemetry) {
       const dur = Date.now() - tSnapStart
-      console.log(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
+      logger.info(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
     }
     const id = `${Date.now()}_${Math.random()}`
     ensureWorker()

@@ -12,6 +12,7 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions)
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
+const logger = require('../utils/logger')
 
 bot.once('spawn', () => {
   const hardcodedPath = [
@@ -29,9 +30,9 @@ bot.once('spawn', () => {
   bot.on('chat', (username, message) => {
     if (username === bot.username) return
     if (message.trim() === 'go') {
-      console.log('PathRunner: building state machine for hardcoded path...')
+      logger.info('PathRunner: building state machine for hardcoded path...')
       sm = buildStateMachineForPath(bot, hardcodedPath)
-      console.log('PathRunner: starting state machine')
+      logger.info('PathRunner: starting state machine')
       new BotStateMachine(bot, sm)
     }
   })

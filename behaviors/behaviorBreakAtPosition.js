@@ -8,6 +8,7 @@ const {
     BehaviorMoveTo,
     BehaviorMineBlock
 } = require('mineflayer-statemachine')
+const logger = require('../utils/logger')
 
 function createBreakAtPositionState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -49,7 +50,7 @@ function createBreakAtPositionState(bot, targets) {
         child: exit,
         shouldTransition: () => targets.position == null,
         onTransition: () => {
-            console.log('BehaviorBreakAtPosition: enter -> exit: position is null')
+            logger.info('BehaviorBreakAtPosition: enter -> exit: position is null')
         }
     })
 
@@ -59,7 +60,7 @@ function createBreakAtPositionState(bot, targets) {
         child: findInteract,
         shouldTransition: () => targets.position != null,
         onTransition: () => {
-            console.log('BehaviorBreakAtPosition: enter -> find')
+            logger.info('BehaviorBreakAtPosition: enter -> find')
             targets.blockPosition = targets.position;
         }
     })
@@ -70,7 +71,7 @@ function createBreakAtPositionState(bot, targets) {
         child: moveTo,
         shouldTransition: () => true,
         onTransition: () => {
-            console.log('BehaviorBreakAtPosition: find -> move')
+            logger.info('BehaviorBreakAtPosition: find -> move')
         }
     })
 
@@ -95,7 +96,7 @@ function createBreakAtPositionState(bot, targets) {
         },
         onTransition: () => {
             moveStartTime = moveStartTime || Date.now()
-            console.log('BehaviorBreakAtPosition: move -> mine')
+            logger.info('BehaviorBreakAtPosition: move -> mine')
             targets.position = targets.blockPosition;
             brokenObserved = false
             // Start waiting for this block to become air while mining is active
@@ -117,7 +118,7 @@ function createBreakAtPositionState(bot, targets) {
         },
         onTransition: () => {
             const elapsed = moveStartTime ? (Date.now() - moveStartTime) : 0
-            console.log(`BehaviorBreakAtPosition: move -> exit (elapsed=${elapsed}ms, dist=${moveTo.distanceToTarget && moveTo.distanceToTarget()})`)
+            logger.info(`BehaviorBreakAtPosition: move -> exit (elapsed=${elapsed}ms, dist=${moveTo.distanceToTarget && moveTo.distanceToTarget()})`)
         }
     })
 
@@ -145,7 +146,7 @@ function createBreakAtPositionState(bot, targets) {
         onTransition: () => {
             const moveDuration = moveStartTime ? (Date.now() - moveStartTime) : 0
             const mineDuration = mineStartTime ? (Date.now() - mineStartTime) : 0
-            console.log(`BehaviorBreakAtPosition: mine -> exit (move took ${moveDuration}ms, mine took ${mineDuration}ms)`)            
+            logger.info(`BehaviorBreakAtPosition: mine -> exit (move took ${moveDuration}ms, mine took ${mineDuration}ms)`)            
         }
     })
 
@@ -162,13 +163,13 @@ function createBreakAtPositionState(bot, targets) {
         },
         onTransition: () => {
             digRetries++
-            console.log(`BehaviorBreakAtPosition: mine -> retry (${digRetries})`)
+            logger.info(`BehaviorBreakAtPosition: mine -> retry (${digRetries})`)
         }
     })
 
     // Capture when we enter moving to start timeout tracking
     findToMove.onTransition = () => {
-        console.log('BehaviorBreakAtPosition: find -> move')
+        logger.info('BehaviorBreakAtPosition: find -> move')
         moveStartTime = Date.now()
     }
 

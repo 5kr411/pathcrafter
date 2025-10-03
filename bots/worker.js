@@ -36,12 +36,13 @@ if (isMainThread) {
 const bot = mineflayer.createBot(botOptions)
 
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder)
+const logger = require('../utils/logger')
 
 async function main() {
     bot.once('spawn', () => {
         if (!isMainThread && parentPort) {
             parentPort.on('message', (message) => {
-                // console.log('received message: ', message)
+                // logger.info('received message: ', message)
                 // Handle worker-specific message logic
             })
         }
@@ -65,7 +66,7 @@ async function main() {
             child: collectItemState,
             shouldTransition: () => true,
             onTransition: () => {
-                console.log('worker: enter -> collect item')
+                logger.info('worker: enter -> collect item')
                 if (!targets.itemName) targets.itemName = 'cobblestone'
                 if (!targets.amount) targets.amount = 1
                 if (!targets.blockName) targets.blockName = targets.itemName
@@ -78,7 +79,7 @@ async function main() {
             child: exit,
             shouldTransition: () => collectItemState.isFinished(),
             onTransition: () => {
-                console.log('worker: collect item -> exit')
+                logger.info('worker: collect item -> exit')
             }
         })
 
@@ -88,7 +89,7 @@ async function main() {
             child: enter,
             shouldTransition: () => false,
             onTransition: () => {
-                console.log('worker: exit -> enter')
+                logger.info('worker: exit -> enter')
             }
         })
 

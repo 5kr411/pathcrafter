@@ -14,6 +14,7 @@ const {
 } = require('mineflayer-statemachine')
 
 const { getItemCountInInventory } = require('../util')
+const logger = require('../utils/logger')
 
 const minecraftData = require('minecraft-data')
 
@@ -24,7 +25,7 @@ function createCollectBlockState(bot, targets) {
     const mcData = minecraftData(bot.version)
     let initialId = mcData.blocksByName[targets.blockName]?.id
     try {
-        console.log(`BehaviorCollectBlock:init -> block=${targets.blockName}#${initialId}, item=${targets.itemName}, amount=${targets.amount}`)
+        logger.debug(`init -> block=${targets.blockName}#${initialId}, item=${targets.itemName}, amount=${targets.amount}`)
     } catch (_) {}
 
     const currentBlockCount = getItemCountInInventory(bot, targets.itemName)
@@ -108,9 +109,9 @@ function createCollectBlockState(bot, targets) {
                     const r = Number(getLastSnapshotRadius && getLastSnapshotRadius())
                     if (Number.isFinite(r) && r > 0) findBlock.maxDistance = r
                 } catch (_) {}
-                console.log(`BehaviorCollectBlock: enter -> find block (target=${targets.blockName}#${currentId})`)
+                logger.debug(`enter -> find block (target=${targets.blockName}#${currentId})`)
             } catch (_) {
-                console.log('BehaviorCollectBlock: enter -> find block')
+                logger.debug('enter -> find block')
             }
         }
     })
@@ -121,7 +122,7 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: find block -> exit',
         shouldTransition: () => targets.position === undefined,
         onTransition: () => {
-            console.log('BehaviorCollectBlock: find block -> exit')
+            logger.info('find block -> exit')
         }
     })
 
@@ -132,7 +133,7 @@ function createCollectBlockState(bot, targets) {
         shouldTransition: () => targets.position !== undefined,
         onTransition: () => {
             targets.blockPosition = targets.position
-            console.log('BehaviorCollectBlock: find block -> find interact position')
+            logger.debug('find block -> find interact position')
         }
     })
 
@@ -147,9 +148,9 @@ function createCollectBlockState(bot, targets) {
             if (targets.blockPosition) {
                 if (!isMainThread && parentPort) {
                     parentPort.postMessage({ from: workerData.username, type: excludedPositionType, data: targets.blockPosition });
-                    console.log('BehaviorCollectBlock: Added excluded position -> findBlock because self found: ', targets.blockPosition);
+                    logger.debug('Added excluded position -> findBlock because self found:', targets.blockPosition);
                 } else {
-                    console.log('BehaviorCollectBlock: Found block position (main thread): ', targets.blockPosition);
+                    logger.debug('Found block position (main thread):', targets.blockPosition);
                 }
                 if (findBlock && typeof findBlock.addExcludedPosition === 'function') {
                     findBlock.addExcludedPosition(targets.blockPosition)
@@ -159,9 +160,9 @@ function createCollectBlockState(bot, targets) {
                     targets.position = targets.blockPosition
                 }
                 try {
-                    console.log('BehaviorCollectBlock: moving towards position ', targets.position)
+                    logger.debug('moving towards position', targets.position)
                 } catch (_) {}
-                console.log('BehaviorCollectBlock: find interact position -> go to block')
+                logger.debug('find interact position -> go to block')
             }
         }
     })
@@ -176,9 +177,9 @@ function createCollectBlockState(bot, targets) {
 			try {
 				equipTargets.item = pickBestToolItemForBlock(bot, targets.blockName)
 				const chosen = equipTargets.item ? equipTargets.item.name : 'none'
-				console.log('BehaviorCollectBlock: go to block -> equip best tool', chosen)
+				logger.debug('go to block -> equip best tool', chosen)
 			} catch (_) {
-				console.log('BehaviorCollectBlock: go to block -> equip best tool')
+				logger.debug('go to block -> equip best tool')
 			}
         }
     })
@@ -189,7 +190,7 @@ function createCollectBlockState(bot, targets) {
 		name: 'BehaviorCollectBlock: equip best tool -> mine block',
 		shouldTransition: () => true,
 		onTransition: () => {
-			console.log('BehaviorCollectBlock: equip best tool -> mine block')
+			logger.debug('equip best tool -> mine block')
 		}
 	})
 
@@ -199,7 +200,7 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: go to block -> find block',
         shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() >= 6,
         onTransition: () => {
-            console.log('BehaviorCollectBlock: go to block -> find block')
+            logger.debug('go to block -> find block')
         }
     })
 
@@ -219,9 +220,9 @@ function createCollectBlockState(bot, targets) {
             try {
                 const t = targets.blockPosition
                 const type = t ? bot.world.getBlockType(t) : undefined
-                console.log('BehaviorCollectBlock: mine block -> find drop (post-mine blockType=', type, ')')
+                logger.debug('mine block -> find drop (post-mine blockType=', type, ')')
             } catch (_) {
-                console.log('BehaviorCollectBlock: mine block -> find drop')
+                logger.debug('mine block -> find drop')
             }
         }
     })
@@ -238,9 +239,9 @@ function createCollectBlockState(bot, targets) {
                 const pos = targets.entity && targets.entity.position
                 const dist = pos ? pos.distanceTo(bot.entity.position).toFixed(2) : 'n/a'
                 const posStr = pos ? `(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)})` : 'n/a'
-                console.log(`BehaviorCollectBlock: find drop -> go to drop at ${posStr} dist ${dist}`)
+                logger.debug(`find drop -> go to drop at ${posStr} dist ${dist}`)
             } catch (_) {
-                console.log('BehaviorCollectBlock: find drop -> go to drop')
+                logger.debug('find drop -> go to drop')
             }
         }
     })
@@ -253,9 +254,9 @@ function createCollectBlockState(bot, targets) {
         onTransition: () => {
             try {
                 const items = Object.values(bot.entities || {}).filter(e => e.displayName === 'Item')
-                console.log('BehaviorCollectBlock: find drop -> find block (no nearby items). Nearby items count=', items.length)
+                logger.debug('find drop -> find block (no nearby items). Nearby items count=', items.length)
             } catch (_) {
-                console.log('BehaviorCollectBlock: find drop -> find block')
+                logger.debug('find drop -> find block')
             }
         }
     })
@@ -266,8 +267,8 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: go to drop -> find block',
         shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) && collectedCount() < targets.amount,
         onTransition: () => {
-            console.log('BehaviorCollectBlock: go to drop -> find block: ', Date.now() - goToBlockStartTime)
-            console.log(`BehaviorCollectBlock: Blocks collected:  ${collectedCount()}/${targets.amount} ${targets.itemName}`)
+            logger.debug('go to drop -> find block:', Date.now() - goToBlockStartTime)
+            logger.info(`Blocks collected: ${collectedCount()}/${targets.amount} ${targets.itemName}`)
         }
     })
 
@@ -277,7 +278,7 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: go to drop -> exit',
         shouldTransition: () => (goToDrop.distanceToTarget() <= 0.75 && Date.now() - goToBlockStartTime > 1000) || (collectedCount() >= targets.amount && Date.now() - goToBlockStartTime > 1000),
         onTransition: () => {
-            console.log(`BehaviorCollectBlock: go to drop -> exit: ${collectedCount()}/${targets.amount} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
+            logger.info(`go to drop -> exit: ${collectedCount()}/${targets.amount} ${targets.itemName} collected, ${getItemCountInInventory(bot, targets.itemName)} total`)
         }
     })
 

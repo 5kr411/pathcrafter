@@ -8,6 +8,7 @@ const { getDefaultPerGeneratorPaths, getPruneWithWorldEnabled } = require('./uti
 const { hoistMiningInPaths } = require('./path_optimizations/hoistMining');
 const { loadSnapshotFromFile } = require('./utils/worldSnapshot');
 const { generateTopNPathsFromGenerators } = require('./path_generators/generateTopN');
+const logger = require('utils/logger')
 
 // Project-wide config for this demo run
 const mcData = resolveMcData('1.20.1');
@@ -17,18 +18,18 @@ setGenericWoodEnabled(plannerConfig.genericWoodEnabled);
 const item = 'wooden_pickaxe';
 const count = 1;
 const inventory = { /*cobblestone: 2, stick: 2, crafting_table: 1 */ };
-console.log(`Analyzing target item: ${item} x${count}`);
-console.log(`\nUsing inventory: ${JSON.stringify(inventory)}`);
+logger.info(`Analyzing target item: ${item} x${count}`);
+logger.info(`\nUsing inventory: ${JSON.stringify(inventory)}`);
 const tree = plan(mcData, item, count, { log: false, inventory });
 
-console.log(`\nConfig: { genericWoodEnabled: ${getGenericWoodEnabled()} }`);
+logger.info(`\nConfig: { genericWoodEnabled: ${getGenericWoodEnabled()} }`);
 
 // demo logging disabled
 
 const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = plan._internals;
-console.log(`\nGenerated action tree with max depth: ${computeTreeMaxDepth(tree)}`);
+logger.info(`\nGenerated action tree with max depth: ${computeTreeMaxDepth(tree)}`);
 
-console.log(`\nTotal paths: ${countActionPaths(tree)}`);
+logger.info(`\nTotal paths: ${countActionPaths(tree)}`);
 
 let pathsToLog = 10;
 
@@ -58,7 +59,7 @@ try {
         const latest = withTimes[0].full;
         const snapshot = loadSnapshotFromFile(latest);
         const filtered = hoistMiningInPaths(filterPathsByWorldSnapshot(aggregated, snapshot, { disableGenericWood: !plannerConfig.genericWoodEnabled }));
-        console.log(`\nFiltered by world snapshot (${path.basename(latest)}), count=${filtered.length}:`);
+        logger.info(`\nFiltered by world snapshot (${path.basename(latest)}), count=${filtered.length}:`);
         let n = 0;
         for (const p of filtered.slice(0, pathsToLog)) {
             process.stdout.write(`#${++n} `);
@@ -66,12 +67,12 @@ try {
         }
 
         const filteredDirect = await generateTopNAndFilter('1.20.1', item, count, { inventory, worldSnapshot: snapshot, perGenerator, log: false, config: plannerConfig, pruneWithWorld: getPruneWithWorldEnabled() });
-        console.log(`\nOne-shot generate+filter count=${filteredDirect.length}`);
+        logger.info(`\nOne-shot generate+filter count=${filteredDirect.length}`);
     } else {
-        console.log(`\nNo world snapshot files found in ${snapshotsDir}`);
+        logger.info(`\nNo world snapshot files found in ${snapshotsDir}`);
     }
 } catch (err) {
-    console.error('World filtering demo error:', err && err.stack ? err.stack : err);
+    logger.error('World filtering demo error:', err && err.stack ? err.stack : err);
 }
 })().catch(() => {})
 

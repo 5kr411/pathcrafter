@@ -5,6 +5,7 @@ const {
 } = require('mineflayer-statemachine')
 
 const minecraftData = require('minecraft-data')
+const logger = require('../utils/logger')
 
 const createCollectBlockState = require('./behaviorCollectBlock')
 const { setCurrentSpeciesContext } = require('../utils/context')
@@ -130,7 +131,7 @@ function createMineOneOfState(bot, targets) {
     }
 
     const tEnterToPrepare = new StateTransition({ parent: enter, child: prepare, name: 'mine-one-of: enter -> prepare', shouldTransition: () => true, onTransition: () => {
-        try { console.log('BehaviorMineOneOf: preparing selection...') } catch (_) {}
+        try { logger.debug('preparing selection...') } catch (_) {}
         // Compute selection now based on current targets
         selection.chosen = null
         const chosen = selectBestCandidate()
@@ -143,12 +144,12 @@ function createMineOneOfState(bot, targets) {
             dynamicTargets.blockName = selection.chosen.blockName
             dynamicTargets.itemName = selection.chosen.itemName
             dynamicTargets.amount = selection.chosen.amount
-            try { console.log(`BehaviorMineOneOf: selected ${dynamicTargets.blockName} for ${dynamicTargets.itemName} x${dynamicTargets.amount}`) } catch (_) {}
+            try { logger.info(`selected ${dynamicTargets.blockName} for ${dynamicTargets.itemName} x${dynamicTargets.amount}`) } catch (_) {}
         }
     } })
 
     const tPrepareToExit = new StateTransition({ parent: prepare, child: exit, name: 'mine-one-of: prepare -> exit (no selection)', shouldTransition: () => !selection || !selection.chosen, onTransition: () => {
-        try { console.log('BehaviorMineOneOf: no viable candidate found; exiting') } catch (_) {}
+        try { logger.warn('no viable candidate found; exiting') } catch (_) {}
     } })
 
     const tCollectToExit = new StateTransition({ parent: collectBehavior, child: exit, name: 'mine-one-of: collect -> exit', shouldTransition: () => typeof collectBehavior.isFinished === 'function' ? collectBehavior.isFinished() : true })

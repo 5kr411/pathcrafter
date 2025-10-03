@@ -10,6 +10,7 @@ const {
     BehaviorMineBlock
 } = require('mineflayer-statemachine')
 const createClearAreaState = require('./behaviorClearArea')
+const logger = require('../utils/logger')
 
 function createPlaceNearState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -115,7 +116,7 @@ function createPlaceNearState(bot, targets) {
         child: exit,
         shouldTransition: () => targets.item == null,
         onTransition: () => {
-            console.log('BehaviorPlaceNear: enter -> exit, item is null')
+            logger.info('BehaviorPlaceNear: enter -> exit, item is null')
         }
     })
 
@@ -126,7 +127,7 @@ function createPlaceNearState(bot, targets) {
         child: findPlaceCoords,
         shouldTransition: () => true,
         onTransition: () => {
-            console.log('BehaviorPlaceNear: enter -> find place coords')
+            logger.info('BehaviorPlaceNear: enter -> find place coords')
             placeTries = 1
             targets.placedConfirmed = false
 
@@ -140,14 +141,14 @@ function createPlaceNearState(bot, targets) {
                 targets.placePosition = placePos
                 const center = placePos.clone(); center.x += 0.5; center.y += 1; center.z += 0.5
                 targets.position = placePos.clone(); targets.position.x += 0.5; targets.position.y += 0; targets.position.z += 0.5
-                console.log('BehaviorPlaceNear: Set place base:', placePos)
-                console.log('BehaviorPlaceNear: Set target position:', targets.position)
+                logger.info('BehaviorPlaceNear: Set place base:', placePos)
+                logger.info('BehaviorPlaceNear: Set target position:', targets.position)
             } else {
                 const fallback = base.floored()
                 fallback.y -= 1
                 targets.placePosition = fallback
                 targets.position = fallback.clone(); targets.position.x += 0.5; targets.position.z += 0.5
-                console.log('BehaviorPlaceNear: Fallback place base:', targets.placePosition)
+                logger.info('BehaviorPlaceNear: Fallback place base:', targets.placePosition)
             }
         }
     })
@@ -158,7 +159,7 @@ function createPlaceNearState(bot, targets) {
         child: moveToPlaceCoords,
         shouldTransition: () => true,
         onTransition: () => {
-            console.log('BehaviorPlaceNear: find place coords -> move to place coords')
+            logger.info('BehaviorPlaceNear: find place coords -> move to place coords')
         }
     })
 
@@ -179,7 +180,7 @@ function createPlaceNearState(bot, targets) {
         },
         onTransition: () => {
             placeStartTime = Date.now()
-            console.log('BehaviorPlaceNear: move to place coords -> place block')
+            logger.info('BehaviorPlaceNear: move to place coords -> place block')
             targets.position = targets.placePosition
             targets.blockFace = new Vec3(0, 1, 0)
 
@@ -203,7 +204,7 @@ function createPlaceNearState(bot, targets) {
             clearTargets.clearRadiusVertical = Number.isFinite(targets.clearRadiusVertical)
                 ? targets.clearRadiusVertical
                 : (Number.isFinite(clearTargets.clearRadiusVertical) ? clearTargets.clearRadiusVertical : 2)
-            console.log('BehaviorPlaceNear: clear init -> queued area with radii', clearTargets.clearRadiusHorizontal, clearTargets.clearRadiusVertical)
+            logger.info('BehaviorPlaceNear: clear init -> queued area with radii', clearTargets.clearRadiusHorizontal, clearTargets.clearRadiusVertical)
         }
     })
 
@@ -220,7 +221,7 @@ function createPlaceNearState(bot, targets) {
         parent: clearArea,
         child: moveToPlaceCoords,
         shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() && canPlaceNow() : canPlaceNow(),
-        onTransition: () => { console.log('BehaviorPlaceNear: clearing complete') }
+        onTransition: () => { logger.info('BehaviorPlaceNear: clearing complete') }
     })
 
     const clearAreaToReposition = new StateTransition({
@@ -232,7 +233,7 @@ function createPlaceNearState(bot, targets) {
             return finished && !canPlaceNow()
         },
         onTransition: () => {
-            console.log('BehaviorPlaceNear: clearing capped or still obstructed -> reposition')
+            logger.info('BehaviorPlaceNear: clearing capped or still obstructed -> reposition')
             placeTries++
         }
     })
@@ -243,7 +244,7 @@ function createPlaceNearState(bot, targets) {
         child: findPlaceCoords,
         shouldTransition: () => Date.now() - placeStartTime > 1000 && placeTries < 8 && bot.world.getBlockType(targets.placedPosition) === 0,
         onTransition: () => {
-            console.log(`BehaviorPlaceNear: place block -> find place coords (retry ${placeTries})`)
+            logger.info(`BehaviorPlaceNear: place block -> find place coords (retry ${placeTries})`)
             placeTries++
         }
     })
@@ -254,8 +255,8 @@ function createPlaceNearState(bot, targets) {
         child: exit,
         shouldTransition: () => Date.now() - placeStartTime > 500 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 8),
         onTransition: () => {
-            console.log('BehaviorPlaceNear: place block -> exit')
-            console.log('Block at place position:', bot.world.getBlockType(targets.placedPosition))
+            logger.info('BehaviorPlaceNear: place block -> exit')
+            logger.info('Block at place position:', bot.world.getBlockType(targets.placedPosition))
             try {
                 const blk = bot.blockAt(targets.placedPosition, false)
                 targets.placedConfirmed = !!(blk && blk.name)

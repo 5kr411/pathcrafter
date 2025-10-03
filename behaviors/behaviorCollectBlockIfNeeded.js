@@ -7,6 +7,7 @@ const {
 const { getItemCountInInventory } = require('../util')
 
 const behaviorCollectBlock = require('./behaviorCollectBlock')
+const logger = require('../utils/logger')
 
 function createCollectBlockIfNeededState(bot, targets) {
     const enter = new BehaviorIdle()
@@ -23,7 +24,7 @@ function createCollectBlockIfNeededState(bot, targets) {
             return getItemCountInInventory(bot, targets.itemName) >= targets.amount
         },
         onTransition: () => {
-            console.log(`BehaviorCollectBlockIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
+            logger.info(`BehaviorCollectBlockIfNeeded: enter -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -36,7 +37,7 @@ function createCollectBlockIfNeededState(bot, targets) {
         },
         onTransition: () => {
             targets.amount = targets.amount - getItemCountInInventory(bot, targets.itemName)
-            console.log(`BehaviorCollectBlockIfNeeded: enter -> collect block: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
+            logger.info(`BehaviorCollectBlockIfNeeded: enter -> collect block: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 
@@ -46,7 +47,7 @@ function createCollectBlockIfNeededState(bot, targets) {
         child: exit,
         shouldTransition: () => collectBlock.isFinished(),
         onTransition: () => {
-            console.log(`BehaviorCollectBlockIfNeeded: collect block -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
+            logger.info(`BehaviorCollectBlockIfNeeded: collect block -> exit: ${getItemCountInInventory(bot, targets.itemName)}/${targets.amount} ${targets.itemName} in inventory`)
         }
     })
 

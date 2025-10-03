@@ -12,6 +12,7 @@ const { getItemCountInInventory } = require('../util')
 const createPlaceNearState = require('../behaviors/behaviorPlaceNear');
 const createCraftWithTableIfNeeded = require('../behaviors/behaviorCraftWithTableIfNeeded');
 const createBreakAtPositionState = require('../behaviors/behaviorBreakAtPosition');
+const logger = require('../utils/logger')
 
 function canHandle(step) {
     return !!step && step.action === 'craft' && step.what === 'table';
@@ -48,7 +49,7 @@ function create(bot, step) {
     try {
         placeTable = createPlaceNearState(bot, placeTargets);
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): place state unavailable, using no-op');
+        logger.info('BehaviorGenerator(craft-table): place state unavailable, using no-op');
         placeTable = { isFinished: () => true };
     }
 
@@ -58,7 +59,7 @@ function create(bot, step) {
     try {
         craftWithTable = createCraftWithTableIfNeeded(bot, craftTargets);
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): craft state unavailable, using no-op');
+        logger.info('BehaviorGenerator(craft-table): craft state unavailable, using no-op');
         craftWithTable = { isFinished: () => true };
     }
 
@@ -68,7 +69,7 @@ function create(bot, step) {
     try {
         breakTable = createBreakAtPositionState(bot, breakTargets);
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): break state unavailable, using no-op');
+        logger.info('BehaviorGenerator(craft-table): break state unavailable, using no-op');
         breakTable = { isFinished: () => true };
     }
 
@@ -86,7 +87,7 @@ function create(bot, step) {
         followDrop = new BehaviorFollowEntity(bot, collectTargets);
         followDrop.followDistance = 0.25;
     } catch (_) {
-        console.log('BehaviorGenerator(craft-table): follow-drop unavailable, using no-op');
+        logger.info('BehaviorGenerator(craft-table): follow-drop unavailable, using no-op');
         followDrop = { isFinished: () => true, distanceToTarget: () => 0 };
     }
 
@@ -104,7 +105,7 @@ function create(bot, step) {
             value: function() {
                 if (placeTargets && placeTargets.placedPosition) {
                     breakTargets.position = placeTargets.placedPosition.clone();
-                    console.log('BehaviorGenerator(craft-table): set break position from placed table')
+                    logger.info('BehaviorGenerator(craft-table): set break position from placed table')
                 }
             }
         });
@@ -119,7 +120,7 @@ function create(bot, step) {
         child: equip,
         shouldTransition: () => true,
         onTransition: () => {
-            console.log('BehaviorGenerator(craft-table): enter -> equip (crafting_table)');
+            logger.info('BehaviorGenerator(craft-table): enter -> equip (crafting_table)');
         }
     });
 
@@ -146,7 +147,7 @@ function create(bot, step) {
                     if (invItem) { placeTargets.item = invItem; equipTargets.item = invItem; }
                 } catch (_) {}
             }
-            console.log('BehaviorGenerator(craft-table): equip -> place [crafting_table]');
+            logger.info('BehaviorGenerator(craft-table): equip -> place [crafting_table]');
         }
     });
 
@@ -156,7 +157,7 @@ function create(bot, step) {
         child: craftWithTable,
         shouldTransition: () => (typeof equip.isFinished === 'function' ? equip.isFinished() : true) && !placeTargets.item,
         onTransition: () => {
-            console.log('BehaviorGenerator(craft-table): equip -> craft (no crafting_table in inventory)');
+            logger.info('BehaviorGenerator(craft-table): equip -> craft (no crafting_table in inventory)');
         }
     });
 
@@ -176,11 +177,11 @@ function create(bot, step) {
                 breakTargets.position = placeTargets.placedPosition.clone();
                 // Hint craft-with-table of the placed location for reliable table lookup
                 try { craftTargets.placedPosition = placeTargets.placedPosition.clone(); } catch (_) {}
-                console.log('BehaviorGenerator(craft-table): place -> craft (placed table detected)');
+                logger.info('BehaviorGenerator(craft-table): place -> craft (placed table detected)');
             } else if (timedOut) {
-                console.log('BehaviorGenerator(craft-table): place -> craft (timeout, proceed if confirmed)');
+                logger.info('BehaviorGenerator(craft-table): place -> craft (timeout, proceed if confirmed)');
             } else {
-                console.log('BehaviorGenerator(craft-table): place -> craft');
+                logger.info('BehaviorGenerator(craft-table): place -> craft');
             }
         }
     });
@@ -191,7 +192,7 @@ function create(bot, step) {
         child: breakTable,
         shouldTransition: () => typeof craftWithTable.isFinished === 'function' ? craftWithTable.isFinished() : true,
         onTransition: () => {
-            console.log('BehaviorGenerator(craft-table): craft -> break');
+            logger.info('BehaviorGenerator(craft-table): craft -> break');
         }
     });
 
@@ -208,7 +209,7 @@ function create(bot, step) {
         },
         onTransition: () => {
 			collectStartTime = Date.now();
-			console.log('BehaviorGenerator(craft-table): break -> get-drop');
+			logger.info('BehaviorGenerator(craft-table): break -> get-drop');
         }
     });
 
@@ -220,7 +221,7 @@ function create(bot, step) {
 		shouldTransition: () => (typeof breakTable.isFinished === 'function' ? breakTable.isFinished() : true) && (getItemCountInInventory(bot, 'crafting_table') > startCount),
 		onTransition: () => {
 			const have = getItemCountInInventory(bot, 'crafting_table');
-			console.log(`BehaviorGenerator(craft-table): break -> exit (already have ${have - startCount})`);
+			logger.info(`BehaviorGenerator(craft-table): break -> exit (already have ${have - startCount})`);
 		}
 	});
 
@@ -235,7 +236,7 @@ function create(bot, step) {
 		onTransition: () => {
 			followStartTime = Date.now();
             const pos = collectTargets.entity && collectTargets.entity.position;
-            console.log(`BehaviorGenerator(craft-table): get-drop -> follow-drop (x=${pos?.x}, y=${pos?.y}, z=${pos?.z})`);
+            logger.info(`BehaviorGenerator(craft-table): get-drop -> follow-drop (x=${pos?.x}, y=${pos?.y}, z=${pos?.z})`);
         }
     });
 
@@ -253,9 +254,9 @@ function create(bot, step) {
 			const have = getItemCountInInventory(bot, 'crafting_table');
 			const timedOut = collectStartTime ? (Date.now() - collectStartTime > COLLECT_TIMEOUT_MS) : false;
 			if (have > startCount) {
-				console.log(`BehaviorGenerator(craft-table): get-drop -> exit (already have ${have - startCount})`);
+				logger.info(`BehaviorGenerator(craft-table): get-drop -> exit (already have ${have - startCount})`);
 			} else if (timedOut) {
-				console.log('BehaviorGenerator(craft-table): get-drop -> exit (timeout)');
+				logger.info('BehaviorGenerator(craft-table): get-drop -> exit (timeout)');
 			}
 		}
 	});
@@ -267,7 +268,7 @@ function create(bot, step) {
         shouldTransition: () => getItemCountInInventory(bot, 'crafting_table') > startCount,
         onTransition: () => {
             const have = getItemCountInInventory(bot, 'crafting_table');
-            console.log(`BehaviorGenerator(craft-table): follow-drop -> exit (${have - startCount} picked up)`);
+            logger.info(`BehaviorGenerator(craft-table): follow-drop -> exit (${have - startCount} picked up)`);
         }
     });
 
@@ -288,9 +289,9 @@ function create(bot, step) {
 			const e = collectTargets.entity;
 			const invalid = !e || !e.position || !Number.isFinite(e.position.x) || !Number.isFinite(e.position.y) || !Number.isFinite(e.position.z);
 			if (timedOut) {
-				console.log('BehaviorGenerator(craft-table): follow-drop -> exit (timeout)');
+				logger.info('BehaviorGenerator(craft-table): follow-drop -> exit (timeout)');
 			} else if (invalid) {
-				console.log('BehaviorGenerator(craft-table): follow-drop -> exit (lost/invalid entity)');
+				logger.info('BehaviorGenerator(craft-table): follow-drop -> exit (lost/invalid entity)');
 			}
 		}
 	});

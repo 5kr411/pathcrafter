@@ -18,21 +18,22 @@ bot.once('spawn', () => {
     setTimeout(() => {
         try {
             const { getDefaultSnapshotChunkRadius } = require('./utils/config');
+const logger = require('utils/logger')
             const raw = captureRawWorldSnapshot(bot, { chunkRadius: Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius(), includeAir: false });
             const dim = (bot.game && bot.game.dimension) ? String(bot.game.dimension).replace(/[^a-z0-9_\-]/gi, '_') : 'overworld';
             const outPath = `./world_snapshots/raw_${dim}_${Date.now()}.json`;
             saveSnapshotToFile(raw, outPath);
-            console.log(`Saved world snapshot to ${outPath}`);
+            logger.info(`Saved world snapshot to ${outPath}`);
             safeExit(0);
         } catch (err) {
-            console.error('Error capturing snapshot:', err && err.stack ? err.stack : err);
+            logger.error('Error capturing snapshot:', err && err.stack ? err.stack : err);
             safeExit(2);
         }
     }, 4000);
 });
 
 bot.on('kicked', (reason) => {
-    console.error('Kicked:', reason);
+    logger.error('Kicked:', reason);
     safeExit(3);
 });
 
@@ -41,7 +42,7 @@ bot.on('end', () => {
 });
 
 bot.on('error', (err) => {
-    console.error('Bot error:', err && err.stack ? err.stack : err);
+    logger.error('Bot error:', err && err.stack ? err.stack : err);
 });
 
 

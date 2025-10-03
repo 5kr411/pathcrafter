@@ -1,4 +1,5 @@
 const { getSafeFindRepeatThreshold } = require('../utils/config')
+const logger = require('../utils/logger')
 
 function posKey(p) { return p ? `${p.x},${p.y},${p.z}` : 'nil' }
 
@@ -53,7 +54,7 @@ class BehaviorSafeFindBlock {
             this._returnCounts.set(key, next)
             if (next >= this._countThreshold && !this._excluded.has(key)) {
                 this._excluded.add(key)
-                try { console.log('BehaviorSafeFindBlock: excluding position after repeats', pos) } catch (_) {}
+                try { logger.info('BehaviorSafeFindBlock: excluding position after repeats', pos) } catch (_) {}
             }
         } catch (_) {}
     }

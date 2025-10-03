@@ -21,7 +21,7 @@ parentPort.on('message', async (msg) => {
     const tBuildStart = Date.now()
     const tree = planner(mcData, item, count, { inventory, log: false, pruneWithWorld: !!pruneWithWorld, worldSnapshot: snapshot })
     const tBuildMs = Date.now() - tBuildStart
-    if (getPlanningTelemetryEnabled()) console.log(`PlanningWorker: built tree in ${tBuildMs} ms for ${item} x${count}`)
+    if (getPlanningTelemetryEnabled()) logger.info(`PlanningWorker: built tree in ${tBuildMs} ms for ${item} x${count}`)
     const limit = Number.isFinite(perGenerator) ? perGenerator : 200
     const workerPath = path.resolve(__dirname, './enumerator_worker.js')
 
@@ -35,7 +35,7 @@ parentPort.on('message', async (msg) => {
             const ok = msg && msg.type === 'result' && msg.ok === true
             const paths = ok && Array.isArray(msg.paths) ? msg.paths : []
             const dt = Date.now() - started
-            if (getPlanningTelemetryEnabled()) console.log(`PlanningWorker: enum[${gen}] finished in ${dt} ms (${paths.length} paths)`) 
+            if (getPlanningTelemetryEnabled()) logger.info(`PlanningWorker: enum[${gen}] finished in ${dt} ms (${paths.length} paths)`) 
             resolve(paths)
           })
           w.once('error', () => { try { w.terminate() } catch (_) {} resolve([]) })
@@ -47,13 +47,14 @@ parentPort.on('message', async (msg) => {
     const tEnumStart = Date.now()
     const [a, s, l] = await Promise.all([runEnum('action'), runEnum('shortest'), runEnum('lowest')])
     const tEnumMs = Date.now() - tEnumStart
-    if (getPlanningTelemetryEnabled()) console.log(`PlanningWorker: enumerated paths in ${tEnumMs} ms (action=${a.length}, shortest=${s.length}, lowest=${l.length})`)
+    if (getPlanningTelemetryEnabled()) logger.info(`PlanningWorker: enumerated paths in ${tEnumMs} ms (action=${a.length}, shortest=${s.length}, lowest=${l.length})`)
     const tFilterStart = Date.now()
     const merged = dedupePaths([].concat(a, s, l))
     // Tie-break equal weight paths using average distance score if snapshot provided
     if (snapshot && snapshot.blocks && typeof snapshot.blocks === 'object') {
       const { computePathResourceDemand } = require('../path_filters/worldResources')
       const { computePathWeight } = require('../utils/pathUtils')
+const logger = require('../utils/logger')
       function distScore(path) {
         try {
           const demand = computePathResourceDemand(path)
@@ -78,19 +79,19 @@ parentPort.on('message', async (msg) => {
     }
     const ranked = hoistMiningInPaths(merged)
     const tFilterMs = Date.now() - tFilterStart
-    if (getPlanningTelemetryEnabled()) console.log(`PlanningWorker: filtered candidates in ${tFilterMs} ms; ${merged.length} total candidates`)
+    if (getPlanningTelemetryEnabled()) logger.info(`PlanningWorker: filtered candidates in ${tFilterMs} ms; ${merged.length} total candidates`)
 
     try {
       const top = ranked && ranked[0]
       if (getPlanningTelemetryEnabled()) {
         if (top && planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
-          console.log('PlanningWorker: final path:')
+          logger.info('PlanningWorker: final path:')
           planner._internals.logActionPath(top)
         }
       }
     } catch (_) {}
 
-    if (getPlanningTelemetryEnabled()) console.log(`PlanningWorker: end-to-end planning took ${Date.now() - t0} ms`)
+    if (getPlanningTelemetryEnabled()) logger.info(`PlanningWorker: end-to-end planning took ${Date.now() - t0} ms`)
     parentPort.postMessage({ type: 'result', id, ok: true, ranked })
   } catch (err) {
     parentPort.postMessage({ type: 'result', id, ok: false, error: (err && err.stack) ? err.stack : String(err) })
