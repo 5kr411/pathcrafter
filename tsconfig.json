@@ -27,6 +27,7 @@
     "path_generators/**/*.ts",
     "path_optimizations/**/*.ts",
     "path_filters/**/*.ts",
+    "behavior_generator/**/*.ts",
     "utils/**/*.ts"
   ],
   "exclude": [
