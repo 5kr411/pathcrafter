@@ -82,7 +82,7 @@ function createAcquireCraftingTableState(bot, targets) {
         child: exit,
         shouldTransition: () => collectLogsIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_log') < 1,
         onTransition: () => {
-            logger.info('BehaviorAcquireCraftingTable: collect logs -> exit: Could not collect any logs')
+            logger.error('BehaviorAcquireCraftingTable: collect logs -> exit: Could not collect any logs')
         }
     })
 
@@ -104,7 +104,7 @@ function createAcquireCraftingTableState(bot, targets) {
         child: exit,
         shouldTransition: () => craftPlanksIfNeededState.isFinished() && getItemCountInInventory(bot, 'oak_planks') < 4,
         onTransition: () => {
-            logger.info('BehaviorAcquireCraftingTable: craft planks -> exit: Could not craft planks')
+            logger.error('BehaviorAcquireCraftingTable: craft planks -> exit: Could not craft planks')
         }
     })
 

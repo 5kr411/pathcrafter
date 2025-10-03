@@ -11,16 +11,55 @@ const {
 } = require('mineflayer-statemachine')
 const createClearAreaState = require('./behaviorClearArea')
 const logger = require('../utils/logger')
+const { addStateLogging } = require('../utils/stateLogging')
 
 function createPlaceNearState(bot, targets) {
     const enter = new BehaviorIdle()
 
     const findPlaceCoords = new BehaviorFindInteractPosition(bot, targets)
+    
+    // Add logging to FindInteractPosition
+    addStateLogging(findPlaceCoords, 'FindInteractPosition', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const pos = targets.placePosition
+            return pos ? `for placing at (${pos.x}, ${pos.y}, ${pos.z})` : ''
+        }
+    })
 
     const moveToPlaceCoords = new BehaviorMoveTo(bot, targets)
     moveToPlaceCoords.distance = 0.05
+    
+    // Add logging to MoveTo
+    addStateLogging(moveToPlaceCoords, 'MoveTo', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const pos = targets.position
+            if (!pos) return 'no position'
+            const dist = bot.entity.position.distanceTo(pos).toFixed(2)
+            return `to place position (${pos.x}, ${pos.y}, ${pos.z}), distance: ${dist}m`
+        }
+    })
 
     const placeBlock = new BehaviorPlaceBlock(bot, targets)
+    
+    // Add logging to PlaceBlock (already has custom hook, extend it)
+    const existingPlaceLogging = placeBlock.onStateEntered
+    addStateLogging(placeBlock, 'PlaceBlock', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const item = targets.item
+            return item ? `placing ${item.name}` : 'no item'
+        }
+    })
+    // Restore the existing custom logic after adding logging
+    if (existingPlaceLogging && typeof existingPlaceLogging === 'function') {
+        const loggedOnEnter = placeBlock.onStateEntered
+        placeBlock.onStateEntered = async function() {
+            if (loggedOnEnter) await loggedOnEnter.call(this)
+            return existingPlaceLogging.call(this)
+        }
+    }
     const clearInit = new BehaviorIdle()
     const clearTargets = { placePosition: null, clearRadiusHorizontal: 1, clearRadiusVertical: 2 }
     const clearArea = createClearAreaState(bot, clearTargets)
@@ -116,7 +155,7 @@ function createPlaceNearState(bot, targets) {
         child: exit,
         shouldTransition: () => targets.item == null,
         onTransition: () => {
-            logger.info('BehaviorPlaceNear: enter -> exit, item is null')
+            logger.error('BehaviorPlaceNear: enter -> exit, item is null')
         }
     })
 

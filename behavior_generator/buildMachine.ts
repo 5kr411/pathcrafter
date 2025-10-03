@@ -61,7 +61,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
     // Ignore errors and try next handler
   }
 
-  logger.info('PathBuilder: No generator could handle step', step);
+  logger.error('PathBuilder: No generator could handle step', step);
   return { isFinished: () => true };
 }
 

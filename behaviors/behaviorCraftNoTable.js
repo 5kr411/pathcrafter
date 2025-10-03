@@ -33,7 +33,7 @@ function createCraftNoTableState(bot, targets) {
                         if (completedSlots === craftingSlotIndices.length) resolve();
                     })
                     .catch(err => {
-                        logger.info(`BehaviorCraftNoTable: Error moving item from crafting slot ${index}:`, err);
+                        logger.error(`BehaviorCraftNoTable: Error moving item from crafting slot ${index}:`, err);
                         completedSlots++;
                         if (completedSlots === craftingSlotIndices.length) resolve();
                     });
@@ -46,13 +46,13 @@ function createCraftNoTableState(bot, targets) {
         const item = mcData.itemsByName[itemName];
 
         if (!item) {
-            logger.info(`BehaviorCraftNoTable: Item ${itemName} not found`);
+            logger.error(`BehaviorCraftNoTable: Item ${itemName} not found`);
             return false;
         }
 
         const recipe = bot.recipesFor(item.id, null, 1, null).find(r => !r.requiresTable);
         if (!recipe) {
-            logger.info(`BehaviorCraftNoTable: No recipe found for ${itemName} that doesn't require a crafting table`);
+            logger.error(`BehaviorCraftNoTable: No recipe found for ${itemName} that doesn't require a crafting table`);
             return false;
         }
 
@@ -69,14 +69,14 @@ function createCraftNoTableState(bot, targets) {
                 const hasEnough = availableCount >= requiredCount;
 
                 if (!hasEnough) {
-                    logger.info(`BehaviorCraftNoTable: Missing ingredients. Need ${requiredCount} ${mcData.items[item.id].name} but only have ${availableCount}`);
+                    logger.warn(`BehaviorCraftNoTable: Missing ingredients. Need ${requiredCount} ${mcData.items[item.id].name} but only have ${availableCount}`);
                 }
 
                 return hasEnough;
             });
 
         if (!hasIngredients) {
-            logger.info(`BehaviorCraftNoTable: Cannot craft ${itemName} - missing ingredients`);
+            logger.error(`BehaviorCraftNoTable: Cannot craft ${itemName} - missing ingredients`);
             return false;
         }
 
@@ -94,14 +94,14 @@ function createCraftNoTableState(bot, targets) {
             logger.info(`BehaviorCraftNoTable: Successfully crafted. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`);
 
             if (newCount === currentCount) {
-                logger.info('BehaviorCraftNoTable: Crafting did not increase item count');
+                logger.error('BehaviorCraftNoTable: Crafting did not increase item count');
                 return false;
             }
 
             return newCount >= targetCount;
 
         } catch (err) {
-            logger.info(`BehaviorCraftNoTable: Error crafting ${itemName}:`, err);
+            logger.error(`BehaviorCraftNoTable: Error crafting ${itemName}:`, err);
             await clearCraftingSlots(bot);
             return false;
         }
@@ -114,10 +114,10 @@ function createCraftNoTableState(bot, targets) {
         shouldTransition: () => targets.itemName == null || targets.amount == null,
         onTransition: () => {
             if (targets.itemName == null) {
-                logger.info('BehaviorCraftNoTable: Error: No item name')
+                logger.error('BehaviorCraftNoTable: Error: No item name')
             }
             if (targets.amount == null) {
-                logger.info('BehaviorCraftNoTable: Error: No amount')
+                logger.error('BehaviorCraftNoTable: Error: No amount')
             }
             logger.info('BehaviorCraftNoTable: enter -> exit')
         }
@@ -139,7 +139,7 @@ function createCraftNoTableState(bot, targets) {
             Promise.resolve()
                 .then(() => craftItemNoTable(targets.itemName, targets.amount))
                 .then(ok => { craftingOk = !!ok; craftingDone = true })
-                .catch(err => { logger.info('BehaviorCraftNoTable: craft promise error', err); craftingOk = false; craftingDone = true })
+                .catch(err => { logger.error('BehaviorCraftNoTable: craft promise error', err); craftingOk = false; craftingDone = true })
         }
     })
 

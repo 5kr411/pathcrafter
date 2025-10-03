@@ -34,28 +34,28 @@ const enumeratorPool = new WorkerPool(workerPath, 3);
 let poolInitialized = false;
 
 parentPort.on('message', async (msg: PlanMessage) => {
-  logger.info(`PlanningWorker: received message type=${msg?.type}`);
+  logger.debug(`PlanningWorker: received message type=${msg?.type}`);
   
   if (!msg || msg.type !== 'plan') {
-    logger.info(`PlanningWorker: ignoring non-plan message`);
+    logger.debug(`PlanningWorker: ignoring non-plan message`);
     return;
   }
 
   const { id, mcVersion, item, count, inventory, snapshot, perGenerator, pruneWithWorld, telemetry } = msg;
   
-  logger.info(`PlanningWorker: starting plan for ${item} x${count} (id=${id})`);
-  logger.info(`PlanningWorker: mcVersion=${mcVersion}, perGenerator=${perGenerator}, pruneWithWorld=${pruneWithWorld}, telemetry=${telemetry}`);
+  logger.debug(`PlanningWorker: starting plan for ${item} x${count} (id=${id})`);
+  logger.debug(`PlanningWorker: mcVersion=${mcVersion}, perGenerator=${perGenerator}, pruneWithWorld=${pruneWithWorld}, telemetry=${telemetry}`);
 
   try {
     if (typeof telemetry !== 'undefined') {
       setPlanningTelemetryEnabled(!!telemetry);
-      logger.info(`PlanningWorker: telemetry enabled=${!!telemetry}`);
+      logger.debug(`PlanningWorker: telemetry enabled=${!!telemetry}`);
     }
 
     const t0 = Date.now();
-    logger.info(`PlanningWorker: resolving minecraft data for ${mcVersion || '1.20.1'}`);
+    logger.debug(`PlanningWorker: resolving minecraft data for ${mcVersion || '1.20.1'}`);
     const mcData = planner._internals.resolveMcData(mcVersion || '1.20.1');
-    logger.info(`PlanningWorker: building recipe tree`);
+    logger.debug(`PlanningWorker: building recipe tree`);
     const tBuildStart = Date.now();
     const tree = planner(mcData, item, count, {
       inventory,
@@ -65,26 +65,26 @@ parentPort.on('message', async (msg: PlanMessage) => {
     });
     const tBuildMs = Date.now() - tBuildStart;
 
-    logger.info(`PlanningWorker: built tree in ${tBuildMs} ms for ${item} x${count}`);
+    logger.debug(`PlanningWorker: built tree in ${tBuildMs} ms for ${item} x${count}`);
     
     if (!tree) {
-      logger.info(`PlanningWorker: tree is null or undefined!`);
+      logger.error(`PlanningWorker: tree is null or undefined!`);
       throw new Error('Failed to build recipe tree');
     }
     
-    logger.info(`PlanningWorker: tree action=${tree.action}, operator=${tree.operator}`);
+    logger.debug(`PlanningWorker: tree action=${tree.action}, operator=${tree.operator}`);
 
     // Initialize pool on first use
     if (!poolInitialized) {
-      logger.info(`PlanningWorker: initializing enumerator pool`);
+      logger.debug(`PlanningWorker: initializing enumerator pool`);
       await enumeratorPool.init();
       poolInitialized = true;
       const stats = enumeratorPool.getStats();
-      logger.info(`PlanningWorker: pool initialized (${stats.total} workers)`);
+      logger.debug(`PlanningWorker: pool initialized (${stats.total} workers)`);
     }
 
     const limit = Number.isFinite(perGenerator) ? perGenerator : 200;
-    logger.info(`PlanningWorker: using enumerator pool, limit=${limit}`);
+    logger.debug(`PlanningWorker: using enumerator pool, limit=${limit}`);
 
     /**
      * Runs path enumeration using a worker from the pool
@@ -93,23 +93,23 @@ parentPort.on('message', async (msg: PlanMessage) => {
       return enumeratorPool.execute<ActionPath[]>((w: Worker) => {
         return new Promise((resolve) => {
           const started = Date.now();
-          logger.info(`PlanningWorker: acquired worker for ${gen} enumeration`);
+          logger.debug(`PlanningWorker: acquired worker for ${gen} enumeration`);
 
           const timeout = setTimeout(() => {
-            logger.info(`PlanningWorker: ${gen} enumeration timeout after 30s`);
+            logger.error(`PlanningWorker: ${gen} enumeration timeout after 30s`);
             resolve([]);
           }, 30000); // 30 second timeout
 
           const messageHandler = (msg: any) => {
             clearTimeout(timeout);
-            logger.info(`PlanningWorker: ${gen} worker message received, type=${msg?.type}, ok=${msg?.ok}`);
+            logger.debug(`PlanningWorker: ${gen} worker message received, type=${msg?.type}, ok=${msg?.ok}`);
 
             const ok = msg && msg.type === 'result' && msg.ok === true;
             const paths = ok && Array.isArray(msg.paths) ? msg.paths : [];
             const dt = Date.now() - started;
 
             if (getPlanningTelemetryEnabled()) {
-              logger.info(`PlanningWorker: enum[${gen}] finished in ${dt} ms (${paths.length} paths)`);
+              logger.debug(`PlanningWorker: enum[${gen}] finished in ${dt} ms (${paths.length} paths)`);
             }
 
             w.removeListener('message', messageHandler);
@@ -119,7 +119,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
 
           const errorHandler = (err: Error) => {
             clearTimeout(timeout);
-            logger.info(`PlanningWorker: ${gen} worker error - ${err && err.message ? err.message : err}`);
+            logger.error(`PlanningWorker: ${gen} worker error - ${err && err.message ? err.message : err}`);
             w.removeListener('message', messageHandler);
             w.removeListener('error', errorHandler);
             resolve([]);
@@ -129,14 +129,14 @@ parentPort.on('message', async (msg: PlanMessage) => {
           w.once('error', errorHandler);
 
           w.postMessage({ type: 'enumerate', generator: gen, tree, inventory, limit });
-          logger.info(`PlanningWorker: ${gen} message posted to pooled worker`);
+          logger.debug(`PlanningWorker: ${gen} message posted to pooled worker`);
         });
       });
     }
 
     // Run all three enumeration strategies in parallel
     const tEnumStart = Date.now();
-    logger.info(`PlanningWorker: starting parallel enumeration`);
+    logger.debug(`PlanningWorker: starting parallel enumeration`);
     const [a, s, l] = await Promise.all([
       runEnum('action'),
       runEnum('shortest'),
@@ -144,7 +144,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
     ]);
     const tEnumMs = Date.now() - tEnumStart;
 
-    logger.info(
+    logger.debug(
       `PlanningWorker: enumerated paths in ${tEnumMs} ms (action=${a.length}, shortest=${s.length}, lowest=${l.length})`
     );
 
@@ -193,7 +193,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
     const tFilterMs = Date.now() - tFilterStart;
 
     if (getPlanningTelemetryEnabled()) {
-      logger.info(`PlanningWorker: filtered candidates in ${tFilterMs} ms; ${merged.length} total candidates`);
+      logger.debug(`PlanningWorker: filtered candidates in ${tFilterMs} ms; ${merged.length} total candidates`);
     }
 
     // Log the final path if telemetry is enabled
@@ -201,7 +201,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
       const top = ranked && ranked[0];
       if (getPlanningTelemetryEnabled()) {
         if (top && planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
-          logger.info('PlanningWorker: final path:');
+          logger.debug('PlanningWorker: final path:');
           planner._internals.logActionPath(top);
         }
       }
@@ -210,14 +210,14 @@ parentPort.on('message', async (msg: PlanMessage) => {
     }
 
     if (getPlanningTelemetryEnabled()) {
-      logger.info(`PlanningWorker: end-to-end planning took ${Date.now() - t0} ms`);
+      logger.debug(`PlanningWorker: end-to-end planning took ${Date.now() - t0} ms`);
     }
 
-    logger.info(`PlanningWorker: sending result to parent (${ranked.length} paths)`);
+    logger.debug(`PlanningWorker: sending result to parent (${ranked.length} paths)`);
     parentPort!.postMessage({ type: 'result', id, ok: true, ranked });
   } catch (err) {
     const errorMsg = (err && (err as Error).stack) ? (err as Error).stack : String(err);
-    logger.info(`PlanningWorker: ERROR - ${errorMsg}`);
+    logger.error(`PlanningWorker: ERROR - ${errorMsg}`);
     parentPort!.postMessage({ type: 'result', id, ok: false, error: errorMsg });
   }
 });

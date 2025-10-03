@@ -9,12 +9,65 @@ const {
     BehaviorMineBlock
 } = require('mineflayer-statemachine')
 const logger = require('../utils/logger')
+const { addStateLogging } = require('../utils/stateLogging')
 
 function createBreakAtPositionState(bot, targets) {
     const enter = new BehaviorIdle()
     const findInteract = new BehaviorFindInteractPosition(bot, targets)
+    
+    // Add logging to FindInteractPosition
+    addStateLogging(findInteract, 'FindInteractPosition', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const pos = targets.blockPosition
+            return pos ? `for block at (${pos.x}, ${pos.y}, ${pos.z})` : ''
+        }
+    })
+    
     const moveTo = new BehaviorMoveTo(bot, targets)
+    
+    // Add logging to MoveTo
+    addStateLogging(moveTo, 'MoveTo', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const pos = targets.position
+            if (!pos) return 'no position'
+            const dist = bot.entity.position.distanceTo(pos).toFixed(2)
+            return `to break position (${pos.x}, ${pos.y}, ${pos.z}), distance: ${dist}m`
+        }
+    })
+    
     const mine = new BehaviorMineBlock(bot, targets)
+    
+    // Add detailed logging to MineBlock with timing
+    let loggingMineStartTime = null
+    const originalMineOnStateEntered = typeof mine.onStateEntered === 'function' 
+        ? mine.onStateEntered.bind(mine) 
+        : null
+    mine.onStateEntered = function() {
+        loggingMineStartTime = Date.now()
+        const pos = targets.blockPosition || targets.position
+        try {
+            const block = pos ? bot.blockAt(pos) : null
+            const blockName = block?.name || 'unknown'
+            logger.debug(`MineBlock: breaking ${blockName} at (${pos?.x}, ${pos?.y}, ${pos?.z})`)
+        } catch (_) {
+            logger.debug(`MineBlock: breaking block at position`)
+        }
+        if (originalMineOnStateEntered) return originalMineOnStateEntered()
+    }
+    
+    const originalMineOnStateExited = typeof mine.onStateExited === 'function'
+        ? mine.onStateExited.bind(mine)
+        : null
+    mine.onStateExited = function() {
+        if (loggingMineStartTime) {
+            const duration = Date.now() - loggingMineStartTime
+            logger.debug(`MineBlock: finished breaking (took ${duration}ms)`)
+        }
+        if (originalMineOnStateExited) return originalMineOnStateExited()
+    }
+    
     const exit = new BehaviorIdle()
 
     // Track per-target dig completion by listening for block updates to air

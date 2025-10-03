@@ -6,6 +6,7 @@ const {
 } = require('mineflayer-statemachine')
 const minecraftData = require('minecraft-data')
 const logger = require('../utils/logger')
+const { addStateLogging } = require('../utils/stateLogging')
 const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig')
 const createPlaceNearState = require('./behaviorPlaceNear')
 const createBreakAtPositionState = require('./behaviorBreakAtPosition')
@@ -15,6 +16,16 @@ function createSmeltState(bot, targets) {
     const enter = new BehaviorIdle()
     const findFurnace = new BehaviorIdle()
     const equipFurnace = new BehaviorEquipItem(bot, { item: null })
+    
+    // Add logging to EquipItem
+    addStateLogging(equipFurnace, 'EquipItem', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const item = equipFurnace.targets?.item
+            return item ? `equipping ${item.name} for smelting` : 'equipping furnace'
+        }
+    })
+    
     const placeFurnaceTargets = { item: null }
     let placeFurnace
     try { placeFurnace = createPlaceNearState(bot, placeFurnaceTargets) } catch (_) { placeFurnace = { isFinished: () => true } }

@@ -17,15 +17,15 @@ if (!parentPort) {
 }
 
 parentPort.on('message', (msg: EnumerateMessage) => {
-  logger.info(`EnumeratorWorker: received message type=${msg?.type}`);
+  logger.debug(`EnumeratorWorker: received message type=${msg?.type}`);
   
   if (!msg || msg.type !== 'enumerate') {
-    logger.info(`EnumeratorWorker: ignoring non-enumerate message`);
+    logger.debug(`EnumeratorWorker: ignoring non-enumerate message`);
     return;
   }
 
   const { generator, tree, inventory, limit } = msg;
-  logger.info(`EnumeratorWorker: starting ${generator} enumeration (limit=${limit})`);
+  logger.debug(`EnumeratorWorker: starting ${generator} enumeration (limit=${limit})`);
 
   try {
     let enumerate: (tree: TreeNode, options: { inventory?: Record<string, number> }) => Generator<ActionPath>;
@@ -41,19 +41,19 @@ parentPort.on('message', (msg: EnumerateMessage) => {
       throw new Error('Unknown generator type: ' + generator);
     }
 
-    logger.info(`EnumeratorWorker: creating iterator for ${generator}`);
+    logger.debug(`EnumeratorWorker: creating iterator for ${generator}`);
     const out: ActionPath[] = [];
     const iter = enumerate(tree, { inventory });
     let i = 0;
 
-    logger.info(`EnumeratorWorker: starting iteration for ${generator}`);
+    logger.debug(`EnumeratorWorker: starting iteration for ${generator}`);
     for (const p of iter) {
       out.push(p);
       i += 1;
       if (Number.isFinite(limit) && limit !== undefined && i >= limit) break;
     }
 
-    logger.info(`EnumeratorWorker: ${generator} enumeration complete (${out.length} paths)`);
+    logger.debug(`EnumeratorWorker: ${generator} enumeration complete (${out.length} paths)`);
     parentPort!.postMessage({ type: 'result', ok: true, paths: out });
   } catch (err) {
     const errorMsg = (err && (err as Error).stack) ? (err as Error).stack : String(err);

@@ -15,6 +15,7 @@ const {
 
 const { getItemCountInInventory } = require('../util')
 const logger = require('../utils/logger')
+const { addStateLogging } = require('../utils/stateLogging')
 
 const minecraftData = require('minecraft-data')
 
@@ -53,7 +54,22 @@ function createCollectBlockState(bot, targets) {
         findBlock.maxDistance = 64
     }
 
+    // Add logging to FindBlock
+    addStateLogging(findBlock, 'FindBlock', {
+        logEnter: true,
+        getExtraInfo: () => `searching for ${targets.blockName}${initialId ? ` (id:${initialId})` : ''}`
+    })
+
     const findInteractPosition = new BehaviorFindInteractPosition(bot, targets)
+    
+    // Add logging to FindInteractPosition
+    addStateLogging(findInteractPosition, 'FindInteractPosition', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const pos = targets.blockPosition
+            return pos ? `at (${pos.x}, ${pos.y}, ${pos.z})` : ''
+        }
+    })
 
 	const goToBlock = new BehaviorMoveTo(bot, targets)
     goToBlock.distance = 0.5
@@ -62,10 +78,57 @@ function createCollectBlockState(bot, targets) {
     goToBlock.movements.allowSprinting = true
     goToBlock.movements.canDig = true
 
+    // Add logging to MoveTo
+    addStateLogging(goToBlock, 'MoveTo', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const pos = targets.position
+            if (!pos) return 'no position'
+            const dist = bot.entity.position.distanceTo(pos).toFixed(2)
+            return `to (${pos.x}, ${pos.y}, ${pos.z}), distance: ${dist}m`
+        }
+    })
+
 	const equipTargets = { item: null }
 	const equipBestTool = new BehaviorEquipItem(bot, equipTargets)
+    
+    // Add logging to EquipItem
+    addStateLogging(equipBestTool, 'EquipItem', {
+        logEnter: true,
+        getExtraInfo: () => equipTargets.item ? `equipping ${equipTargets.item.name}` : 'no item to equip'
+    })
 
     const mineBlock = new BehaviorMineBlock(bot, targets)
+    
+    // Add detailed logging to MineBlock with timing
+    let mineStartTime = null
+    const originalMineOnStateEntered = typeof mineBlock.onStateEntered === 'function' 
+        ? mineBlock.onStateEntered.bind(mineBlock) 
+        : null
+    mineBlock.onStateEntered = function() {
+        mineStartTime = Date.now()
+        const pos = targets.position
+        try {
+            const block = pos ? bot.blockAt(pos) : null
+            const blockName = block?.name || targets.blockName || 'unknown'
+            logger.debug(`MineBlock: mining ${blockName} at (${pos?.x}, ${pos?.y}, ${pos?.z})`)
+        } catch (_) {
+            logger.debug(`MineBlock: mining ${targets.blockName || 'unknown block'}`)
+        }
+        if (originalMineOnStateEntered) return originalMineOnStateEntered()
+    }
+    
+    const originalMineOnStateExited = typeof mineBlock.onStateExited === 'function'
+        ? mineBlock.onStateExited.bind(mineBlock)
+        : null
+    mineBlock.onStateExited = function() {
+        if (mineStartTime) {
+            const duration = Date.now() - mineStartTime
+            logger.debug(`MineBlock: finished (took ${duration}ms)`)
+        }
+        if (originalMineOnStateExited) return originalMineOnStateExited()
+    }
+    
 	function pickBestToolItemForBlock(bot, blockName) {
 		try {
 			const blockInfo = mcData.blocksByName[blockName]
@@ -89,8 +152,25 @@ function createCollectBlockState(bot, targets) {
     const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity) => {
         return (entity.displayName === 'Item') && entity.position.distanceTo(bot.entity.position) < 8;
     })
+    
+    // Add logging to GetClosestEntity
+    addStateLogging(findDrop, 'GetClosestEntity', {
+        logEnter: true,
+        getExtraInfo: () => `looking for dropped ${targets.itemName}`
+    })
 
     const goToDrop = new BehaviorFollowEntity(bot, targets)
+    
+    // Add logging to FollowEntity
+    addStateLogging(goToDrop, 'FollowEntity', {
+        logEnter: true,
+        getExtraInfo: () => {
+            const entity = targets.entity
+            if (!entity?.position) return 'no entity'
+            const dist = bot.entity.position.distanceTo(entity.position).toFixed(2)
+            return `following drop at (${entity.position.x.toFixed(1)}, ${entity.position.y.toFixed(1)}, ${entity.position.z.toFixed(1)}), distance: ${dist}m`
+        }
+    })
 
     const exit = new BehaviorIdle()
 
@@ -122,7 +202,7 @@ function createCollectBlockState(bot, targets) {
         name: 'BehaviorCollectBlock: find block -> exit',
         shouldTransition: () => targets.position === undefined,
         onTransition: () => {
-            logger.info('find block -> exit')
+            logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`)
         }
     })
 

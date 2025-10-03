@@ -58,8 +58,8 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   try {
     logger.info(`BehaviorGenerator(mine): targets -> block=${targets.blockName}, item=${targets.itemName}, amount=${targets.amount}`);
     return createCollectBlockState(bot, targets);
-  } catch (_) {
-    logger.info('BehaviorGenerator(mine): falling back to no-op behavior in test context');
+  } catch (err) {
+    logger.error('BehaviorGenerator(mine): falling back to no-op behavior in test context', err);
     return { isFinished: () => true };
   }
 }

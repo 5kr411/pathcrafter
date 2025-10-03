@@ -15,6 +15,7 @@ const createPlaceNearState = require('../../behaviors/behaviorPlaceNear');
 const createCraftWithTableIfNeeded = require('../../behaviors/behaviorCraftWithTableIfNeeded');
 const createBreakAtPositionState = require('../../behaviors/behaviorBreakAtPosition');
 const logger = require('../../utils/logger');
+const { addStateLogging } = require('../../utils/stateLogging');
 
 /**
  * Checks if this handler can process the given step
@@ -69,13 +70,19 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   }
 
   const equip = new BehaviorEquipItem(bot, equipTargets);
+  
+  // Add logging to EquipItem
+  addStateLogging(equip, 'EquipItem', {
+    logEnter: true,
+    getExtraInfo: () => equipTargets.item ? `equipping ${equipTargets.item.name}` : 'no crafting table to equip'
+  });
 
   const placeTargets: { item: any; placedPosition?: any; placedConfirmed?: boolean } = { item: equipTargets.item };
   let placeTable: any;
   try {
     placeTable = createPlaceNearState(bot, placeTargets);
-  } catch (_) {
-    logger.info('BehaviorGenerator(craft-table): place state unavailable, using no-op');
+  } catch (err) {
+    logger.error('BehaviorGenerator(craft-table): place state unavailable, using no-op', err);
     placeTable = { isFinished: () => true };
   }
 
@@ -84,8 +91,8 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   let craftWithTable: any;
   try {
     craftWithTable = createCraftWithTableIfNeeded(bot, craftTargets);
-  } catch (_) {
-    logger.info('BehaviorGenerator(craft-table): craft state unavailable, using no-op');
+  } catch (err) {
+    logger.error('BehaviorGenerator(craft-table): craft state unavailable, using no-op', err);
     craftWithTable = { isFinished: () => true };
   }
 
@@ -94,8 +101,8 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   let breakTable: any;
   try {
     breakTable = createBreakAtPositionState(bot, breakTargets);
-  } catch (_) {
-    logger.info('BehaviorGenerator(craft-table): break state unavailable, using no-op');
+  } catch (err) {
+    logger.error('BehaviorGenerator(craft-table): break state unavailable, using no-op', err);
     breakTable = { isFinished: () => true };
   }
 
@@ -107,12 +114,29 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     if (!breakTargets.position) return entity.position.distanceTo(bot.entity.position) <= 3;
     return entity.position.distanceTo(breakTargets.position) <= 3;
   });
+  
+  // Add logging to GetClosestEntity
+  addStateLogging(getDrop, 'GetClosestEntity', {
+    logEnter: true,
+    getExtraInfo: () => 'looking for dropped crafting_table'
+  });
 
   let followDrop: any;
   try {
     if (!bot || !bot.pathfinder || !bot.version) throw new Error('pathfinder or version missing');
     followDrop = new BehaviorFollowEntity(bot, collectTargets);
     followDrop.followDistance = 0.25;
+    
+    // Add logging to FollowEntity
+    addStateLogging(followDrop, 'FollowEntity', {
+      logEnter: true,
+      getExtraInfo: () => {
+        const entity = collectTargets.entity;
+        if (!entity?.position) return 'no entity to follow';
+        const dist = bot.entity.position.distanceTo(entity.position).toFixed(2);
+        return `following dropped table at (${entity.position.x.toFixed(1)}, ${entity.position.y.toFixed(1)}, ${entity.position.z.toFixed(1)}), distance: ${dist}m`;
+      }
+    });
   } catch (_) {
     logger.info('BehaviorGenerator(craft-table): follow-drop unavailable, using no-op');
     followDrop = { isFinished: () => true, distanceToTarget: () => 0 };
@@ -345,9 +369,9 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
       const e = collectTargets.entity;
       const invalid = !e || !e.position || !Number.isFinite(e.position.x) || !Number.isFinite(e.position.y) || !Number.isFinite(e.position.z);
       if (timedOut) {
-        logger.info('BehaviorGenerator(craft-table): follow-drop -> exit (timeout)');
+        logger.error('BehaviorGenerator(craft-table): follow-drop -> exit (timeout)');
       } else if (invalid) {
-        logger.info('BehaviorGenerator(craft-table): follow-drop -> exit (lost/invalid entity)');
+        logger.error('BehaviorGenerator(craft-table): follow-drop -> exit (lost/invalid entity)');
       }
     }
   });

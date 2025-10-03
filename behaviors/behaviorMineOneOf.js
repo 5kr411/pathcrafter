@@ -149,7 +149,7 @@ function createMineOneOfState(bot, targets) {
     } })
 
     const tPrepareToExit = new StateTransition({ parent: prepare, child: exit, name: 'mine-one-of: prepare -> exit (no selection)', shouldTransition: () => !selection || !selection.chosen, onTransition: () => {
-        try { logger.warn('no viable candidate found; exiting') } catch (_) {}
+        try { logger.error('BehaviorMineOneOf: no viable candidate found; exiting') } catch (_) {}
     } })
 
     const tCollectToExit = new StateTransition({ parent: collectBehavior, child: exit, name: 'mine-one-of: collect -> exit', shouldTransition: () => typeof collectBehavior.isFinished === 'function' ? collectBehavior.isFinished() : true })

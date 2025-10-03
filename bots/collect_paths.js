@@ -17,28 +17,27 @@ const RUNTIME = {
   perGenerator: 1000,
   snapshotRadii: [16, 32, 64, 96], // Adaptive radii: tries smallest first, increases if needed
   snapshotYHalf: null,
-  botLogLevel: 'verbose', // 'quiet', 'normal', 'verbose'
+  logLevel: 'DEBUG', // 'DEBUG', 'INFO', 'WARN', 'ERROR', 'SILENT'
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10,
   // Worker pool settings (enumerator pool size is set in planning_worker.ts)
   usePersistentWorker: true // Keep planning worker alive between commands
 }
 
+// Set logger level from config (can be overridden by LOG_LEVEL env var)
+if (!process.env.LOG_LEVEL) {
+  logger.setLevel(RUNTIME.logLevel)
+}
+
 const { Worker } = require('worker_threads')
 const path = require('path')
 
-function shouldLog(level) {
-  if (RUNTIME.botLogLevel === 'quiet') return false
-  if (RUNTIME.botLogLevel === 'verbose') return true
-  return level !== 'debug' // 'normal' mode: log info/warn/error but not debug
-}
-
 function logDebug(msg, ...args) {
-  if (shouldLog('debug')) logger.info(`[DEBUG] ${msg}`, ...args)
+  logger.debug(msg, ...args)
 }
 
 function logInfo(msg, ...args) {
-  if (shouldLog('info')) logger.info(msg, ...args)
+  logger.info(msg, ...args)
 }
 
 function getInventoryObject(bot) {
@@ -294,9 +293,7 @@ let sequenceIndex = 0
       ...snapOpts,
       validator: pathValidator,
       onProgress: (msg) => {
-        if (shouldLog('debug')) {
-          logDebug(`Collector: ${msg}`)
-        }
+        logDebug(`Collector: ${msg}`)
       }
     })
     
