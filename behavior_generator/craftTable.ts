@@ -147,7 +147,19 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     child: equip,
     shouldTransition: () => true,
     onTransition: () => {
-      logger.info('BehaviorGenerator(craft-table): enter -> equip (crafting_table)');
+      // Look up crafting_table in inventory (it was just crafted in previous step)
+      try {
+        const invItem = bot.inventory?.items?.().find((it: any) => it && it.name === 'crafting_table');
+        if (invItem) {
+          equipTargets.item = invItem;
+          placeTargets.item = invItem;
+          logger.info(`BehaviorGenerator(craft-table): enter -> equip (found crafting_table x${invItem.count})`);
+        } else {
+          logger.info('BehaviorGenerator(craft-table): enter -> equip (WARNING: crafting_table not found in inventory)');
+        }
+      } catch (err) {
+        logger.info(`BehaviorGenerator(craft-table): enter -> equip (error finding item: ${err})`);
+      }
     }
   });
 

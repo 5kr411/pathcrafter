@@ -9,6 +9,7 @@ import {
   ResourceStats
 } from './worldSnapshotTypes';
 const minecraftData = require('minecraft-data');
+const logger = require('../../utils/logger');
 
 /**
  * Calculates Euclidean distance between two 3D points
@@ -224,45 +225,39 @@ export async function captureRawWorldSnapshotAsync(bot: Bot, opts: SnapshotOptio
     return true;
   };
 
-  const seen = new Set<string>();
   const blockAgg = new Map<string, AggregationRecord>();
 
-  // Calculate step size for shell-based scanning
-  const step = (Number.isFinite(opts.step) && opts.step! > 0)
-    ? Math.max(1, Math.min(Math.floor(opts.step!), maxRadius))
-    : Math.max(32, Math.min(96, Math.floor(maxRadius / 4) || 32));
+  // Single-pass: scan entire radius at once for maximum speed
+  const tStart = Date.now();
+  const positions = (bot && typeof bot.findBlocks === 'function')
+    ? bot.findBlocks({ matching, maxDistance: maxRadius, count: maxCount })
+    : [];
 
-  // Scan in shells, yielding between each
-  for (let r = step; r <= maxRadius + 1; r += step) {
-    const shellMax = Math.min(r, maxRadius);
-    const positions = (bot && typeof bot.findBlocks === 'function')
-      ? bot.findBlocks({ matching, maxDistance: shellMax, count: maxCount })
-      : [];
+  logger.info(`WorldSnapshot: findBlocks(r=${maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
 
-    for (const pos of positions) {
-      const key = `${pos.x},${pos.y},${pos.z}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+  const tProcess = Date.now();
+  for (const pos of positions) {
+    const blk = bot.blockAt!(pos, false);
+    if (!blk) continue;
+    if (!includeAir && blk.name === 'air') continue;
+    const name = blk.name;
+    if (!name) continue;
 
-      const blk = bot.blockAt!(pos, false);
-      if (!blk) continue;
-      if (!includeAir && blk.name === 'air') continue;
-      const name = blk.name;
-      if (!name) continue;
+    const d = dist(cx, cy, cz, pos.x, pos.y, pos.z);
+    if (d > maxRadius) continue;
 
-      const d = dist(cx, cy, cz, pos.x, pos.y, pos.z);
-      if (d > maxRadius) continue;
-
-      const rec = blockAgg.get(name) || { count: 0, sumDist: 0, closest: Infinity };
-      rec.count += 1;
-      rec.sumDist += d;
-      if (d < rec.closest) rec.closest = d;
-      blockAgg.set(name, rec);
-    }
-
-    // Yield control to event loop
-    await new Promise(resolve => setImmediate(resolve));
+    const rec = blockAgg.get(name) || { count: 0, sumDist: 0, closest: Infinity };
+    rec.count += 1;
+    rec.sumDist += d;
+    if (d < rec.closest) rec.closest = d;
+    blockAgg.set(name, rec);
   }
+
+  const totalBlocks = Array.from(blockAgg.values()).reduce((sum, rec) => sum + rec.count, 0);
+  logger.info(`WorldSnapshot: processed ${totalBlocks} blocks in ${Date.now() - tProcess}ms (total: ${Date.now() - tStart}ms)`);
+
+  // Yield control briefly
+  await new Promise(resolve => setImmediate(resolve));
 
   const blockStats: { [name: string]: ResourceStats } = {};
   for (const [name, rec] of blockAgg.entries()) {
@@ -351,7 +346,10 @@ export function beginSnapshotScan(bot: Bot, opts: SnapshotOptions = {}): ScanSta
   const yMin = Number.isFinite(opts.yMin) ? opts.yMin! : defaultYMin;
   const yMax = Number.isFinite(opts.yMax) ? opts.yMax! : defaultYMax;
 
-  const step = Math.max(32, Math.min(96, Math.floor(maxRadius / 4) || 32));
+  // Initial step size - starts small for ~50ms shells, then decreases with radius
+  const initialStep = (Number.isFinite(opts.step) && opts.step! > 0)
+    ? Math.max(1, Math.min(Math.floor(opts.step!), maxRadius))
+    : 4; // Small initial step for responsive scanning
 
   return {
     bot,
@@ -361,8 +359,13 @@ export function beginSnapshotScan(bot: Bot, opts: SnapshotOptions = {}): ScanSta
     maxRadius,
     yMin,
     yMax,
-    step,
-    r: step,
+    step: initialStep,
+    initialStep,
+    r: 0, // Start at 0, will increment to first shell
+    prevR: 0,
+    shellCount: 0,
+    shellStart: Date.now(),
+    newBlocksInShell: 0,
     seen: new Set(),
     blockAgg: new Map(),
     done: false
@@ -488,31 +491,31 @@ export function scanProgressFromState(st: ScanState | null | undefined): number 
  * @param budgetMs - Time budget in milliseconds (default 20ms)
  * @returns true if scan is complete, false if more steps needed
  */
-export async function stepSnapshotScan(st: ScanState, budgetMs: number = 20): Promise<boolean> {
-  const t0 = Date.now();
+export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 20): Promise<boolean> {
   if (st.done) return true;
 
-  const matching = (b: any) => {
-    if (!b) return false;
-    if (!st.includeAir && b.name === 'air') return false;
-    const y = b.position?.y;
-    if (typeof y === 'number') {
-      if (y < st.yMin || y > st.yMax) return false;
-    }
-    return true;
-  };
+  // Single-pass scan: just grab everything at once
+  if (st.r === 0) {
+    const tStart = Date.now();
+    
+    const matching = (b: any) => {
+      if (!b) return false;
+      if (!st.includeAir && b.name === 'air') return false;
+      const y = b.position?.y;
+      if (typeof y === 'number') {
+        if (y < st.yMin || y > st.yMax) return false;
+      }
+      return true;
+    };
 
-  while (Date.now() - t0 < budgetMs) {
-    const r = Math.min(st.r, st.maxRadius);
     const positions = (st.bot && typeof st.bot.findBlocks === 'function')
-      ? st.bot.findBlocks({ matching, maxDistance: r, count: 2147483647 })
+      ? st.bot.findBlocks({ matching, maxDistance: st.maxRadius, count: 2147483647 })
       : [];
 
-    for (const pos of positions) {
-      const key = `${pos.x},${pos.y},${pos.z}`;
-      if (st.seen.has(key)) continue;
-      st.seen.add(key);
+    logger.info(`WorldSnapshot: findBlocks(r=${st.maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
 
+    const tProcess = Date.now();
+    for (const pos of positions) {
       const blk = st.bot.blockAt!(pos, false);
       if (!blk) continue;
       if (!st.includeAir && blk.name === 'air') continue;
@@ -529,15 +532,11 @@ export async function stepSnapshotScan(st: ScanState, budgetMs: number = 20): Pr
       st.blockAgg.set(name, rec);
     }
 
-    if (st.r >= st.maxRadius) {
-      st.done = true;
-      break;
-    }
+    const totalBlocks = Array.from(st.blockAgg.values()).reduce((sum, rec) => sum + rec.count, 0);
+    logger.info(`WorldSnapshot: processed ${totalBlocks} blocks in ${Date.now() - tProcess}ms (total: ${Date.now() - tStart}ms)`);
 
-    st.r += st.step;
-    await new Promise(resolve => setImmediate(resolve));
-
-    if (Date.now() - t0 >= budgetMs) break;
+    st.r = st.maxRadius;
+    st.done = true;
   }
 
   return st.done;

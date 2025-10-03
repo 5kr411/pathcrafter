@@ -7,7 +7,7 @@ const planner = require('../planner')
 const { generateTopNPathsFromGenerators } = require('../path_generators/generateTopN')
 const { hoistMiningInPaths } = require('../path_optimizations/hoistMining')
 const { filterPathsByWorldSnapshot } = require('../path_filters/filterByWorld')
-const { beginSnapshotScan, stepSnapshotScan, snapshotFromState, scanProgressFromState } = require('../utils/worldSnapshot')
+const { captureAdaptiveSnapshot } = require('../utils/adaptiveSnapshot')
 const { setLastSnapshotRadius } = require('../utils/context')
 const { setSafeFindRepeatThreshold } = require('../utils/config')
 const logger = require('../utils/logger')
@@ -15,10 +15,9 @@ const logger = require('../utils/logger')
 const RUNTIME = {
   pruneWithWorld: true,
   perGenerator: 1000,
-  snapshotRadius: 64, // Reasonable default for most gameplay (256+ causes exponential slowdown)
-  snapshotStep: null,
+  snapshotRadii: [16, 32, 64, 96], // Adaptive radii: tries smallest first, increases if needed
   snapshotYHalf: null,
-  botLogLevel: 'normal', // 'quiet', 'normal', 'verbose'
+  botLogLevel: 'verbose', // 'quiet', 'normal', 'verbose'
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10,
   // Worker pool settings (enumerator pool size is set in planning_worker.ts)
@@ -246,42 +245,68 @@ let sequenceIndex = 0
     logInfo(`Collector: starting target ${sequenceIndex}/${sequenceTargets.length}: ${target.item} x${target.count}`)
     const version = bot.version || '1.20.1'
     const invObj = getInventoryObject(bot)
-    const snapOpts = { radius: RUNTIME.snapshotRadius }
-    if (Number.isFinite(RUNTIME.snapshotStep) && RUNTIME.snapshotStep > 0) {
-      snapOpts.step = Math.floor(RUNTIME.snapshotStep)
-    }
+    
+    // Build adaptive snapshot options
+    const snapOpts = { radii: RUNTIME.snapshotRadii }
     if (Number.isFinite(RUNTIME.snapshotYHalf)) {
       const y0 = Math.floor((bot.entity && bot.entity.position && bot.entity.position.y) || 64)
       snapOpts.yMin = y0 - RUNTIME.snapshotYHalf
       snapOpts.yMax = y0 + RUNTIME.snapshotYHalf
     }
+    
+    logDebug(`Collector: beginning adaptive snapshot with radii ${JSON.stringify(RUNTIME.snapshotRadii)}`)
     const tSnapStart = Date.now()
-    logDebug(`Collector: beginning snapshot scan with options ${JSON.stringify(snapOpts)}`)
     
-    const scan = beginSnapshotScan(bot, snapOpts)
-    // Time-sliced scanning loop with inter-step yielding to avoid keepalive timeouts
-    const budgetMs = 10
-    const sleepBetween = 20
-    let lastProgressLog = 0
-    while (!(await stepSnapshotScan(scan, budgetMs))) {
-      if (!connected) {
-        logDebug('Collector: disconnected during snapshot')
-        running = false
-        return
+    // Validator: check if we can generate at least one path with this snapshot
+    const pathValidator = async (snapshot) => {
+      try {
+        const mcData = minecraftData(version)
+        const tree = planner(mcData, target.item, target.count, {
+          inventory: invObj,
+          log: false,
+          pruneWithWorld: RUNTIME.pruneWithWorld,
+          worldSnapshot: snapshot
+        })
+        
+        if (!tree) {
+          logDebug(`Collector: validator - no tree generated for radius ${snapshot.radius}`)
+          return false
+        }
+        
+        // Try to generate at least one path
+        const { enumerateActionPathsGenerator } = planner._internals
+        const iter = enumerateActionPathsGenerator(tree, { inventory: invObj })
+        for (const _path of iter) {
+          logDebug(`Collector: validator - found valid path at radius ${snapshot.radius}`)
+          return true // Found at least one path
+        }
+        
+        logDebug(`Collector: validator - no paths generated for radius ${snapshot.radius}`)
+        return false
+      } catch (err) {
+        logDebug(`Collector: validator error - ${err.message}`)
+        return false
       }
-      if (shouldLog('info') && Date.now() - lastProgressLog > (Number.isFinite(RUNTIME.progressLogIntervalMs) ? RUNTIME.progressLogIntervalMs : 1000)) {
-        const ratio = scanProgressFromState(scan)
-        const pct = Math.min(100, Math.max(0, Math.floor(ratio * 100)))
-        logger.info(`Collector: snapshot progress ~${pct}% (r=${Math.min(scan.r, scan.maxRadius)}/${scan.maxRadius})`)
-        lastProgressLog = Date.now()
-      }
-      await new Promise(resolve => setTimeout(resolve, sleepBetween))
     }
-    const snapshot = snapshotFromState(scan)
     
-    try { setLastSnapshotRadius(snapshot && Number.isFinite(snapshot.radius) ? snapshot.radius : (snapOpts && snapOpts.radius)) } catch (_) {}
+    // Adaptive snapshot: tries each radius until validator passes
+    const result = await captureAdaptiveSnapshot(bot, {
+      ...snapOpts,
+      validator: pathValidator,
+      onProgress: (msg) => {
+        if (shouldLog('debug')) {
+          logDebug(`Collector: ${msg}`)
+        }
+      }
+    })
+    
+    const snapshot = result.snapshot
+    const radiusUsed = result.radiusUsed
+    const attemptsCount = result.attemptsCount
+    
+    try { setLastSnapshotRadius(radiusUsed) } catch (_) {}
     const dur = Date.now() - tSnapStart
-    logInfo(`Collector: snapshot captured in ${dur} ms (radius=${snapOpts.radius}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
+    logInfo(`Collector: snapshot captured in ${dur} ms (radius=${radiusUsed}, attempts=${attemptsCount}${Number.isFinite(snapOpts.yMin) ? `, yMin=${snapOpts.yMin}, yMax=${snapOpts.yMax}` : ''})`)
     
     // Log snapshot statistics
     if (snapshot && snapshot.blocks) {

@@ -134,7 +134,12 @@ export interface ScanState {
   yMin: number;
   yMax: number;
   step: number;
+  initialStep: number; // For dynamic step calculation
   r: number;
+  prevR: number; // Track previous radius for logging
+  shellCount: number; // Track shell number
+  shellStart: number; // Timestamp when current shell started
+  newBlocksInShell: number; // Blocks found in current shell
   seen: Set<string>;
   blockAgg: Map<string, {
     count: number;
