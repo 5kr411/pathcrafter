@@ -1,0 +1,347 @@
+const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorEquipItem } = require('mineflayer-statemachine');
+
+const minecraftData = require('minecraft-data');
+const logger = require('../utils/logger');
+const { addStateLogging } = require('../utils/stateLogging');
+const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
+import { getItemCountInInventory } from '../utils/inventory';
+const createPlaceNearState = require('./behaviorPlaceNear');
+import createBreakAtPositionState from './behaviorBreakAtPosition';
+
+interface Vec3Like {
+  x: number;
+  y: number;
+  z: number;
+  clone: () => Vec3Like;
+  [key: string]: any;
+}
+
+interface Block {
+  name?: string;
+  [key: string]: any;
+}
+
+type Bot = any;
+
+interface Targets {
+  itemName: string;
+  amount?: number;
+  inputName: string;
+  fuelName?: string;
+  [key: string]: any;
+}
+
+function createSmeltState(bot: Bot, targets: Targets): any {
+  const enter = new BehaviorIdle();
+  const findFurnace = new BehaviorIdle();
+  const equipFurnace = new BehaviorEquipItem(bot, { item: null });
+
+  // Add logging to EquipItem
+  addStateLogging(equipFurnace, 'EquipItem', {
+    logEnter: true,
+    getExtraInfo: () => {
+      const item = equipFurnace.targets?.item;
+      return item ? `equipping ${item.name} for smelting` : 'equipping furnace';
+    }
+  });
+
+  const placeFurnaceTargets: { item: any; placedPosition?: Vec3Like; placedConfirmed?: boolean } = { item: null };
+  let placeFurnace: any;
+  try {
+    placeFurnace = createPlaceNearState(bot, placeFurnaceTargets as any);
+  } catch (_) {
+    placeFurnace = { isFinished: () => true };
+  }
+  const smeltRun = new BehaviorIdle();
+  const breakTargets: { position: Vec3Like | null } = { position: null };
+  const breakFurnace = createBreakAtPositionState(bot, breakTargets as any);
+  const exit = new BehaviorIdle();
+
+  function getMc(): any {
+    try {
+      return minecraftData(bot.version);
+    } catch (_) {
+      return minecraftData('1.20.1');
+    }
+  }
+
+  function getItemCount(name: string): number {
+    try {
+      let c = 0;
+      const items = bot.inventory?.items?.() || [];
+      for (const it of items) if (it && it.name === name) c += it.count || 0;
+      return c;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  function findNearbyFurnace(maxDistance: number = 6): Block | null {
+    try {
+      const ids = ['furnace', 'lit_furnace']
+        .filter((n) => bot.registry.blocksByName[n] !== undefined)
+        .map((n) => bot.registry.blocksByName[n].id);
+      // Use safe finder if available to avoid repeating unreachable furnaces
+      if (typeof bot.findBlocks === 'function') {
+        const list = bot.findBlocks({ matching: ids, maxDistance, count: 8 }) || [];
+        for (const p of list) {
+          try {
+            const b = bot.blockAt(p, false);
+            if (b && (b.name === 'furnace' || b.name === 'lit_furnace')) return b;
+          } catch (_) {}
+        }
+        return null;
+      }
+      return bot.findBlock?.({ matching: ids, maxDistance }) || null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  let wantItem: string;
+  let wantCount: number;
+  let inputItem: string;
+  let fuelItem: string;
+  const initToFind = new StateTransition({
+    name: 'Smelt: enter -> find',
+    parent: enter,
+    child: findFurnace,
+    shouldTransition: () => true,
+    onTransition: () => {
+      wantItem = targets.itemName;
+      wantCount = Number(targets.amount || 1);
+      inputItem = targets.inputName;
+      fuelItem = targets.fuelName || 'coal';
+      logger.info(`enter -> find (want ${wantCount} ${wantItem}, input=${inputItem}, fuel=${fuelItem})`);
+    }
+  });
+
+  let foundFurnace: Block | null = null;
+  let placedByUs = false;
+  const findToEquip = new StateTransition({
+    name: 'Smelt: find -> equip furnace',
+    parent: findFurnace,
+    child: equipFurnace,
+    shouldTransition: () => {
+      foundFurnace = findNearbyFurnace(6);
+      if (foundFurnace) return false;
+      try {
+        equipFurnace.targets.item =
+          bot.inventory?.items?.().find((it: any) => it && it.name === 'furnace') || null;
+      } catch (_) {}
+      return !!equipFurnace.targets.item;
+    },
+    onTransition: () => {
+      placedByUs = true;
+      logger.debug('find -> equip furnace (no furnace nearby)');
+    }
+  });
+
+  const findToSmelt = new StateTransition({
+    name: 'Smelt: find -> run (already placed)',
+    parent: findFurnace,
+    child: smeltRun,
+    shouldTransition: () => {
+      foundFurnace = findNearbyFurnace(6);
+      return !!foundFurnace;
+    },
+    onTransition: () => {
+      placedByUs = false;
+      logger.debug('find -> run (using existing furnace)');
+    }
+  });
+
+  const equipToPlace = new StateTransition({
+    name: 'Smelt: equip -> place',
+    parent: equipFurnace,
+    child: placeFurnace,
+    shouldTransition: () =>
+      (typeof equipFurnace.isFinished === 'function' ? equipFurnace.isFinished() : true) &&
+      !!equipFurnace.targets.item,
+    onTransition: () => {
+      placeFurnaceTargets.item = equipFurnace.targets.item;
+      logger.debug('equip -> place furnace');
+    }
+  });
+
+  const placeToSmelt = new StateTransition({
+    name: 'Smelt: place -> run',
+    parent: placeFurnace,
+    child: smeltRun,
+    shouldTransition: () => (typeof placeFurnace.isFinished === 'function' ? placeFurnace.isFinished() : true),
+    onTransition: () => {
+      try {
+        if (placeFurnaceTargets && placeFurnaceTargets.placedPosition) {
+          breakTargets.position = placeFurnaceTargets.placedPosition.clone();
+          if (placeFurnaceTargets.placedConfirmed) placedByUs = true;
+          logger.debug('place -> run (placed furnace at)', breakTargets.position);
+        }
+      } catch (_) {}
+    }
+  });
+
+  let smeltDone = false;
+  let smeltSucceeded = false;
+  let breakRecommended = false;
+  smeltRun.onStateEntered = async () => {
+    try {
+      const mc = getMc();
+      let furnaceBlock: Block | null = null;
+      try {
+        if (breakTargets && breakTargets.position) {
+          const maybe = bot.blockAt(breakTargets.position, false);
+          if (maybe && (maybe.name === 'furnace' || maybe.name === 'lit_furnace')) furnaceBlock = maybe;
+        }
+      } catch (_) {}
+      if (!furnaceBlock) furnaceBlock = findNearbyFurnace(6);
+      if (!furnaceBlock) return;
+      const furnace = await bot.openFurnace(furnaceBlock);
+      const have0 = getItemCountInInventory(bot, wantItem);
+      const outTarget = have0 + Math.max(1, wantCount);
+      logger.info(`run start (have ${have0} ${wantItem}, target ${outTarget})`);
+      function idOf(name: string): number | undefined {
+        return mc.itemsByName[name]?.id;
+      }
+      function sleep(ms: number): Promise<void> {
+        return new Promise((r) => setTimeout(r, ms));
+      }
+      let lastProgress = 0;
+      let prevOut = have0;
+      let lastActivity = Date.now();
+      let lastFuelPut = 0;
+      const STALL_TIMEOUT_MS = 20000;
+      // Track fuel locally to avoid duplicate top-ups due to delayed window updates
+      let localFuelCount = furnace.fuelItem() ? furnace.fuelItem()!.count || 0 : 0;
+      let localOutputTaken = 0;
+      while (Date.now() - lastActivity < STALL_TIMEOUT_MS) {
+        const invDelta = Math.max(0, getItemCount(wantItem) - have0);
+        const produced = Math.max(invDelta, localOutputTaken);
+        if (have0 + produced >= outTarget) break;
+        let acted = false;
+        try {
+          if (inputItem && getItemCount(inputItem) > 0 && !furnace.inputItem()) {
+            const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - (have0 + produced)));
+            await furnace.putInput(idOf(inputItem)!, null, toPut);
+            logger.debug(`put input x${toPut} ${inputItem}`);
+            acted = true;
+          }
+        } catch (_) {}
+        try {
+          if (fuelItem && getItemCount(fuelItem) > 0) {
+            const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
+            const remaining = Math.max(0, outTarget - (have0 + produced));
+            const desiredUnits = Math.ceil(remaining / perUnit);
+            // Sync local fuel count from furnace when available
+            const fuelSlot = furnace.fuelItem();
+            const currentUnits = fuelSlot ? fuelSlot.count || 0 : localFuelCount;
+            localFuelCount = currentUnits;
+            const available = getItemCount(fuelItem);
+            const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits));
+            const now = Date.now();
+            if (topUp > 0 && now - lastFuelPut > 800) {
+              await furnace.putFuel(idOf(fuelItem)!, null, topUp);
+              localFuelCount += topUp;
+              lastFuelPut = now;
+              logger.debug(`put fuel x${topUp} ${fuelItem} (perUnit=${perUnit})`);
+              acted = true;
+            }
+          }
+        } catch (_) {}
+        try {
+          if (furnace.outputItem()) {
+            const outStack = furnace.outputItem();
+            const stackCount = outStack ? outStack.count || 0 : 0;
+            await furnace.takeOutput();
+            localOutputTaken += stackCount > 0 ? stackCount : 1;
+            const beforeWaitHave = getItemCountInInventory(bot, wantItem);
+            let waited = 0;
+            while (waited < 600 && getItemCountInInventory(bot, wantItem) === beforeWaitHave) {
+              await sleep(50);
+              waited += 50;
+            }
+            const estHave = have0 + Math.max(localOutputTaken, Math.max(0, getItemCountInInventory(bot, wantItem) - have0));
+            logger.debug(`took output (have ~${estHave}/${outTarget})`);
+            acted = true;
+          }
+        } catch (_) {}
+        const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0;
+        const curOut = getItemCountInInventory(bot, wantItem);
+        if (curOut > prevOut) {
+          lastActivity = Date.now();
+          prevOut = curOut;
+        }
+        if (acted || prog > lastProgress || furnace.inputItem() || furnace.outputItem()) {
+          lastActivity = Date.now();
+        }
+        lastProgress = prog;
+        await sleep(400);
+      }
+      const finalInvDelta = Math.max(0, getItemCountInInventory(bot, wantItem) - have0);
+      const finalProduced = Math.max(finalInvDelta, localOutputTaken);
+      smeltSucceeded = have0 + finalProduced >= outTarget;
+      const preIn = furnace.inputItem();
+      const preOut = furnace.outputItem();
+      const invInputCount = inputItem ? getItemCountInInventory(bot, inputItem) : 0;
+      const furnaceInputCount = preIn ? preIn.count || 0 : 0;
+      const noInputInInv = !inputItem || invInputCount + furnaceInputCount === 0;
+      const noFuelInInv = !fuelItem || getItemCountInInventory(bot, fuelItem) === 0;
+      const furnaceIdle = !preIn && !preOut;
+      // Break if: target reached, or we have no input left, or furnace is idle and we have no fuel left
+      breakRecommended = placedByUs && (smeltSucceeded || noInputInInv || (furnaceIdle && noFuelInInv));
+      try {
+        furnace.close();
+      } catch (_) {}
+      const stalled = !smeltSucceeded;
+      const finalHave = getItemCountInInventory(bot, wantItem);
+      const finalEst = have0 + finalProduced;
+      logger.info(
+        `run end (success=${smeltSucceeded}, stalled=${stalled}, have ${finalHave}/${outTarget}, est ${finalEst}/${outTarget})`
+      );
+    } catch (err) {
+      logger.error('error during smelt run', err);
+      // Break even on error if we placed the furnace
+      breakRecommended = placedByUs || breakRecommended;
+    } finally {
+      smeltDone = true;
+    }
+  };
+
+  const runToBreak = new StateTransition({
+    name: 'Smelt: run -> break',
+    parent: smeltRun,
+    child: breakFurnace,
+    shouldTransition: () => smeltDone && breakRecommended,
+    onTransition: () => {
+      logger.debug('run -> break (we placed furnace)');
+    }
+  });
+
+  const breakToExit = new StateTransition({
+    name: 'Smelt: break -> exit',
+    parent: breakFurnace,
+    child: exit,
+    shouldTransition: () => (typeof breakFurnace.isFinished === 'function' ? breakFurnace.isFinished() : true),
+    onTransition: () => {
+      logger.debug('break -> exit');
+    }
+  });
+
+  const runToExit = new StateTransition({
+    name: 'Smelt: run -> exit (no break)',
+    parent: smeltRun,
+    child: exit,
+    shouldTransition: () => smeltDone && !breakRecommended,
+    onTransition: () => {
+      logger.debug('run -> exit (did not place furnace)');
+    }
+  });
+
+  return new NestedStateMachine(
+    [initToFind, findToSmelt, findToEquip, equipToPlace, placeToSmelt, runToBreak, breakToExit, runToExit],
+    enter,
+    exit
+  );
+}
+
+export default createSmeltState;
+
