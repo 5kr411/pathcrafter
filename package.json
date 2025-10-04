@@ -4,7 +4,8 @@
   "description": "",
   "main": "webserver.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run postbuild",
+    "postbuild": "cp utils/logger.js dist/utils/ && cp utils/stateLogging.js dist/utils/",
     "build:watch": "tsc --watch",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",

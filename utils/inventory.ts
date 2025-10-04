@@ -74,3 +74,24 @@ export function produced(step: ActionStep | null | undefined): string | null {
   return null;
 }
 
+/**
+ * Gets the total count of a specific item in the bot's inventory
+ * 
+ * @param bot - Mineflayer bot instance
+ * @param itemName - Name of the item to count
+ * @returns Total count of the item
+ * 
+ * @example
+ * getItemCountInInventory(bot, 'oak_log') // returns total oak logs in inventory
+ */
+export function getItemCountInInventory(bot: any, itemName: string): number {
+  try {
+    const items = bot.inventory?.items?.() || [];
+    return items
+      .filter((item: any) => item && item.name === itemName)
+      .reduce((total: number, item: any) => total + (item.count || 0), 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
