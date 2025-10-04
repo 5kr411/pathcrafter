@@ -30,6 +30,7 @@
     "path_filters/**/*.ts",
     "behavior_generator/**/*.ts",
     "behaviors/**/*.ts",
+    "bots/**/*.ts",
     "workers/**/*.ts",
     "utils/**/*.ts"
   ],
