@@ -281,9 +281,22 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: place block -> find place coords',
         parent: placeBlock,
         child: findPlaceCoords,
-        shouldTransition: () => Date.now() - placeStartTime > 1000 && placeTries < 8 && bot.world.getBlockType(targets.placedPosition) === 0,
+        shouldTransition: () => {
+            // Wait a bit after placement attempt
+            if (Date.now() - placeStartTime < 1000) return false;
+            
+            // Don't retry if we've exceeded max tries
+            if (placeTries >= 8) return false;
+            
+            // Check if block was actually placed
+            const blockType = bot.world.getBlockType(targets.placedPosition);
+            if (blockType !== 0) return false; // Block exists, don't retry
+            
+            // Block not placed - retry with different position
+            return true;
+        },
         onTransition: () => {
-            logger.info(`BehaviorPlaceNear: place block -> find place coords (retry ${placeTries})`)
+            logger.info(`BehaviorPlaceNear: place block -> find place coords (retry ${placeTries}, block placement failed)`)
             placeTries++
         }
     })
@@ -292,14 +305,47 @@ function createPlaceNearState(bot, targets) {
         name: 'BehaviorPlaceNear: place block -> exit',
         parent: placeBlock,
         child: exit,
-        shouldTransition: () => Date.now() - placeStartTime > 500 && (bot.world.getBlockType(targets.placedPosition) != 0 || placeTries >= 8),
+        shouldTransition: () => {
+            // Wait minimum time for block update
+            if (Date.now() - placeStartTime < 500) return false;
+            
+            const blockType = bot.world.getBlockType(targets.placedPosition);
+            
+            // SUCCESS: Block was placed successfully
+            if (blockType !== 0) {
+                return true;
+            }
+            
+            // FAILURE: Exceeded retries without success
+            if (placeTries >= 8) {
+                logger.error('BehaviorPlaceNear: Max retries exceeded, placement failed');
+                return true;
+            }
+            
+            // Keep trying
+            return false;
+        },
         onTransition: () => {
-            logger.info('BehaviorPlaceNear: place block -> exit')
-            logger.info('Block at place position:', bot.world.getBlockType(targets.placedPosition))
-            try {
-                const blk = bot.blockAt(targets.placedPosition, false)
-                targets.placedConfirmed = !!(blk && blk.name)
-            } catch (_) { targets.placedConfirmed = false }
+            const blockType = bot.world.getBlockType(targets.placedPosition);
+            const success = blockType !== 0;
+            
+            if (success) {
+                logger.info('BehaviorPlaceNear: place block -> exit (SUCCESS)')
+                logger.info('Block at place position:', blockType)
+                try {
+                    const blk = bot.blockAt(targets.placedPosition, false)
+                    targets.placedConfirmed = !!(blk && blk.name)
+                    if (targets.placedConfirmed) {
+                        logger.info(`BehaviorPlaceNear: Confirmed placement of ${blk.name}`)
+                    }
+                } catch (_) { 
+                    targets.placedConfirmed = false 
+                }
+            } else {
+                logger.error('BehaviorPlaceNear: place block -> exit (FAILED after max retries)')
+                logger.error('Block at place position:', blockType, '(expected non-zero)')
+                targets.placedConfirmed = false
+            }
         }
     })
 

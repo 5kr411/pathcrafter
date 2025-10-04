@@ -164,7 +164,6 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   }
 
   // Transitions
-  let placeStartTime: number | undefined;
   const t1 = new StateTransition({
     name: 'craft-table: enter -> equip',
     parent: enter,
@@ -207,7 +206,6 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
       return (typeof equip.isFinished === 'function' ? equip.isFinished() : true) && !!placeTargets.item;
     },
     onTransition: () => {
-      placeStartTime = Date.now();
       // If equipTargets.item was not resolved earlier, try again before placing
       if (!placeTargets.item) {
         try {
@@ -240,12 +238,50 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     child: craftWithTable,
     shouldTransition: () => {
       const done = typeof placeTable.isFinished === 'function' ? placeTable.isFinished() : true;
-      const timedOut = placeStartTime ? (Date.now() - placeStartTime > 12000) : false;
-      // Only allow timeout transition if placement was actually confirmed
-      return done || (timedOut && placeTargets.placedConfirmed === true);
+      if (!done) return false;
+      
+      // CRITICAL: Only proceed if placement was confirmed or we can verify the table exists
+      if (placeTargets.placedConfirmed === true) {
+        return true;
+      }
+      
+      // Double-check: try to find a crafting table nearby even if placedConfirmed wasn't set
+      if (placeTargets.placedPosition) {
+        try {
+          const block = bot.blockAt?.(placeTargets.placedPosition, false);
+          if (block && block.name === 'crafting_table') {
+            logger.info('BehaviorGenerator(craft-table): Found table at placed position despite unconfirmed flag');
+            placeTargets.placedConfirmed = true;
+            return true;
+          }
+        } catch (_) {
+          // Ignore errors
+        }
+      }
+      
+      // Last resort: look for any crafting table within 4 blocks
+      try {
+        const nearby = bot.findBlock?.({
+          matching: (b: any) => b && b.name === 'crafting_table',
+          maxDistance: 4
+        });
+        if (nearby) {
+          logger.info('BehaviorGenerator(craft-table): Found nearby table, proceeding');
+          if (!placeTargets.placedPosition) {
+            placeTargets.placedPosition = nearby.position.clone();
+          }
+          breakTargets.position = nearby.position.clone();
+          placeTargets.placedConfirmed = true;
+          return true;
+        }
+      } catch (_) {
+        // Ignore errors
+      }
+      
+      logger.error('BehaviorGenerator(craft-table): Placement finished but table not confirmed - cannot craft');
+      return false;
     },
     onTransition: () => {
-      const timedOut = placeStartTime ? (Date.now() - placeStartTime > 12000) : false;
       if (placeTargets && placeTargets.placedPosition) {
         breakTargets.position = placeTargets.placedPosition.clone();
         // Hint craft-with-table of the placed location for reliable table lookup
@@ -254,12 +290,46 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
         } catch (_) {
           // Ignore errors
         }
-        logger.info('BehaviorGenerator(craft-table): place -> craft (placed table detected)');
-      } else if (timedOut) {
-        logger.info('BehaviorGenerator(craft-table): place -> craft (timeout, proceed if confirmed)');
+        logger.info('BehaviorGenerator(craft-table): place -> craft (table confirmed)');
       } else {
         logger.info('BehaviorGenerator(craft-table): place -> craft');
       }
+    }
+  });
+  
+  // Add transition to exit if placement failed and we can't find a table
+  const tPlaceToExit = new StateTransition({
+    name: 'craft-table: place -> exit (placement failed)',
+    parent: placeTable,
+    child: exit,
+    shouldTransition: () => {
+      const done = typeof placeTable.isFinished === 'function' ? placeTable.isFinished() : true;
+      if (!done) return false;
+      
+      // If placement is confirmed, don't exit
+      if (placeTargets.placedConfirmed === true) return false;
+      
+      // Check if we can find a table anywhere nearby
+      if (placeTargets.placedPosition) {
+        try {
+          const block = bot.blockAt?.(placeTargets.placedPosition, false);
+          if (block && block.name === 'crafting_table') return false;
+        } catch (_) {}
+      }
+      
+      try {
+        const nearby = bot.findBlock?.({
+          matching: (b: any) => b && b.name === 'crafting_table',
+          maxDistance: 4
+        });
+        if (nearby) return false;
+      } catch (_) {}
+      
+      // No table found anywhere - exit
+      return true;
+    },
+    onTransition: () => {
+      logger.error('BehaviorGenerator(craft-table): place -> exit (placement failed, no table found)');
     }
   });
 
@@ -376,6 +446,6 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     }
   });
 
-  return new NestedStateMachine([t1, tEquipToPlace, tEquipToCraft, t2, t3, tBreakDirectExit, t4, t5b, t5, t6, t6b], enter, exit);
+  return new NestedStateMachine([t1, tEquipToPlace, tEquipToCraft, t2, tPlaceToExit, t3, tBreakDirectExit, t4, t5b, t5, t6, t6b], enter, exit);
 }
 
