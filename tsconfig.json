@@ -33,12 +33,12 @@
     "behaviors/**/*.ts",
     "bots/**/*.ts",
     "workers/**/*.ts",
-    "utils/**/*.ts"
+    "utils/**/*.ts",
+    "tests/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "dist",
-    "tests"
+    "dist"
   ]
 }
 

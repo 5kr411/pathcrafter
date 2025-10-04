@@ -1,4 +1,5 @@
 module.exports = {
+    preset: 'ts-jest',
     testEnvironment: 'node',
     roots: ['<rootDir>/tests'],
     moduleDirectories: ['node_modules', '<rootDir>'],
@@ -6,9 +7,15 @@ module.exports = {
     testTimeout: 30000,
     forceExit: true,
     detectOpenHandles: true,
-    setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
-    moduleNameMapper: {
-        '^(\\.{1,2}/.*)\\.ts$': '$1.js',
+    setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+    testMatch: ['**/*.spec.ts', '**/*.test.ts'],
+    transform: {
+        '^.+\\.ts$': ['ts-jest', {
+            tsconfig: {
+                esModuleInterop: true,
+                allowSyntheticDefaultImports: true,
+            }
+        }]
     },
 };
 

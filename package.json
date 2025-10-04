@@ -21,8 +21,10 @@
     "mineflayer-statemachine": "^1.7.0"
   },
   "devDependencies": {
+    "@types/jest": "^30.0.0",
     "@types/node": "^24.6.2",
     "jest": "^29.7.0",
+    "ts-jest": "^29.4.4",
     "typescript": "^5.9.3"
   }
 }
