@@ -1,5 +1,7 @@
-const mineflayer = require('mineflayer');
-const { captureRawWorldSnapshot, saveSnapshotToFile } = require('./utils/worldSnapshot');
+import mineflayer from 'mineflayer';
+import { captureRawWorldSnapshot, saveSnapshotToFile } from './utils/worldSnapshot';
+import { getDefaultSnapshotChunkRadius } from './utils/config';
+import logger from './utils/logger';
 
 const host = process.argv[2] || 'localhost';
 const port = parseInt(process.argv[3] || '25565', 10);
@@ -9,7 +11,7 @@ const chunkRadius = Number.isFinite(parseInt(process.argv[6], 10)) ? parseInt(pr
 
 const bot = mineflayer.createBot({ host, port, username, password });
 
-function safeExit(code) {
+function safeExit(code: number): void {
     try { bot.quit(); } catch (_) {}
     process.exit(code);
 }
@@ -17,15 +19,16 @@ function safeExit(code) {
 bot.once('spawn', () => {
     setTimeout(() => {
         try {
-            const { getDefaultSnapshotChunkRadius } = require('./utils/config');
-const logger = require('utils/logger')
-            const raw = captureRawWorldSnapshot(bot, { chunkRadius: Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius(), includeAir: false });
+            const raw = captureRawWorldSnapshot(bot as any, { 
+                chunkRadius: Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius(), 
+                includeAir: false 
+            });
             const dim = (bot.game && bot.game.dimension) ? String(bot.game.dimension).replace(/[^a-z0-9_\-]/gi, '_') : 'overworld';
             const outPath = `./world_snapshots/raw_${dim}_${Date.now()}.json`;
             saveSnapshotToFile(raw, outPath);
             logger.info(`Saved world snapshot to ${outPath}`);
             safeExit(0);
-        } catch (err) {
+        } catch (err: any) {
             logger.error('Error capturing snapshot:', err && err.stack ? err.stack : err);
             safeExit(2);
         }
@@ -44,5 +47,3 @@ bot.on('end', () => {
 bot.on('error', (err) => {
     logger.error('Bot error:', err && err.stack ? err.stack : err);
 });
-
-

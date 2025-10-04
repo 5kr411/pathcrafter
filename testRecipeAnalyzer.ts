@@ -1,6 +1,7 @@
-const analyzeRecipes = require('./recipeAnalyzer');
-const logger = require('utils/logger')
-const { resolveMcData } = analyzeRecipes._internals;
+import analyzeRecipes from './recipeAnalyzer';
+import logger from './utils/logger';
+
+const { resolveMcData } = (analyzeRecipes as any)._internals;
 
 const mcData = resolveMcData('1.20.1');
 
@@ -11,7 +12,7 @@ logger.info(`Analyzing target item: ${item} x${count}`);
 logger.info(`Using inventory: ${JSON.stringify(inventory)}`);
 const tree = analyzeRecipes(mcData, item, count, { log: false, inventory });
 
-const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = analyzeRecipes._internals;
+const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, logActionPath, computeTreeMaxDepth, countActionPaths } = (analyzeRecipes as any)._internals;
 logger.info(`\nGenerated action path tree with max depth: ${computeTreeMaxDepth(tree)}`);
 let pathsToLog = 10;
 logger.info(`\nFirst ${pathsToLog} generated action paths for ${item} x${count}:`);
