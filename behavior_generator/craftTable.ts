@@ -10,7 +10,7 @@ const {
   BehaviorFollowEntity
 } = require('mineflayer-statemachine');
 
-const { getItemCountInInventory } = require('../../util');
+import { getItemCountInInventory } from '../utils/inventory';
 const createPlaceNearState = require('../../behaviors/behaviorPlaceNear');
 const createCraftWithTableIfNeeded = require('../../behaviors/behaviorCraftWithTableIfNeeded');
 const createBreakAtPositionState = require('../../behaviors/behaviorBreakAtPosition');
