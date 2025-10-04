@@ -2,7 +2,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 
 import { getItemCountInInventory } from '../utils/inventory';
 const minecraftData = require('minecraft-data');
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 interface Bot {
   version?: string;

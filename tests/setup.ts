@@ -9,6 +9,6 @@ if (!process.env.LOG_LEVEL) {
     process.env.LOG_LEVEL = 'SILENT';
 }
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 logger.setLevel(process.env.LOG_LEVEL || 'SILENT');
 

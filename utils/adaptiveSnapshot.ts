@@ -1,8 +1,6 @@
 import { Bot, WorldSnapshot, SnapshotOptions } from './worldSnapshotTypes';
 import { beginSnapshotScan, stepSnapshotScan, snapshotFromState } from './worldSnapshot';
-import * as path from 'path';
-
-const logger = require(path.resolve(__dirname, '../../utils/logger'));
+import logger from './logger';
 
 /**
  * Options for adaptive snapshot capture

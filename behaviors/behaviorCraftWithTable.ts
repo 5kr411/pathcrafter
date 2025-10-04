@@ -3,7 +3,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 const minecraftData = require('minecraft-data');
 
 import { getItemCountInInventory } from '../utils/inventory';
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 interface Vec3Like {
   x: number;

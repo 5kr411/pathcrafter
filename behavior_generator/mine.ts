@@ -2,7 +2,7 @@ import { ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState, MineTargets } from './types';
 
 import createCollectBlockState from '../behaviors/behaviorCollectBlock';
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 /**
  * Checks if this handler can process the given step

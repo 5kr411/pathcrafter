@@ -10,7 +10,7 @@ import { computePathResourceDemand } from '../path_filters/worldResources';
 import { WorkerPool } from '../utils/workerPool';
 
 const planner = require('../../planner');
-const logger = require('../../utils/logger');
+import logger from '../utils/logger';
 
 /**
  * Worker thread for planning item acquisition

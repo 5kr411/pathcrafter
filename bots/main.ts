@@ -1,6 +1,6 @@
 import { Worker } from 'worker_threads';
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 if (process.argv.length < 4 || process.argv.length > 6) {
   logger.info('Usage : node main.js <num> <host> <port> [<name>] [<password>]');

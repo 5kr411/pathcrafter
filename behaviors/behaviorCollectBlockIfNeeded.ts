@@ -3,7 +3,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 import { getItemCountInInventory } from '../utils/inventory';
 import createCollectBlockState from './behaviorCollectBlock';
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 type Bot = any;
 

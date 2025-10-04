@@ -12,7 +12,7 @@ import * as genCraftInventory from './craftInventory';
 import * as genCraftTable from './craftTable';
 import * as genSmelt from './smelt';
 
-const logger = require('../../utils/logger');
+import logger from '../utils/logger';
 
 /**
  * Creates a behavior state for a single action step

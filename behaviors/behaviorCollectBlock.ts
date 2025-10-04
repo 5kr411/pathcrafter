@@ -14,8 +14,8 @@ const {
 } = require('mineflayer-statemachine');
 
 import { getItemCountInInventory } from '../utils/inventory';
-const logger = require('../utils/logger');
-const { addStateLogging } = require('../utils/stateLogging');
+import logger from '../utils/logger';
+import { addStateLogging } from '../utils/stateLogging';
 
 const minecraftData = require('minecraft-data');
 

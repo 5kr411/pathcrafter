@@ -10,7 +10,7 @@ const { plan: planner, _internals: plannerInternals } = require('../planner');
 const { captureAdaptiveSnapshot } = require('../utils/adaptiveSnapshot');
 const { setLastSnapshotRadius } = require('../utils/context');
 const { setSafeFindRepeatThreshold } = require('../utils/config');
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 // Type definitions
 interface RuntimeConfig {

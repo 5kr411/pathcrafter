@@ -30,7 +30,7 @@ if (isMainThread) {
 const bot = mineflayer.createBot(botOptions);
 
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 async function main(): Promise<void> {
   bot.once('spawn', () => {

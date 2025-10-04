@@ -4,7 +4,7 @@ import createCollectBlockIfNeededState from './behaviorCollectBlockIfNeeded';
 import createCraftNoTableIfNeededState from './behaviorCraftNoTableIfNeeded';
 import { getItemCountInInventory } from '../utils/inventory';
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 type Bot = any;
 

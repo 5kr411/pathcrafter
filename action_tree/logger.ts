@@ -8,7 +8,7 @@ import {
 
 const { renderName } = require('../utils/render');
 const pathUtils = require('../utils/pathUtils');
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 /**
  * Prints mining path information

@@ -1,13 +1,15 @@
-const path = require('path');
+import * as path from 'path';
 
 // Log levels
-const LogLevel = {
+type LogLevelType = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SILENT';
+
+export const LogLevel = {
     DEBUG: 0,
     INFO: 1,
     WARN: 2,
     ERROR: 3,
     SILENT: 4
-};
+} as const;
 
 // ANSI color codes
 const colors = {
@@ -25,13 +27,17 @@ const colors = {
     cyan: '\x1b[36m',
     white: '\x1b[37m',
     gray: '\x1b[90m'
-};
+} as const;
 
-class Logger {
+export class Logger {
+    private level: number;
+    private useColors: boolean;
+    private workspaceRoot: string;
+
     constructor() {
         // Get log level from environment variable, default to INFO
         const envLevel = process.env.LOG_LEVEL?.toUpperCase();
-        this.level = LogLevel[envLevel] !== undefined ? LogLevel[envLevel] : LogLevel.INFO;
+        this.level = envLevel && envLevel in LogLevel ? LogLevel[envLevel as LogLevelType] : LogLevel.INFO;
         
         // Option to disable colors (useful for file output or CI)
         this.useColors = process.env.LOG_NO_COLOR !== 'true';
@@ -42,36 +48,35 @@ class Logger {
 
     /**
      * Set the current log level programmatically
-     * @param {string} level - One of: DEBUG, INFO, WARN, ERROR, SILENT
      */
-    setLevel(level) {
+    setLevel(level: string): void {
         const upperLevel = level.toUpperCase();
-        if (LogLevel[upperLevel] !== undefined) {
-            this.level = LogLevel[upperLevel];
+        if (upperLevel in LogLevel) {
+            this.level = LogLevel[upperLevel as LogLevelType];
         }
     }
 
     /**
      * Get the current log level as a string
      */
-    getLevel() {
-        return Object.keys(LogLevel).find(key => LogLevel[key] === this.level) || 'INFO';
+    getLevel(): string {
+        return Object.keys(LogLevel).find(key => LogLevel[key as LogLevelType] === this.level) || 'INFO';
     }
 
     /**
      * Get the calling file name from the stack trace
      */
-    _getCallerFile() {
+    _getCallerFile(): string {
         const originalPrepareStackTrace = Error.prepareStackTrace;
         try {
             const err = new Error();
             Error.prepareStackTrace = (_, stack) => stack;
-            const stack = err.stack;
+            const stack = err.stack as any;
             
             // Find the first stack frame that's not this logger file
             for (let i = 0; i < stack.length; i++) {
                 const fileName = stack[i].getFileName();
-                if (fileName && !fileName.includes('logger.js')) {
+                if (fileName && !fileName.includes('logger.js') && !fileName.includes('logger.ts')) {
                     // Convert to relative path
                     const relativePath = path.relative(this.workspaceRoot, fileName);
                     // If path goes outside workspace, just use basename
@@ -92,7 +97,7 @@ class Logger {
     /**
      * Format the timestamp
      */
-    _getTimestamp() {
+    _getTimestamp(): string {
         const now = new Date();
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
@@ -104,7 +109,7 @@ class Logger {
     /**
      * Apply color to text if colors are enabled
      */
-    _colorize(text, color) {
+    _colorize(text: string, color: string): string {
         if (!this.useColors) return text;
         return `${color}${text}${colors.reset}`;
     }
@@ -112,7 +117,7 @@ class Logger {
     /**
      * Core logging method
      */
-    _log(level, levelName, color, args) {
+    _log(level: number, levelName: string, color: string, args: any[]): void {
         if (this.level > level) return; // Skip if below current log level
 
         const timestamp = this._getTimestamp();
@@ -132,35 +137,35 @@ class Logger {
     /**
      * Log at DEBUG level
      */
-    debug(...args) {
+    debug(...args: any[]): void {
         this._log(LogLevel.DEBUG, 'DEBUG', colors.gray, args);
     }
 
     /**
      * Log at INFO level
      */
-    info(...args) {
+    info(...args: any[]): void {
         this._log(LogLevel.INFO, 'INFO ', colors.green, args);
     }
 
     /**
      * Log at WARN level
      */
-    warn(...args) {
+    warn(...args: any[]): void {
         this._log(LogLevel.WARN, 'WARN ', colors.yellow, args);
     }
 
     /**
      * Log at ERROR level
      */
-    error(...args) {
+    error(...args: any[]): void {
         this._log(LogLevel.ERROR, 'ERROR', colors.red, args);
     }
 
     /**
      * Always log regardless of log level (except SILENT)
      */
-    always(...args) {
+    always(...args: any[]): void {
         if (this.level === LogLevel.SILENT) return;
         
         const timestamp = this._getTimestamp();
@@ -176,9 +181,8 @@ class Logger {
      * Create a child logger with a specific context/prefix
      * Useful for module-specific logging
      */
-    child(context) {
-        const childLogger = Object.create(this);
-        childLogger.context = context;
+    child(context: string): Logger {
+        const childLogger = Object.create(this) as Logger;
         childLogger._getCallerFile = () => context;
         return childLogger;
     }
@@ -187,7 +191,4 @@ class Logger {
 // Create and export a singleton instance
 const logger = new Logger();
 
-module.exports = logger;
-module.exports.Logger = Logger;
-module.exports.LogLevel = LogLevel;
-
+export default logger;

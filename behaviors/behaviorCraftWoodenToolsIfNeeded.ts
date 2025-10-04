@@ -3,7 +3,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 import createCraftNoTableIfNeeded from './behaviorCraftNoTableIfNeeded';
 import createCraftWithTableIfNeeded from './behaviorCraftWithTableIfNeeded';
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 type Bot = any;
 

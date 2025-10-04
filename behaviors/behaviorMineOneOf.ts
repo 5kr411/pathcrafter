@@ -1,7 +1,7 @@
 const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflayer-statemachine');
 
 const minecraftData = require('minecraft-data');
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 import createCollectBlockState from './behaviorCollectBlock';
 const { setCurrentSpeciesContext } = require('../utils/context');

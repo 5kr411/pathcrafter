@@ -12,7 +12,7 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 bot.once('spawn', () => {
   const hardcodedPath = [

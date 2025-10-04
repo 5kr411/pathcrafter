@@ -3,7 +3,7 @@ import { ActionPath, TreeNode } from '../action_tree/types';
 import { EnumerateMessage } from './types';
 
 const planner = require('../../planner');
-const logger = require('../../utils/logger');
+import logger from '../utils/logger';
 
 /**
  * Worker thread for enumerating action paths from a recipe tree

@@ -9,7 +9,7 @@ import {
   ResourceStats
 } from './worldSnapshotTypes';
 const minecraftData = require('minecraft-data');
-const logger = require('../../utils/logger');
+import logger from './logger';
 
 /**
  * Calculates Euclidean distance between two 3D points

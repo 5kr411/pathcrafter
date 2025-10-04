@@ -1,8 +1,8 @@
 const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorEquipItem } = require('mineflayer-statemachine');
 
 const minecraftData = require('minecraft-data');
-const logger = require('../utils/logger');
-const { addStateLogging } = require('../utils/stateLogging');
+import logger from '../utils/logger';
+import { addStateLogging } from '../utils/stateLogging';
 const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 import { getItemCountInInventory } from '../utils/inventory';
 const createPlaceNearState = require('./behaviorPlaceNear');

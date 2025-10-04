@@ -14,8 +14,8 @@ import { getItemCountInInventory } from '../utils/inventory';
 import createPlaceNearState from '../behaviors/behaviorPlaceNear';
 import createCraftWithTableIfNeeded from '../behaviors/behaviorCraftWithTableIfNeeded';
 import createBreakAtPositionState from '../behaviors/behaviorBreakAtPosition';
-const logger = require('../utils/logger');
-const { addStateLogging } = require('../utils/stateLogging');
+import logger from '../utils/logger';
+import { addStateLogging } from '../utils/stateLogging';
 
 /**
  * Checks if this handler can process the given step

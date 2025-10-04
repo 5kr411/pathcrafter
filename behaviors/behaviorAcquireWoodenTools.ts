@@ -6,7 +6,7 @@ import createCollectBlockIfNeededState from './behaviorCollectBlockIfNeeded';
 import createCraftWoodenToolsIfNeededState from './behaviorCraftWoodenToolsIfNeeded';
 
 const createPlaceUtilityBlockState = require('./behaviorPlaceNear');
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 type Bot = any;
 

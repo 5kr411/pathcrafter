@@ -11,8 +11,8 @@ const {
 
 import createClearAreaState from './behaviorClearArea';
 
-const logger = require('../utils/logger');
-const { addStateLogging } = require('../utils/stateLogging');
+import logger from '../utils/logger';
+import { addStateLogging } from '../utils/stateLogging';
 
 interface Vec3Like {
   x: number;

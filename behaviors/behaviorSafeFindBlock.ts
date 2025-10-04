@@ -1,6 +1,6 @@
 import { getSafeFindRepeatThreshold } from '../utils/config';
 
-const logger = require('../utils/logger');
+import logger from '../utils/logger';
 
 interface Vec3 {
   x: number;

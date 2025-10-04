@@ -1,16 +1,29 @@
-const logger = require('./logger');
+import logger from './logger';
+
+interface StateLoggingOptions {
+    logEnter?: boolean;
+    logExit?: boolean;
+    getExtraInfo?: (() => string) | null;
+}
+
+interface BehaviorToInstrument {
+    behavior: any;
+    name: string;
+    options?: StateLoggingOptions;
+}
+
+interface TransitionLoggerOptions {
+    logTime?: boolean;
+}
 
 /**
  * Adds logging to a mineflayer-statemachine behavior's lifecycle hooks
- * @param {Object} behavior - The behavior state to instrument
- * @param {string} name - A descriptive name for logging
- * @param {Object} options - Logging options
- * @param {boolean} options.logEnter - Log when state is entered (default: true)
- * @param {boolean} options.logExit - Log when state is exited (default: false)
- * @param {function} options.getExtraInfo - Optional function to get additional info to log
- * @returns {Object} The instrumented behavior (same object, modified)
+ * @param behavior - The behavior state to instrument
+ * @param name - A descriptive name for logging
+ * @param options - Logging options
+ * @returns The instrumented behavior (same object, modified)
  */
-function addStateLogging(behavior, name, options = {}) {
+export function addStateLogging(behavior: any, name: string, options: StateLoggingOptions = {}): any {
     if (!behavior || typeof behavior !== 'object') return behavior;
     
     const {
@@ -25,12 +38,12 @@ function addStateLogging(behavior, name, options = {}) {
             ? behavior.onStateEntered.bind(behavior) 
             : null;
         
-        behavior.onStateEntered = function(...args) {
+        behavior.onStateEntered = function(...args: any[]) {
             try {
                 const extra = getExtraInfo ? getExtraInfo() : '';
                 const msg = extra ? `${name}: entered ${extra}` : `${name}: entered`;
                 logger.debug(msg);
-            } catch (err) {
+            } catch (err: any) {
                 logger.debug(`${name}: entered (error getting extra info: ${err.message})`);
             }
             
@@ -46,12 +59,12 @@ function addStateLogging(behavior, name, options = {}) {
             ? behavior.onStateExited.bind(behavior)
             : null;
         
-        behavior.onStateExited = function(...args) {
+        behavior.onStateExited = function(...args: any[]) {
             try {
                 const extra = getExtraInfo ? getExtraInfo() : '';
                 const msg = extra ? `${name}: exited ${extra}` : `${name}: exited`;
                 logger.debug(msg);
-            } catch (err) {
+            } catch (err: any) {
                 logger.debug(`${name}: exited (error getting extra info: ${err.message})`);
             }
             
@@ -66,10 +79,10 @@ function addStateLogging(behavior, name, options = {}) {
 
 /**
  * Adds logging to multiple behaviors at once
- * @param {Array<{behavior: Object, name: string, options?: Object}>} behaviors - Array of behaviors to instrument
- * @returns {Array<Object>} The instrumented behaviors
+ * @param behaviors - Array of behaviors to instrument
+ * @returns The instrumented behaviors
  */
-function addStateLoggingBatch(behaviors) {
+export function addStateLoggingBatch(behaviors: BehaviorToInstrument[]): any[] {
     return behaviors.map(({ behavior, name, options }) => 
         addStateLogging(behavior, name, options)
     );
@@ -77,15 +90,18 @@ function addStateLoggingBatch(behaviors) {
 
 /**
  * Creates a logging wrapper for state transitions with detailed timing
- * @param {string} transitionName - Name of the transition
- * @param {function} originalOnTransition - Original onTransition handler (optional)
- * @param {Object} options - Options
- * @param {boolean} options.logTime - Whether to log timing info (default: false)
- * @returns {function} Enhanced onTransition handler
+ * @param transitionName - Name of the transition
+ * @param originalOnTransition - Original onTransition handler (optional)
+ * @param options - Options
+ * @returns Enhanced onTransition handler
  */
-function createTransitionLogger(transitionName, originalOnTransition = null, options = {}) {
+export function createTransitionLogger(
+    transitionName: string, 
+    originalOnTransition: (() => any) | null = null, 
+    options: TransitionLoggerOptions = {}
+): () => any {
     const { logTime = false } = options;
-    let startTime = null;
+    let startTime: number | null = null;
 
     return function() {
         try {
@@ -104,10 +120,4 @@ function createTransitionLogger(transitionName, originalOnTransition = null, opt
         }
     };
 }
-
-module.exports = {
-    addStateLogging,
-    addStateLoggingBatch,
-    createTransitionLogger
-};
 

@@ -10,7 +10,7 @@ import * as treeMetrics from './action_tree/metrics';
 const actionPathsGenerator = require('./path_generators/actionPathsGenerator');
 const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator');
 const lowestWeightPathsGenerator = require('./path_generators/lowestWeightPathsGenerator');
-const logger = require('./utils/logger');
+import logger from './utils/logger';
 
 function logActionTree(tree: any, depth: number = 1): void {
   if (!tree) return;
