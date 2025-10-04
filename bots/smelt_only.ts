@@ -2,7 +2,7 @@ const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
 const { buildStateMachineForPath } = require('../behavior_generator/buildMachine');
 const minecraftData = require('minecraft-data');
-const analyzeRecipes = require('../recipeAnalyzer');
+import analyzeRecipes from '../recipeAnalyzer';
 
 let botOptions: any = { host: 'localhost', port: 25565, username: 'smelt_only' };
 if (process.argv.length >= 4) {

@@ -1,7 +1,7 @@
 import { ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState, SmeltTargets } from './types';
 
-const createSmeltState = require('../../behaviors/behaviorSmelt');
+import createSmeltState from '../behaviors/behaviorSmelt';
 
 /**
  * Checks if this handler can process the given step
@@ -45,7 +45,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   if (!targets) return null;
 
   try {
-    return createSmeltState(bot, targets);
+    return createSmeltState(bot as any, targets as any);
   } catch (_) {
     return { isFinished: () => true };
   }

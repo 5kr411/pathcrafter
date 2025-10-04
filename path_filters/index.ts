@@ -11,10 +11,10 @@ export {
 
 export { filterPathsByWorldSnapshot } from './filterByWorld';
 
-const { hoistMiningInPaths } = require('../../path_optimizations/hoistMining');
-const { generateTopNPathsFromGenerators } = require('../../path_generators/generateTopN');
-const plan = require('../../planner');
-const { getPruneWithWorldEnabled, getDefaultPerGeneratorPaths } = require('../../utils/config');
+import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
+import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
+import { getPruneWithWorldEnabled, getDefaultPerGeneratorPaths } from '../utils/config';
+import { plan, _internals as plannerInternals } from '../planner';
 
 /**
  * Generates top N paths and filters them through optimizations
@@ -49,7 +49,7 @@ export async function generateTopNAndFilter(
     : getDefaultPerGeneratorPaths();
   
   const snapshot = options.worldSnapshot;
-  const mcData = plan._internals.resolveMcData(ctx);
+  const mcData = plannerInternals.resolveMcData(ctx);
   const pruneWithWorld = options.pruneWithWorld === true ? true : getPruneWithWorldEnabled();
 
   // Build recipe tree with all options
@@ -57,7 +57,7 @@ export async function generateTopNAndFilter(
     inventory: options.inventory,
     log: options.log,
     pruneWithWorld,
-    worldSnapshot: snapshot,
+    worldSnapshot: snapshot as any,
     config: options && options.config ? options.config : undefined
   });
 

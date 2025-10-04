@@ -21,23 +21,23 @@ test-analyzer: build
 
 # E2E Bots
 bot-collect: build
-	node bots/collect_paths.js
+	node dist/bots/collect_paths.js
 
 bot-craft-inv: build
-	node bots/craft_inventory.js
+	node dist/bots/craft_inventory.js
 
 bot-craft-table: build
-	node bots/craft_table.js
+	node dist/bots/craft_table.js
 
 bot-main: build
-	node bots/main.js
+	node dist/bots/main.js
 
 bot-mine: build
-	node bots/mine_block.js
+	node dist/bots/mine_block.js
 
 bot-mine-oneof: build
-	node bots/mine_one_of.js
+	node dist/bots/mine_one_of.js
 
 bot-smelt: build
-	node bots/smelt_only.js
+	node dist/bots/smelt_only.js
 

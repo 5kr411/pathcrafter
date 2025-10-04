@@ -6,9 +6,9 @@ import {
   RequireNode
 } from './types';
 
-const { renderName } = require('../../utils/render');
-const pathUtils = require('../../utils/pathUtils');
-const logger = require('../../utils/logger');
+const { renderName } = require('../utils/render');
+const pathUtils = require('../utils/pathUtils');
+const logger = require('../utils/logger');
 
 /**
  * Prints mining path information

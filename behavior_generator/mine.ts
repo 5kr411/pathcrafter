@@ -1,8 +1,8 @@
 import { ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState, MineTargets } from './types';
 
-const createCollectBlockState = require('../../behaviors/behaviorCollectBlock');
-const logger = require('../../utils/logger');
+import createCollectBlockState from '../behaviors/behaviorCollectBlock';
+const logger = require('../utils/logger');
 
 /**
  * Checks if this handler can process the given step
@@ -57,7 +57,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
 
   try {
     logger.info(`BehaviorGenerator(mine): targets -> block=${targets.blockName}, item=${targets.itemName}, amount=${targets.amount}`);
-    return createCollectBlockState(bot, targets);
+    return createCollectBlockState(bot as any, targets as any);
   } catch (err) {
     logger.error('BehaviorGenerator(mine): falling back to no-op behavior in test context', err);
     return { isFinished: () => true };

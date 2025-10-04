@@ -1,7 +1,7 @@
 import { ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState, CraftTargets } from './types';
 
-const createCraftNoTableState = require('../../behaviors/behaviorCraftNoTable');
+import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
 
 /**
  * Checks if this handler can process the given step
@@ -39,6 +39,6 @@ export function computeTargetsForCraftInInventory(step: ActionStep): CraftTarget
 export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   const targets = computeTargetsForCraftInInventory(step);
   if (!targets) return null;
-  return createCraftNoTableState(bot, targets);
+  return createCraftNoTableState(bot as any, targets);
 }
 

@@ -24,6 +24,7 @@
   },
   "include": [
     "planner.ts",
+    "recipeAnalyzer.ts",
     "action_tree/**/*.ts",
     "path_generators/**/*.ts",
     "path_optimizations/**/*.ts",

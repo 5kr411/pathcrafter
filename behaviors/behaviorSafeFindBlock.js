@@ -1,5 +1,2 @@
-// This file has been ported to TypeScript
-// Import from the compiled TypeScript version
-module.exports = require('../dist/behaviors/behaviorSafeFindBlock').default;
-
-
+// Export from compiled TypeScript
+module.exports = require('../dist/behaviors/behaviorSafeFindBlock.js');

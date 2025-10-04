@@ -7,6 +7,9 @@ module.exports = {
     forceExit: true,
     detectOpenHandles: true,
     setupFilesAfterEnv: ['<rootDir>/tests/setup.js'],
+    moduleNameMapper: {
+        '^(\\.{1,2}/.*)\\.ts$': '$1.js',
+    },
 };
 
 

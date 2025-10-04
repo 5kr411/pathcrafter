@@ -11,11 +11,11 @@ const {
 } = require('mineflayer-statemachine');
 
 import { getItemCountInInventory } from '../utils/inventory';
-const createPlaceNearState = require('../../behaviors/behaviorPlaceNear');
-const createCraftWithTableIfNeeded = require('../../behaviors/behaviorCraftWithTableIfNeeded');
-const createBreakAtPositionState = require('../../behaviors/behaviorBreakAtPosition');
-const logger = require('../../utils/logger');
-const { addStateLogging } = require('../../utils/stateLogging');
+import createPlaceNearState from '../behaviors/behaviorPlaceNear';
+import createCraftWithTableIfNeeded from '../behaviors/behaviorCraftWithTableIfNeeded';
+import createBreakAtPositionState from '../behaviors/behaviorBreakAtPosition';
+const logger = require('../utils/logger');
+const { addStateLogging } = require('../utils/stateLogging');
 
 /**
  * Checks if this handler can process the given step
@@ -100,7 +100,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   const breakTargets: { position: any } = { position: null };
   let breakTable: any;
   try {
-    breakTable = createBreakAtPositionState(bot, breakTargets);
+    breakTable = createBreakAtPositionState(bot as any, breakTargets as any);
   } catch (err) {
     logger.error('BehaviorGenerator(craft-table): break state unavailable, using no-op', err);
     breakTable = { isFinished: () => true };
