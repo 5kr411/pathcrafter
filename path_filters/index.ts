@@ -61,6 +61,10 @@ export async function generateTopNAndFilter(
     config: options && options.config ? options.config : undefined
   });
 
+  if (!tree) {
+    return [];
+  }
+
   // Generate top N paths from multiple strategies
   const candidates = await generateTopNPathsFromGenerators(
     tree,

@@ -34,3 +34,13 @@ export function getLastSnapshotRadius(): number | null {
   return lastSnapshotRadius;
 }
 
+let currentSpeciesContext: string | null = null;
+
+export function setCurrentSpeciesContext(v: string | null): void {
+  currentSpeciesContext = v;
+}
+
+export function getCurrentSpeciesContext(): string | null {
+  return currentSpeciesContext;
+}
+

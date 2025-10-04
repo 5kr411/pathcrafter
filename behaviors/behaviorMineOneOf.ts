@@ -2,9 +2,9 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 
 const minecraftData = require('minecraft-data');
 import logger from '../utils/logger';
+import { getLastSnapshotRadius, setCurrentSpeciesContext } from '../utils/context';
 
 import createCollectBlockState from './behaviorCollectBlock';
-const { setCurrentSpeciesContext } = require('../utils/context');
 
 interface Vec3Like {
   x: number;
@@ -85,8 +85,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
         return { count: 0, nearest: Number.POSITIVE_INFINITY };
       const radius = (() => {
         try {
-          const { getLastSnapshotRadius } = require('../utils/context');
-          const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
+            const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
           if (Number.isFinite(r) && r > 0) return r;
         } catch (_) {}
         return 64;

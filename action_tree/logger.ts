@@ -6,8 +6,8 @@ import {
   RequireNode
 } from './types';
 
-const { renderName } = require('../utils/render');
-const pathUtils = require('../utils/pathUtils');
+import { renderName } from '../utils/render';
+import * as pathUtils from '../utils/pathUtils';
 import logger from '../utils/logger';
 
 /**

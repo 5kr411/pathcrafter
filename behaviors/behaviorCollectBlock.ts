@@ -16,6 +16,8 @@ const {
 import { getItemCountInInventory } from '../utils/inventory';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
+import { getLastSnapshotRadius } from '../utils/context';
+import createSafeFindBlockState from './behaviorSafeFindBlock';
 
 const minecraftData = require('minecraft-data');
 
@@ -101,17 +103,16 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
 
   // Prefer safe find behavior which avoids looping over repeated positions
-  let createSafeFind: ((bot: Bot, targets: Targets) => any) | null = null;
+  let createSafeFind: any | null = null;
   let findBlock: any;
   try {
-    createSafeFind = require('./behaviorSafeFindBlock').default;
+    createSafeFind = createSafeFindBlockState;
   } catch (_) {
     createSafeFind = null;
   }
   findBlock = createSafeFind ? createSafeFind(bot, targets) : new BehaviorFindBlock(bot, targets);
   if (initialId != null) findBlock.blocks = [initialId];
   try {
-    const { getLastSnapshotRadius } = require('../utils/context');
     const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
     if (Number.isFinite(r) && r > 0) {
       findBlock.maxDistance = r;
@@ -266,7 +267,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         if (currentId != null) findBlock.blocks = [currentId];
         // Keep search radius in sync with snapshot radius on each entry
         try {
-          const { getLastSnapshotRadius } = require('../utils/context');
           const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
           if (Number.isFinite(r) && r > 0) findBlock.maxDistance = r;
         } catch (_) {}

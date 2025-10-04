@@ -1,0 +1,365 @@
+
+> minebot@1.0.0 test
+> jest --runInBand
+
+FAIL tests/integration/tie_break_distance_integration.spec.ts
+  integration: Top-N tie-break prefers closer blocks from snapshot
+    ✕ wooden_pickaxe mines closer valid species first (383 ms)
+
+  ● integration: Top-N tie-break prefers closer blocks from snapshot › wooden_pickaxe mines closer valid species first
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      29 |       pruneWithWorld: true
+      30 |     });
+    > 31 |     expect(paths.length).toBeGreaterThan(0);
+         |                          ^
+      32 |     const first = paths[0];
+      33 |     const mined = first.filter((s: any) => s && s.action === 'mine').map((s: any) => s.what);
+      34 |     // ensure mined species is among present logs
+
+      at Object.<anonymous> (tests/integration/tie_break_distance_integration.spec.ts:31:26)
+
+FAIL tests/integration/aggregate_and_dedupe.spec.ts
+  integration: aggregate top-N and dedupe across generators
+    ✓ wooden_pickaxe scenario produces duplicates across generators and dedupe removes them (229 ms)
+    ✕ aggregated paths are returned sorted by non-decreasing weight (154 ms)
+
+  ● integration: aggregate top-N and dedupe across generators › aggregated paths are returned sorted by non-decreasing weight
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      55 |         const perGenerator = 20;
+      56 |         const combinedSorted = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
+    > 57 |         expect(combinedSorted.length).toBeGreaterThan(0);
+         |                                       ^
+      58 |         for (let i = 1; i < combinedSorted.length; i++) {
+      59 |             const prev = computePathWeight(combinedSorted[i - 1]);
+      60 |             const cur = computePathWeight(combinedSorted[i]);
+
+      at Object.<anonymous> (tests/integration/aggregate_and_dedupe.spec.ts:57:39)
+
+FAIL tests/integration/hoist_mining_integration.spec.ts
+  integration: mining hoist applied post generation/filtering
+    ✕ wooden_pickaxe: repeated log mining is hoisted into first occurrence (231 ms)
+    ✕ hoisting respects tool differences (50 ms)
+
+  ● integration: mining hoist applied post generation/filtering › wooden_pickaxe: repeated log mining is hoisted into first occurrence
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      29 |         };
+      30 |         const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
+    > 31 |         expect(paths.length).toBeGreaterThan(0);
+         |                              ^
+      32 |         const p = paths.find(pp => pp.some((s: any) => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log'))));
+      33 |         expect(!!p).toBe(true);
+      34 |         const { mineIndices } = firstMineCounts(p!);
+
+      at Object.<anonymous> (tests/integration/hoist_mining_integration.spec.ts:31:30)
+
+  ● integration: mining hoist applied post generation/filtering › hoisting respects tool differences
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      59 |         };
+      60 |         const paths = await generateTopNAndFilter('1.20.1', 'stone', 3, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
+    > 61 |         expect(paths.length).toBeGreaterThan(0);
+         |                              ^
+      62 |         const anyWithMultipleMines = paths.find(path => path.filter((s: any) => s.action === 'mine').length >= 1);
+      63 |         expect(anyWithMultipleMines).toBeTruthy();
+      64 |         // For safety, ensure no two mines with same key exist
+
+      at Object.<anonymous> (tests/integration/hoist_mining_integration.spec.ts:61:30)
+
+FAIL tests/unit/tie_break_distance.spec.ts
+  unit: Top-N tie-break by snapshot distance
+    ✕ prefers closer wood species when weights are equal (198 ms)
+
+  ● unit: Top-N tie-break by snapshot distance › prefers closer wood species when weights are equal
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      20 |       pruneWithWorld: true
+      21 |     });
+    > 22 |     expect(paths.length).toBeGreaterThan(0);
+         |                          ^
+      23 |     const first = paths[0];
+      24 |     const minedNames = first.filter(s => s && s.action === 'mine').map(s => s.what);
+      25 |     const considered = minedNames.filter(n => (snapshot.blocks as any)[n]);
+
+      at Object.<anonymous> (tests/unit/tie_break_distance.spec.ts:22:26)
+
+PASS tests/integration/iron_ingot_smelting.spec.ts
+  integration: smelting iron_ingot with furnace in inventory
+    ✓ tree contains smelt route and some path smelts iron_ingot with coal when furnace present (6 ms)
+    ✓ each generator yields at least 10 paths with starting materials (bounded) (1939 ms)
+    ✓ top N paths in each generator do not duplicate persistent deps (crafting_table/furnace) (13 ms)
+
+PASS tests/unit/utils.spec.ts
+  unit: helpers
+    ✓ chooseMinimalToolName prefers lower tier (2 ms)
+    ✓ renderName returns name as is (1 ms)
+  unit: crafting table dependency
+    ✓ shortest paths never use table before acquiring one (empty inventory) (329 ms)
+    ✓ lowest-weight paths never use table before acquiring one (empty inventory) (1219 ms)
+
+PASS tests/integration/wooden_pickaxe.spec.ts
+  integration: wooden_pickaxe with inventory
+    ✓ shortest paths generator maintains length ordering (486 ms)
+    ✓ lowest weight generator maintains weight ordering (428 ms)
+    ✓ shortest paths includes expected optimal path (230 ms)
+
+PASS tests/integration/persistence_reuse.spec.ts
+  integration: persistence reuse of crafting_table and tools
+    ✓ does not re-acquire crafting_table when already in inventory (42 ms)
+    ✓ tool requirement not duplicated along the path (cobblestone scenario) (616 ms)
+
+PASS tests/integration/minimal_tool_pruning.spec.ts
+  integration: minimal tool pruning for mining
+    ✓ prefers wooden_pickaxe (lowest viable tier) for cobblestone (693 ms)
+
+PASS tests/integration/behavior_generator_craft_table.spec.ts
+  integration: behavior_generator craft-in-table
+    ✓ creates behavior for a craft-in-table step from planner path with break step (399 ms)
+
+PASS tests/integration/world_pruning_with_dumped_snapshot.spec.ts
+  integration: world pruning with real dumped snapshot
+    ✓ wooden_pickaxe plan avoids species not present in snapshot (352 ms)
+
+PASS tests/unit/top_up.spec.ts
+  unit: Top-up scenarios prefer minimal additional mining
+    ✓ stone_pickaxe with 2 cobblestone prefers cobblestone top-up (shortest and lowest) (250 ms)
+    ✓ raw_iron with 2 cobblestone prefers cobblestone top-up (shortest and lowest) (6 ms)
+
+PASS tests/integration/behavior_generator_mine_one_of.spec.ts
+  integration: behavior_generator mineOneOf
+    ✓ creates behavior for a mine OR step with oneOfCandidates (24 ms)
+
+PASS tests/integration/behavior_generator_craft_inventory.spec.ts
+  integration: behavior_generator craft-in-inventory
+    ✓ creates behavior for a craft-in-inventory step from planner path (43 ms)
+
+PASS tests/integration/behavior_generator_smelt.spec.ts
+  integration: behavior_generator smelt
+    ✓ creates behavior for a smelt leaf step from planner path (7 ms)
+
+PASS tests/integration/behavior_generator_mine.spec.ts
+  integration: behavior_generator mine
+    ✓ creates behavior for a mine leaf step from planner path (5 ms)
+
+PASS tests/integration/build_machine_e2e.spec.ts
+  integration: buildStateMachineForPath hardcoded path
+    ✓ sm builds without crashing for multi-step path (23 ms)
+
+PASS tests/unit/behavior_generator_table.spec.ts
+  unit: behavior_generator craft-in-table mapping
+    ✓ computeTargetsForCraftInTable calculates total amount (2 ms)
+    ✓ createBehaviorForStep returns behavior for craft in table and includes break step hook (25 ms)
+
+PASS tests/unit/behavior_generator_mine.spec.ts
+  unit: behavior_generator mine mapping
+    ✓ computeTargetsForMine uses targetItem when present (2 ms)
+    ✓ computeTargetsForMine falls back to block name when no targetItem
+    ✓ createBehaviorForStep creates behavior for mine leaf step (24 ms)
+
+PASS tests/unit/build_machine.spec.ts
+  unit: buildStateMachineForPath
+    ✓ creates sequence for mixed steps (24 ms)
+
+PASS tests/unit/behavior_generator.spec.ts
+  unit: behavior_generator craft-in-inventory mapping
+    ✓ computeTargetsForCraftInInventory calculates total amount (2 ms)
+    ✓ createBehaviorForStep returns null for unsupported action
+    ✓ createBehaviorForStep creates behavior for craft in inventory (1 ms)
+
+PASS tests/unit/behavior_generator_smelt.spec.ts
+  unit: behavior_generator smelt mapping
+    ✓ computeTargetsForSmelt extracts result/input/fuel/count (2 ms)
+
+PASS tests/integration/adaptive_snapshot.spec.ts
+  integration: adaptive snapshot with progressive radii
+    ✓ progressively increases radius when small radius lacks resources (7 ms)
+    ✓ uses first radius when resources are immediately available (29 ms)
+    ✓ falls back to largest radius when no valid paths found (2 ms)
+    ✓ works without validator (returns first radius) (6 ms)
+
+PASS tests/unit/world_pruning.spec.ts
+  unit: planner world-pruning (generic wood disabled)
+    ✓ insufficient ore count prunes mining paths (46 ms)
+    ✓ limited ore count allows only requested quantity (2 ms)
+
+PASS tests/integration/stone_smelting.spec.ts
+  integration: smelting stone with inventory items present
+    ✓ with furnace+coal+cobblestone in inventory, shortest path is a single smelt (6 ms)
+
+PASS tests/unit/block_drop_mapping.spec.ts
+  unit: block drop mapping via minecraft-data
+    ✓ coal is dropped by coal_ore and deepslate_coal_ore (33 ms)
+    ✓ raw_iron is dropped by iron_ore and deepslate_iron_ore (1 ms)
+
+PASS tests/integration/iron_ingot_nuggets_guard.spec.ts
+  integration: prevent crafting iron_ingot from nuggets without obtaining them
+    ✓ without nuggets, shortest paths do not include nugget->ingot craft (6 ms)
+    ✓ without nuggets, lowest weight paths do not include nugget->ingot craft (4 ms)
+    ✓ with nuggets in inventory, shortest paths include nugget->ingot option (5 ms)
+
+PASS tests/integration/prefer_existing_tool.spec.ts
+  integration: prefer existing higher-tier tool for mining
+    ✓ with stone_pickaxe in inventory, do not craft wooden_pickaxe for cobblestone (4 ms)
+
+PASS tests/integration/config_injection_world.spec.ts
+  integration: config injection with world pruning
+    ✓ generic disabled via context forces species branches even if logs present (38 ms)
+
+PASS tests/integration/fuel_accounting.spec.ts
+  integration: fuel accounting for multiple smelts
+    ✓ smelting 9 stone consumes >=2 coal units in a valid path (5 ms)
+
+PASS tests/integration/feather_hunting.spec.ts
+  integration: hunting feathers with no inventory
+    ✓ yields a hunt action for chicken (feather source) (3 ms)
+
+PASS tests/unit/raw_iron_choice.spec.ts
+  unit: raw_iron choice with stone_pickaxe in inventory
+    ✓ x1 prefers iron_ore over raw_iron_block (lowest-weight) (9 ms)
+    ✓ x3 prefers raw_iron_block over iron_ore (lowest-weight) (2 ms)
+
+PASS tests/integration/world_drop_pruning_integration.spec.ts
+  integration: world pruning respects block->drop mapping
+    ✓ coal target considers coal_ore availability (37 ms)
+    ✓ raw_iron target considers iron_ore availability (2 ms)
+    ✓ prunes when snapshot lacks matching source blocks for target drop (3 ms)
+
+PASS tests/integration/world_pruning_integration.spec.ts
+  integration: world-pruning planning (generic wood disabled)
+    ✓ prunes mining source when world has no coal_ore (36 ms)
+    ✓ allows mining when world has enough coal_ore (2 ms)
+
+PASS tests/unit/dedupe_paths.spec.ts
+  unit: dedupePaths
+    ✓ removes exact duplicate paths (2 ms)
+    ✓ keeps distinct paths differing by any step field
+
+PASS tests/unit/hoist_mining.spec.ts
+  unit: hoist mining optimizer
+    ✓ merges identical mining steps and sums counts (2 ms)
+    ✓ separates mining steps by tool key (1 ms)
+    ✓ handles targetItem key variant (2 ms)
+    ✓ hoistMiningInPaths maps over path arrays (1 ms)
+
+PASS tests/unit/world_filter.spec.ts
+  unit: world filtering (deprecated)
+    ✓ module loads and exposes functions (1 ms)
+
+Summary of all failing tests
+FAIL tests/integration/tie_break_distance_integration.spec.ts
+  ● integration: Top-N tie-break prefers closer blocks from snapshot › wooden_pickaxe mines closer valid species first
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      29 |       pruneWithWorld: true
+      30 |     });
+    > 31 |     expect(paths.length).toBeGreaterThan(0);
+         |                          ^
+      32 |     const first = paths[0];
+      33 |     const mined = first.filter((s: any) => s && s.action === 'mine').map((s: any) => s.what);
+      34 |     // ensure mined species is among present logs
+
+      at Object.<anonymous> (tests/integration/tie_break_distance_integration.spec.ts:31:26)
+
+FAIL tests/integration/aggregate_and_dedupe.spec.ts
+  ● integration: aggregate top-N and dedupe across generators › aggregated paths are returned sorted by non-decreasing weight
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      55 |         const perGenerator = 20;
+      56 |         const combinedSorted = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
+    > 57 |         expect(combinedSorted.length).toBeGreaterThan(0);
+         |                                       ^
+      58 |         for (let i = 1; i < combinedSorted.length; i++) {
+      59 |             const prev = computePathWeight(combinedSorted[i - 1]);
+      60 |             const cur = computePathWeight(combinedSorted[i]);
+
+      at Object.<anonymous> (tests/integration/aggregate_and_dedupe.spec.ts:57:39)
+
+FAIL tests/integration/hoist_mining_integration.spec.ts
+  ● integration: mining hoist applied post generation/filtering › wooden_pickaxe: repeated log mining is hoisted into first occurrence
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      29 |         };
+      30 |         const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
+    > 31 |         expect(paths.length).toBeGreaterThan(0);
+         |                              ^
+      32 |         const p = paths.find(pp => pp.some((s: any) => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log'))));
+      33 |         expect(!!p).toBe(true);
+      34 |         const { mineIndices } = firstMineCounts(p!);
+
+      at Object.<anonymous> (tests/integration/hoist_mining_integration.spec.ts:31:30)
+
+  ● integration: mining hoist applied post generation/filtering › hoisting respects tool differences
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      59 |         };
+      60 |         const paths = await generateTopNAndFilter('1.20.1', 'stone', 3, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
+    > 61 |         expect(paths.length).toBeGreaterThan(0);
+         |                              ^
+      62 |         const anyWithMultipleMines = paths.find(path => path.filter((s: any) => s.action === 'mine').length >= 1);
+      63 |         expect(anyWithMultipleMines).toBeTruthy();
+      64 |         // For safety, ensure no two mines with same key exist
+
+      at Object.<anonymous> (tests/integration/hoist_mining_integration.spec.ts:61:30)
+
+FAIL tests/unit/tie_break_distance.spec.ts
+  ● unit: Top-N tie-break by snapshot distance › prefers closer wood species when weights are equal
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 0
+    Received:   0
+
+      20 |       pruneWithWorld: true
+      21 |     });
+    > 22 |     expect(paths.length).toBeGreaterThan(0);
+         |                          ^
+      23 |     const first = paths[0];
+      24 |     const minedNames = first.filter(s => s && s.action === 'mine').map(s => s.what);
+      25 |     const considered = minedNames.filter(n => (snapshot.blocks as any)[n]);
+
+      at Object.<anonymous> (tests/unit/tie_break_distance.spec.ts:22:26)
+
+
+Test Suites: 4 failed, 33 passed, 37 total
+Tests:       5 failed, 63 passed, 68 total
+Snapshots:   0 total
+Time:        19.196 s
+Ran all test suites.

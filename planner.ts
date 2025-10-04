@@ -179,7 +179,7 @@ export function plan(
  * Internal functions exposed for testing
  * @internal
  */
-export const _internals = {
+const _internals = {
   resolveMcData: treeBuild.resolveMcData,
   requiresCraftingTable: treeBuild.requiresCraftingTable,
   renderName,
@@ -204,6 +204,10 @@ export const _internals = {
   enumerateLowestWeightPathsGenerator: lowestWeightPathsGenerator.enumerateLowestWeightPathsGenerator
 };
 
+// Attach _internals to the plan function for backward compatibility
+(plan as any)._internals = _internals;
+
 // Export as both named and default
 export default plan;
+export { _internals };
 

@@ -5,11 +5,11 @@ const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
 const minecraftData = require('minecraft-data');
 
-const { buildStateMachineForPath } = require('../behavior_generator/buildMachine');
-const { plan: planner, _internals: plannerInternals } = require('../planner');
-const { captureAdaptiveSnapshot } = require('../utils/adaptiveSnapshot');
-const { setLastSnapshotRadius } = require('../utils/context');
-const { setSafeFindRepeatThreshold } = require('../utils/config');
+import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import { plan as planner, _internals as plannerInternals } from '../planner';
+import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
+import { setLastSnapshotRadius } from '../utils/context';
+import { setSafeFindRepeatThreshold } from '../utils/config';
 import logger from '../utils/logger';
 
 // Type definitions
@@ -338,7 +338,7 @@ bot.once('spawn', () => {
           inventory: invObj,
           log: false,
           pruneWithWorld: RUNTIME.pruneWithWorld,
-          worldSnapshot: snapshot
+          worldSnapshot: snapshot as any
         });
 
         if (!tree) {

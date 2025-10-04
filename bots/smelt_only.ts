@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
-const { buildStateMachineForPath } = require('../behavior_generator/buildMachine');
+import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 const minecraftData = require('minecraft-data');
 import analyzeRecipes from '../recipeAnalyzer';
 

@@ -1,8 +1,7 @@
 import { parentPort } from 'worker_threads';
 import { ActionPath, TreeNode } from '../action_tree/types';
 import { EnumerateMessage } from './types';
-
-const planner = require('../../planner');
+import { _internals } from '../planner';
 import logger from '../utils/logger';
 
 /**
@@ -32,11 +31,11 @@ parentPort.on('message', (msg: EnumerateMessage) => {
 
     // Select the appropriate generator function
     if (generator === 'action') {
-      enumerate = planner._internals.enumerateActionPathsGenerator;
+      enumerate = _internals.enumerateActionPathsGenerator;
     } else if (generator === 'shortest') {
-      enumerate = planner._internals.enumerateShortestPathsGenerator;
+      enumerate = _internals.enumerateShortestPathsGenerator;
     } else if (generator === 'lowest') {
-      enumerate = planner._internals.enumerateLowestWeightPathsGenerator;
+      enumerate = _internals.enumerateLowestWeightPathsGenerator;
     } else {
       throw new Error('Unknown generator type: ' + generator);
     }

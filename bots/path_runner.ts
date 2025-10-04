@@ -1,6 +1,6 @@
 const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
-const { buildStateMachineForPath } = require('../behavior_generator/buildMachine');
+import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 
 let botOptions: any = { host: 'localhost', port: 25565, username: 'path_runner' };
 if (process.argv.length >= 4) {
@@ -31,7 +31,7 @@ bot.once('spawn', () => {
     if (username === bot.username) return;
     if (message.trim() === 'go') {
       logger.info('PathRunner: building state machine for hardcoded path...');
-      sm = buildStateMachineForPath(bot, hardcodedPath);
+      sm = buildStateMachineForPath(bot, hardcodedPath as any);
       logger.info('PathRunner: starting state machine');
       new BotStateMachine(bot, sm);
     }

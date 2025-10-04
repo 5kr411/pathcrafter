@@ -8,8 +8,7 @@ import { computePathWeight } from '../utils/pathUtils';
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { computePathResourceDemand } from '../path_filters/worldResources';
 import { WorkerPool } from '../utils/workerPool';
-
-const planner = require('../../planner');
+import plan, { _internals } from '../planner';
 import logger from '../utils/logger';
 
 /**
@@ -54,10 +53,10 @@ parentPort.on('message', async (msg: PlanMessage) => {
 
     const t0 = Date.now();
     logger.debug(`PlanningWorker: resolving minecraft data for ${mcVersion || '1.20.1'}`);
-    const mcData = planner._internals.resolveMcData(mcVersion || '1.20.1');
+    const mcData = _internals.resolveMcData(mcVersion || '1.20.1');
     logger.debug(`PlanningWorker: building recipe tree`);
     const tBuildStart = Date.now();
-    const tree = planner(mcData, item, count, {
+    const tree = plan(mcData, item, count, {
       inventory,
       log: false,
       pruneWithWorld: !!pruneWithWorld,
@@ -200,9 +199,9 @@ parentPort.on('message', async (msg: PlanMessage) => {
     try {
       const top = ranked && ranked[0];
       if (getPlanningTelemetryEnabled()) {
-        if (top && planner && planner._internals && typeof planner._internals.logActionPath === 'function') {
+        if (top && _internals && typeof _internals.logActionPath === 'function') {
           logger.debug('PlanningWorker: final path:');
-          planner._internals.logActionPath(top);
+          _internals.logActionPath(top);
         }
       }
     } catch (_) {

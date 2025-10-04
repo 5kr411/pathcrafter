@@ -4,8 +4,8 @@ import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions, EnumeratorJob, WorkerMessage } from './types';
 
 import { _internals as plannerInternals } from '../planner';
-const { computePathWeight } = require('../utils/pathUtils');
-const { computePathResourceDemand } = require('../path_filters/worldResources');
+import { computePathWeight } from '../utils/pathUtils';
+import { computePathResourceDemand } from '../path_filters/worldResources';
 
 /**
  * Takes the first N items from an iterator
@@ -59,7 +59,10 @@ export async function generateTopNPathsFromGenerators(
   const inventory = options && options.inventory ? options.inventory : undefined;
   const snapshot = options && options.worldSnapshot ? options.worldSnapshot : null;
 
-  const workerPath = path.resolve(__dirname, '../workers/enumerator_worker.js');
+  // Determine worker path - use dist for compiled code, or find it relative to source
+  const workerPath = __dirname.includes('/dist/') 
+    ? path.resolve(__dirname, '../workers/enumerator_worker.js')
+    : path.resolve(__dirname, '../dist/workers/enumerator_worker.js');
   const jobs: EnumeratorJob[] = [
     { generator: 'action', tree, inventory, limit: perGenerator },
     { generator: 'shortest', tree, inventory, limit: perGenerator },

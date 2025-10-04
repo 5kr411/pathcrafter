@@ -170,7 +170,7 @@ function logActionPaths(paths: any[]): void {
   });
 }
 
-analyzeRecipes._internals = {
+const _internals = {
   resolveMcData: treeBuild.resolveMcData,
   requiresCraftingTable: treeBuild.requiresCraftingTable,
   renderName,
@@ -195,5 +195,9 @@ analyzeRecipes._internals = {
   enumerateLowestWeightPathsGenerator: lowestWeightPathsGenerator.enumerateLowestWeightPathsGenerator
 };
 
+// Attach _internals to the analyzeRecipes function for backward compatibility
+(analyzeRecipes as any)._internals = _internals;
+
 export default analyzeRecipes;
+export { _internals };
 
