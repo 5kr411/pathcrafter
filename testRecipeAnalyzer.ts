@@ -39,15 +39,3 @@ for (const path of enumerateLowestWeightPathsGenerator(tree, { inventory })) {
 }
 
 logger.info(`\nTotal paths: ${countActionPaths(tree)}`);
-
-// bug with bamboo saplings? coming back as generic sapling and saying it drops sticks.
-//
-// unit tests of current functionality to make sure we don't break when refactoring?
-//
-// test dependency detection and deduping
-// test not trying to craft iron ingot out of nuggest from thin air (from circular dependency break)
-//
-// refactoring the code to make it more readable?
-// combining path requirements where possible?
-// add together the gathering requirements for each path?
-// prune paths where the gathering requirements are not possible based on world data?
