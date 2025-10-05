@@ -63,7 +63,7 @@ export function logActionTree(tree: TreeNode | null | undefined, depth: number =
 
   if (tree.action === 'root') {
     const op = tree.operator === 'OR' ? 'ANY' : 'ALL';
-    logger.info(`${indent}├─ ${tree.what} (want ${tree.count}) [${op}]`);
+    console.log(`${indent}├─ ${tree.what} (want ${tree.count}) [${op}]`);
     const children = tree.children || [];
     children.forEach((child, idx) => {
       const isLast = idx === children.length - 1;
@@ -85,14 +85,40 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
   if (node.action === 'craft') {
     const craftNode = node as CraftNode;
     const op = craftNode.operator === 'AND' ? 'ALL' : 'ANY';
-    logger.info(`${indent}${branch} craft in ${craftNode.what} (${craftNode.count}x) [${op}]`);
+    console.log(`${indent}${branch} craft in ${craftNode.what} (${craftNode.count}x) [${op}]`);
 
     if (craftNode.ingredients && craftNode.ingredients.length > 0 && craftNode.result) {
       const ingredientsStr = craftNode.ingredients
         .map(i => `${i.perCraftCount} ${renderName(i.item, i.meta)}`)
         .join(' + ');
       const resultName = renderName(craftNode.result.item, craftNode.result.meta);
-      logger.info(`${' '.repeat((depth + 1) * 2)}├─ ${ingredientsStr} to ${craftNode.result.perCraftCount} ${resultName}`);
+      
+      let variantsInfo = '';
+      if (craftNode.resultVariants && craftNode.resultVariants.length > 1) {
+        // Show second variant if it exists
+        if (craftNode.resultVariants.length >= 2 && craftNode.ingredientVariants && craftNode.ingredientVariants.length >= 2) {
+          const secondIngredients = craftNode.ingredientVariants[1]
+            .map((item, idx) => `${craftNode.ingredients[idx].perCraftCount} ${renderName(item)}`)
+            .join(' + ');
+          const secondResult = renderName(craftNode.resultVariants[1]);
+          variantsInfo = `, ${secondIngredients} to ${craftNode.result.perCraftCount} ${secondResult}`;
+          
+          // Show "+x more" for remaining variants
+          if (craftNode.resultVariants.length > 2) {
+            variantsInfo += `, +${craftNode.resultVariants.length - 2} more`;
+          }
+        } else {
+          variantsInfo = ` (+${craftNode.resultVariants.length - 1} more)`;
+        }
+        
+        // Add variant mode indicator
+        if (craftNode.variantMode) {
+          const modeLabel = craftNode.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          variantsInfo += ` [${modeLabel}]`;
+        }
+      }
+      
+      console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingredientsStr} to ${craftNode.result.perCraftCount} ${resultName}${variantsInfo}`);
     }
 
     const children = craftNode.children || [];
@@ -103,8 +129,34 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
   if (node.action === 'mine') {
     if (node.children && node.children.length > 0) {
       const op = ('operator' in node && node.operator === 'OR') ? 'ANY' : 'ALL';
-      const targetInfo = node.what ? ` for ${renderName(node.what)}` : '';
-      logger.info(`${indent}${branch} mine${targetInfo} (${node.count}x) [${op}]`);
+      
+      // Check if children have variants to show in the header
+      let targetInfo = '';
+      let groupVariantsInfo = '';
+      
+      // Find first child with variants to extract the target list
+      const firstChild = node.children.find(c => 
+        c.action !== 'require' && (c as any).targetItemVariants && (c as any).targetItemVariants.length > 1
+      );
+      
+      if (firstChild) {
+        // Show variants in the mine group header
+        const firstTarget = (firstChild as any).targetItem || (firstChild as any).what;
+        targetInfo = ` for ${renderName(firstTarget)}`;
+        
+        if ((firstChild as any).targetItemVariants && (firstChild as any).targetItemVariants.length >= 2) {
+          const secondTarget = (firstChild as any).targetItemVariants[1];
+          groupVariantsInfo = `, ${renderName(secondTarget)}`;
+          
+          if ((firstChild as any).targetItemVariants.length > 2) {
+            groupVariantsInfo += `, +${(firstChild as any).targetItemVariants.length - 2} more`;
+          }
+        }
+      } else {
+        targetInfo = node.what ? ` for ${renderName(node.what)}` : '';
+      }
+      
+      console.log(`${indent}${branch} mine${targetInfo}${groupVariantsInfo} (${node.count}x) [${op}]`);
 
       node.children.forEach((child, idx) => {
         if (child.action === 'require') {
@@ -114,12 +166,64 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
           const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
           const toolInfo = (child as any).tool && (child as any).tool !== 'any' ? ` (needs ${(child as any).tool})` : '';
           const childTargetInfo = (child as any).targetItem ? ` for ${renderName((child as any).targetItem)}` : '';
-          logger.info(`${subIndent}${subBranch} ${renderName(child.what)}${childTargetInfo}${toolInfo}`);
+          
+          let variantsInfo = '';
+          if ((child as any).whatVariants && (child as any).whatVariants.length > 1) {
+            // Show second variant if it exists
+            if ((child as any).whatVariants.length >= 2) {
+              const secondWhat = renderName((child as any).whatVariants[1]);
+              const secondTargetInfo = (child as any).targetItemVariants && (child as any).targetItemVariants[1] 
+                ? ` for ${renderName((child as any).targetItemVariants[1])}` 
+                : '';
+              variantsInfo = `, ${secondWhat}${secondTargetInfo}${toolInfo}`;
+              
+              // Show "+x more" for remaining variants
+              if ((child as any).whatVariants.length > 2) {
+                variantsInfo += `, +${(child as any).whatVariants.length - 2} more`;
+              }
+            } else {
+              variantsInfo = ` (+${(child as any).whatVariants.length - 1} more)`;
+            }
+            
+            // Add variant mode indicator
+            if ((child as any).variantMode) {
+              const modeLabel = (child as any).variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+              variantsInfo += ` [${modeLabel}]`;
+            }
+          }
+          
+          console.log(`${subIndent}${subBranch} ${renderName(child.what)}${childTargetInfo}${toolInfo}${variantsInfo}`);
         }
       });
     } else {
       const targetInfo = (node as any).targetItem ? ` for ${renderName((node as any).targetItem)}` : '';
-      logger.info(`${indent}${branch} ${renderName(node.what)}${targetInfo}`);
+      
+      let variantsInfo = '';
+      if ((node as any).whatVariants && (node as any).whatVariants.length > 1) {
+        // Show second variant if it exists
+        if ((node as any).whatVariants.length >= 2) {
+          const secondWhat = renderName((node as any).whatVariants[1]);
+          const secondTargetInfo = (node as any).targetItemVariants && (node as any).targetItemVariants[1] 
+            ? ` for ${renderName((node as any).targetItemVariants[1])}` 
+            : '';
+          variantsInfo = `, ${secondWhat}${secondTargetInfo}`;
+          
+          // Show "+x more" for remaining variants
+          if ((node as any).whatVariants.length > 2) {
+            variantsInfo += `, +${(node as any).whatVariants.length - 2} more`;
+          }
+        } else {
+          variantsInfo = ` (+${(node as any).whatVariants.length - 1} more)`;
+        }
+        
+        // Add variant mode indicator
+        if ((node as any).variantMode) {
+          const modeLabel = (node as any).variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          variantsInfo += ` [${modeLabel}]`;
+        }
+      }
+      
+      console.log(`${indent}${branch} ${renderName(node.what)}${targetInfo}${variantsInfo}`);
     }
     return;
   }
@@ -129,17 +233,17 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
       const smeltNode = node as SmeltNode;
       const op = smeltNode.operator === 'AND' ? 'ALL' : 'ANY';
       const fuelInfo = smeltNode.fuel ? ` with ${renderName(smeltNode.fuel)}` : '';
-      logger.info(`${indent}${branch} smelt in furnace${fuelInfo} (${smeltNode.count}x) [${op}]`);
+      console.log(`${indent}${branch} smelt in furnace${fuelInfo} (${smeltNode.count}x) [${op}]`);
 
       if (smeltNode.input && smeltNode.result) {
         const ingStr = `${smeltNode.input.perSmelt} ${renderName(smeltNode.input.item)}`;
         const resStr = `${smeltNode.result.perSmelt} ${renderName(smeltNode.result.item)}`;
-        logger.info(`${' '.repeat((depth + 1) * 2)}├─ ${ingStr} to ${resStr}`);
+        console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingStr} to ${resStr}`);
       }
 
       smeltNode.children.forEach((child) => logActionTree(child, depth + 1));
     } else {
-      logger.info(`${indent}${branch} smelt ${renderName(node.what)}`);
+      console.log(`${indent}${branch} smelt ${renderName(node.what)}`);
     }
     return;
   }
@@ -147,7 +251,7 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
   if (node.action === 'require') {
     const requireNode = node as RequireNode;
     const op = requireNode.operator === 'AND' ? 'ALL' : 'ANY';
-    logger.info(`${indent}${branch} require ${requireNode.what.replace('tool:', '')} [${op}]`);
+    console.log(`${indent}${branch} require ${requireNode.what.replace('tool:', '')} [${op}]`);
     const children = requireNode.children || [];
     children.forEach((child) => logActionTree(child, depth + 1));
     return;
@@ -156,7 +260,7 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
   if (node.action === 'hunt') {
     if (node.children && node.children.length > 0) {
       const op = ('operator' in node && node.operator === 'OR') ? 'ANY' : 'ALL';
-      logger.info(`${indent}${branch} hunt (${node.count}x) [${op}]`);
+      console.log(`${indent}${branch} hunt (${node.count}x) [${op}]`);
 
       node.children.forEach((child, idx) => {
         const subIndent = ' '.repeat((depth + 1) * 2);
@@ -164,10 +268,10 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
         const chance = (child as any).dropChance ? ` (${(child as any).dropChance * 100}% chance)` : '';
         const toolInfo = (child as any).tool && (child as any).tool !== 'any' ? ` (needs ${(child as any).tool})` : '';
         const targetInfo = (child as any).targetItem ? ` for ${renderName((child as any).targetItem)}` : '';
-        logger.info(`${subIndent}${subBranch} ${renderName(child.what)}${targetInfo}${chance}${toolInfo}`);
+        console.log(`${subIndent}${subBranch} ${renderName(child.what)}${targetInfo}${chance}${toolInfo}`);
       });
     } else {
-      logger.info(`${indent}${branch} ${renderName(node.what)}`);
+      console.log(`${indent}${branch} ${renderName(node.what)}`);
     }
     return;
   }

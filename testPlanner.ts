@@ -7,23 +7,30 @@ import { hoistMiningInPaths } from './path_optimizations/hoistMining';
 import { loadSnapshotFromFile } from './utils/worldSnapshot';
 import { generateTopNPathsFromGenerators } from './path_generators/generateTopN';
 import logger from './utils/logger';
+import { logActionTree } from './action_tree/logger';
 
 const { resolveMcData } = (plan as any)._internals;
 
 // Project-wide config for this demo run
 const mcData = resolveMcData('1.20.1');
 
-const item = 'stone_pickaxe';
+const item = 'stick';
 const count = 1;
 const inventory = { /*cobblestone: 2, stick: 2, crafting_table: 1 */ };
+const combineSimilarNodes = true; // Set to false to see full tree explosion
 logger.info(`Analyzing target item: ${item} x${count}`);
 logger.info(`\nUsing inventory: ${JSON.stringify(inventory)}`);
-const tree = plan(mcData, item, count, { log: false, inventory });
+logger.info(`\nCombine similar nodes: ${combineSimilarNodes}`);
+const tree = plan(mcData, item, count, { log: false, inventory, combineSimilarNodes });
 
 // demo logging disabled
 
 const { computeTreeMaxDepth, countActionPaths } = (plan as any)._internals;
 logger.info(`\nGenerated action tree with max depth: ${computeTreeMaxDepth(tree)}`);
+
+// log the tree
+logger.info(`\nGenerated action tree:`);
+logActionTree(tree);
 
 logger.info(`\nTotal paths: ${countActionPaths(tree)}`);
 

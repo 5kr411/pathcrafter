@@ -468,7 +468,8 @@ export function buildRecipeTree(
                       visited: nextVisited,
                       preferMinimalTools,
                       inventory: mapToInventoryObject(recipeInv),
-                      worldBudget
+                      worldBudget,
+                      combineSimilarNodes: context.combineSimilarNodes
                     }),
                     mineLeaf
                   ]
@@ -746,6 +747,15 @@ export function buildRecipeTree(
     // Ignore normalization errors
   }
 
+  // Combine similar nodes if enabled
+  if (context && context.combineSimilarNodes && mcData) {
+    try {
+      combineSimilarNodesInTree(mcData, root);
+    } catch (_) {
+      // Ignore combination errors
+    }
+  }
+
   return root;
 }
 
@@ -794,6 +804,261 @@ function normalizePersistentRequires(node: TreeNode, invObj: Record<string, numb
   // Recurse
   for (const ch of node.children) {
     normalizePersistentRequires(ch, invObj);
+  }
+}
+
+/**
+ * Groups similar craft nodes based on recipe shape and suffix
+ * Returns grouped nodes with variants tracked
+ */
+function groupSimilarCraftNodes(_mcData: MinecraftData, nodes: TreeNode[]): TreeNode[] {
+  const craftNodes = nodes.filter((n): n is CraftNode => n.action === 'craft');
+  const otherNodes = nodes.filter(n => n.action !== 'craft');
+
+  if (craftNodes.length === 0) return nodes;
+
+  // Group by recipe shape (canonical representation)
+  const groupsByShape = new Map<string, CraftNode[]>();
+
+  for (const node of craftNodes) {
+    // Build a canonical key based on:
+    // 1. Crafting location (table vs inventory)
+    // 2. Number and suffix of ingredients
+    // 3. Recipe shape
+    const ingredientSuffixes = node.ingredients
+      .map(ing => getSuffixTokenFromName(ing.item))
+      .sort()
+      .join(',');
+    const resultSuffix = getSuffixTokenFromName(node.result.item);
+    const key = `${node.what}:${ingredientSuffixes}:${resultSuffix}:${node.result.perCraftCount}`;
+
+    if (!groupsByShape.has(key)) {
+      groupsByShape.set(key, []);
+    }
+    groupsByShape.get(key)!.push(node);
+  }
+
+  // Combine groups with multiple variants
+  const combinedNodes: TreeNode[] = [];
+
+  for (const [_key, group] of groupsByShape.entries()) {
+    if (group.length === 1) {
+      // No combining needed
+      combinedNodes.push(group[0]);
+    } else {
+      // Combine into one representative node
+      const representative = { ...group[0] };
+      representative.resultVariants = group.map(n => n.result.item);
+      representative.ingredientVariants = group.map(n => n.ingredients.map(ing => ing.item));
+      representative.variantMode = 'one_of'; // Wood families are mutually exclusive
+      
+      // Merge children from all variants
+      representative.children = mergeChildrenFromVariants(_mcData, group);
+      
+      combinedNodes.push(representative);
+    }
+  }
+
+  return [...combinedNodes, ...otherNodes];
+}
+
+/**
+ * Merges children subtrees from multiple craft node variants
+ * This ensures that ingredient acquisition paths are combined across wood families
+ */
+function mergeChildrenFromVariants(_mcData: MinecraftData, variants: CraftNode[]): TreeNode[] {
+  if (variants.length === 0) return [];
+  if (variants.length === 1) return variants[0].children;
+
+  // Collect all children from all variants
+  const allChildren: TreeNode[] = [];
+  for (const variant of variants) {
+    allChildren.push(...variant.children);
+  }
+
+  // Group children by their suffix (to merge wood families)
+  const childrenBySuffix = new Map<string, TreeNode[]>();
+  
+  for (const child of allChildren) {
+    // Root nodes have a 'what' field indicating what item they acquire
+    if (child.action === 'root') {
+      // Group by suffix to merge oak_planks, spruce_planks, etc.
+      const suffix = getSuffixTokenFromName(child.what);
+      if (!childrenBySuffix.has(suffix)) {
+        childrenBySuffix.set(suffix, []);
+      }
+      childrenBySuffix.get(suffix)!.push(child);
+    } else {
+      // Non-root children get a unique key based on their type
+      const key = `${child.action}:${child.what}`;
+      if (!childrenBySuffix.has(key)) {
+        childrenBySuffix.set(key, []);
+      }
+      childrenBySuffix.get(key)!.push(child);
+    }
+  }
+
+  // Merge children with the same suffix
+  const mergedChildren: TreeNode[] = [];
+  
+  for (const [_suffix, childGroup] of childrenBySuffix.entries()) {
+    if (childGroup.length === 1) {
+      mergedChildren.push(childGroup[0]);
+    } else if (childGroup[0].action === 'root') {
+      // Merge multiple root nodes by combining their children
+      const mergedRoot: RootNode = { ...childGroup[0] } as RootNode;
+      
+      // Use the first node's name but track all variants
+      // This represents "acquire any _planks type"
+      
+      // Collect all children from all root variants
+      const allRootChildren: TreeNode[] = [];
+      for (const rootNode of childGroup) {
+        allRootChildren.push(...rootNode.children);
+      }
+      
+      // Recursively combine the children (craft nodes, mine nodes, etc.)
+      const combinedRootChildren = groupSimilarCraftNodes(_mcData, allRootChildren);
+      
+      // Group mine groups by their target item and merge them
+      mergedRoot.children = groupMineGroups(combinedRootChildren);
+      
+      mergedChildren.push(mergedRoot);
+    } else {
+      // For non-root nodes, just take the first one
+      mergedChildren.push(childGroup[0]);
+    }
+  }
+
+  return mergedChildren;
+}
+
+/**
+ * Groups mine group nodes by their target item suffix and merges their leaves
+ */
+function groupMineGroups(nodes: TreeNode[]): TreeNode[] {
+  const mineGroups = nodes.filter((n): n is MineGroupNode => 
+    n.action === 'mine' && 'operator' in n && n.operator === 'OR'
+  );
+  const otherNodes = nodes.filter(n => 
+    !(n.action === 'mine' && 'operator' in n && n.operator === 'OR')
+  );
+
+  if (mineGroups.length === 0) return nodes;
+
+  // Group mine groups by their target item suffix
+  const groupsBySuffix = new Map<string, MineGroupNode[]>();
+
+  for (const mineGroup of mineGroups) {
+    const suffix = mineGroup.what ? getSuffixTokenFromName(mineGroup.what) : 'default';
+    if (!groupsBySuffix.has(suffix)) {
+      groupsBySuffix.set(suffix, []);
+    }
+    groupsBySuffix.get(suffix)!.push(mineGroup);
+  }
+
+  // Merge mine groups with the same suffix
+  const mergedMineGroups: TreeNode[] = [];
+
+  for (const [_suffix, group] of groupsBySuffix.entries()) {
+    if (group.length === 1) {
+      // Single mine group - just combine its leaf nodes
+      const mineGroup = group[0];
+      mineGroup.children = groupSimilarMineLeafNodes(mineGroup.children);
+      mergedMineGroups.push(mineGroup);
+    } else {
+      // Multiple mine groups - merge them
+      const representative: MineGroupNode = { ...group[0] };
+      
+      // Collect all leaf nodes from all mine groups
+      const allLeaves: TreeNode[] = [];
+      for (const mineGroup of group) {
+        allLeaves.push(...mineGroup.children);
+      }
+      
+      // Group and merge the leaves
+      representative.children = groupSimilarMineLeafNodes(allLeaves);
+      
+      mergedMineGroups.push(representative);
+    }
+  }
+
+  return [...mergedMineGroups, ...otherNodes];
+}
+
+/**
+ * Groups similar mine leaf nodes within a mine group
+ */
+function groupSimilarMineLeafNodes(nodes: TreeNode[]): TreeNode[] {
+  const mineLeaves = nodes.filter((n): n is MineLeafNode => 
+    n.action === 'mine' && (!('operator' in n) || !n.operator)
+  );
+  const otherNodes = nodes.filter(n => 
+    n.action !== 'mine' || ('operator' in n && n.operator)
+  );
+
+  if (mineLeaves.length === 0) return nodes;
+
+  // Group by tool and suffix
+  const groupsByPattern = new Map<string, MineLeafNode[]>();
+
+  for (const node of mineLeaves) {
+    const blockSuffix = getSuffixTokenFromName(node.what);
+    const targetSuffix = node.targetItem ? getSuffixTokenFromName(node.targetItem) : '';
+    const tool = node.tool || 'none';
+    const key = `${tool}:${blockSuffix}:${targetSuffix}`;
+
+    if (!groupsByPattern.has(key)) {
+      groupsByPattern.set(key, []);
+    }
+    groupsByPattern.get(key)!.push(node);
+  }
+
+  // Combine groups with multiple variants
+  const combinedNodes: TreeNode[] = [];
+
+  for (const [_key, group] of groupsByPattern.entries()) {
+    if (group.length === 1) {
+      combinedNodes.push(group[0]);
+    } else {
+      // Combine into one representative node
+      const representative: MineLeafNode = { ...group[0] };
+      representative.whatVariants = group.map(n => n.what);
+      representative.targetItemVariants = group.map(n => n.targetItem || n.what);
+      representative.variantMode = 'one_of'; // Block variants are mutually exclusive
+      combinedNodes.push(representative);
+    }
+  }
+
+  return [...combinedNodes, ...otherNodes];
+}
+
+/**
+ * Recursively combines similar nodes throughout the tree
+ */
+function combineSimilarNodesInTree(mcData: MinecraftData, node: TreeNode): void {
+  if (!node || !node.children || node.children.length === 0) return;
+
+  // Recurse first
+  for (const child of node.children) {
+    combineSimilarNodesInTree(mcData, child);
+  }
+
+  // Then combine at this level
+  if (node.action === 'root') {
+    // Combine craft nodes at root level
+    node.children = groupSimilarCraftNodes(mcData, node.children);
+  } else if (node.action === 'mine' && 'operator' in node && node.operator === 'OR') {
+    // Group mine leaf nodes within mine groups
+    node.children = groupSimilarMineLeafNodes(node.children);
+  } else if (node.action === 'craft') {
+    // Combine child mine groups
+    node.children = node.children.map(child => {
+      if (child.action === 'mine' && 'operator' in child && child.operator === 'OR') {
+        child.children = groupSimilarMineLeafNodes(child.children);
+      }
+      return child;
+    });
   }
 }
 

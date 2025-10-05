@@ -121,7 +121,8 @@ const analyzeRecipes: AnalyzeRecipesFunction = (ctx: any, itemName: string, targ
   setLastMcData(mc || null);
   setTargetItemNameGlobal(itemName);
   const tree = treeBuild.buildRecipeTree(mc, itemName, targetCount, {
-    inventory: options && options.inventory ? options.inventory : undefined
+    inventory: options && options.inventory ? options.inventory : undefined,
+    combineSimilarNodes: options && options.combineSimilarNodes ? options.combineSimilarNodes : undefined
   });
   if (!options || options.log !== false) treeLogger.logActionTree(tree);
   return tree;

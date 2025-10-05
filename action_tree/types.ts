@@ -49,6 +49,18 @@ export interface CraftNode extends BaseTreeNode {
   what: 'table' | 'inventory';
   result: ItemReference;
   ingredients: ItemReference[];
+  /**
+   * When combineSimilarNodes is enabled, this contains all variants (e.g., oak_planks, spruce_planks)
+   * Otherwise, it's undefined or contains just the primary result
+   */
+  resultVariants?: string[];
+  ingredientVariants?: string[][];
+  /**
+   * Describes how variants relate to each other:
+   * - 'one_of': Mutually exclusive options (pick one variant)
+   * - 'any_of': Compatible alternatives (could use any/multiple)
+   */
+  variantMode?: 'one_of' | 'any_of';
 }
 
 /**
@@ -71,6 +83,17 @@ export interface MineLeafNode {
   count: number;
   operator?: never;
   children: [];
+  /**
+   * When combineSimilarNodes is enabled, this contains all block variants (e.g., oak_log, spruce_log)
+   */
+  whatVariants?: string[];
+  targetItemVariants?: string[];
+  /**
+   * Describes how variants relate to each other:
+   * - 'one_of': Mutually exclusive options (mine one type of block)
+   * - 'any_of': Compatible alternatives (could mine any/multiple types)
+   */
+  variantMode?: 'one_of' | 'any_of';
 }
 
 /**
@@ -169,6 +192,7 @@ export interface BuildContext {
   avoidTool?: string;
   visited?: Set<string>;
   preferMinimalTools?: boolean;
+  combineSimilarNodes?: boolean;
 }
 
 /**

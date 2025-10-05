@@ -39,6 +39,11 @@ export interface PlanOptions {
   log?: boolean;
 
   /**
+   * Whether to combine similar nodes (e.g., wood families) to reduce branching
+   */
+  combineSimilarNodes?: boolean;
+
+  /**
    * Additional configuration options
    */
   config?: any;
@@ -165,7 +170,8 @@ export function plan(
   const tree = treeBuild.buildRecipeTree(ctx, itemName, targetCount, {
     inventory: options && options.inventory ? options.inventory : undefined,
     worldBudget,
-    config: options && options.config ? options.config : undefined
+    config: options && options.config ? options.config : undefined,
+    combineSimilarNodes: options && options.combineSimilarNodes ? options.combineSimilarNodes : undefined
   });
 
   if (!options || options.log !== false) {
