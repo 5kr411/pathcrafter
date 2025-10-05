@@ -191,27 +191,7 @@ bot.once('spawn', () => {
           let have = 0;
           if (target && target.item) {
             const name = String(target.item);
-            if (name.startsWith('generic_')) {
-              const base = name.slice('generic_'.length);
-              try {
-                const mcDataNow = minecraftData(bot.version || '1.20.1');
-                const speciesTokens = new Set<string>();
-                try {
-                  const { ensureWoodSpeciesTokens } = require('../utils/wood');
-                  const ensured = ensureWoodSpeciesTokens(mcDataNow);
-                  ensured && ensured.forEach && ensured.forEach((t: string) => speciesTokens.add(t));
-                } catch (_) {}
-                for (const [k, v] of Object.entries(invNow)) {
-                  const idx = k.lastIndexOf('_');
-                  if (idx <= 0) continue;
-                  const prefix = k.slice(0, idx);
-                  const suffix = k.slice(idx + 1);
-                  if (suffix === base && speciesTokens.has(prefix)) have += v;
-                }
-              } catch (_) {}
-            } else {
-              have = invNow[name] || 0;
-            }
+            have = invNow[name] || 0;
           }
           if (target && Number.isFinite(target.count) && have >= target.count) {
             running = false;

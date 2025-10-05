@@ -338,8 +338,7 @@ export function buildRecipeTree(
       count: craftingsNeeded,
       result: {
         item: itemName,
-        perCraftCount: recipe.result.count,
-        meta: { generic: false, selectedSpecies: null }
+        perCraftCount: recipe.result.count
       },
       ingredients: Array.from(ingredientCounts.entries())
         .sort(([a], [b]) => a - b)
@@ -347,8 +346,7 @@ export function buildRecipeTree(
           const ingName = mcData.items[id]?.name;
           return {
             item: ingName,
-            perCraftCount: count,
-            meta: { generic: false, selectedSpecies: null }
+            perCraftCount: count
           };
         }),
       children: []

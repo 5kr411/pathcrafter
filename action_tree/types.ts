@@ -5,11 +5,10 @@
 import type { WorldBudget } from '../utils/worldBudget';
 
 /**
- * Represents metadata about an item, including whether it's generic and its selected species
+ * Represents metadata about an item
  */
 export interface ItemMeta {
-  generic: boolean;
-  selectedSpecies: string | null;
+  // Reserved for future metadata
 }
 
 /**
@@ -170,7 +169,6 @@ export interface BuildContext {
   avoidTool?: string;
   visited?: Set<string>;
   preferMinimalTools?: boolean;
-  familyGenericBases?: Set<string>;
 }
 
 /**
