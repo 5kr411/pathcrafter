@@ -53,7 +53,8 @@ describe('integration: mining hoist applied post generation/filtering', () => {
             blocks: { 
                 oak_log: { count: 50, closestDistance: 5, averageDistance: 10 },
                 cobblestone: { count: 100, closestDistance: 3, averageDistance: 8 },
-                stone: { count: 100, closestDistance: 3, averageDistance: 8 }
+                stone: { count: 100, closestDistance: 3, averageDistance: 8 },
+                coal_ore: { count: 20, closestDistance: 10, averageDistance: 15 }
             }, 
             entities: {}
         };

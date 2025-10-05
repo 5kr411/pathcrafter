@@ -5,7 +5,7 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 import { getItemCountInInventory } from '../utils/inventory';
-const createPlaceNearState = require('./behaviorPlaceNear');
+import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 
 interface Vec3Like {

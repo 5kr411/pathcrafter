@@ -1,7 +1,7 @@
 const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
-const createCraftNoTableState = require('../behaviors/behaviorCraftNoTable');
+import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
 
 let botOptions: any = {
   host: 'localhost',
@@ -23,7 +23,7 @@ bot.once('spawn', () => {
   const targets: any = {};
 
   const enter = new BehaviorIdle();
-  const craftNoTable = new createCraftNoTableState(bot, targets);
+  const craftNoTable = createCraftNoTableState(bot, targets);
   const exit = new BehaviorIdle();
 
   const startTransition = new StateTransition({

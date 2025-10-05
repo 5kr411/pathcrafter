@@ -712,25 +712,6 @@ export function buildRecipeTree(
   // Process hunting paths
   const huntingPaths = findMobsThatDrop(mcData, itemName);
   if (huntingPaths.length > 0) {
-    // Check and reserve world availability
-    if (worldBudget) {
-      const tokens: string[] = [];
-      let totalNeed = 0;
-
-      for (const s of huntingPaths) {
-        const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
-        totalNeed += Math.ceil(targetCount / p);
-        tokens.push(s.mob);
-      }
-
-      const totalAvail = wb.sum('entities', tokens);
-      if (!(totalAvail >= totalNeed)) {
-        // Insufficient mobs
-      } else {
-        wb.reserve('entities', tokens, totalNeed);
-      }
-    }
-
     const huntGroup: HuntGroupNode = {
       action: 'hunt',
       operator: 'OR',
@@ -754,7 +735,10 @@ export function buildRecipeTree(
       }).filter((n): n is HuntLeafNode => n !== null)
     };
 
-    root.children.push(huntGroup);
+    // Only add hunt group if it has valid children
+    if (huntGroup.children.length > 0) {
+      root.children.push(huntGroup);
+    }
   }
 
   // Normalize persistent requirements

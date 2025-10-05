@@ -1,4 +1,4 @@
-const createMineOneOfState = require('../behaviors/behaviorMineOneOf');
+import createMineOneOfState from '../behaviors/behaviorMineOneOf';
 
 interface Step {
   action?: string;

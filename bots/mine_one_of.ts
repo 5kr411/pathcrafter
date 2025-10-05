@@ -1,7 +1,7 @@
 const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
-const createMineOneOfState = require('../behaviors/behaviorMineOneOf');
+import createMineOneOfState from '../behaviors/behaviorMineOneOf';
 
 let botOptions: any = {
   host: 'localhost',

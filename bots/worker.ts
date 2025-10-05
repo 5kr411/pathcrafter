@@ -3,7 +3,7 @@ import { workerData, parentPort, isMainThread } from 'worker_threads';
 const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
-const createCollectItemState = require('../behaviors/behaviorCollectBlock');
+import createCollectItemState from '../behaviors/behaviorCollectBlock';
 
 let botOptions: any = {
   host: 'localhost',

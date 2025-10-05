@@ -1,7 +1,7 @@
 const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
-const createCollectBlockState = require('../behaviors/behaviorCollectBlock');
+import createCollectBlockState from '../behaviors/behaviorCollectBlock';
 
 let botOptions: any = {
   host: 'localhost',
@@ -27,7 +27,7 @@ bot.once('spawn', () => {
   if (!targets.blockName) targets.blockName = 'stone';
   if (!targets.itemName) targets.itemName = 'cobblestone';
   if (!targets.amount) targets.amount = 1;
-  const collect = new createCollectBlockState(bot, targets);
+  const collect = createCollectBlockState(bot, targets);
   // Encourage movement: reduce pathfinder search radius a bit for responsiveness
   try {
     bot.pathfinder.searchRadius = 64;

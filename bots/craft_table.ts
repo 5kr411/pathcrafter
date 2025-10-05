@@ -2,9 +2,9 @@ const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 const { BehaviorEquipItem } = require('mineflayer-statemachine');
 
-const createPlaceNearState = require('../behaviors/behaviorPlaceNear');
-const createCraftWithTableState = require('../behaviors/behaviorCraftWithTable');
-const createBreakAtPositionState = require('../behaviors/behaviorBreakAtPosition');
+import createPlaceNearState from '../behaviors/behaviorPlaceNear';
+import createCraftWithTableState from '../behaviors/behaviorCraftWithTable';
+import createBreakAtPositionState from '../behaviors/behaviorBreakAtPosition';
 
 let botOptions: any = {
   host: 'localhost',
