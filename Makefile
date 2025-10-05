@@ -14,10 +14,10 @@ tests: build
 
 # Test scripts
 test-planner: build
-	node testPlanner.js
+	node dist/testPlanner.js
 
 test-analyzer: build
-	node testRecipeAnalyzer.js
+	node dist/testRecipeAnalyzer.js
 
 # E2E Bots
 bot-collect: build

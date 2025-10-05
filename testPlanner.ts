@@ -44,7 +44,7 @@ const perGenerator = getDefaultPerGeneratorPaths();
 
     // World filtering demo using snapshot from world-snapshots directory
     try {
-        const snapshotsDir = path.resolve(__dirname, 'world_snapshots');
+        const snapshotsDir = path.resolve(__dirname, '../world_snapshots');
         const files = fs.readdirSync(snapshotsDir).filter(f => f.endsWith('.json'));
         if (files.length > 0) {
             const withTimes = files.map(f => {
