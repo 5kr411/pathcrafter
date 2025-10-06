@@ -4,16 +4,16 @@ import { ActionStep } from '../../action_tree/types';
 describe('unit: hoist mining optimizer', () => {
     test('merges identical mining steps and sums counts', () => {
         const path: ActionStep[] = [
-            { action: 'mine', what: 'generic_log', count: 1 },
-            { action: 'craft', what: 'inventory', count: 1, ingredients: [{ item: 'generic_log', perCraftCount: 1 }], result: { item: 'generic_planks', perCraftCount: 4 } },
-            { action: 'mine', what: 'generic_log', count: 2 },
-            { action: 'craft', what: 'inventory', count: 1, ingredients: [{ item: 'generic_planks', perCraftCount: 4 }], result: { item: 'crafting_table', perCraftCount: 1 } },
-            { action: 'mine', what: 'generic_log', count: 3 }
+            { action: 'mine', what: 'oak_log', count: 1 },
+            { action: 'craft', what: 'inventory', count: 1, ingredients: [{ item: 'oak_log', perCraftCount: 1 }], result: { item: 'oak_planks', perCraftCount: 4 } },
+            { action: 'mine', what: 'oak_log', count: 2 },
+            { action: 'craft', what: 'inventory', count: 1, ingredients: [{ item: 'oak_planks', perCraftCount: 4 }], result: { item: 'crafting_table', perCraftCount: 1 } },
+            { action: 'mine', what: 'oak_log', count: 3 }
         ];
         const out = hoistMiningInPath(path);
         const mines = out.filter(s => s.action === 'mine');
         expect(mines.length).toBe(1);
-        expect(mines[0].what).toBe('generic_log');
+        expect(mines[0].what).toBe('oak_log');
         expect(mines[0].count).toBe(6);
         // preserves order of non-mining steps
         expect(out[1].action).toBe('craft');
@@ -37,13 +37,13 @@ describe('unit: hoist mining optimizer', () => {
 
     test('handles targetItem key variant', () => {
         const path: ActionStep[] = [
-            { action: 'mine', what: 'oak_log', targetItem: 'generic_log', count: 1 },
-            { action: 'mine', what: 'oak_log', targetItem: 'generic_log', count: 2 }
+            { action: 'mine', what: 'oak_log', targetItem: 'oak_log', count: 1 },
+            { action: 'mine', what: 'oak_log', targetItem: 'oak_log', count: 2 }
         ];
         const out = hoistMiningInPath(path);
         expect(out.length).toBe(1);
         expect(out[0].what).toBe('oak_log');
-        expect((out[0] as any).targetItem).toBe('generic_log');
+        expect((out[0] as any).targetItem).toBe('oak_log');
         expect(out[0].count).toBe(3);
     });
 

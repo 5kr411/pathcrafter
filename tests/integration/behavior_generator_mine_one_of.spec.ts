@@ -9,7 +9,7 @@ describe('integration: behavior_generator mineOneOf', () => {
   test('creates behavior for a mine OR step with oneOfCandidates', () => {
     const step = {
       action: 'mine' as const,
-      what: 'generic_log',
+      what: 'oak_log',
       count: 2,
       meta: { oneOfCandidates: [ { blockName: 'oak_log' }, { blockName: 'spruce_log' } ] }
     };
