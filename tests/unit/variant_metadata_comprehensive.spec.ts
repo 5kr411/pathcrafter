@@ -1,0 +1,183 @@
+import { plan } from '../../planner';
+import { enumerateActionPathsGenerator } from '../../path_generators/actionPathsGenerator';
+import { ActionStep } from '../../action_tree/types';
+
+describe('unit: comprehensive variant metadata tests', () => {
+  const { resolveMcData } = (plan as any)._internals;
+  const mcData = resolveMcData('1.20.1');
+
+  test('variant metadata captures all wood types in single path', () => {
+    const tree = plan(mcData, 'stick', 1, { 
+      log: false, 
+      inventory: {}, 
+      combineSimilarNodes: true 
+    });
+
+    const paths: any[] = [];
+    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    
+    // Should only need a few paths now
+    let count = 0;
+    for (const path of gen) {
+      paths.push(path);
+      count++;
+      if (count >= 10) break;
+    }
+
+    // Find a path with log mining
+    const logPath = paths.find(p => 
+      p.some((s: any) => s.action === 'mine' && s.whatVariants && s.whatVariants.length > 1)
+    );
+
+    expect(logPath).toBeDefined();
+
+    // Find the mining step with variants
+    const mineStep = logPath.find((s: any) => 
+      s.action === 'mine' && s.whatVariants && s.whatVariants.length > 1
+    ) as ActionStep;
+
+    expect(mineStep.whatVariants).toBeDefined();
+    expect(mineStep.whatVariants!.length).toBeGreaterThan(5); // Should have many wood types
+    expect(mineStep.targetItemVariants).toBeDefined();
+    expect(mineStep.variantMode).toBe('one_of');
+
+    // Verify common wood types are all present in ONE step
+    const variants = mineStep.whatVariants!;
+    expect(variants).toContain('oak_log');
+    expect(variants).toContain('spruce_log');
+    expect(variants).toContain('birch_log');
+    expect(variants).toContain('jungle_log');
+  });
+
+  test('variant metadata reduces path count dramatically', () => {
+    const treeWithoutCombining = plan(mcData, 'stick', 1, { 
+      log: false, 
+      inventory: {}, 
+      combineSimilarNodes: false 
+    });
+
+    const treeWithCombining = plan(mcData, 'stick', 1, { 
+      log: false, 
+      inventory: {}, 
+      combineSimilarNodes: true 
+    });
+
+    // Count paths for both
+    let noCombineCount = 0;
+    const genNoCombine = enumerateActionPathsGenerator(treeWithoutCombining, { inventory: {} });
+    for (const _ of genNoCombine) {
+      noCombineCount++;
+      if (noCombineCount >= 50) break;
+    }
+
+    let combineCount = 0;
+    const genCombine = enumerateActionPathsGenerator(treeWithCombining, { inventory: {} });
+    for (const _ of genCombine) {
+      combineCount++;
+      if (combineCount >= 50) break;
+    }
+
+    // With metadata approach, should have FEWER paths
+    // (variants are in metadata, not as separate paths)
+    expect(combineCount).toBeLessThan(noCombineCount);
+    expect(combineCount).toBeLessThan(15); // Should be very compact
+  });
+
+  test('variant metadata includes ingredient variants for crafting', () => {
+    const tree = plan(mcData, 'stick', 1, { 
+      log: false, 
+      inventory: {}, 
+      combineSimilarNodes: true 
+    });
+
+    const paths: any[] = [];
+    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    
+    let count = 0;
+    for (const path of gen) {
+      paths.push(path);
+      count++;
+      if (count >= 10) break;
+    }
+
+    // Find a craft step with variants
+    const craftSteps = paths.flatMap(p => p).filter((s: any) => 
+      s.action === 'craft' && s.resultVariants && s.resultVariants.length > 1
+    ) as ActionStep[];
+
+    expect(craftSteps.length).toBeGreaterThan(0);
+
+    craftSteps.forEach(step => {
+      expect(step.resultVariants).toBeDefined();
+      expect(step.ingredientVariants).toBeDefined();
+      
+      // Each result variant should have corresponding ingredient variant
+      expect(step.ingredientVariants!.length).toBe(step.resultVariants!.length);
+      
+      // Each ingredient variant should match the primary ingredients structure
+      step.ingredientVariants!.forEach(variantIngs => {
+        expect(variantIngs.length).toBe(step.ingredients!.length);
+      });
+    });
+  });
+
+  test('performance: generates paths quickly with metadata', () => {
+    const tree = plan(mcData, 'wooden_pickaxe', 1, { 
+      log: false, 
+      inventory: { crafting_table: 1 }, 
+      combineSimilarNodes: true 
+    });
+
+    const startTime = Date.now();
+    
+    const paths: any[] = [];
+    const gen = enumerateActionPathsGenerator(tree, { inventory: { crafting_table: 1 } });
+    
+    let count = 0;
+    for (const path of gen) {
+      paths.push(path);
+      count++;
+      if (count >= 20) break;
+    }
+    
+    const elapsed = Date.now() - startTime;
+
+    expect(paths.length).toBeGreaterThan(0);
+    expect(elapsed).toBeLessThan(200); // Should be very fast
+  });
+
+  test('variant metadata works with all three path generators', () => {
+    const tree = plan(mcData, 'stick', 1, { 
+      log: false, 
+      inventory: {}, 
+      combineSimilarNodes: true 
+    });
+
+    // All generators should produce paths with variant metadata
+    const generators = [
+      enumerateActionPathsGenerator,
+      require('../../path_generators/shortestPathsGenerator').enumerateShortestPathsGenerator,
+      require('../../path_generators/lowestWeightPathsGenerator').enumerateLowestWeightPathsGenerator
+    ];
+
+    generators.forEach(generatorFn => {
+      const paths: any[] = [];
+      const gen = generatorFn(tree, { inventory: {} });
+      
+      let count = 0;
+      for (const path of gen) {
+        paths.push(path);
+        count++;
+        if (count >= 5) break;
+      }
+
+      // Should have paths with variant metadata
+      const stepsWithVariants = paths.flatMap(p => p).filter((s: any) => 
+        (s.whatVariants && s.whatVariants.length > 1) ||
+        (s.resultVariants && s.resultVariants.length > 1)
+      );
+
+      expect(stepsWithVariants.length).toBeGreaterThan(0);
+    });
+  });
+});

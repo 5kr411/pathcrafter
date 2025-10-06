@@ -26,6 +26,7 @@ export type MakeStreamFn<T extends PathItem = PathItem> = (node: TreeNode) => St
  * 
  * This factory converts recipe tree nodes into generator streams:
  * - Leaf nodes (mine, craft, smelt, hunt) use makeLeafStream
+ * - Nodes with variants include variant metadata in action steps for runtime selection
  * - OR nodes (root, alternate recipes) use makeOrStream
  * - AND nodes (require, multi-ingredient) use makeAndStream
  * 
@@ -47,6 +48,8 @@ export function createMakeStream<T extends PathItem = PathItem>(
     // Leaf nodes (no children)
     if (!('children' in node) || !node.children || node.children.length === 0) {
       if (node.action === 'craft') {
+        // Leaf craft nodes don't have variants (only non-leaf craft nodes do in the combined tree structure)
+        // So we don't need to handle variants here
         const step: ActionStep = {
           action: 'craft',
           what: node.what,
@@ -69,7 +72,28 @@ export function createMakeStream<T extends PathItem = PathItem>(
         return makeLeafStream(step);
       }
 
-      if (node.action === 'mine' || node.action === 'hunt') {
+      if (node.action === 'mine') {
+        const mineNode = node as any;
+        
+        // Create single step with variant metadata if present
+        const step: ActionStep = {
+          action: 'mine',
+          what: node.what,
+          count: node.count,
+          ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+          ...(('tool' in node) && { tool: (node as any).tool }),
+          ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
+          // Include variant metadata for runtime decision-making
+          ...(mineNode.whatVariants && mineNode.whatVariants.length > 1 && {
+            whatVariants: mineNode.whatVariants,
+            targetItemVariants: mineNode.targetItemVariants,
+            variantMode: mineNode.variantMode
+          })
+        };
+        return makeLeafStream(step);
+      }
+
+      if (node.action === 'hunt') {
         const step: ActionStep = {
           action: node.action,
           what: node.what,
@@ -100,12 +124,21 @@ export function createMakeStream<T extends PathItem = PathItem>(
     }
 
     if (node.action === 'craft') {
+      const craftNode = node as any;
+      
+      // Create single step with variant metadata if present
       const step: ActionStep = {
         action: 'craft',
         what: node.what,
         count: node.count,
         ...(('result' in node) && { result: (node as any).result }),
-        ...(('ingredients' in node) && { ingredients: (node as any).ingredients })
+        ...(('ingredients' in node) && { ingredients: (node as any).ingredients }),
+        // Include variant metadata for runtime decision-making
+        ...(craftNode.resultVariants && craftNode.resultVariants.length > 1 && {
+          resultVariants: craftNode.resultVariants,
+          ingredientVariants: craftNode.ingredientVariants,
+          variantMode: craftNode.variantMode
+        })
       };
       return makeAndStream(children.map(makeStream), step);
     }

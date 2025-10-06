@@ -10,6 +10,7 @@ export {
 } from './worldResources';
 
 export { filterPathsByWorldSnapshot } from './filterByWorld';
+export { filterPathVariantsByWorld } from './filterVariants';
 
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
@@ -73,7 +74,14 @@ export async function generateTopNAndFilter(
     perGenerator
   );
 
+  // Filter paths by world snapshot if provided
+  const filtered = snapshot 
+    ? (await import('./filterByWorld')).filterPathsByWorldSnapshot(candidates, snapshot, { 
+        inventory: options.inventory
+      })
+    : candidates;
+
   // Apply mining optimization
-  return hoistMiningInPaths(candidates);
+  return hoistMiningInPaths(filtered);
 }
 

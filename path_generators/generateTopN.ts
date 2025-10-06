@@ -5,7 +5,6 @@ import { GeneratorOptions, EnumeratorJob, WorkerMessage } from './types';
 
 import { _internals as plannerInternals } from '../planner';
 import { computePathWeight } from '../utils/pathUtils';
-import { computePathResourceDemand } from '../path_filters/worldResources';
 
 /**
  * Takes the first N items from an iterator
@@ -140,6 +139,7 @@ export async function generateTopNPathsFromGenerators(
 
   /**
    * Calculates a distance score for a path based on world snapshot
+   * Now variant-aware: checks whatVariants for mining steps
    */
   function distanceScore(path: ActionPath): number {
     try {
@@ -147,20 +147,46 @@ export async function generateTopNPathsFromGenerators(
         return Number.POSITIVE_INFINITY;
       }
 
-      const demand = computePathResourceDemand(path);
       let totalWeighted = 0;
       let totalCount = 0;
 
-      if (demand && demand.blocks && demand.blocks.forEach) {
-        demand.blocks.forEach((count: number, name: string) => {
-          const rec = snapshot.blocks![name];
-          const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
-
-          if (avg != null) {
-            totalWeighted += avg * Math.max(1, count || 1);
-            totalCount += Math.max(1, count || 1);
+      // Check each step individually to handle variants
+      for (const step of path) {
+        if (step.action === 'mine') {
+          const count = Math.max(1, step.count || 1);
+          
+          // Check if step has variants
+          if (step.whatVariants && step.whatVariants.length > 1) {
+            // Find the best available variant (closest distance)
+            let bestAvg: number | null = null;
+            
+            for (const variant of step.whatVariants) {
+              const rec = snapshot.blocks![variant];
+              const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
+              
+              if (avg != null && (bestAvg == null || avg < bestAvg)) {
+                bestAvg = avg;
+              }
+            }
+            
+            // If at least one variant is available, use its distance
+            if (bestAvg != null) {
+              totalWeighted += bestAvg * count;
+              totalCount += count;
+            }
+            // If no variants available, path gets infinite score (filtered out later)
+          } else {
+            // No variants - check the primary block
+            const name = step.what;
+            const rec = snapshot.blocks![name];
+            const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
+            
+            if (avg != null) {
+              totalWeighted += avg * count;
+              totalCount += count;
+            }
           }
-        });
+        }
       }
 
       if (totalCount === 0) {

@@ -175,6 +175,27 @@ export interface ActionStep {
   tool?: string;
   targetItem?: string;
   dropChance?: number;
+  /**
+   * When present, contains all alternative variants for mining (e.g., oak_log, spruce_log, birch_log)
+   * The bot can choose which variant to mine at runtime based on world state
+   */
+  whatVariants?: string[];
+  targetItemVariants?: string[];
+  /**
+   * When present, contains all alternative result variants for crafting
+   * The bot can choose which variant to craft at runtime
+   */
+  resultVariants?: string[];
+  /**
+   * When present, contains ingredient variants corresponding to each result variant
+   */
+  ingredientVariants?: string[][];
+  /**
+   * Describes how variants relate to each other:
+   * - 'one_of': Mutually exclusive options (pick one variant at runtime)
+   * - 'any_of': Compatible alternatives (could use any/multiple)
+   */
+  variantMode?: 'one_of' | 'any_of';
 }
 
 /**
