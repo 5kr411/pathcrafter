@@ -1,5 +1,3 @@
-import * as fs from 'fs';
-import * as path from 'path';
 import {
   TreeNode,
   RootNode,
@@ -14,298 +12,42 @@ import {
   BuildContext,
   MinecraftData,
   MinecraftRecipe,
-  BlockSource,
-  MobSource
+  BlockSource
 } from './types';
 
-import { getFurnaceInputsFor, chooseMinimalFuelName, getSmeltsPerUnitForFuel } from '../utils/smeltingConfig';
+import { chooseMinimalFuelName, getSmeltsPerUnitForFuel } from '../utils/smeltingConfig';
 import { chooseMinimalToolName, getSuffixTokenFromName } from '../utils/items';
 import { makeSupplyFromInventory, mapToInventoryObject } from '../utils/inventory';
 import { isPersistentItemName } from '../utils/persistence';
 import { createWorldBudgetAccessors } from '../utils/worldBudget';
+import { resolveMcData } from './utils/mcDataResolver';
+import { 
+  requiresCraftingTable, 
+  getIngredientCounts, 
+  hasCircularDependency, 
+  findFurnaceSmeltsForItem,
+  getRecipeCanonicalKey
+} from './utils/recipeUtils';
+import { findSimilarItems } from './utils/itemSimilarity';
+import { findBlocksThatDrop, findMobsThatDrop } from './utils/sourceLookup';
 
-/**
- * Resolves Minecraft data from various input formats
- */
-export function resolveMcData(ctx: any): MinecraftData | undefined {
-  if (!ctx) return undefined;
-  ensureMinecraftDataFeaturesFiles();
+// Utility functions moved to ./utils/ modules
+// Re-export for backward compatibility
+export { resolveMcData } from './utils/mcDataResolver';
+export { 
+  requiresCraftingTable, 
+  dedupeRecipesForItem, 
+  getIngredientCounts, 
+  hasCircularDependency, 
+  findFurnaceSmeltsForItem 
+} from './utils/recipeUtils';
+export { findBlocksThatDrop, findMobsThatDrop } from './utils/sourceLookup';
 
-  let minecraftData: any;
-  try {
-    minecraftData = require('minecraft-data');
-  } catch (err: any) {
-    const isMissingFeatures = err && err.code === 'MODULE_NOT_FOUND' && /features\.json/.test(String(err.message || ''));
-    if (isMissingFeatures) {
-      ensureMinecraftDataFeaturesFiles();
-      minecraftData = require('minecraft-data');
-    } else {
-      throw err;
-    }
-  }
+// Recipe utility functions moved to ./utils/recipeUtils.ts
 
-  if (typeof ctx === 'string') return minecraftData(ctx);
-  if (ctx.itemsByName && ctx.items && ctx.blocks && ctx.recipes) return ctx;
-  if (typeof ctx === 'object' && ctx.version) return minecraftData(ctx.version);
-  return undefined;
-}
+// Source lookup functions moved to ./utils/sourceLookup.ts
 
-/**
- * Ensures that minecraft-data features files exist
- */
-function ensureMinecraftDataFeaturesFiles(): void {
-  const projectRoot = path.join(__dirname, '..');
-  const candidates: string[] = [];
-
-  candidates.push(path.join(projectRoot, 'node_modules', 'minecraft-data', 'minecraft-data', 'data'));
-  candidates.push(path.join(projectRoot, 'node_modules', 'minecraft-data', 'data'));
-
-  try {
-    const resolved = require.resolve('minecraft-data/lib/supportsFeature.js');
-    const modRoot = path.dirname(path.dirname(resolved));
-    candidates.push(path.join(modRoot, '..', 'minecraft-data', 'data'));
-    candidates.push(path.join(modRoot, 'minecraft-data', 'data'));
-    candidates.push(path.join(modRoot, 'data'));
-  } catch (_) {
-    // Ignore error
-  }
-
-  const ensureAt = (baseDir: string, relPath: string): void => {
-    const filePath = path.join(baseDir, relPath);
-    const dir = path.dirname(filePath);
-    try {
-      fs.mkdirSync(dir, { recursive: true });
-    } catch (_) {
-      // Ignore error
-    }
-    try {
-      if (!fs.existsSync(filePath)) {
-        fs.writeFileSync(filePath, '[]');
-      }
-    } catch (_) {
-      // Ignore error
-    }
-  };
-
-  for (const base of candidates) {
-    ensureAt(base, path.join('pc', 'common', 'features.json'));
-    ensureAt(base, path.join('bedrock', 'common', 'features.json'));
-  }
-}
-
-/**
- * Checks if a recipe requires a crafting table
- */
-export function requiresCraftingTable(recipe: MinecraftRecipe): boolean {
-  if (recipe.ingredients) return false;
-  if (recipe.inShape) {
-    const tooWide = recipe.inShape.some(row => row.length > 2);
-    const tooTall = recipe.inShape.length > 2;
-    return tooWide || tooTall;
-  }
-  return false;
-}
-
-/**
- * Gets the item name from an item ID
- */
-function getItemName(mcData: MinecraftData, id: number): string {
-  return mcData.items[id]?.name || String(id);
-}
-
-/**
- * Gets a canonical key for a recipe based on its shape/structure (ignoring specific wood types)
- */
-function getRecipeCanonicalKey(recipe: MinecraftRecipe): string {
-  // Combine info about the recipe type and requirements
-  const tableRequired = requiresCraftingTable(recipe);
-  const resultCount = recipe.result?.count || 1;
-  
-  if (recipe.inShape) {
-    // For shaped recipes, use the shape pattern
-    const shapeKey = JSON.stringify(recipe.inShape?.map(row => row.map(cell => cell === null ? 0 : 1)));
-    return `shaped:${tableRequired}:${resultCount}:${shapeKey}`;
-  } else if (recipe.ingredients) {
-    // For shapeless recipes, use sorted ingredient count
-    const ingredientCount = recipe.ingredients.length;
-    return `shapeless:${tableRequired}:${resultCount}:${ingredientCount}`;
-  }
-  
-  return `other:${tableRequired}:${resultCount}`;
-}
-
-/**
- * Canonicalizes a shaped recipe for deduplication
- */
-function canonicalizeShapedRecipe(mcData: MinecraftData, recipe: MinecraftRecipe): string {
-  const rows = recipe.inShape || [];
-  const canonRows = rows.map(row =>
-    row.map(cell => {
-      if (cell === null || cell === undefined) return 0;
-      const name = getItemName(mcData, cell);
-      return getSuffixTokenFromName(name);
-    })
-  );
-  return JSON.stringify(canonRows);
-}
-
-/**
- * Canonicalizes a shapeless recipe for deduplication
- */
-function canonicalizeShapelessRecipe(mcData: MinecraftData, recipe: MinecraftRecipe): string {
-  const ids = (recipe.ingredients || []).filter((id): id is number => id !== null && id !== undefined);
-  const canon = ids.map(id => getSuffixTokenFromName(getItemName(mcData, id))).sort();
-  return JSON.stringify(canon);
-}
-
-/**
- * Deduplicates recipes for an item
- */
-export function dedupeRecipesForItem(
-  mcData: MinecraftData,
-  itemId: number,
-  preferFamilies: boolean = true
-): MinecraftRecipe[] {
-  const all = (mcData.recipes[itemId] || []);
-  if (!preferFamilies) return all.slice();
-
-  const shapedMap = new Map<string, MinecraftRecipe>();
-  const shapelessMap = new Map<string, MinecraftRecipe>();
-
-  for (const r of all) {
-    if (r.inShape) {
-      const key = canonicalizeShapedRecipe(mcData, r);
-      if (!shapedMap.has(key)) shapedMap.set(key, r);
-    } else if (r.ingredients) {
-      const key = canonicalizeShapelessRecipe(mcData, r);
-      if (!shapelessMap.has(key)) shapelessMap.set(key, r);
-    } else {
-      shapelessMap.set(Math.random() + '', r);
-    }
-  }
-
-  return [...shapedMap.values(), ...shapelessMap.values()];
-}
-
-/**
- * Gets ingredient counts from a recipe
- */
-export function getIngredientCounts(recipe: MinecraftRecipe): Map<number, number> {
-  const ingredients = recipe.ingredients || recipe.inShape?.flat().filter((id): id is number => id !== null && id !== undefined);
-  if (!ingredients) return new Map();
-
-  const ingredientCounts = new Map<number, number>();
-  [...ingredients].sort((a, b) => (a || 0) - (b || 0)).forEach(id => {
-    if (id !== null && id !== undefined) {
-      ingredientCounts.set(id, (ingredientCounts.get(id) || 0) + 1);
-    }
-  });
-  return ingredientCounts;
-}
-
-/**
- * Checks if there's a circular dependency between items
- */
-export function hasCircularDependency(mcData: MinecraftData, itemId: number, ingredientId: number): boolean {
-  const ingredientRecipes = mcData.recipes[ingredientId] || [];
-  return ingredientRecipes.some(r =>
-    (r.ingredients && r.ingredients.includes(itemId)) ||
-    (r.inShape && r.inShape.some(row => row.includes(itemId)))
-  );
-}
-
-/**
- * Finds furnace smelt inputs for an item
- */
-export function findFurnaceSmeltsForItem(mcData: MinecraftData, itemName: string): string[] {
-  const inputs = getFurnaceInputsFor(itemName);
-  return inputs.filter((n: string) => !!mcData.itemsByName[n]);
-}
-
-/**
- * Finds blocks that drop a specific item
- */
-export function findBlocksThatDrop(mcData: MinecraftData, itemName: string): BlockSource[] {
-  const sources: BlockSource[] = [];
-  const item = mcData.itemsByName[itemName];
-  if (!item) return sources;
-
-  Object.values(mcData.blocks).forEach(block => {
-    if (block.drops && block.drops.includes(item.id)) {
-      sources.push({
-        block: block.name,
-        tool: block.harvestTools
-          ? Object.keys(block.harvestTools).map(id => mcData.items[Number(id)]?.name || id).join('/')
-          : 'any'
-      });
-    }
-  });
-
-  return sources;
-}
-
-/**
- * Finds mobs that drop a specific item
- */
-export function findMobsThatDrop(mcData: MinecraftData, itemName: string): MobSource[] {
-  const sources: MobSource[] = [];
-  const item = mcData.itemsByName[itemName];
-  if (!item) return sources;
-
-  Object.entries(mcData.entityLoot || {}).forEach(([_entityId, lootTable]) => {
-    if (lootTable && lootTable.drops) {
-      const hasItem = lootTable.drops.some(drop => {
-        const dropItemName = drop.item?.toLowerCase().replace(' ', '_');
-        return dropItemName === itemName;
-      });
-      if (hasItem) {
-        sources.push({
-          mob: lootTable.entity,
-          dropChance: lootTable.drops.find(d => d.item?.toLowerCase().replace(' ', '_') === itemName)?.dropChance
-        });
-      }
-    }
-  });
-
-  return sources;
-}
-
-/**
- * Finds all items similar to the given item (same suffix AND should be combinable)
- * Only groups items that are part of known families (wood types, nether wood types, bamboo)
- */
-function findSimilarItems(mcData: MinecraftData, itemName: string): string[] {
-  const suffix = getSuffixTokenFromName(itemName);
-  if (!suffix) return [itemName];
-  
-  // Known combinable suffixes (wood families)
-  const combinableSuffixes = new Set([
-    'log', 'wood', 'planks', 'stem', 'hyphae',
-    'button', 'door', 'fence', 'fence_gate', 'pressure_plate',
-    'sign', 'slab', 'stairs', 'trapdoor', 'boat', 'chest_boat'
-  ]);
-  
-  // Only combine if this is a combinable suffix
-  if (!combinableSuffixes.has(suffix)) {
-    return [itemName];
-  }
-  
-  // Find all items with same suffix
-  const similar: string[] = [];
-  for (const name of Object.keys(mcData.itemsByName)) {
-    if (getSuffixTokenFromName(name) === suffix) {
-      // Additional check: both items should have the same prefix pattern
-      // (oak_planks and spruce_planks both have wood type prefix + underscore + suffix)
-      const itemParts = itemName.split('_');
-      const nameParts = name.split('_');
-      if (itemParts.length === nameParts.length) {
-        similar.push(name);
-      }
-    }
-  }
-  
-  return similar.length > 1 ? similar : [itemName];
-}
+// Item similarity functions moved to ./utils/itemSimilarity.ts
 
 /**
  * Builds a recipe tree for acquiring a specific item (or group of similar items)
