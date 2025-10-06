@@ -172,7 +172,7 @@ export function buildCraftNode(
  * @param context - Build context
  * @returns Mining group node or null if infeasible
  */
-function createMiningGroupForCircularDependency(
+export function createMiningGroupForCircularDependency(
   _mcData: MinecraftData,
   itemName: string,
   neededCount: number,
