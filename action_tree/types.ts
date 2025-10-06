@@ -193,6 +193,11 @@ export interface BuildContext {
   visited?: Set<string>;
   preferMinimalTools?: boolean;
   combineSimilarNodes?: boolean;
+  /**
+   * When combining is disabled, tracks the current family prefix (e.g., 'oak', 'spruce')
+   * to ensure branches stay internally consistent
+   */
+  familyPrefix?: string;
 }
 
 /**

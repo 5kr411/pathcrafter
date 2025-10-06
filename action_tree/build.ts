@@ -318,15 +318,18 @@ export function buildRecipeTree(
 ): RootNode {
   const mcData = resolveMcData(ctx);
   
-  // If combining is enabled, find all similar items and build for the group
+  // Always find all similar items (wood families, etc.)
+  // This allows exploring all recipe variants for tie-breaking
   let itemGroup: string[];
-  if (context.combineSimilarNodes && mcData) {
+  if (mcData) {
     itemGroup = findSimilarItems(mcData, itemName);
   } else {
     itemGroup = [itemName];
   }
   
   // Build for the group
+  // When combining is enabled, recipes are grouped and shown with variants
+  // When combining is disabled, each recipe becomes a separate branch
   return buildRecipeTreeInternal(ctx, itemGroup, targetCount, context);
 }
 
@@ -340,7 +343,17 @@ function buildRecipeTreeInternal(
   context: BuildContext
 ): RootNode {
   const mcData = resolveMcData(ctx);
-  const primaryItem = itemGroup[0];
+  
+  // If familyPrefix is set (combining OFF), filter itemGroup to matching family
+  let filteredItemGroup = itemGroup;
+  if (context.familyPrefix && !context.combineSimilarNodes && itemGroup.length > 1) {
+    filteredItemGroup = itemGroup.filter(name => name.startsWith(context.familyPrefix!));
+    if (filteredItemGroup.length === 0) {
+      filteredItemGroup = [itemGroup[0]]; // Fallback if no match
+    }
+  }
+  
+  const primaryItem = filteredItemGroup[0];
   const item = mcData?.itemsByName[primaryItem];
 
   const invObj = context && context.inventory && typeof context.inventory === 'object' ? context.inventory : null;
@@ -348,7 +361,7 @@ function buildRecipeTreeInternal(
 
   // Deduct from inventory if available (check all items in group)
   if (invMap && invMap.size > 0 && targetCount > 0) {
-    for (const name of itemGroup) {
+    for (const name of filteredItemGroup) {
       const have = invMap.get(name) || 0;
       if (have > 0) {
         const use = Math.min(have, targetCount);
@@ -375,18 +388,18 @@ function buildRecipeTreeInternal(
   const preferMinimalTools = context.preferMinimalTools !== false;
 
   // Check if any item in the group has been visited
-  const anyVisited = itemGroup.some(name => visited.has(name));
+  const anyVisited = filteredItemGroup.some(name => visited.has(name));
   if (anyVisited) return root;
 
   const nextVisited = new Set(visited);
-  for (const name of itemGroup) {
+  for (const name of filteredItemGroup) {
     nextVisited.add(name);
   }
 
   // Collect all recipes for all items in the group
   // Don't dedupe yet - we want to group across variants first
   const allRecipes: Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}> = [];
-  for (const name of itemGroup) {
+  for (const name of filteredItemGroup) {
     const itemData = mcData.itemsByName[name];
     if (itemData) {
       // Get raw recipes without deduplication
@@ -398,9 +411,21 @@ function buildRecipeTreeInternal(
   }
 
   // Group recipes by canonical shape (same structure across different wood types)
+  // When combining is disabled, each recipe becomes its own group (separate branches)
   const recipeGroups = new Map<string, Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>>();
   for (const entry of allRecipes) {
-    const key = getRecipeCanonicalKey(entry.recipe);
+    let key: string;
+    if (context.combineSimilarNodes) {
+      // Group similar recipes together (e.g., all wood planks recipes)
+      key = getRecipeCanonicalKey(entry.recipe);
+    } else {
+      // Each recipe gets its own unique key based on ingredients (separate branches)
+      // Include ingredient IDs to differentiate oak_planks from spruce_planks
+      const ingredientCounts = getIngredientCounts(entry.recipe);
+      const ingredientKey = Array.from(ingredientCounts.keys()).sort().join(',');
+      key = getRecipeCanonicalKey(entry.recipe) + ':' + entry.itemName + ':' + ingredientKey;
+    }
+    
     if (!recipeGroups.has(key)) {
       recipeGroups.set(key, []);
     }
@@ -417,7 +442,7 @@ function buildRecipeTreeInternal(
     const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
     const ingredientCounts = getIngredientCounts(recipe);
 
-    // Create craft node with variants if we have multiple recipes in this group
+    // Create craft node with the recipe's ingredients
     const craftNode: CraftNode = {
       action: 'craft',
       operator: 'AND',
@@ -586,42 +611,28 @@ function buildRecipeTreeInternal(
         }
       } else {
         // Recursively build ingredient tree
-        // If we have variants, collect corresponding ingredients from all variants
-        let ingredientGroup: string[];
-        if (recipeGroup.length > 1 && context.combineSimilarNodes) {
-          // Find which ingredient position this is
-          const ingredientPosition = Array.from(ingredientCounts.entries())
-            .sort(([a], [b]) => a - b)
-            .findIndex(([id, _]) => {
-              const name = mcData.items[id]?.name;
-              return name === ingNameAlloc;
-            });
-          
-          // Collect corresponding ingredient from each variant
-          ingredientGroup = [];
-          for (const entry of recipeGroup) {
-            const variantCounts = getIngredientCounts(entry.recipe);
-            const sortedVariantCounts = Array.from(variantCounts.entries()).sort(([a], [b]) => a - b);
-            if (ingredientPosition >= 0 && ingredientPosition < sortedVariantCounts.length) {
-              const [id, _] = sortedVariantCounts[ingredientPosition];
-              const name = mcData.items[id]?.name;
-              if (name && !ingredientGroup.includes(name)) {
-                ingredientGroup.push(name);
-              }
-            }
-          }
+        if (context.combineSimilarNodes) {
+          // When combining is ON, expand to similar items (e.g., all planks)
+          const ingredientTree = buildRecipeTree(mcData, ingNameAlloc, neededAfterInv, {
+            ...context,
+            visited: nextVisited,
+            preferMinimalTools,
+            inventory: mapToInventoryObject(recipeInv),
+            worldBudget
+          });
+          craftNode.children.push(ingredientTree);
         } else {
-          ingredientGroup = [ingNameAlloc];
+          // When combining is OFF, use ONLY the specific ingredient (no expansion)
+          // This ensures each branch is internally consistent
+          const ingredientTree = buildRecipeTreeInternal(mcData, [ingNameAlloc], neededAfterInv, {
+            ...context,
+            visited: nextVisited,
+            preferMinimalTools,
+            inventory: mapToInventoryObject(recipeInv),
+            worldBudget
+          });
+          craftNode.children.push(ingredientTree);
         }
-        
-        const ingredientTree = buildRecipeTreeInternal(mcData, ingredientGroup, neededAfterInv, {
-          ...context,
-          visited: nextVisited,
-          preferMinimalTools,
-          inventory: mapToInventoryObject(recipeInv),
-          worldBudget
-        });
-        craftNode.children.push(ingredientTree);
       }
     });
 
@@ -738,12 +749,11 @@ function buildRecipeTreeInternal(
   }
 
   // Process mining paths
-  // When combining is enabled, collect mining paths for all items in the group
   let miningPaths: BlockSource[];
-  if (context.combineSimilarNodes && itemGroup.length > 1) {
-    // Collect mining paths for all items in the group
+  if (filteredItemGroup.length > 1 && context.combineSimilarNodes) {
+    // When combining is enabled, collect mining paths for all items in the group
     const allMiningPaths: Array<{path: BlockSource, itemName: string}> = [];
-    for (const name of itemGroup) {
+    for (const name of filteredItemGroup) {
       const paths = findBlocksThatDrop(mcData, name);
       for (const path of paths) {
         allMiningPaths.push({path, itemName: name});
@@ -762,6 +772,8 @@ function buildRecipeTreeInternal(
       _targetVariants: allTargets // All target items
     } as any];
   } else {
+    // When combining is disabled, use only paths for the primary item
+    // This ensures each branch is internally consistent
     miningPaths = findBlocksThatDrop(mcData, primaryItem);
   }
   if (miningPaths.length > 0) {
