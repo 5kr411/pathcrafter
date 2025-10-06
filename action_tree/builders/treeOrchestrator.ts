@@ -23,7 +23,7 @@ import {
 import { resolveMcData } from '../utils/mcDataResolver';
 import { findSimilarItems } from '../utils/itemSimilarity';
 import { createInventoryMap } from './inventoryManager';
-import { filterVariantsByWorldAvailability, fixCraftNodePrimaryFields, normalizePersistentRequires, groupSimilarCraftNodes, groupSimilarMineNodes } from './variantHandler';
+import { filterVariantsByWorldAvailability, fixCraftNodePrimaryFields, groupSimilarCraftNodes, groupSimilarMineNodes } from './variantHandler';
 import { getIngredientCounts, hasCircularDependency, findFurnaceSmeltsForItem, getRecipeCanonicalKey, requiresCraftingTable } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 import { chooseMinimalFuelName, getSmeltsPerUnitForFuel } from '../../utils/smeltingConfig';
@@ -317,29 +317,29 @@ function buildRecipeTreeInternal(
           recipeFeasible = false;
           return;
         }
-      } else {
-        // Recursively build tree for ingredient
-        if (context.combineSimilarNodes) {
-          // When combining is ON, expand to similar items (e.g., all planks)
-          const ingredientTree = buildRecipeTree(ctx, ingNameAlloc, neededAfterInv, {
-            ...context,
-            visited: nextVisited,
-            inventory: mapToInventoryObject(recipeInv), // Pass current inventory state
-            worldBudget
-          });
-          craftNode.children.push(ingredientTree);
         } else {
-          // When combining is OFF, use ONLY the specific ingredient (no expansion)
-          // This ensures each branch is internally consistent
-          const ingredientTree = buildRecipeTreeInternal(ctx, [ingNameAlloc], neededAfterInv, {
-            ...context,
-            visited: nextVisited,
-            inventory: mapToInventoryObject(recipeInv), // Pass current inventory state
-            worldBudget
-          });
-          craftNode.children.push(ingredientTree);
+          // Recursively build tree for ingredient
+          if (context.combineSimilarNodes) {
+            // When combining is ON, expand to similar items (e.g., all planks)
+            const ingredientTree = buildRecipeTree(ctx, ingNameAlloc, neededAfterInv, {
+              ...context,
+              visited: nextVisited,
+              inventory: mapToInventoryObject(recipeInv), // Pass current inventory state
+              worldBudget
+            });
+            craftNode.children.push(ingredientTree);
+          } else {
+            // When combining is OFF, use ONLY the specific ingredient (no expansion)
+            // This ensures each branch is internally consistent
+            const ingredientTree = buildRecipeTreeInternal(ctx, [ingNameAlloc], neededAfterInv, {
+              ...context,
+              visited: nextVisited,
+              inventory: mapToInventoryObject(recipeInv), // Pass current inventory state
+              worldBudget
+            });
+            craftNode.children.push(ingredientTree);
+          }
         }
-      }
     });
 
     if (recipeFeasible) {
@@ -600,9 +600,9 @@ function buildRecipeTreeInternal(
     }
   }
 
-  // Normalize persistent requirements
+  // Normalize persistent requirements (add crafting_table subtrees where needed)
   try {
-    normalizePersistentRequires(root, context && context.inventory ? context.inventory : null);
+    addPersistentRequirements(ctx, root, context);
   } catch (_) {
     // Ignore normalization errors
   }
@@ -652,6 +652,43 @@ function combineSimilarNodesInTree(mcData: any, node: TreeNode): void {
       }
       return child;
     });
+  }
+}
+
+/**
+ * Adds persistent requirements (like crafting_table) to nodes that need them
+ * 
+ * @param ctx - Minecraft data context
+ * @param node - Tree node to process
+ * @param context - Build context
+ */
+function addPersistentRequirements(ctx: any, node: TreeNode, context: BuildContext): void {
+  if (!node || !node.children) return;
+  
+  // Check if this node requires a crafting table
+  if (node.action === 'craft' && (node as any).what === 'table') {
+    // Check if we already have a crafting table in inventory
+    const hasTable = context.inventory && context.inventory.crafting_table && context.inventory.crafting_table > 0;
+    
+    if (!hasTable) {
+      // Build crafting_table recipe tree
+      const tableTree = buildRecipeTreeInternal(ctx, ['crafting_table'], 1, {
+        ...context,
+        visited: new Set<string>(), // Reset visited to allow crafting_table to be built
+        inventory: context.inventory || {}
+      });
+      
+      // Only add if the tree has children (i.e., a valid recipe was found)
+      if (tableTree.children.length > 0) {
+        // Insert at beginning of children
+        node.children.unshift(tableTree);
+      }
+    }
+  }
+  
+  // Recursively process children
+  for (const child of node.children) {
+    addPersistentRequirements(ctx, child, context);
   }
 }
 

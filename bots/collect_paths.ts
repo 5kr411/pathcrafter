@@ -22,6 +22,7 @@ interface RuntimeConfig {
   progressLogIntervalMs: number;
   safeFindRepeatThreshold: number;
   usePersistentWorker: boolean;
+  combineSimilarNodes: boolean;
 }
 
 interface Target {
@@ -77,8 +78,8 @@ const RUNTIME: RuntimeConfig = {
   logLevel: 'DEBUG', // 'DEBUG', 'INFO', 'WARN', 'ERROR', 'SILENT'
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10,
-  // Worker pool settings (enumerator pool size is set in planning_worker.ts)
-  usePersistentWorker: true // Keep planning worker alive between commands
+  usePersistentWorker: true, // Keep planning worker alive between commands (enumerator pool size is set in planning_worker.ts)
+  combineSimilarNodes: false // Enable variant combining (e.g., all wood planks together)
 };
 
 // Set logger level from config (can be overridden by LOG_LEVEL env var)
@@ -318,6 +319,7 @@ bot.once('spawn', () => {
           inventory: invObj,
           log: false,
           pruneWithWorld: RUNTIME.pruneWithWorld,
+          combineSimilarNodes: RUNTIME.combineSimilarNodes,
           worldSnapshot: snapshot as any
         });
 
@@ -391,6 +393,7 @@ bot.once('spawn', () => {
       snapshot,
       perGenerator: RUNTIME.perGenerator,
       pruneWithWorld: RUNTIME.pruneWithWorld,
+      combineSimilarNodes: RUNTIME.combineSimilarNodes,
       telemetry: (RUNTIME as any).botLogLevel === 'verbose'
     };
     logDebug(`Collector: posting planning message to worker`);

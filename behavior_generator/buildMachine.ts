@@ -8,8 +8,10 @@ const {
 } = require('mineflayer-statemachine');
 
 import * as genMine from './mine';
+import * as genMineOneOf from './mineOneOf';
 import * as genCraftInventory from './craftInventory';
 import * as genCraftTable from './craftTable';
+import * as genCraftVariant from './craftVariant';
 import * as genSmelt from './smelt';
 
 import logger from '../utils/logger';
@@ -26,6 +28,15 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
   if (!step || !step.action) return { isFinished: () => true };
 
   try {
+    if (genMineOneOf && typeof genMineOneOf.canHandle === 'function' && genMineOneOf.canHandle(step)) {
+      const s = genMineOneOf.create(bot, step);
+      if (s) return s;
+    }
+  } catch (_) {
+    // Ignore errors and try next handler
+  }
+
+  try {
     if (genMine && typeof genMine.canHandle === 'function' && genMine.canHandle(step)) {
       const s = genMine.create(bot, step);
       if (s) return s;
@@ -37,6 +48,15 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
   try {
     if (genSmelt && typeof genSmelt.canHandle === 'function' && genSmelt.canHandle(step)) {
       const s = genSmelt.create(bot, step);
+      if (s) return s;
+    }
+  } catch (_) {
+    // Ignore errors and try next handler
+  }
+
+  try {
+    if (genCraftVariant && typeof genCraftVariant.canHandle === 'function' && genCraftVariant.canHandle(step)) {
+      const s = genCraftVariant.create(bot, step);
       if (s) return s;
     }
   } catch (_) {

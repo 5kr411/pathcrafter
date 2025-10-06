@@ -6,10 +6,13 @@ import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
 /**
  * Checks if this handler can process the given step
  * @param step - Action step to check
- * @returns true if this is an inventory crafting action
+ * @returns true if this is an inventory crafting action without variants
  */
 export function canHandle(step: ActionStep | null | undefined): boolean {
-  return !!step && step.action === 'craft' && step.what === 'inventory';
+  return !!step && 
+         step.action === 'craft' && 
+         step.what === 'inventory' &&
+         (!step.resultVariants || step.resultVariants.length <= 1);
 }
 
 /**

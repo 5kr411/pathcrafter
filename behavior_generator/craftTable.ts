@@ -20,10 +20,13 @@ import { addStateLogging } from '../utils/stateLogging';
 /**
  * Checks if this handler can process the given step
  * @param step - Action step to check
- * @returns true if this is a table crafting action
+ * @returns true if this is a table crafting action without variants
  */
 export function canHandle(step: ActionStep | null | undefined): boolean {
-  return !!step && step.action === 'craft' && step.what === 'table';
+  return !!step && 
+         step.action === 'craft' && 
+         step.what === 'table' &&
+         (!step.resultVariants || step.resultVariants.length <= 1);
 }
 
 /**

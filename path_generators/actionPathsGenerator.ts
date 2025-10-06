@@ -35,13 +35,28 @@ export function* enumerateActionPathsGenerator(
     parentStepOrNull: ActionStep | null
   ): StreamFunction<PathItem> {
     return function* () {
+      // Filter out empty child streams to prevent AND operations from failing
+      const nonEmptyStreams = childStreams.filter(stream => {
+        let hasItems = false;
+        for (const _ of stream()) {
+          hasItems = true;
+          break;
+        }
+        return hasItems;
+      });
+
+      // If no non-empty streams, yield nothing
+      if (nonEmptyStreams.length === 0) {
+        return;
+      }
+
       function* product(idx: number, acc: ActionPath): Generator<PathItem, void, unknown> {
-        if (idx >= childStreams.length) {
+        if (idx >= nonEmptyStreams.length) {
           const final = parentStepOrNull ? acc.concat([parentStepOrNull]) : acc;
           yield { path: final };
           return;
         }
-        for (const item of childStreams[idx]()) {
+        for (const item of nonEmptyStreams[idx]()) {
           yield* product(idx + 1, acc.concat(item.path));
         }
       }

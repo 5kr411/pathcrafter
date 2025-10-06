@@ -14,7 +14,7 @@ const { resolveMcData } = (plan as any)._internals;
 // Project-wide config for this demo run
 const mcData = resolveMcData('1.20.1');
 
-const item = 'stick';
+const item = 'wooden_pickaxe';
 const count = 1;
 const inventory = { /*cobblestone: 2, stick: 2, crafting_table: 1 */ };
 const combineSimilarNodes = true; // Set to false to see full tree explosion

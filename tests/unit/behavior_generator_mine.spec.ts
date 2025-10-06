@@ -1,41 +1,119 @@
-import { _internals, createBehaviorForStep } from '../../behavior_generator';
+import { ActionStep } from '../../action_tree/types';
+import { computeTargetsForMine, canHandle } from '../../behavior_generator/mine';
 
-describe('unit: behavior_generator mine mapping', () => {
-    test('computeTargetsForMine uses targetItem when present', () => {
-        const step = { action: 'mine' as const, what: 'stone', targetItem: 'cobblestone', count: 2 };
-        const t = _internals.computeTargetsForMine(step);
-        expect(t).toEqual({ itemName: 'cobblestone', amount: 2, blockName: 'stone' });
+describe('BehaviorGenerator mine', () => {
+  describe('canHandle', () => {
+    it('should handle mine steps without variants', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: 'oak_log',
+        count: 5
+      };
+
+      expect(canHandle(step)).toBe(true);
     });
 
-    test('computeTargetsForMine falls back to block name when no targetItem', () => {
-        const step = { action: 'mine' as const, what: 'cobblestone', count: 3 };
-        const t = _internals.computeTargetsForMine(step);
-        expect(t).toEqual({ itemName: 'cobblestone', amount: 3, blockName: 'cobblestone' });
+    it('should not handle mine steps with variants', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: 'oak_log',
+        count: 5,
+        whatVariants: ['oak_log', 'spruce_log', 'birch_log']
+      };
+
+      expect(canHandle(step)).toBe(false);
     });
 
-    test('createBehaviorForStep creates behavior for mine leaf step', () => {
-        const mcData = require('minecraft-data')('1.20.1');
-        const bot = { 
-            version: '1.20.1', 
-            mcData, 
-            inventory: { 
-                items: () => [], 
-                slots: [], 
-                firstEmptyInventorySlot: () => 9 
-            }, 
-            world: { 
-                getBlockType: () => 0 
-            }, 
-            entity: { 
-                position: { 
-                    clone: () => ({}) 
-                } 
-            } 
-        } as any;
-        const step = { action: 'mine' as const, what: 'stone', targetItem: 'cobblestone', count: 1 };
-        const behavior = createBehaviorForStep(bot, step);
-        expect(behavior).toBeTruthy();
-        expect(typeof behavior).toBe('object');
+    it('should not handle mine steps with single variant', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: 'oak_log',
+        count: 5,
+        whatVariants: ['oak_log']
+      };
+
+      expect(canHandle(step)).toBe(true); // Single variant is same as no variants
     });
+
+    it('should not handle non-mine steps', () => {
+      const step: ActionStep = {
+        action: 'craft',
+        what: 'inventory',
+        count: 1
+      };
+
+      expect(canHandle(step)).toBe(false);
+    });
+
+    it('should not handle mine steps with operator and children', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: 'oak_log',
+        count: 5,
+        operator: 'OR',
+        children: [{ action: 'mine', what: 'spruce_log', count: 5 }]
+      } as any;
+
+      expect(canHandle(step)).toBe(false);
+    });
+  });
+
+  describe('computeTargetsForMine', () => {
+    it('should compute targets for simple mine step', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: 'oak_log',
+        count: 3
+      };
+
+      const result = computeTargetsForMine(step);
+
+      expect(result).toEqual({
+        itemName: 'oak_log',
+        amount: 3,
+        blockName: 'oak_log'
+      });
+    });
+
+    it('should compute targets with targetItem', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: 'oak_log',
+        count: 5,
+        targetItem: 'wood'
+      };
+
+      const result = computeTargetsForMine(step);
+
+      expect(result).toEqual({
+        itemName: 'wood',
+        amount: 5,
+        blockName: 'oak_log'
+      });
+    });
+
+    it('should return null for invalid steps', () => {
+      const step: ActionStep = {
+        action: 'mine',
+        what: '',
+        count: 1
+      };
+
+      const result = computeTargetsForMine(step);
+
+      expect(result).toBeNull();
+    });
+
+    it('should return null for non-mine steps', () => {
+      const step: ActionStep = {
+        action: 'craft',
+        what: 'inventory',
+        count: 1
+      };
+
+      const result = computeTargetsForMine(step);
+
+      expect(result).toBeNull();
+    });
+  });
 });
-

@@ -7,14 +7,16 @@ import logger from '../utils/logger';
 /**
  * Checks if this handler can process the given step
  * @param step - Action step to check
- * @returns true if this is a leaf mine action
+ * @returns true if this is a leaf mine action without variants
  */
 export function canHandle(step: ActionStep | null | undefined): boolean {
   // Accept direct mine steps with concrete block names (leaf mine actions under OR groups)
+  // BUT NOT if they have variants - those should be handled by mineOneOf
   return !!step && 
          step.action === 'mine' && 
          typeof step.what === 'string' && 
-         (!('operator' in step) || !('children' in step) || !(step as any).children || (step as any).children.length === 0);
+         (!('operator' in step) || !('children' in step) || !(step as any).children || (step as any).children.length === 0) &&
+         (!step.whatVariants || step.whatVariants.length <= 1);
 }
 
 /**

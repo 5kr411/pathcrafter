@@ -3,11 +3,15 @@ import { Bot, BehaviorState, ActionHandler } from './types';
 
 import * as craftInventory from './craftInventory';
 import * as craftTable from './craftTable';
+import * as craftVariant from './craftVariant';
 import * as mine from './mine';
+import * as mineOneOf from './mineOneOf';
 
 const ACTION_HANDLERS: ActionHandler[] = [
+  craftVariant, // Check for variant crafting first
   craftInventory,
   craftTable,
+  mineOneOf, // Check for variant mining first
   mine
 ];
 
@@ -43,6 +47,8 @@ export function createBehaviorForStep(bot: Bot, step: ActionStep): BehaviorState
 export const _internals = {
   computeTargetsForCraftInInventory: craftInventory.computeTargetsForCraftInInventory,
   computeTargetsForCraftInTable: craftTable.computeTargetsForCraftInTable,
-  computeTargetsForMine: mine.computeTargetsForMine
+  computeTargetsForCraftVariant: craftVariant.computeTargetsForCraftVariant,
+  computeTargetsForMine: mine.computeTargetsForMine,
+  computeTargetsForMineOneOf: mineOneOf.computeTargetsForMineOneOf
 };
 
