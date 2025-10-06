@@ -174,8 +174,8 @@ export function filterVariantsByWorldAvailability(node: TreeNode, worldBudget: a
   if (node.children) {
     const filteredChildren: TreeNode[] = [];
     for (const child of node.children) {
-      const shouldRemove = filterVariantsByWorldAvailability(child, worldBudget);
-      if (!shouldRemove) {
+      const shouldKeep = filterVariantsByWorldAvailability(child, worldBudget);
+      if (shouldKeep) {
         filteredChildren.push(child);
       }
     }
@@ -266,13 +266,40 @@ export function fixCraftNodePrimaryFields(node: TreeNode, worldBudget: any): voi
  * @param inventory - Current inventory state
  */
 export function normalizePersistentRequires(node: TreeNode, inventory: any): void {
-  // This is a placeholder for the normalizePersistentRequires function
-  // The actual implementation would handle persistent item requirements
-  // like crafting tables, furnaces, etc.
+  if (!node || !node.children) return;
   
-  if (node.children) {
-    for (const child of node.children) {
-      normalizePersistentRequires(child, inventory);
+  // Check if this node requires a crafting table
+  if (node.action === 'craft' && (node as any).what === 'table') {
+    // Check if we already have a crafting table in inventory
+    const hasTable = inventory && inventory.crafting_table && inventory.crafting_table > 0;
+    
+    if (!hasTable) {
+      // Add crafting table requirement as first child
+      const tableRequirement: any = {
+        action: 'craft',
+        operator: 'AND',
+        what: 'inventory',
+        count: 1,
+        result: {
+          item: 'crafting_table',
+          perCraftCount: 1
+        },
+        ingredients: [
+          {
+            item: 'oak_planks',
+            perCraftCount: 4
+          }
+        ],
+        children: []
+      };
+      
+      // Insert at beginning of children
+      node.children.unshift(tableRequirement);
     }
+  }
+  
+  // Recursively process children
+  for (const child of node.children) {
+    normalizePersistentRequires(child, inventory);
   }
 }

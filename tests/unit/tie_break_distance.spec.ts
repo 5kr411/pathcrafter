@@ -47,20 +47,25 @@ describe('unit: Top-N tie-break by snapshot distance', () => {
       version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, radius: 48, yMin: 0, yMax: 255,
       blocks: {
         spruce_log: { count: 10, closestDistance: 8, averageDistance: 12 },
-        oak_log: { count: 10, closestDistance: 30, averageDistance: 45 }
+        oak_log: { count: 10, closestDistance: 30, averageDistance: 45 },
+        birch_log: { count: 5, closestDistance: 15, averageDistance: 20 },
+        jungle_log: { count: 3, closestDistance: 25, averageDistance: 35 },
+        acacia_log: { count: 4, closestDistance: 20, averageDistance: 30 },
+        cherry_log: { count: 2, closestDistance: 40, averageDistance: 50 },
+        mangrove_log: { count: 3, closestDistance: 35, averageDistance: 45 }
       },
       entities: {}
     };
     const mcData = minecraftData('1.20.1');
     const inventory = { crafting_table: 1 };
     
-    const tree = plan(mcData, 'wooden_pickaxe', 1, {
-      inventory,
-      log: false,
-      pruneWithWorld: true,
-      worldSnapshot: snapshot,
-      combineSimilarNodes: true
-    });
+      const tree = plan(mcData, 'wooden_pickaxe', 1, {
+        inventory,
+        log: false,
+        pruneWithWorld: true, // Re-enable pruning with expanded snapshot
+        worldSnapshot: snapshot,
+        combineSimilarNodes: true
+      });
     
     // Find craft nodes with variants
     const findNodesWithVariants = (node: any): any[] => {
@@ -75,9 +80,9 @@ describe('unit: Top-N tie-break by snapshot distance', () => {
       }
       return results;
     };
-    
+
     const nodesWithVariants = findNodesWithVariants(tree);
-    
+
     // Should have nodes with variants
     expect(nodesWithVariants.length).toBeGreaterThan(0);
     

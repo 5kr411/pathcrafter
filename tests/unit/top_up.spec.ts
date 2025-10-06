@@ -68,8 +68,9 @@ describe('unit: Top-up scenarios prefer minimal additional mining', () => {
         const s0 = shortestPath.map((s: any) => s.action === 'mine' ? s.what : s.action).join(' ');
         const l0 = lowestPath.map((s: any) => s.action === 'mine' ? s.what : s.action).join(' ');
 
-        expect(s0).toMatch(/(stone|cobblestone)/);
-        expect(l0).toMatch(/(stone|cobblestone)/);
+        // raw_iron is obtained by mining iron_ore or crafting from raw_iron_block, not smelting cobblestone
+        expect(s0).toMatch(/iron/);
+        expect(l0).toMatch(/iron/);
     });
 });
 
