@@ -74,9 +74,17 @@ const perGenerator = getDefaultPerGeneratorPaths();
                 worldSnapshot: snapshot as any, 
                 perGenerator, 
                 log: false, 
-                pruneWithWorld: getPruneWithWorldEnabled() 
+                pruneWithWorld: getPruneWithWorldEnabled(),
+                combineSimilarNodes
             });
             logger.info(`\nOne-shot generate+filter count=${filteredDirect.length}`);
+            
+            // Log first few paths
+            let n2 = 0;
+            for (const p of filteredDirect.slice(0, pathsToLog)) {
+                process.stdout.write(`#${++n2} `);
+                (plan as any)._internals.logActionPath(p);
+            }
         } else {
             logger.info(`\nNo world snapshot files found in ${snapshotsDir}`);
         }

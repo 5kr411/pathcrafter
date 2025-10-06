@@ -158,41 +158,81 @@ function logActionNode(node: TreeNode, depth: number, isLastAtThisLevel: boolean
       
       console.log(`${indent}${branch} mine${targetInfo}${groupVariantsInfo} (${node.count}x) [${op}]`);
 
-      node.children.forEach((child, idx) => {
+      // Separate require nodes from mine leaves
+      const requireNodes: any[] = [];
+      const mineLeaves: any[] = [];
+      
+      node.children.forEach((child) => {
         if (child.action === 'require') {
-          logActionTree(child, depth + 1);
+          requireNodes.push(child);
         } else {
-          const subIndent = ' '.repeat((depth + 1) * 2);
-          const subBranch = idx === node.children.length - 1 ? '└─' : '├─';
-          const toolInfo = (child as any).tool && (child as any).tool !== 'any' ? ` (needs ${(child as any).tool})` : '';
-          const childTargetInfo = (child as any).targetItem ? ` for ${renderName((child as any).targetItem)}` : '';
+          mineLeaves.push(child);
+        }
+      });
+      
+      // Print require nodes first
+      requireNodes.forEach(child => {
+        logActionTree(child, depth + 1);
+      });
+      
+      // Print mine leaves - if they have variants, show them compactly
+      mineLeaves.forEach((child, idx) => {
+        const subIndent = ' '.repeat((depth + 1) * 2);
+        const subBranch = idx === mineLeaves.length - 1 && requireNodes.length === 0 ? '└─' : '├─';
+        const toolInfo = (child as any).tool && (child as any).tool !== 'any' ? ` (needs ${(child as any).tool})` : '';
+        
+        // Check if this mine leaf has variants
+        const whatVariants = (child as any).whatVariants;
+        const targetItemVariants = (child as any).targetItemVariants;
+        
+        if (whatVariants && whatVariants.length > 1) {
+          // Show variants compactly: "oak_log, spruce_log, +8 more"
+          const firstBlock = renderName(whatVariants[0]);
+          const secondBlock = whatVariants.length >= 2 ? renderName(whatVariants[1]) : '';
+          const moreCount = whatVariants.length - 2;
           
-          let variantsInfo = '';
-          if ((child as any).whatVariants && (child as any).whatVariants.length > 1) {
-            // Show second variant if it exists
-            if ((child as any).whatVariants.length >= 2) {
-              const secondWhat = renderName((child as any).whatVariants[1]);
-              const secondTargetInfo = (child as any).targetItemVariants && (child as any).targetItemVariants[1] 
-                ? ` for ${renderName((child as any).targetItemVariants[1])}` 
-                : '';
-              variantsInfo = `, ${secondWhat}${secondTargetInfo}${toolInfo}`;
-              
-              // Show "+x more" for remaining variants
-              if ((child as any).whatVariants.length > 2) {
-                variantsInfo += `, +${(child as any).whatVariants.length - 2} more`;
-              }
-            } else {
-              variantsInfo = ` (+${(child as any).whatVariants.length - 1} more)`;
-            }
+          let blockInfo = firstBlock;
+          if (secondBlock) {
+            blockInfo += `, ${secondBlock}`;
+          }
+          if (moreCount > 0) {
+            blockInfo += `, +${moreCount} more`;
+          }
+          
+          // Only show "for X" if targets are different from blocks
+          let targetInfo = '';
+          if (targetItemVariants && targetItemVariants.length > 0) {
+            // Check if targets differ from blocks
+            const blockSet = new Set(whatVariants);
+            const targetSet = new Set(targetItemVariants);
+            const isDifferent = targetItemVariants.some((t: string) => !blockSet.has(t)) || whatVariants.some((b: string) => !targetSet.has(b));
             
-            // Add variant mode indicator
-            if ((child as any).variantMode) {
-              const modeLabel = (child as any).variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
-              variantsInfo += ` [${modeLabel}]`;
+            if (isDifferent) {
+              const firstTarget = renderName(targetItemVariants[0]);
+              const secondTarget = targetItemVariants.length >= 2 ? renderName(targetItemVariants[1]) : '';
+              
+              targetInfo = ` for ${firstTarget}`;
+              if (secondTarget) {
+                targetInfo += `, ${secondTarget}`;
+              }
+              if (targetItemVariants.length > 2) {
+                targetInfo += `, +${targetItemVariants.length - 2} more`;
+              }
             }
           }
           
-          console.log(`${subIndent}${subBranch} ${renderName(child.what)}${childTargetInfo}${toolInfo}${variantsInfo}`);
+          let modeInfo = '';
+          if ((child as any).variantMode) {
+            const modeLabel = (child as any).variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+            modeInfo = ` [${modeLabel}]`;
+          }
+          
+          console.log(`${subIndent}${subBranch} ${blockInfo}${targetInfo}${toolInfo}${modeInfo}`);
+        } else {
+          // No variants - show normally
+          const blockName = renderName(child.what);
+          const targetInfo = (child as any).targetItem ? ` for ${renderName((child as any).targetItem)}` : '';
+          console.log(`${subIndent}${subBranch} ${blockName}${targetInfo}${toolInfo}`);
         }
       });
     } else {

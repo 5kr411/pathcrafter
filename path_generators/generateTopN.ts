@@ -184,6 +184,15 @@ export async function generateTopNPathsFromGenerators(
     return da - db;
   });
 
+  // Filter out paths that require blocks not in the world (infinite distance score)
+  // Only filter if we have a world snapshot
+  if (snapshot && snapshot.blocks) {
+    return unique.filter(path => {
+      const score = distanceScore(path);
+      return isFinite(score);
+    });
+  }
+
   return unique;
 }
 

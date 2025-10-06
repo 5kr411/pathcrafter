@@ -56,6 +56,8 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
       const children = craftNode.children || [];
 
       if (children.length === 0) {
+        // Don't expand variants - just use the primary recipe
+        // Variants are metadata for display/flexibility, not for path explosion
         return [[{
           action: 'craft',
           what: craftNode.what,
@@ -80,6 +82,7 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
       });
 
       // Append the craft action at the end
+      // Don't expand variants - variants are metadata, not for path explosion
       combined = combined.map(seq => seq.concat([{
         action: 'craft',
         what: craftNode.what,
@@ -153,6 +156,8 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
     if ((node.action === 'mine' || node.action === 'hunt') && 
         (!node.children || node.children.length === 0)) {
       const leafNode = node as MineLeafNode | HuntLeafNode;
+      
+      // Don't expand variants - variants are metadata, not for path explosion
       return [[{
         action: leafNode.action,
         what: leafNode.what,

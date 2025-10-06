@@ -70,6 +70,7 @@ export interface GenerateAndFilterOptions {
   perGenerator?: number;
   log?: boolean;
   pruneWithWorld?: boolean;
+  combineSimilarNodes?: boolean;
   config?: any;
 }
 

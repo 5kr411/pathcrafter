@@ -114,6 +114,27 @@ function getItemName(mcData: MinecraftData, id: number): string {
 }
 
 /**
+ * Gets a canonical key for a recipe based on its shape/structure (ignoring specific wood types)
+ */
+function getRecipeCanonicalKey(recipe: MinecraftRecipe): string {
+  // Combine info about the recipe type and requirements
+  const tableRequired = requiresCraftingTable(recipe);
+  const resultCount = recipe.result?.count || 1;
+  
+  if (recipe.inShape) {
+    // For shaped recipes, use the shape pattern
+    const shapeKey = JSON.stringify(recipe.inShape?.map(row => row.map(cell => cell === null ? 0 : 1)));
+    return `shaped:${tableRequired}:${resultCount}:${shapeKey}`;
+  } else if (recipe.ingredients) {
+    // For shapeless recipes, use sorted ingredient count
+    const ingredientCount = recipe.ingredients.length;
+    return `shapeless:${tableRequired}:${resultCount}:${ingredientCount}`;
+  }
+  
+  return `other:${tableRequired}:${resultCount}`;
+}
+
+/**
  * Canonicalizes a shaped recipe for deduplication
  */
 function canonicalizeShapedRecipe(mcData: MinecraftData, recipe: MinecraftRecipe): string {
@@ -250,7 +271,44 @@ export function findMobsThatDrop(mcData: MinecraftData, itemName: string): MobSo
 }
 
 /**
- * Builds a recipe tree for acquiring a specific item
+ * Finds all items similar to the given item (same suffix AND should be combinable)
+ * Only groups items that are part of known families (wood types, nether wood types, bamboo)
+ */
+function findSimilarItems(mcData: MinecraftData, itemName: string): string[] {
+  const suffix = getSuffixTokenFromName(itemName);
+  if (!suffix) return [itemName];
+  
+  // Known combinable suffixes (wood families)
+  const combinableSuffixes = new Set([
+    'log', 'wood', 'planks', 'stem', 'hyphae',
+    'button', 'door', 'fence', 'fence_gate', 'pressure_plate',
+    'sign', 'slab', 'stairs', 'trapdoor', 'boat', 'chest_boat'
+  ]);
+  
+  // Only combine if this is a combinable suffix
+  if (!combinableSuffixes.has(suffix)) {
+    return [itemName];
+  }
+  
+  // Find all items with same suffix
+  const similar: string[] = [];
+  for (const name of Object.keys(mcData.itemsByName)) {
+    if (getSuffixTokenFromName(name) === suffix) {
+      // Additional check: both items should have the same prefix pattern
+      // (oak_planks and spruce_planks both have wood type prefix + underscore + suffix)
+      const itemParts = itemName.split('_');
+      const nameParts = name.split('_');
+      if (itemParts.length === nameParts.length) {
+        similar.push(name);
+      }
+    }
+  }
+  
+  return similar.length > 1 ? similar : [itemName];
+}
+
+/**
+ * Builds a recipe tree for acquiring a specific item (or group of similar items)
  */
 export function buildRecipeTree(
   ctx: any,
@@ -259,25 +317,52 @@ export function buildRecipeTree(
   context: BuildContext = {}
 ): RootNode {
   const mcData = resolveMcData(ctx);
-  const item = mcData?.itemsByName[itemName];
+  
+  // If combining is enabled, find all similar items and build for the group
+  let itemGroup: string[];
+  if (context.combineSimilarNodes && mcData) {
+    itemGroup = findSimilarItems(mcData, itemName);
+  } else {
+    itemGroup = [itemName];
+  }
+  
+  // Build for the group
+  return buildRecipeTreeInternal(ctx, itemGroup, targetCount, context);
+}
+
+/**
+ * Internal function that builds a recipe tree for a group of similar items
+ */
+function buildRecipeTreeInternal(
+  ctx: any,
+  itemGroup: string[],
+  targetCount: number,
+  context: BuildContext
+): RootNode {
+  const mcData = resolveMcData(ctx);
+  const primaryItem = itemGroup[0];
+  const item = mcData?.itemsByName[primaryItem];
 
   const invObj = context && context.inventory && typeof context.inventory === 'object' ? context.inventory : null;
   const invMap = makeSupplyFromInventory(invObj);
 
-  // Deduct from inventory if available
+  // Deduct from inventory if available (check all items in group)
   if (invMap && invMap.size > 0 && targetCount > 0) {
-    const have = invMap.get(itemName) || 0;
-    if (have > 0) {
-      const use = Math.min(have, targetCount);
-      invMap.set(itemName, have - use);
-      targetCount -= use;
+    for (const name of itemGroup) {
+      const have = invMap.get(name) || 0;
+      if (have > 0) {
+        const use = Math.min(have, targetCount);
+        invMap.set(name, have - use);
+        targetCount -= use;
+        if (targetCount <= 0) break;
+      }
     }
   }
 
   const root: RootNode = {
     action: 'root',
     operator: 'OR',
-    what: itemName,
+    what: primaryItem,
     count: targetCount,
     children: []
   };
@@ -289,55 +374,57 @@ export function buildRecipeTree(
   const visited = context.visited instanceof Set ? context.visited : new Set<string>();
   const preferMinimalTools = context.preferMinimalTools !== false;
 
-  if (visited.has(itemName)) return root;
+  // Check if any item in the group has been visited
+  const anyVisited = itemGroup.some(name => visited.has(name));
+  if (anyVisited) return root;
 
   const nextVisited = new Set(visited);
-  nextVisited.add(itemName);
+  for (const name of itemGroup) {
+    nextVisited.add(name);
+  }
 
-  let recipes = dedupeRecipesForItem(mcData, item.id, false).sort((a, b) => b.result.count - a.result.count);
+  // Collect all recipes for all items in the group
+  // Don't dedupe yet - we want to group across variants first
+  const allRecipes: Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}> = [];
+  for (const name of itemGroup) {
+    const itemData = mcData.itemsByName[name];
+    if (itemData) {
+      // Get raw recipes without deduplication
+      const rawRecipes = mcData.recipes[itemData.id] || [];
+      for (const recipe of rawRecipes) {
+        allRecipes.push({recipe, itemName: name, itemId: itemData.id});
+      }
+    }
+  }
 
-  // Score and sort recipes by missing ingredients
-  try {
-    recipes = recipes
-      .map(r => {
-        const craftingsNeeded = Math.ceil(targetCount / r.result.count);
-        const ingredientCounts = getIngredientCounts(r);
-        let missingTotal = 0;
-
-        for (const [ingredientId, count] of ingredientCounts.entries()) {
-          const ingredientItem = mcData.items[ingredientId];
-          if (!ingredientItem) continue;
-
-          const ingName = ingredientItem.name;
-          const totalNeeded = count * craftingsNeeded;
-          const haveIng = invMap ? (invMap.get(ingName) || 0) : 0;
-          const missing = Math.max(0, totalNeeded - haveIng);
-          missingTotal += missing;
-        }
-
-        return { recipe: r, missingTotal };
-      })
-      .sort((a, b) => a.missingTotal - b.missingTotal || (b.recipe.result.count - a.recipe.result.count))
-      .map(s => s.recipe as MinecraftRecipe);
-  } catch (_) {
-    // Keep original ordering on scoring failure
+  // Group recipes by canonical shape (same structure across different wood types)
+  const recipeGroups = new Map<string, Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>>();
+  for (const entry of allRecipes) {
+    const key = getRecipeCanonicalKey(entry.recipe);
+    if (!recipeGroups.has(key)) {
+      recipeGroups.set(key, []);
+    }
+    recipeGroups.get(key)!.push(entry);
   }
 
   const worldBudget = (context && context.worldBudget && typeof context.worldBudget === 'object') ? context.worldBudget : undefined;
   const wb = createWorldBudgetAccessors(worldBudget);
 
-  // Process crafting recipes
-  recipes.forEach(recipe => {
+  // Process crafting recipe groups (each group represents recipes with same shape across variants)
+  for (const [_canonicalKey, recipeGroup] of recipeGroups.entries()) {
+    // Use first recipe as representative
+    const recipe = recipeGroup[0].recipe;
     const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
     const ingredientCounts = getIngredientCounts(recipe);
 
+    // Create craft node with variants if we have multiple recipes in this group
     const craftNode: CraftNode = {
       action: 'craft',
       operator: 'AND',
       what: requiresCraftingTable(recipe) ? 'table' : 'inventory',
       count: craftingsNeeded,
       result: {
-        item: itemName,
+        item: recipeGroup[0].itemName,
         perCraftCount: recipe.result.count
       },
       ingredients: Array.from(ingredientCounts.entries())
@@ -351,6 +438,18 @@ export function buildRecipeTree(
         }),
       children: []
     };
+    
+    // Add variant information if we have multiple recipes
+    if (recipeGroup.length > 1 && context.combineSimilarNodes) {
+      craftNode.resultVariants = recipeGroup.map(entry => entry.itemName);
+      craftNode.ingredientVariants = recipeGroup.map(entry => {
+        const counts = getIngredientCounts(entry.recipe);
+        return Array.from(counts.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([id, _count]) => mcData.items[id]?.name);
+      });
+      craftNode.variantMode = 'one_of';
+    }
 
     const recipeInv = new Map(invMap);
     let recipeFeasible = true;
@@ -487,7 +586,35 @@ export function buildRecipeTree(
         }
       } else {
         // Recursively build ingredient tree
-        const ingredientTree = buildRecipeTree(mcData, ingNameAlloc, neededAfterInv, {
+        // If we have variants, collect corresponding ingredients from all variants
+        let ingredientGroup: string[];
+        if (recipeGroup.length > 1 && context.combineSimilarNodes) {
+          // Find which ingredient position this is
+          const ingredientPosition = Array.from(ingredientCounts.entries())
+            .sort(([a], [b]) => a - b)
+            .findIndex(([id, _]) => {
+              const name = mcData.items[id]?.name;
+              return name === ingNameAlloc;
+            });
+          
+          // Collect corresponding ingredient from each variant
+          ingredientGroup = [];
+          for (const entry of recipeGroup) {
+            const variantCounts = getIngredientCounts(entry.recipe);
+            const sortedVariantCounts = Array.from(variantCounts.entries()).sort(([a], [b]) => a - b);
+            if (ingredientPosition >= 0 && ingredientPosition < sortedVariantCounts.length) {
+              const [id, _] = sortedVariantCounts[ingredientPosition];
+              const name = mcData.items[id]?.name;
+              if (name && !ingredientGroup.includes(name)) {
+                ingredientGroup.push(name);
+              }
+            }
+          }
+        } else {
+          ingredientGroup = [ingNameAlloc];
+        }
+        
+        const ingredientTree = buildRecipeTreeInternal(mcData, ingredientGroup, neededAfterInv, {
           ...context,
           visited: nextVisited,
           preferMinimalTools,
@@ -525,10 +652,10 @@ export function buildRecipeTree(
     } else {
       root.children.push(craftNode);
     }
-  });
+  }
 
-  // Process smelting recipes
-  const smeltInputs = findFurnaceSmeltsForItem(mcData, itemName);
+  // Process smelting recipes (only for primary item, not all variants)
+  const smeltInputs = findFurnaceSmeltsForItem(mcData, primaryItem);
   if (smeltInputs.length > 0) {
     const perSmelt = 1;
     const smeltsNeeded = Math.ceil(targetCount / perSmelt);
@@ -544,7 +671,7 @@ export function buildRecipeTree(
     const smeltGroup: SmeltGroupNode = {
       action: 'smelt',
       operator: 'OR',
-      what: itemName,
+      what: primaryItem,
       count: targetCount,
       children: smeltInputs.map(inp => {
         let inputNeeded = smeltsNeeded;
@@ -599,7 +726,7 @@ export function buildRecipeTree(
           what: 'furnace',
           count: smeltsNeeded,
           input: { item: inp, perSmelt: 1 },
-          result: { item: itemName, perSmelt: perSmelt },
+          result: { item: primaryItem, perSmelt: perSmelt },
           fuel: fuelName || null,
           children
         };
@@ -611,7 +738,32 @@ export function buildRecipeTree(
   }
 
   // Process mining paths
-  const miningPaths = findBlocksThatDrop(mcData, itemName);
+  // When combining is enabled, collect mining paths for all items in the group
+  let miningPaths: BlockSource[];
+  if (context.combineSimilarNodes && itemGroup.length > 1) {
+    // Collect mining paths for all items in the group
+    const allMiningPaths: Array<{path: BlockSource, itemName: string}> = [];
+    for (const name of itemGroup) {
+      const paths = findBlocksThatDrop(mcData, name);
+      for (const path of paths) {
+        allMiningPaths.push({path, itemName: name});
+      }
+    }
+    
+    // Group all mining paths together (don't split by suffix)
+    // This creates ONE mine path entry with all block and target variants
+    const allBlocks = Array.from(new Set(allMiningPaths.map(p => p.path.block)));
+    const allTargets = Array.from(new Set(allMiningPaths.map(p => p.itemName)));
+    const firstPath = allMiningPaths[0].path;
+    
+    miningPaths = [{
+      ...firstPath,
+      _blockVariants: allBlocks, // All block types
+      _targetVariants: allTargets // All target items
+    } as any];
+  } else {
+    miningPaths = findBlocksThatDrop(mcData, primaryItem);
+  }
   if (miningPaths.length > 0) {
     let allowMineGroup = true;
 
@@ -627,7 +779,7 @@ export function buildRecipeTree(
     const mineGroup: MineGroupNode = {
       action: 'mine',
       operator: 'OR',
-      what: itemName,
+      what: primaryItem,
       count: targetCount,
       children: miningPaths.flatMap(s => {
         if (!s.tool || s.tool === 'any') {
@@ -635,10 +787,22 @@ export function buildRecipeTree(
           const leafNode: MineLeafNode = {
             action: 'mine',
             what: s.block,
-            targetItem: itemName,
+            targetItem: primaryItem,
             count: targetCount,
             children: []
           };
+          
+          // Add variant information if available
+          if ((s as any)._blockVariants && context.combineSimilarNodes) {
+            const blockVariants = (s as any)._blockVariants;
+            const targetVariants = (s as any)._targetVariants || [primaryItem];
+            if (blockVariants.length > 1) {
+              leafNode.whatVariants = blockVariants; // All block types
+              leafNode.targetItemVariants = targetVariants; // The items they drop
+              leafNode.variantMode = 'one_of';
+            }
+          }
+          
           return [leafNode];
         }
 
@@ -656,7 +820,7 @@ export function buildRecipeTree(
           const leafNode: MineLeafNode = {
             action: 'mine',
             what: s.block,
-            targetItem: itemName,
+            targetItem: primaryItem,
             tool: chosen,
             count: targetCount,
             children: []
@@ -674,11 +838,22 @@ export function buildRecipeTree(
           const mineLeaf: MineLeafNode = {
             action: 'mine',
             what: s.block,
-            targetItem: itemName,
+            targetItem: primaryItem,
             tool: toolName,
             count: targetCount,
             children: []
           };
+          
+          // Add variant information if available
+          if ((s as any)._blockVariants && context.combineSimilarNodes) {
+            const blockVariants = (s as any)._blockVariants;
+            const targetVariants = (s as any)._targetVariants || [primaryItem];
+            if (blockVariants.length > 1) {
+              mineLeaf.whatVariants = blockVariants; // All block types
+              mineLeaf.targetItemVariants = targetVariants; // The items they drop
+              mineLeaf.variantMode = 'one_of';
+            }
+          }
           const requireNode: RequireNode = {
             action: 'require',
             operator: 'AND',
@@ -708,13 +883,13 @@ export function buildRecipeTree(
     }
   }
 
-  // Process hunting paths
-  const huntingPaths = findMobsThatDrop(mcData, itemName);
+  // Process hunting paths (only for primary item, not all variants)
+  const huntingPaths = findMobsThatDrop(mcData, primaryItem);
   if (huntingPaths.length > 0) {
     const huntGroup: HuntGroupNode = {
       action: 'hunt',
       operator: 'OR',
-      what: itemName,
+      what: primaryItem,
       count: targetCount,
       children: huntingPaths.map(s => {
         const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
@@ -725,7 +900,7 @@ export function buildRecipeTree(
         const huntLeaf: HuntLeafNode = {
           action: 'hunt',
           what: s.mob,
-          targetItem: itemName,
+          targetItem: primaryItem,
           count: expectedKills,
           dropChance: s.dropChance,
           children: []
@@ -747,12 +922,14 @@ export function buildRecipeTree(
     // Ignore normalization errors
   }
 
-  // Combine similar nodes if enabled
-  if (context && context.combineSimilarNodes && mcData) {
+  // Filter variants based on world availability if enabled
+  if (context && context.combineSimilarNodes && worldBudget) {
     try {
-      combineSimilarNodesInTree(mcData, root);
+      filterVariantsByWorldAvailability(root, worldBudget);
+      // After filtering, fix craft nodes to use available variants as primary
+      fixCraftNodePrimaryFields(root, worldBudget);
     } catch (_) {
-      // Ignore combination errors
+      // Ignore filtering errors
     }
   }
 
@@ -852,8 +1029,63 @@ function groupSimilarCraftNodes(_mcData: MinecraftData, nodes: TreeNode[]): Tree
       representative.ingredientVariants = group.map(n => n.ingredients.map(ing => ing.item));
       representative.variantMode = 'one_of'; // Wood families are mutually exclusive
       
-      // Merge children from all variants
-      representative.children = mergeChildrenFromVariants(_mcData, group);
+      // Collect all children from all variants
+      const allChildren: TreeNode[] = [];
+      for (const variant of group) {
+        if (variant.children) {
+          allChildren.push(...variant.children);
+        }
+      }
+      
+      // Group children by suffix first (to merge all oak_planks, spruce_planks, etc.)
+      const childrenBySuffix = new Map<string, TreeNode[]>();
+      for (const child of allChildren) {
+        const key = child.action === 'root' 
+          ? getSuffixTokenFromName(child.what)
+          : `${child.action}:${child.what}`;
+        if (!childrenBySuffix.has(key)) {
+          childrenBySuffix.set(key, []);
+        }
+        childrenBySuffix.get(key)!.push(child);
+      }
+      
+      // For each group, merge all the variants' subtrees
+      const mergedChildren: TreeNode[] = [];
+      for (const [_key, childGroup] of childrenBySuffix.entries()) {
+        if (childGroup.length === 1) {
+          // Single child - just combine it recursively
+          combineSimilarNodesInTree(_mcData, childGroup[0]);
+          mergedChildren.push(childGroup[0]);
+        } else if (childGroup[0].action === 'root') {
+          // Multiple root nodes (e.g., root:oak_planks, root:spruce_planks)
+          // Use first as representative but combine all their children
+          const mergedRoot: RootNode = { ...childGroup[0] } as RootNode;
+          
+          // Collect all grandchildren from all root variants
+          const allGrandchildren: TreeNode[] = [];
+          for (const rootNode of childGroup) {
+            if (rootNode.children) {
+              allGrandchildren.push(...rootNode.children);
+            }
+          }
+          
+          // Apply combining to the grandchildren
+          for (const gc of allGrandchildren) {
+            combineSimilarNodesInTree(_mcData, gc);
+          }
+          
+          // Group and combine grandchildren (craft nodes, mine groups, etc.)
+          mergedRoot.children = groupSimilarCraftNodes(_mcData, allGrandchildren);
+          
+          mergedChildren.push(mergedRoot);
+        } else {
+          // Other node types - just use first
+          combineSimilarNodesInTree(_mcData, childGroup[0]);
+          mergedChildren.push(childGroup[0]);
+        }
+      }
+      
+      representative.children = mergedChildren;
       
       combinedNodes.push(representative);
     }
@@ -862,129 +1094,8 @@ function groupSimilarCraftNodes(_mcData: MinecraftData, nodes: TreeNode[]): Tree
   return [...combinedNodes, ...otherNodes];
 }
 
-/**
- * Merges children subtrees from multiple craft node variants
- * This ensures that ingredient acquisition paths are combined across wood families
- */
-function mergeChildrenFromVariants(_mcData: MinecraftData, variants: CraftNode[]): TreeNode[] {
-  if (variants.length === 0) return [];
-  if (variants.length === 1) return variants[0].children;
-
-  // Collect all children from all variants
-  const allChildren: TreeNode[] = [];
-  for (const variant of variants) {
-    allChildren.push(...variant.children);
-  }
-
-  // Group children by their suffix (to merge wood families)
-  const childrenBySuffix = new Map<string, TreeNode[]>();
-  
-  for (const child of allChildren) {
-    // Root nodes have a 'what' field indicating what item they acquire
-    if (child.action === 'root') {
-      // Group by suffix to merge oak_planks, spruce_planks, etc.
-      const suffix = getSuffixTokenFromName(child.what);
-      if (!childrenBySuffix.has(suffix)) {
-        childrenBySuffix.set(suffix, []);
-      }
-      childrenBySuffix.get(suffix)!.push(child);
-    } else {
-      // Non-root children get a unique key based on their type
-      const key = `${child.action}:${child.what}`;
-      if (!childrenBySuffix.has(key)) {
-        childrenBySuffix.set(key, []);
-      }
-      childrenBySuffix.get(key)!.push(child);
-    }
-  }
-
-  // Merge children with the same suffix
-  const mergedChildren: TreeNode[] = [];
-  
-  for (const [_suffix, childGroup] of childrenBySuffix.entries()) {
-    if (childGroup.length === 1) {
-      mergedChildren.push(childGroup[0]);
-    } else if (childGroup[0].action === 'root') {
-      // Merge multiple root nodes by combining their children
-      const mergedRoot: RootNode = { ...childGroup[0] } as RootNode;
-      
-      // Use the first node's name but track all variants
-      // This represents "acquire any _planks type"
-      
-      // Collect all children from all root variants
-      const allRootChildren: TreeNode[] = [];
-      for (const rootNode of childGroup) {
-        allRootChildren.push(...rootNode.children);
-      }
-      
-      // Recursively combine the children (craft nodes, mine nodes, etc.)
-      const combinedRootChildren = groupSimilarCraftNodes(_mcData, allRootChildren);
-      
-      // Group mine groups by their target item and merge them
-      mergedRoot.children = groupMineGroups(combinedRootChildren);
-      
-      mergedChildren.push(mergedRoot);
-    } else {
-      // For non-root nodes, just take the first one
-      mergedChildren.push(childGroup[0]);
-    }
-  }
-
-  return mergedChildren;
-}
-
-/**
- * Groups mine group nodes by their target item suffix and merges their leaves
- */
-function groupMineGroups(nodes: TreeNode[]): TreeNode[] {
-  const mineGroups = nodes.filter((n): n is MineGroupNode => 
-    n.action === 'mine' && 'operator' in n && n.operator === 'OR'
-  );
-  const otherNodes = nodes.filter(n => 
-    !(n.action === 'mine' && 'operator' in n && n.operator === 'OR')
-  );
-
-  if (mineGroups.length === 0) return nodes;
-
-  // Group mine groups by their target item suffix
-  const groupsBySuffix = new Map<string, MineGroupNode[]>();
-
-  for (const mineGroup of mineGroups) {
-    const suffix = mineGroup.what ? getSuffixTokenFromName(mineGroup.what) : 'default';
-    if (!groupsBySuffix.has(suffix)) {
-      groupsBySuffix.set(suffix, []);
-    }
-    groupsBySuffix.get(suffix)!.push(mineGroup);
-  }
-
-  // Merge mine groups with the same suffix
-  const mergedMineGroups: TreeNode[] = [];
-
-  for (const [_suffix, group] of groupsBySuffix.entries()) {
-    if (group.length === 1) {
-      // Single mine group - just combine its leaf nodes
-      const mineGroup = group[0];
-      mineGroup.children = groupSimilarMineLeafNodes(mineGroup.children);
-      mergedMineGroups.push(mineGroup);
-    } else {
-      // Multiple mine groups - merge them
-      const representative: MineGroupNode = { ...group[0] };
-      
-      // Collect all leaf nodes from all mine groups
-      const allLeaves: TreeNode[] = [];
-      for (const mineGroup of group) {
-        allLeaves.push(...mineGroup.children);
-      }
-      
-      // Group and merge the leaves
-      representative.children = groupSimilarMineLeafNodes(allLeaves);
-      
-      mergedMineGroups.push(representative);
-    }
-  }
-
-  return [...mergedMineGroups, ...otherNodes];
-}
+// Removed mergeChildrenFromVariants and groupMineGroups functions
+// Now using simpler approach: first variant's children represent all variants
 
 /**
  * Groups similar mine leaf nodes within a mine group
@@ -1060,5 +1171,155 @@ function combineSimilarNodesInTree(mcData: MinecraftData, node: TreeNode): void 
       return child;
     });
   }
+}
+
+/**
+ * Fixes craft node primary fields after filtering to use actually available variants
+ * Traverses from leaves up, updating each craft node's primary result/ingredients
+ * to match what its children can actually provide
+ */
+function fixCraftNodePrimaryFields(node: TreeNode, worldBudget: any): void {
+  if (!node) return;
+  
+  // Recurse to children first (bottom-up)
+  if (node.children && node.children.length > 0) {
+    for (const child of node.children) {
+      fixCraftNodePrimaryFields(child, worldBudget);
+    }
+  }
+  
+  // Fix craft nodes
+  if (node.action === 'craft') {
+    const craftNode = node as CraftNode;
+    
+    // If this craft node has variants and children, update primary fields
+    // to match what the children can actually provide
+    if (craftNode.resultVariants && craftNode.ingredientVariants && 
+        craftNode.children && craftNode.children.length > 0) {
+      
+      // Find which variant's ingredients are actually available from children
+      for (let i = 0; i < craftNode.ingredientVariants.length; i++) {
+        const ingredients = craftNode.ingredientVariants[i];
+        let allAvailable = true;
+        
+        // Check if all ingredients for this variant can be provided by children
+        for (const ingName of ingredients) {
+          let found = false;
+          for (const child of craftNode.children) {
+            if (child.action === 'root') {
+              const rootNode = child as RootNode;
+              // Check if this root can provide this ingredient
+              // Match on suffix since variants are combined
+              const ingSuffix = getSuffixTokenFromName(ingName);
+              const rootSuffix = getSuffixTokenFromName(rootNode.what);
+              if (ingSuffix === rootSuffix && rootNode.children && rootNode.children.length > 0) {
+                found = true;
+                break;
+              }
+            }
+          }
+          if (!found) {
+            allAvailable = false;
+            break;
+          }
+        }
+        
+        // If this variant's ingredients are available, use it as primary
+        if (allAvailable) {
+          craftNode.result.item = craftNode.resultVariants[i];
+          craftNode.ingredients = ingredients.map((name, idx) => ({
+            item: name,
+            perCraftCount: craftNode.ingredients[idx]?.perCraftCount || 1
+          }));
+          break; // Use first available variant
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Filters variant arrays based on world availability
+ * Removes variants that aren't available and prunes nodes with no valid variants
+ */
+function filterVariantsByWorldAvailability(node: TreeNode, worldBudget: any): boolean {
+  if (!node) return false;
+  
+  const wb = createWorldBudgetAccessors(worldBudget);
+  
+  // Filter craft nodes
+  // NOTE: Craft node variant filtering is complex when combined with node combining,
+  // because combining merges different variants (oak_planks, spruce_planks) into one node.
+  // For now, we rely on path validation to filter out invalid craft combinations.
+  // The mine leaf filtering below will ensure only available blocks remain.
+  
+  // Filter mine leaf nodes
+  if (node.action === 'mine' && (!('operator' in node) || !node.operator)) {
+    const mineLeaf = node as MineLeafNode;
+    
+    if (mineLeaf.whatVariants && mineLeaf.whatVariants.length > 1) {
+      // Filter variants based on block availability
+      const validIndices: number[] = [];
+      
+      for (let i = 0; i < mineLeaf.whatVariants.length; i++) {
+        const blockName = mineLeaf.whatVariants[i];
+        // Check if this block type is available in the world
+        const available = wb.sum('blocks', [blockName]);
+        if (available > 0) {
+          validIndices.push(i);
+        }
+      }
+      
+      if (validIndices.length === 0) {
+        return true; // Node should be removed
+      }
+      
+      if (validIndices.length < mineLeaf.whatVariants.length) {
+        // Update the primary block to the first valid variant
+        mineLeaf.what = mineLeaf.whatVariants[validIndices[0]];
+        if (mineLeaf.targetItemVariants && mineLeaf.targetItemVariants[validIndices[0]]) {
+          mineLeaf.targetItem = mineLeaf.targetItemVariants[validIndices[0]];
+        }
+        
+        // If only 1 variant remains, clear the variant fields (no choice to make)
+        if (validIndices.length === 1) {
+          delete mineLeaf.whatVariants;
+          delete mineLeaf.targetItemVariants;
+          delete mineLeaf.variantMode;
+        } else {
+          // Filter the variants to only valid ones
+          mineLeaf.whatVariants = validIndices.map(i => mineLeaf.whatVariants![i]);
+          if (mineLeaf.targetItemVariants) {
+            mineLeaf.targetItemVariants = validIndices.map(i => mineLeaf.targetItemVariants![i]);
+          }
+        }
+      }
+    }
+  }
+  
+  // Recurse and filter children
+  if (node.children && node.children.length > 0) {
+    const filteredChildren: TreeNode[] = [];
+    
+    for (const child of node.children) {
+      const shouldRemove = filterVariantsByWorldAvailability(child, worldBudget);
+      if (!shouldRemove) {
+        filteredChildren.push(child);
+      }
+    }
+    
+    node.children = filteredChildren;
+    
+    // If this node has no children left, it should be removed
+    if (node.children.length === 0) {
+      // Remove mine/hunt/smelt/root group nodes with no children
+      // Craft nodes with no children are leaf crafts (from inventory), so keep them
+      if (node.action === 'mine' || node.action === 'hunt' || node.action === 'smelt' || node.action === 'root') {
+        return true;
+      }
+    }
+  }
+  
+  return false;
 }
 

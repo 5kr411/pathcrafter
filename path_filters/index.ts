@@ -58,6 +58,7 @@ export async function generateTopNAndFilter(
     log: options.log,
     pruneWithWorld,
     worldSnapshot: snapshot as any,
+    combineSimilarNodes: options.combineSimilarNodes,
     config: options && options.config ? options.config : undefined
   });
 
