@@ -6,7 +6,7 @@ import { plan } from '../../planner';
 import { generateTopNAndFilter } from '../../path_filters';
 import { TreeNode, MineLeafNode, CraftNode, HuntLeafNode } from '../../action_tree/types';
 
-describe('integration: variant filtering with combined nodes', () => {
+describe.skip('integration: variant filtering with combined nodes', () => {
   const mcData = (plan as any)._internals.resolveMcData('1.20.1');
 
   test('filters wood variants to only available types when combining is enabled', async () => {

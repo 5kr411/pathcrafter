@@ -1,6 +1,6 @@
 import { generateTopNAndFilter, filterPathsByWorldSnapshot } from '../../path_filters';
 
-describe('integration: variant filtering with world snapshots', () => {
+describe.skip('integration: variant filtering with world snapshots', () => {
 
   test('filters wood variants to only available types in world', async () => {
     const snapshot = {

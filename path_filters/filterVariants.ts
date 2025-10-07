@@ -146,34 +146,18 @@ function filterStepVariants(
       }
     }
     
-    // If only one variant available, simplify
-    if (step.result.variants.length === 1) {
-      return {
-        ...step,
-        result: {
-          mode: 'one_of' as const,
-          variants: [step.result.variants[0]]
-        },
-        ingredients: {
-          mode: 'one_of' as const,
-          variants: [step.ingredients.variants[selectedVariantIndex]]
-        },
-        variantMode: 'one_of' as const
-      };
-    }
-
-    // Multiple variants available - keep all variants but use available one as primary
+    // Filter to only the selected variant that has available sources
     return {
       ...step,
       result: {
-        mode: step.result.mode,
-        variants: step.result.variants
+        mode: 'one_of' as const,
+        variants: [step.result.variants[selectedVariantIndex]]
       },
       ingredients: {
-        mode: step.ingredients.mode,
-        variants: step.ingredients.variants
+        mode: 'one_of' as const,
+        variants: [step.ingredients.variants[selectedVariantIndex]]
       },
-      variantMode: step.variantMode
+      variantMode: 'one_of' as const
     };
   }
 

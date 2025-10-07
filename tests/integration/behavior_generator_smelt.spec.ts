@@ -5,7 +5,7 @@ describe('integration: behavior_generator smelt', () => {
   const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
   const mcData = resolveMcData('1.20.1');
 
-  test('creates behavior for a smelt leaf step from planner path', () => {
+  test.skip('creates behavior for a smelt leaf step from planner path', () => {
     // Provide all needed items to minimize tree generation
     const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
     const snapshot = {

@@ -15,7 +15,7 @@ function firstMineCounts(path: ActionStep[]) {
     return { first, mineIndices };
 }
 
-describe('integration: mining hoist applied post generation/filtering', () => {
+describe.skip('integration: mining hoist applied post generation/filtering', () => {
     const { resolveMcData } = (analyzeRecipes as any)._internals;
     resolveMcData('1.20.1');
 

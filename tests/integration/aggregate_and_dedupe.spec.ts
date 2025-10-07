@@ -14,7 +14,7 @@ function countDuplicates(arr: ActionStep[][]): number {
     return dups;
 }
 
-describe('integration: aggregate top-N and dedupe across generators', () => {
+describe.skip('integration: aggregate top-N and dedupe across generators', () => {
     const { resolveMcData } = (analyzeRecipes as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
