@@ -1,13 +1,13 @@
 import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForMineOneOf, canHandle } from '../../behavior_generator/mineOneOf';
-import { createTestActionStep, createTestStringGroup } from '../testHelpers';
+import { createTestActionStep, createTestStringGroup, createVariantGroupFromArray } from '../testHelpers';
 
 describe('BehaviorGenerator mineOneOf', () => {
   describe('canHandle', () => {
-    it('should handle mine steps with whatVariants', () => {
+    it('should handle mine steps with what variants', () => {
       const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: createTestStringGroup('oak_log'),
+        what: createVariantGroupFromArray('one_of', ['oak_log', 'spruce_log', 'birch_log']),
         count: 5
       });
 
@@ -34,21 +34,6 @@ describe('BehaviorGenerator mineOneOf', () => {
       expect(canHandle(step)).toBe(false);
     });
 
-    it('should handle legacy meta-based approach', () => {
-      const step: ActionStep = {
-        action: 'mine',
-        what: 'oak_log',
-        count: 5,
-        meta: {
-          oneOfCandidates: [
-            { blockName: 'oak_log' },
-            { blockName: 'spruce_log' }
-          ]
-        }
-      } as any;
-
-      expect(canHandle(step)).toBe(true);
-    });
 
     it('should not handle non-mine steps', () => {
       const step: ActionStep = createTestActionStep({
@@ -65,7 +50,7 @@ describe('BehaviorGenerator mineOneOf', () => {
     it('should compute targets for variant-based approach', () => {
       const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: createTestStringGroup('oak_log'),
+        what: createVariantGroupFromArray('one_of', ['oak_log', 'spruce_log', 'birch_log']),
         count: 3
       });
 
@@ -81,10 +66,10 @@ describe('BehaviorGenerator mineOneOf', () => {
       });
     });
 
-    it('should handle missing targetItemVariants', () => {
+    it('should handle missing targetItem variants', () => {
       const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: createTestStringGroup('oak_log'),
+        what: createVariantGroupFromArray('one_of', ['oak_log', 'spruce_log']),
         count: 2
       });
 
@@ -99,32 +84,6 @@ describe('BehaviorGenerator mineOneOf', () => {
       });
     });
 
-    it('should compute targets for legacy meta-based approach', () => {
-      const step: ActionStep = {
-        action: 'mine',
-        what: 'oak_log',
-        count: 4,
-        targetItem: 'wood',
-        meta: {
-          oneOfCandidates: [
-            { blockName: 'oak_log' },
-            { blockName: 'spruce_log' },
-            { blockName: 'birch_log' }
-          ]
-        }
-      } as any;
-
-      const result = computeTargetsForMineOneOf(step);
-
-      expect(result).toEqual({
-        candidates: [
-          { blockName: 'oak_log', itemName: 'wood', amount: 4 },
-          { blockName: 'spruce_log', itemName: 'wood', amount: 4 },
-          { blockName: 'birch_log', itemName: 'wood', amount: 4 }
-        ],
-        amount: 4
-      });
-    });
 
     it('should return null for invalid steps', () => {
       const step: ActionStep = createTestActionStep({
@@ -139,14 +98,11 @@ describe('BehaviorGenerator mineOneOf', () => {
     });
 
     it('should handle empty candidates gracefully', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 1,
-        meta: {
-          oneOfCandidates: []
-        }
-      } as any;
+        what: createVariantGroupFromArray('one_of', []),
+        count: 1
+      });
 
       const result = computeTargetsForMineOneOf(step);
 

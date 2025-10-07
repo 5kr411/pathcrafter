@@ -34,7 +34,7 @@ describe('unit: combine similar nodes', () => {
         
         // None should have variants
         planksCrafts.forEach(n => {
-            expect(n.variants.variants.length).toBe(1);
+            expect(n.children.variants.length).toBe(1);
         });
     });
 
@@ -177,10 +177,10 @@ describe('unit: combine similar nodes', () => {
 
         // Navigate to planks -> craft -> log acquisition
         let planksNode: TreeNode | null = null;
-        if (tree.children && tree.children.length > 0) {
-            const firstCraft = tree.children[0];
-            if (firstCraft.children && firstCraft.children.length > 0) {
-                planksNode = firstCraft.children[0];
+        if (tree.children && tree.children.variants.length > 0) {
+            const firstCraft = tree.children.variants[0].value;
+            if (firstCraft.children && firstCraft.children.variants.length > 0) {
+                planksNode = firstCraft.children.variants[0].value;
             }
         }
 

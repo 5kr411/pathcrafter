@@ -67,3 +67,13 @@ export function createTestItemReferenceGroup(item: string, perCraftCount: number
 export function createTestIngredientGroup(ingredients: ItemReference[]): VariantGroup<ItemReference[]> {
   return createVariantGroup('one_of', ingredients);
 }
+
+/**
+ * Creates a VariantGroup<ItemReference> with multiple variants for testing
+ */
+export function createTestItemReferenceGroupFromArray(mode: 'one_of' | 'any_of', items: Array<{item: string, perCraftCount: number}>): VariantGroup<ItemReference> {
+  return {
+    mode,
+    variants: items.map(item => ({ value: item }))
+  };
+}

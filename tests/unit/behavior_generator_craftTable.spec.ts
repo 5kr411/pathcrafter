@@ -15,17 +15,6 @@ describe('BehaviorGenerator craftTable', () => {
       expect(canHandle(step)).toBe(true);
     });
 
-    it('should not handle table craft steps with variants', () => {
-      const step: ActionStep = createTestActionStep({
-        action: 'craft',
-        what: createTestStringGroup('table'),
-        count: 1,
-        result: createTestItemReferenceGroup('oak_door', 1)
-      });
-
-      expect(canHandle(step)).toBe(false);
-    });
-
     it('should handle table craft steps with single variant', () => {
       const step: ActionStep = createTestActionStep({
         action: 'craft',

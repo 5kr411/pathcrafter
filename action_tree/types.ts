@@ -245,6 +245,7 @@ export interface BuildContext {
     maxDepth?: number;
   };
   variantConstraints: VariantConstraintManager;
+  combineSimilarNodes?: boolean;
 }
 
 /**

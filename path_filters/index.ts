@@ -9,8 +9,9 @@ export {
   explainDemandShortfall
 } from './worldResources';
 
-export { filterPathsByWorldSnapshot } from './filterByWorld';
+// Path validation removed - tree ensures validity
 export { filterPathVariantsByWorld } from './filterVariants';
+export { filterPathsByWorldSnapshot } from './filterByWorld';
 
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
@@ -74,12 +75,8 @@ export async function generateTopNAndFilter(
     perGenerator
   );
 
-  // Filter paths by world snapshot if provided
-  const filtered = snapshot 
-    ? (await import('./filterByWorld')).filterPathsByWorldSnapshot(candidates, snapshot, { 
-        inventory: options.inventory
-      })
-    : candidates;
+  // Tree is already valid - no additional filtering needed
+  const filtered = candidates;
 
   // Apply mining optimization
   return hoistMiningInPaths(filtered);

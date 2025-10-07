@@ -18,7 +18,8 @@ import {
   MinecraftRecipe,
   VariantGroup,
   VariantConstraintManager,
-  ItemReference
+  ItemReference,
+  BlockSource
 } from '../types';
 import { resolveMcData } from '../utils/mcDataResolver';
 import { findSimilarItems } from '../utils/itemSimilarity';
@@ -67,8 +68,8 @@ export function buildRecipeTree(
     throw new Error('Could not resolve Minecraft data');
   }
   
-  // Find all similar items (wood families, etc.)
-  const itemGroup = findSimilarItems(mcData, itemName);
+  // Find all similar items (wood families, etc.) only if combining is enabled
+  const itemGroup = context.combineSimilarNodes ? findSimilarItems(mcData, itemName) : [itemName];
   
   // Create variant-first context
   const variantContext: BuildContext = {
@@ -82,7 +83,8 @@ export function buildRecipeTree(
       avoidTool: context.config?.avoidTool,
       maxDepth: context.config?.maxDepth ?? 10
     },
-    variantConstraints: context.variantConstraints || new VariantConstraintManager()
+    variantConstraints: context.variantConstraints || new VariantConstraintManager(),
+    combineSimilarNodes: context.combineSimilarNodes
   };
   
   return buildRecipeTreeInternal(ctx, itemGroup, targetCount, variantContext);
@@ -196,8 +198,8 @@ function buildRecipeTreeInternal(
   // Group recipes by canonical shape (same structure across different wood types)
   const recipeGroups = new Map<string, Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>>();
   for (const entry of allRecipes) {
-    // Group similar recipes together (e.g., all wood planks recipes)
-    const key = getRecipeCanonicalKey(entry.recipe);
+    // Group similar recipes together only if combining is enabled
+    const key = context.combineSimilarNodes ? getRecipeCanonicalKey(entry.recipe) : entry.itemName;
     
     if (!recipeGroups.has(key)) {
       recipeGroups.set(key, []);
@@ -219,39 +221,66 @@ function buildRecipeTreeInternal(
     );
 
     const resultVariants: VariantGroup<ItemReference> = {
-      mode: variantMode,
-      variants: recipeGroup.map(entry => ({
-        value: {
-          item: entry.itemName,
-          perCraftCount: recipe.result.count
-        },
-        metadata: {
-          family: getFamilyFromName(entry.itemName),
-          suffix: getSuffixFromName(entry.itemName)
-        }
-      }))
+      mode: context.combineSimilarNodes ? variantMode : 'one_of',
+      variants: context.combineSimilarNodes 
+        ? recipeGroup.map(entry => ({
+            value: {
+              item: entry.itemName,
+              perCraftCount: recipe.result.count
+            },
+            metadata: {
+              family: getFamilyFromName(entry.itemName),
+              suffix: getSuffixFromName(entry.itemName)
+            }
+          }))
+        : [{
+            value: {
+              item: recipeGroup[0].itemName,
+              perCraftCount: recipe.result.count
+            },
+            metadata: {
+              family: getFamilyFromName(recipeGroup[0].itemName),
+              suffix: getSuffixFromName(recipeGroup[0].itemName)
+            }
+          }]
     };
 
     const ingredientVariants: VariantGroup<ItemReference[]> = {
-      mode: variantMode,
-      variants: recipeGroup.map(entry => {
-        const counts = getIngredientCounts(entry.recipe);
-        return {
-          value: Array.from(counts.entries())
-            .sort(([a], [b]) => a - b)
-            .map(([id, count]) => {
-              const ingName = mcData.items[id]?.name;
-              return {
-                item: ingName,
-                perCraftCount: count
-              };
-            }),
-          metadata: {
-            family: getFamilyFromName(entry.itemName),
-            suffix: getSuffixFromName(entry.itemName)
-          }
-        };
-      })
+      mode: context.combineSimilarNodes ? variantMode : 'one_of',
+      variants: context.combineSimilarNodes 
+        ? recipeGroup.map(entry => {
+            const counts = getIngredientCounts(entry.recipe);
+            return {
+              value: Array.from(counts.entries())
+                .sort(([a], [b]) => a - b)
+                .map(([id, count]) => {
+                  const ingName = mcData.items[id]?.name;
+                  return {
+                    item: ingName,
+                    perCraftCount: count
+                  };
+                }),
+              metadata: {
+                family: getFamilyFromName(entry.itemName),
+                suffix: getSuffixFromName(entry.itemName)
+              }
+            };
+          })
+        : [{
+            value: Array.from(getIngredientCounts(recipeGroup[0].recipe).entries())
+              .sort(([a], [b]) => a - b)
+              .map(([id, count]) => {
+                const ingName = mcData.items[id]?.name;
+                return {
+                  item: ingName,
+                  perCraftCount: count
+                };
+              }),
+            metadata: {
+              family: getFamilyFromName(recipeGroup[0].itemName),
+              suffix: getSuffixFromName(recipeGroup[0].itemName)
+            }
+          }]
     };
 
     // Create craft node with variant-first approach
@@ -362,21 +391,54 @@ function buildRecipeTreeInternal(
       context
     };
 
-    // Add mine leaf nodes for each block that drops the item
-    for (const miningPath of miningPaths) {
-      const mineLeaf: MineLeafNode = {
-        action: 'mine',
-        variantMode: 'any_of',
-        what: createVariantGroup('any_of', [miningPath.block]),
-        targetItem: createVariantGroup('any_of', [primaryItem]),
-        count: targetCount,
-        tool: createVariantGroup('any_of', [miningPath.tool]),
-        variants: { mode: 'any_of', variants: [] },
-        children: { mode: 'any_of', variants: [] },
-        context
-      };
+    // Group mining paths by similar blocks if combining is enabled
+    if (context.combineSimilarNodes) {
+      // Group mining paths by similar blocks
+      const groupedPaths = new Map<string, BlockSource[]>();
+      for (const miningPath of miningPaths) {
+        const similarBlocks = findSimilarItems(mcData, miningPath.block);
+        const key = similarBlocks.sort().join(',');
+        
+        if (!groupedPaths.has(key)) {
+          groupedPaths.set(key, []);
+        }
+        groupedPaths.get(key)!.push(miningPath);
+      }
 
-      mineGroup.children.variants.push({ value: mineLeaf });
+      // Create mine leaf nodes for each group of similar blocks
+      for (const [key, pathGroup] of groupedPaths) {
+        const similarBlocks = key.split(',');
+        const mineLeaf: MineLeafNode = {
+          action: 'mine',
+          variantMode: 'any_of',
+          what: createVariantGroup('any_of', similarBlocks),
+          targetItem: createVariantGroup('any_of', variantsToUse),
+          count: targetCount,
+          tool: createVariantGroup('any_of', [pathGroup[0].tool]),
+          variants: { mode: 'any_of', variants: [] },
+          children: { mode: 'any_of', variants: [] },
+          context
+        };
+
+        mineGroup.children.variants.push({ value: mineLeaf });
+      }
+    } else {
+      // Add mine leaf nodes for each block that drops the item (no combining)
+      for (const miningPath of miningPaths) {
+        const mineLeaf: MineLeafNode = {
+          action: 'mine',
+          variantMode: 'any_of',
+          what: createVariantGroup('any_of', [miningPath.block]),
+          targetItem: createVariantGroup('any_of', [primaryItem]),
+          count: targetCount,
+          tool: createVariantGroup('any_of', [miningPath.tool]),
+          variants: { mode: 'any_of', variants: [] },
+          children: { mode: 'any_of', variants: [] },
+          context
+        };
+
+        mineGroup.children.variants.push({ value: mineLeaf });
+      }
     }
 
     // Add mine group to root

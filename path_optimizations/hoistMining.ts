@@ -6,9 +6,9 @@ import { ActionPath, ActionStep } from '../action_tree/types';
  * @returns JSON string representing the mining operation
  */
 function makeMiningKey(step: ActionStep): string {
-  const what = step && step.what ? String(step.what) : null;
-  const target = step && 'targetItem' in step ? String((step as any).targetItem) : null;
-  const tool = step && 'tool' in step ? String((step as any).tool) : null;
+  const what = step && step.what ? JSON.stringify(step.what) : null;
+  const target = step && 'targetItem' in step ? JSON.stringify((step as any).targetItem) : null;
+  const tool = step && 'tool' in step ? JSON.stringify((step as any).tool) : null;
   return JSON.stringify({ what, target, tool });
 }
 

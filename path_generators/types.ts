@@ -86,8 +86,6 @@ export type MakeAndStreamFn<T = PathItem> = (
  */
 export interface EnumeratorContext {
   initialSupply: Map<string, number>;
-  sanitizePath: (path: ActionPath) => ActionPath;
-  isPathValid: (path: ActionPath) => boolean;
   createMakeStream: (
     makeLeafStream: MakeLeafStreamFn<any>,
     makeOrStream: MakeOrStreamFn<any>,
@@ -101,8 +99,6 @@ export interface EnumeratorContext {
 export interface PriorityStreamConfig {
   getItemScore: (item: PathItem) => number;
   getParentStepScore: (step: ActionStep | null) => number;
-  sanitizePath: (path: ActionPath) => ActionPath;
-  isPathValid: (path: ActionPath) => boolean;
   finalizeItem: (cleanedPath: ActionPath) => PathItem;
 }
 

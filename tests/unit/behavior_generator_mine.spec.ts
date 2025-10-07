@@ -14,14 +14,14 @@ describe('BehaviorGenerator mine', () => {
       expect(canHandle(step)).toBe(true);
     });
 
-    it('should not handle mine steps with variants', () => {
+    it('should handle mine steps with single variant', () => {
       const step: ActionStep = createTestActionStep({
         action: 'mine',
         what: createTestStringGroup('oak_log'),
         count: 5
       });
 
-      expect(canHandle(step)).toBe(false);
+      expect(canHandle(step)).toBe(true);
     });
 
     it('should not handle mine steps with single variant', () => {

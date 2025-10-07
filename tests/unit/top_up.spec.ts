@@ -34,8 +34,8 @@ describe('unit: Top-up scenarios prefer minimal additional mining', () => {
         expect(shortestPath).toBeTruthy();
         expect(lowestPath).toBeTruthy();
 
-        const s0 = shortestPath.map((s: any) => s.action === 'mine' ? s.what : s.action).join(' ');
-        const l0 = lowestPath.map((s: any) => s.action === 'mine' ? s.what : s.action).join(' ');
+        const s0 = shortestPath.map((s: any) => s.action === 'mine' ? s.what.variants[0].value : s.action).join(' ');
+        const l0 = lowestPath.map((s: any) => s.action === 'mine' ? s.what.variants[0].value : s.action).join(' ');
 
         // Ensure a one-step cobblestone mining appears before 3x blackstone in first path
         expect(s0).toMatch(/(stone|cobblestone)/);
@@ -65,8 +65,8 @@ describe('unit: Top-up scenarios prefer minimal additional mining', () => {
         expect(shortestPath).toBeTruthy();
         expect(lowestPath).toBeTruthy();
 
-        const s0 = shortestPath.map((s: any) => s.action === 'mine' ? s.what : s.action).join(' ');
-        const l0 = lowestPath.map((s: any) => s.action === 'mine' ? s.what : s.action).join(' ');
+        const s0 = shortestPath.map((s: any) => s.action === 'mine' ? s.what.variants[0].value : s.action).join(' ');
+        const l0 = lowestPath.map((s: any) => s.action === 'mine' ? s.what.variants[0].value : s.action).join(' ');
 
         // raw_iron is obtained by mining iron_ore or crafting from raw_iron_block, not smelting cobblestone
         expect(s0).toMatch(/iron/);

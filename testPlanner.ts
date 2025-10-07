@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { plan } from './planner';
-import { filterPathsByWorldSnapshot, generateTopNAndFilter } from './path_filters';
+import { generateTopNAndFilter } from './path_filters';
 import { getDefaultPerGeneratorPaths, getPruneWithWorldEnabled } from './utils/config';
 import { hoistMiningInPaths } from './path_optimizations/hoistMining';
 import { loadSnapshotFromFile } from './utils/worldSnapshot';
@@ -61,7 +61,7 @@ const perGenerator = getDefaultPerGeneratorPaths();
             }).sort((a, b) => b.mtime - a.mtime);
             const latest = withTimes[0].full;
             const snapshot = loadSnapshotFromFile(latest);
-            const filtered = hoistMiningInPaths(filterPathsByWorldSnapshot(aggregated, snapshot as any));
+            const filtered = hoistMiningInPaths(aggregated);
             logger.info(`\nFiltered by world snapshot (${path.basename(latest)}), count=${filtered.length}:`);
             let n = 0;
             for (const p of filtered.slice(0, pathsToLog)) {

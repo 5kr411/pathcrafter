@@ -77,8 +77,6 @@ export interface PathItem {
 export interface PriorityStreamConfig<T extends PathItem = PathItem> {
   getItemScore: (item: T) => number;
   getParentStepScore: (step: ActionStep | null) => number;
-  sanitizePath: (path: ActionPath) => ActionPath;
-  isPathValid: (path: ActionPath) => boolean;
   finalizeItem: (path: ActionPath) => T;
 }
 
@@ -108,8 +106,6 @@ export interface PriorityStreams<T extends PathItem = PathItem> {
 export function createPriorityStreams<T extends PathItem = PathItem>(cfg: PriorityStreamConfig<T>): PriorityStreams<T> {
   const getItemScore = typeof cfg.getItemScore === 'function' ? cfg.getItemScore : (_x: T) => 0;
   const getParentStepScore = typeof cfg.getParentStepScore === 'function' ? cfg.getParentStepScore : () => 0;
-  const sanitizePath = typeof cfg.sanitizePath === 'function' ? cfg.sanitizePath : (p: ActionPath) => p;
-  const isPathValid = typeof cfg.isPathValid === 'function' ? cfg.isPathValid : () => true;
   const finalizeItem = typeof cfg.finalizeItem === 'function' ? cfg.finalizeItem : (p: ActionPath) => ({ path: p } as T);
 
   /**
@@ -207,14 +203,7 @@ export function createPriorityStreams<T extends PathItem = PathItem>(cfg: Priori
           combined = combined.concat([parentStepOrNull]);
         }
 
-        let cleaned = sanitizePath(combined);
-        if (!isPathValid(cleaned)) {
-          cleaned = combined;
-        }
-
-        if (isPathValid(cleaned)) {
-          yield finalizeItem(cleaned);
-        }
+        yield finalizeItem(combined);
 
         // Generate successor states
         for (let d = 0; d < streams.length; d++) {

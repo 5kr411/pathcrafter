@@ -11,7 +11,7 @@ describe('integration: behavior_generator craft-in-inventory', () => {
         const tree = plan(mcData, 'stick', 4, { log: false, inventory });
         const [path] = Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory })) as ActionStep[][];
         expect(path).toBeDefined();
-        const craftInv = path.find((s: any) => s.action === 'craft' && s.what === 'inventory' && s.result && s.result.item === 'stick');
+        const craftInv = path.find((s: any) => s.action === 'craft' && s.what.variants[0].value === 'inventory' && s.result && s.result.variants[0].value.item === 'stick');
         expect(craftInv).toBeDefined();
         // Minimal bot stub to construct behavior
         const bot = { 

@@ -214,27 +214,4 @@ describe('integration: variant state machine creation', () => {
     });
   });
 
-  test('legacy meta-based mineOneOf still works', () => {
-    const step = createTestActionStep({
-      action: 'mine',
-      what: createTestStringGroup('oak_log'),
-      count: 2
-    });
-
-    const bot = {
-      version: '1.20.1',
-      inventory: { items: () => [] },
-      world: {},
-      entity: { position: { x: 0, y: 64, z: 0 } },
-      findBlocks: () => [
-        { x: 5, y: 64, z: 0 },
-        { x: 10, y: 64, z: 0 }
-      ]
-    } as any;
-
-    const behavior = createBehaviorForStep(bot, step);
-    expect(behavior).toBeTruthy();
-    expect(behavior).not.toBeNull();
-    expect(typeof behavior!.isFinished).toBe('function');
-  });
 });

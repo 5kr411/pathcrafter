@@ -88,12 +88,13 @@ describe('integration: Top-N tie-break prefers closer blocks from snapshot', () 
     // Find nodes with variants
     const findNodesWithVariants = (node: any): any[] => {
       const results: any[] = [];
-      if (node.resultVariants || node.whatVariants) {
+      if ((node.result && node.result.variants.length > 1) || 
+          (node.what && node.what.variants.length > 1)) {
         results.push(node);
       }
-      if (node.children) {
-        node.children.forEach((c: any) => {
-          results.push(...findNodesWithVariants(c));
+      if (node.children && node.children.variants) {
+        node.children.variants.forEach((c: any) => {
+          results.push(...findNodesWithVariants(c.value));
         });
       }
       return results;
@@ -130,21 +131,21 @@ describe('integration: Top-N tie-break prefers closer blocks from snapshot', () 
       if (node.action === 'mine' && node.what && !node.children?.length) {
         results.push(node);
       }
-      if (node.children) {
-        node.children.forEach((c: any) => {
-          results.push(...findMineLeaves(c));
+      if (node.children && node.children.variants) {
+        node.children.variants.forEach((c: any) => {
+          results.push(...findMineLeaves(c.value));
         });
       }
       return results;
     };
     
     const mineLeaves = findMineLeaves(tree);
-    const leavesWithVariants = mineLeaves.filter(n => n.whatVariants && n.whatVariants.length > 0);
+    const leavesWithVariants = mineLeaves.filter(n => n.what && n.what.variants.length > 0);
     
     if (leavesWithVariants.length > 0) {
       // All variants should be available in snapshot
       leavesWithVariants.forEach(leaf => {
-        const variants = leaf.whatVariants || [];
+        const variants = leaf.what.variants.map((v: any) => v.value) || [];
         variants.forEach((block: string) => {
           if (/_log$/.test(block)) {
             expect(present).toContain(block);

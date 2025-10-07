@@ -187,7 +187,8 @@ export function plan(
       avoidTool: options?.config?.avoidTool,
       maxDepth: 10
     },
-    variantConstraints: new VariantConstraintManager()
+    variantConstraints: new VariantConstraintManager(),
+    combineSimilarNodes: options?.combineSimilarNodes
   });
 
   if (!options || options.log !== false) {

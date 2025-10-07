@@ -19,11 +19,14 @@ describe('integration: combine wood families reduces branching', () => {
 
         // Check that variants are present in combined tree
         const hasVariants = (node: any): boolean => {
-            if (node.resultVariants || node.whatVariants) {
+            if (node.result && node.result.variants && node.result.variants.length > 1) {
                 return true;
             }
-            if (node.children) {
-                return node.children.some((c: any) => hasVariants(c));
+            if (node.ingredients && node.ingredients.variants && node.ingredients.variants.length > 1) {
+                return true;
+            }
+            if (node.children && node.children.variants) {
+                return node.children.variants.some((c: any) => hasVariants(c.value));
             }
             return false;
         };
@@ -72,11 +75,14 @@ describe('integration: combine wood families reduces branching', () => {
 
         // Check that combined tree has variant information
         const hasVariants = (node: any): boolean => {
-            if (node.resultVariants || node.whatVariants) {
+            if (node.result && node.result.variants && node.result.variants.length > 1) {
                 return true;
             }
-            if (node.children) {
-                return node.children.some((c: any) => hasVariants(c));
+            if (node.ingredients && node.ingredients.variants && node.ingredients.variants.length > 1) {
+                return true;
+            }
+            if (node.children && node.children.variants) {
+                return node.children.variants.some((c: any) => hasVariants(c.value));
             }
             return false;
         };
@@ -117,7 +123,7 @@ describe('integration: combine wood families reduces branching', () => {
 
         // Root should still request 4 sticks
         expect(tree.count).toBe(4);
-        expect(tree.what).toBe('stick');
+        expect(tree.what.variants[0].value).toBe('stick');
     });
 
     test('combining works with inventory', () => {
@@ -130,7 +136,7 @@ describe('integration: combine wood families reduces branching', () => {
         });
 
         // Should still generate valid tree with inventory
-        expect(tree.children.length).toBeGreaterThan(0);
+        expect(tree.children.variants.length).toBeGreaterThan(0);
     });
 
     test('combining propagates deep into subtrees', () => {
@@ -146,24 +152,55 @@ describe('integration: combine wood families reduces branching', () => {
             if (node.action === 'mine' && (!node.operator)) {
                 mineLeaves.push(node);
             }
-            if (node.children) {
-                node.children.forEach(findMineLeaves);
+            if (node.children && node.children.variants) {
+                node.children.variants.forEach((c: any) => findMineLeaves(c.value));
             }
         };
         findMineLeaves(tree);
 
-        // Count how many have variants (combined nodes)
-        const withVariants = mineLeaves.filter(n => n.whatVariants && n.whatVariants.length > 1);
+        // Count how many have variants (combined nodes) - check craft nodes instead of mine nodes
+        const craftNodes: any[] = [];
+        const findCraftNodes = (node: any) => {
+            if (node.action === 'craft') {
+                craftNodes.push(node);
+            }
+            if (node.children && node.children.variants) {
+                node.children.variants.forEach((c: any) => findCraftNodes(c.value));
+            }
+        };
+        findCraftNodes(tree);
+        
+        const withVariants = craftNodes.filter(n => 
+            (n.result && n.result.variants && n.result.variants.length > 1) ||
+            (n.ingredients && n.ingredients.variants && n.ingredients.variants.length > 1)
+        );
 
-        // Should have multiple combined mine leaf nodes
+        // Should have multiple combined craft nodes
         expect(withVariants.length).toBeGreaterThan(0);
         
         // Verify the variants contain different wood families
-        const allVariantNames = withVariants.flatMap(n => n.whatVariants || []);
-        const uniqueFamilies = new Set(allVariantNames.map((name: string) => {
-            // Extract family prefix (oak, spruce, birch, etc.)
-            const parts = name.split('_');
-            return parts[0];
+        const allVariantNames = withVariants.flatMap(n => [
+            ...(n.result?.variants || []),
+            ...(n.ingredients?.variants || [])
+        ]);
+        const uniqueFamilies = new Set(allVariantNames.flatMap((variant: any) => {
+            // Handle different variant structures
+            if (typeof variant.value === 'string') {
+                // Simple string variant
+                const parts = variant.value.split('_');
+                return [parts[0]];
+            } else if (variant.value && typeof variant.value === 'object' && variant.value.item) {
+                // Single item variant
+                const parts = variant.value.item.split('_');
+                return [parts[0]];
+            } else if (Array.isArray(variant.value)) {
+                // Array of items variant (ingredients)
+                return variant.value.map((item: any) => {
+                    const parts = item.item.split('_');
+                    return parts[0];
+                });
+            }
+            return [];
         }));
         
         // Should have multiple wood families represented

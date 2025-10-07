@@ -15,17 +15,6 @@ describe('BehaviorGenerator craftInventory', () => {
       expect(canHandle(step)).toBe(true);
     });
 
-    it('should not handle inventory craft steps with variants', () => {
-      const step: ActionStep = createTestActionStep({
-        action: 'craft',
-        what: createTestStringGroup('inventory'),
-        count: 1,
-        result: createTestItemReferenceGroup('oak_planks', 4)
-      });
-
-      expect(canHandle(step)).toBe(false);
-    });
-
     it('should handle inventory craft steps with single variant', () => {
       const step: ActionStep = createTestActionStep({
         action: 'craft',

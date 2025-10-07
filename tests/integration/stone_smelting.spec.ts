@@ -12,8 +12,8 @@ describe('integration: smelting stone with inventory items present', () => {
         expect(path).toBeDefined();
         expect(path.length).toBe(1);
         expect(path[0].action).toBe('smelt');
-        expect((path[0] as any).fuel).toBe('coal');
-        expect((path[0] as any).input.item).toBe('cobblestone');
+        expect(path[0].fuel?.variants[0].value).toBe('coal');
+        expect(path[0].input?.variants[0].value.item).toBe('cobblestone');
         expect(path[0].result!.variants[0].value.item).toBe('stone');
     });
 });

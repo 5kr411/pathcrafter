@@ -1,7 +1,7 @@
 import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForCraftVariant, canHandle } from '../../behavior_generator/craftVariant';
 import { setCurrentSpeciesContext } from '../../utils/context';
-import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup, createTestItemReferenceGroupFromArray } from '../testHelpers';
 
 describe('BehaviorGenerator craftVariant', () => {
   beforeEach(() => {
@@ -10,23 +10,31 @@ describe('BehaviorGenerator craftVariant', () => {
   });
 
   describe('canHandle', () => {
-    it('should handle craft steps with resultVariants', () => {
+    it('should handle craft steps with result variants', () => {
       const step: ActionStep = createTestActionStep({
         action: 'craft',
         what: createTestStringGroup('inventory'),
         count: 1,
-        result: createTestItemReferenceGroup('oak_planks', 4)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'spruce_planks', perCraftCount: 4 },
+          { item: 'birch_planks', perCraftCount: 4 }
+        ])
       });
 
       expect(canHandle(step)).toBe(true);
     });
 
-    it('should handle table crafting with resultVariants', () => {
+    it('should handle table crafting with result variants', () => {
       const step: ActionStep = createTestActionStep({
         action: 'craft',
         what: createTestStringGroup('table'),
         count: 1,
-        result: createTestItemReferenceGroup('oak_door', 1)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_door', perCraftCount: 1 },
+          { item: 'spruce_door', perCraftCount: 1 },
+          { item: 'birch_door', perCraftCount: 1 }
+        ])
       });
 
       expect(canHandle(step)).toBe(true);
@@ -73,7 +81,11 @@ describe('BehaviorGenerator craftVariant', () => {
         action: 'craft',
         what: createTestStringGroup('inventory'),
         count: 2,
-        result: createTestItemReferenceGroup('oak_planks', 4)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'spruce_planks', perCraftCount: 4 },
+          { item: 'birch_planks', perCraftCount: 4 }
+        ])
       });
 
       const result = computeTargetsForCraftVariant(step);
@@ -91,7 +103,11 @@ describe('BehaviorGenerator craftVariant', () => {
         action: 'craft',
         what: createTestStringGroup('table'),
         count: 1,
-        result: createTestItemReferenceGroup('oak_door', 1)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_door', perCraftCount: 1 },
+          { item: 'spruce_door', perCraftCount: 1 },
+          { item: 'birch_door', perCraftCount: 1 }
+        ])
       });
 
       const result = computeTargetsForCraftVariant(step);
@@ -107,7 +123,11 @@ describe('BehaviorGenerator craftVariant', () => {
         action: 'craft',
         what: createTestStringGroup('inventory'),
         count: 3,
-        result: createTestItemReferenceGroup('oak_planks', 4)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'spruce_planks', perCraftCount: 4 },
+          { item: 'birch_planks', perCraftCount: 4 }
+        ])
       });
 
       const result = computeTargetsForCraftVariant(step);
@@ -125,7 +145,11 @@ describe('BehaviorGenerator craftVariant', () => {
         action: 'craft',
         what: createTestStringGroup('inventory'),
         count: 1,
-        result: createTestItemReferenceGroup('oak_planks', 4)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'spruce_planks', perCraftCount: 4 },
+          { item: 'birch_planks', perCraftCount: 4 }
+        ])
       });
 
       const result = computeTargetsForCraftVariant(step);
@@ -166,7 +190,10 @@ describe('BehaviorGenerator craftVariant', () => {
         action: 'craft',
         what: createTestStringGroup('inventory'),
         count: 1,
-        result: createTestItemReferenceGroup('oak_planks', 1)
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 1 },
+          { item: 'spruce_planks', perCraftCount: 1 }
+        ])
       });
 
       const result = computeTargetsForCraftVariant(step);

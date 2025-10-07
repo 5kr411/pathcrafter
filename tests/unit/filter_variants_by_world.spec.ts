@@ -30,8 +30,9 @@ describe('unit: filterPathVariantsByWorld', () => {
     expect(filtered[0].length).toBe(1);
     
     const step = filtered[0][0];
-    expect(step.what.variants.map((v: any) => v.value)).toEqual(['oak_log', 'spruce_log']);
-    expect(step.targetItem?.variants.map((v: any) => v.value)).toEqual(['oak_log', 'spruce_log']);
+    // Single variant step should remain single variant after filtering
+    expect(step.what.variants.map((v: any) => v.value)).toEqual(['oak_log']);
+    expect(step.targetItem?.variants.map((v: any) => v.value)).toEqual(['oak_log']);
     expect(step.variantMode).toBe('one_of');
   });
 
@@ -64,9 +65,9 @@ describe('unit: filterPathVariantsByWorld', () => {
       [
         createTestActionStep({
           action: 'mine',
-          what: createTestStringGroup('oak_log'),
+          what: createTestStringGroup('spruce_log'),
           count: 1,
-          targetItem: createTestStringGroup('oak_log')
+          targetItem: createTestStringGroup('spruce_log')
         })
       ]
     ];
@@ -82,12 +83,12 @@ describe('unit: filterPathVariantsByWorld', () => {
     expect(filtered.length).toBe(1);
     const step = filtered[0][0];
     
-    // Should simplify by removing variant arrays
-    expect(step.what).toBe('spruce_log');
-    expect(step.targetItem).toBe('spruce_log');
+    // Should keep VariantGroup structure even with single variant
+    expect(step.what.variants[0].value).toBe('spruce_log');
+    expect(step.targetItem?.variants[0].value).toBe('spruce_log');
     expect(step.what.variants.length).toBe(1);
     expect(step.targetItem?.variants.length).toBe(1);
-    expect(step.variantMode).toBeUndefined();
+    expect(step.variantMode).toBe('one_of');
   });
 
   test('keeps craft step variants and selects available ingredients', () => {
@@ -155,16 +156,16 @@ describe('unit: filterPathVariantsByWorld', () => {
       [
         createTestActionStep({
           action: 'mine',
-          what: createTestStringGroup('oak_log'),
+          what: createTestStringGroup('spruce_log'),
           count: 1,
-          targetItem: createTestStringGroup('oak_log')
+          targetItem: createTestStringGroup('spruce_log')
         }),
         createTestActionStep({
           action: 'craft',
           what: createTestStringGroup('inventory'),
           count: 1,
-          result: createTestItemReferenceGroup('oak_planks', 4),
-          ingredients: createTestIngredientGroup([{ item: 'oak_log', perCraftCount: 1 }])
+          result: createTestItemReferenceGroup('spruce_planks', 4),
+          ingredients: createTestIngredientGroup([{ item: 'spruce_log', perCraftCount: 1 }])
         })
       ]
     ];
@@ -180,7 +181,7 @@ describe('unit: filterPathVariantsByWorld', () => {
     expect(filtered.length).toBe(1);
     expect(filtered[0].length).toBe(2);
     
-    // Both steps should be filtered to spruce only
+    // Both steps should remain with spruce
     expect(filtered[0][0].what.variants[0].value).toBe('spruce_log');
     expect(filtered[0][1].result?.variants[0].value.item).toBe('spruce_planks');
     expect(filtered[0][1].ingredients!.variants[0].value[0].item).toBe('spruce_log');

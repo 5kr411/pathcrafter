@@ -62,7 +62,7 @@ function filterStepVariants(
   availability: WorldAvailability
 ): ActionStep | null {
   // Handle mining steps with variants
-  if (step.action === 'mine' && step.what.variants.length > 1) {
+  if (step.action === 'mine') {
     const availableVariants: string[] = [];
     const availableTargetItems: string[] = [];
 

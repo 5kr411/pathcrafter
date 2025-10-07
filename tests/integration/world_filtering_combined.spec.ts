@@ -72,7 +72,7 @@ describe('integration: world filtering with combined nodes', () => {
         });
 
         // Should generate a valid tree
-        expect(tree.children.length).toBeGreaterThan(0);
+        expect(tree.children.variants.length).toBeGreaterThan(0);
 
         // Should have valid paths
         const { countActionPaths } = analyzeRecipes._internals;
@@ -92,7 +92,7 @@ describe('integration: world filtering with combined nodes', () => {
         findMineLeaves(tree);
 
         // Should have some combined nodes
-        const withVariants = mineLeaves.filter(n => n.whatVariants && n.whatVariants.length > 1);
+        const withVariants = mineLeaves.filter(n => n.what && n.what.variants.length > 1);
         expect(withVariants.length).toBeGreaterThanOrEqual(0); // May or may not have variants depending on tree structure
     });
 
@@ -123,10 +123,10 @@ describe('integration: world filtering with combined nodes', () => {
         // Find nodes with variants
         const nodesWithVariants: any[] = [];
         const findVariants = (node: TreeNode) => {
-            if ((node as any).whatVariants && (node as any).whatVariants.length > 1) {
+            if ((node as any).what && (node as any).what.variants.length > 1) {
                 nodesWithVariants.push(node);
             }
-            if ((node as any).resultVariants && (node as any).resultVariants.length > 1) {
+            if ((node as any).result && (node as any).result.variants.length > 1) {
                 nodesWithVariants.push(node);
             }
             if (node.children) {

@@ -19,9 +19,9 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
         let foundSmeltNode = false;
         (function walk(node: any): void {
             if (!node || foundSmeltNode) return;
-            if (node.action === 'smelt' && node.result && node.result.item === 'iron_ingot') { foundSmeltNode = true; return; }
-            const kids = node.children || [];
-            for (const c of kids) walk(c);
+            if (node.action === 'smelt' && node.result && node.result.variants[0].value.item === 'iron_ingot') { foundSmeltNode = true; return; }
+            const kids = node.children?.variants || [];
+            for (const c of kids) walk(c.value);
         })(tree);
         expect(foundSmeltNode).toBe(true);
 

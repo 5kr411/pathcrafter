@@ -29,7 +29,7 @@ describe('treeOrchestrator', () => {
       const tree = buildRecipeTree(mockMcData, 'stick', 1, {});
       
       expect(tree.action).toBe('root');
-      expect(tree.what).toBe('stick');
+      expect(tree.what.variants[0].value).toBe('stick');
       expect(tree.count).toBe(1);
       expect(tree.children).toBeDefined();
     });
@@ -64,9 +64,9 @@ describe('treeOrchestrator', () => {
       const tree = buildRecipeTree(mockMcData, 'stick', 1, context);
       
       expect(tree.action).toBe('root');
-      expect(tree.what).toBe('stick');
+      expect(tree.what.variants[0].value).toBe('stick');
       expect(tree.count).toBe(0);
-      expect(tree.children).toHaveLength(0);
+      expect(tree.children.variants).toHaveLength(0);
     });
 
     test('handles empty item group', () => {
@@ -80,7 +80,7 @@ describe('treeOrchestrator', () => {
       const tree = buildRecipeTree(mockMcData, 'nonexistent_item', 1, {});
       
       expect(tree.action).toBe('root');
-      expect(tree.what).toBe('nonexistent_item');
+      expect(tree.what.variants[0].value).toBe('nonexistent_item');
       expect(tree.count).toBe(1);
     });
 
@@ -119,7 +119,7 @@ describe('treeOrchestrator', () => {
       const tree = buildRecipeTree(mockMcData, 'oak_planks', 1, context);
       
       expect(tree.action).toBe('root');
-      expect(tree.what).toBe('oak_planks');
+      expect(tree.what.variants[0].value).toBe('oak_planks');
       expect(tree.count).toBe(1);
     });
   });

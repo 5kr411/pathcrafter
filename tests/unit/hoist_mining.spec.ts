@@ -29,8 +29,8 @@ describe('unit: hoist mining optimizer', () => {
             createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 3 })
         ];
         const out = hoistMiningInPath(path);
-        const wood = out.find(s => s.action === 'mine' && (s as any).tool === 'wooden_pickaxe');
-        const stone = out.find(s => s.action === 'mine' && (s as any).tool === 'stone_pickaxe');
+        const wood = out.find(s => s.action === 'mine' && s.tool?.variants[0].value === 'wooden_pickaxe');
+        const stone = out.find(s => s.action === 'mine' && s.tool?.variants[0].value === 'stone_pickaxe');
         expect(wood!.count).toBe(4);
         expect(stone!.count).toBe(2);
         expect(out.filter(s => s.action === 'mine').length).toBe(2);

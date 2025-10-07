@@ -20,7 +20,7 @@ describe('integration: world-pruning planning (generic wood disabled)', () => {
     const hasCoal = { version: '1.20.1', dimension: 'overworld', center: { x:0,y:64,z:0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255, blocks: { coal_ore: { count: 5, closestDistance: 10, averageDistance: 12 } }, entities: {} };
     const treeOk = plan(ctx, 'coal', 2, { log: false, inventory, pruneWithWorld: true, worldSnapshot: hasCoal });
     const lwOk = Array.from(enumerateLowestWeightPathsGenerator(treeOk, { inventory }));
-    const hasMiningCoal = lwOk.some(seq => seq.some((s: any) => s.action === 'mine' && (s.targetItem === 'coal' || s.what === 'coal_ore')));
+    const hasMiningCoal = lwOk.some(seq => seq.some((s: any) => s.action === 'mine' && (s.targetItem?.variants[0].value === 'coal' || s.what.variants[0].value === 'coal_ore')));
     expect(hasMiningCoal).toBe(true);
   });
 });

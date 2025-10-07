@@ -137,7 +137,8 @@ const analyzeRecipes: AnalyzeRecipesFunction = (ctx: any, itemName: string, targ
       preferMinimalTools: true,
       maxDepth: 10
     },
-    variantConstraints: new treeBuild.VariantConstraintManager()
+    variantConstraints: new treeBuild.VariantConstraintManager(),
+    combineSimilarNodes: options?.combineSimilarNodes
   });
   if (!options || options.log !== false) treeLogger.logActionTree(tree);
   return tree;

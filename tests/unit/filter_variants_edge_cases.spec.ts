@@ -59,9 +59,9 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
       [
         createTestActionStep({
           action: 'mine',
-          what: createTestStringGroup('oak_log'),
+          what: createTestStringGroup('spruce_log'),
           count: 1,
-          targetItem: createTestStringGroup('oak_log')
+          targetItem: createTestStringGroup('spruce_log')
         })
       ]
     ];
@@ -79,8 +79,8 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     const step = filtered[0][0];
     
     // Should only include spruce (oak has 0 count)
-    expect(step.what).toBe('spruce_log');
-    expect(step.what.variants.length).toBe(1); // Simplified to single variant
+    expect(step.what.variants[0].value).toBe('spruce_log');
+    expect(step.what.variants.length).toBe(1); // Single variant in VariantGroup
   });
 
   test('handles blocks with negative counts', () => {
@@ -88,9 +88,9 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
       [
         createTestActionStep({
           action: 'mine',
-          what: createTestStringGroup('oak_log'),
+          what: createTestStringGroup('spruce_log'),
           count: 1,
-          targetItem: createTestStringGroup('oak_log')
+          targetItem: createTestStringGroup('spruce_log')
         })
       ]
     ];
@@ -106,7 +106,7 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     
     // Should treat negative as unavailable
     expect(filtered.length).toBe(1);
-    expect(filtered[0][0].what).toBe('spruce_log');
+    expect(filtered[0][0].what.variants[0].value).toBe('spruce_log');
   });
 
   test('preserves multiple paths independently', () => {
@@ -139,8 +139,8 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     const filtered = filterPathVariantsByWorld(paths, snapshot);
     
     expect(filtered.length).toBe(2);
-    expect(filtered[0][0].what).toBe('oak_log');
-    expect(filtered[1][0].what).toBe('birch_log');
+    expect(filtered[0][0].what.variants[0].value).toBe('oak_log');
+    expect(filtered[1][0].what.variants[0].value).toBe('birch_log');
   });
 
   test('handles craft steps without ingredient variants', () => {
@@ -234,7 +234,8 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
           action: 'mine',
           what: createTestStringGroup('iron_ore'),
           count: 3,
-          targetItem: createTestStringGroup('raw_iron')
+          targetItem: createTestStringGroup('raw_iron'),
+          tool: createTestStringGroup('stone_pickaxe')
         })
       ]
     ];
@@ -249,7 +250,7 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     
     // Tool requirement should be preserved
     expect(filtered.length).toBe(1);
-    expect(filtered[0][0].tool).toBe('stone_pickaxe');
+    expect(filtered[0][0].tool?.variants[0].value).toBe('stone_pickaxe');
   });
 
   test('preserves step order when filtering', () => {

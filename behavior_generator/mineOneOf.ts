@@ -17,7 +17,7 @@ function canHandle(step: ActionStep | null | undefined): boolean {
   if (!step || step.action !== 'mine') return false;
   
   // Handle steps with variant information (from grouped nodes)
-  if (step.what.variants.length > 1) {
+  if (step.what && step.what.variants && step.what.variants.length > 1) {
     return true;
   }
   
@@ -33,16 +33,30 @@ function computeTargetsForMineOneOf(step: ActionStep): Targets | null {
   let candidates: Candidate[] = [];
   
   // Handle variant-based approach (preferred)
-  if (step.what.variants.length > 1) {
-    const targetItemVariants = step.targetItem ? step.targetItem.variants : step.what.variants;
-    candidates = step.what.variants.map((blockVariant, index) => ({
-      blockName: blockVariant.value,
-      itemName: targetItemVariants[index] ? targetItemVariants[index].value : blockVariant.value,
-      amount
-    }));
+  if (step.what && step.what.variants && step.what.variants.length > 1) {
+    candidates = step.what.variants.map((blockVariant, index) => {
+      let itemName = blockVariant.value; // Default to block name
+      
+      if (step.targetItem && step.targetItem.variants) {
+        // If targetItem has variants, use the corresponding variant or first one
+        if (step.targetItem.variants.length > index) {
+          itemName = step.targetItem.variants[index].value;
+        } else if (step.targetItem.variants.length > 0) {
+          itemName = step.targetItem.variants[0].value;
+        }
+      }
+      
+      return {
+        blockName: blockVariant.value,
+        itemName,
+        amount
+      };
+    });
   } else {
     // Handle legacy meta-based approach for backward compatibility
-    const itemName = step.targetItem ? step.targetItem.variants[0].value : step.what.variants[0].value;
+    const itemName = step.targetItem ? 
+      (step.targetItem.variants ? step.targetItem.variants[0].value : step.targetItem) : 
+      (step.what.variants ? step.what.variants[0].value : step.what);
     const rawCandidates = (step as any).meta?.oneOfCandidates || [];
     candidates = rawCandidates
       .map((c: any) => {
