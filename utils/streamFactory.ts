@@ -108,16 +108,6 @@ export function createMakeStream<T extends PathItem = PathItem>(
         return makeLeafStream(step);
       }
 
-      if (node.action === 'require') {
-        const step: ActionStep = {
-          action: 'require',
-          variantMode: node.variantMode,
-          what: node.what,
-          count: node.count
-        };
-        return makeLeafStream(step);
-      }
-
       return function* () { };
     }
 
@@ -126,10 +116,6 @@ export function createMakeStream<T extends PathItem = PathItem>(
 
     if (node.action === 'root') {
       return makeOrStream(children.map(makeStream));
-    }
-
-    if (node.action === 'require') {
-      return makeAndStream(children.map(makeStream), null);
     }
 
     if (node.action === 'craft') {

@@ -21,6 +21,43 @@ const COMBINABLE_SUFFIXES = new Set([
   'sign', 'slab', 'stairs', 'trapdoor', 'boat', 'chest_boat'
 ]);
 
+const WOOD_VARIANT_BASES = new Set([
+  'oak',
+  'spruce',
+  'birch',
+  'jungle',
+  'acacia',
+  'dark_oak',
+  'mangrove',
+  'cherry',
+  'bamboo',
+  'crimson',
+  'warped'
+]);
+
+function getNameWithoutSuffix(itemName: string): string | null {
+  const idx = itemName.lastIndexOf('_');
+  if (idx === -1) {
+    return null;
+  }
+  return itemName.slice(0, idx);
+}
+
+function normalizeVariantBase(nameWithoutSuffix: string | null): string | null {
+  if (!nameWithoutSuffix) {
+    return null;
+  }
+  if (nameWithoutSuffix.startsWith('stripped_')) {
+    return nameWithoutSuffix.slice('stripped_'.length);
+  }
+  return nameWithoutSuffix;
+}
+
+function isWoodVariant(itemName: string): boolean {
+  const base = normalizeVariantBase(getNameWithoutSuffix(itemName));
+  return base ? WOOD_VARIANT_BASES.has(base) : false;
+}
+
 /**
  * Finds all items similar to the given item (same suffix AND should be combinable)
  * 
@@ -54,12 +91,12 @@ export function findSimilarItems(mcData: MinecraftData, itemName: string): strin
   const itemData = mcData.itemsByName[itemName] as MinecraftItem | undefined;
   const tags = (itemData && (itemData as any).tags) ? new Set((itemData as any).tags) : null;
 
+  const restrictToWood = isWoodVariant(itemName);
+
   const similar: string[] = [];
   for (const [name, data] of Object.entries(mcData.itemsByName)) {
     if (getSuffixTokenFromName(name) !== suffix) continue;
-    const itemParts = itemName.split('_');
-    const nameParts = name.split('_');
-    if (itemParts.length !== nameParts.length) continue;
+    if (restrictToWood && !isWoodVariant(name)) continue;
 
     if (tags && tags.size > 0) {
       const candidateTags = data && (data as any).tags ? new Set((data as any).tags) : new Set();

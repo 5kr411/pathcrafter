@@ -76,13 +76,18 @@ export function logActionTree(tree: TreeNode | null | undefined, depth: number =
   logActionNode(tree, depth, true);
 }
 
-function formatVariantList(group: any, limit: number = 4): string {
-  if (!group || !group.variants || group.variants.length === 0) return '';
-  const names = group.variants.map((v: any) => formatVariantDisplay(v.value));
+function formatVariantValues(values: any[], limit: number = 3): string {
+  const names = values.map(formatVariantDisplay);
   if (names.length <= limit) {
     return names.join(', ');
   }
   return `${names.slice(0, limit).join(', ')}, +${names.length - limit} more`;
+}
+
+function formatVariantList(group: any, limit: number = 3): string {
+  if (!group || !group.variants || group.variants.length === 0) return '';
+  const values = group.variants.map((v: any) => v.value);
+  return formatVariantValues(values, limit);
 }
 
 function formatVariantDisplay(value: any): string {
@@ -98,9 +103,42 @@ function formatVariantDisplay(value: any): string {
   return JSON.stringify(value);
 }
 
+function collectVariantValues(node: any, key: 'what' | 'targetItem', includeNested: boolean = true): any[] {
+  const result: any[] = [];
+  const seen = new Set<string>();
+
+  function traverse(current: any) {
+    if (!current) return;
+    const group = current[key];
+    if (group && group.variants) {
+      group.variants.forEach((variant: any) => {
+        const serialized = JSON.stringify(variant.value);
+        if (!seen.has(serialized)) {
+          seen.add(serialized);
+          result.push(variant.value);
+        }
+      });
+    }
+    if (includeNested && current.children && current.children.variants) {
+      current.children.variants.forEach((child: any) => traverse(child.value));
+    }
+  }
+
+  traverse(node);
+  return result;
+}
+
 function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisLevel: boolean): void {
   const indent = ' '.repeat(depth * 2);
   const branch = isLastAtThisLevel ? '└─' : '├─';
+
+  if ((node.action === 'mine' || node.action === 'hunt') && 'operator' in node && node.operator === 'OR') {
+    const children = node.children?.variants || [];
+    if (children.length === 1 && children[0].value?.action === node.action) {
+      logActionNode(children[0].value, depth, isLastAtThisLevel);
+      return;
+    }
+  }
 
   if (node.action === 'root' && (node as RootNode).context.depth > 0) {
     const root = node as RootNode;
@@ -129,8 +167,22 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
   }
 
   if (node.action === 'mine') {
-    const label = formatVariantList(node.what);
-    const target = node.targetItem ? formatVariantList(node.targetItem) : '';
+    let label = formatVariantList(node.what);
+    let target = node.targetItem ? formatVariantList(node.targetItem) : '';
+
+    if ('operator' in node && node.operator === 'OR') {
+      const unionTarget = collectVariantValues(node, 'targetItem', false);
+      if (unionTarget.length > 0) {
+        label = formatVariantValues(unionTarget);
+        target = '';
+      } else {
+        const unionWhat = collectVariantValues(node, 'what');
+        if (unionWhat.length > 0) {
+          label = formatVariantValues(unionWhat);
+        }
+      }
+    }
+
     const toolInfo = node.tool && node.tool.variants[0].value !== 'any' ? ` (needs ${formatVariantList(node.tool)})` : '';
     const suffix = target ? ` for ${target}` : '';
     console.log(`${indent}${branch} mine ${label}${suffix}${toolInfo} (${node.count}x)`);

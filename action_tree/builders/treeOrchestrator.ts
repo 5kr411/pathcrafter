@@ -378,24 +378,47 @@ function buildRecipeTreeInternal(
     }
 
     // Process ingredients recursively
-    const firstIngredients = ingredientVariants.variants[0].value;
-    for (const ingredient of firstIngredients) {
-      const ingredientName = ingredient.item;
-      const ingredientCount = (ingredient.perCraftCount || 1) * craftingsNeeded;
-      
-      // Create new context for ingredient
+    const ingredientVariantsList = ingredientVariants.variants || [];
+    const ingredientGroups = new Map<string, { items: string[]; primary: string; count: number }>();
+
+    for (const variant of ingredientVariantsList) {
+      const ingredients = variant.value || [];
+      for (const ingredient of ingredients) {
+        if (!ingredient?.item) continue;
+        const perCraft = ingredient.perCraftCount || 1;
+        const requiredCount = perCraft * craftingsNeeded;
+        const similarItems = context.combineSimilarNodes
+          ? Array.from(new Set(findSimilarItems(mcData, ingredient.item)))
+          : [ingredient.item];
+        if (similarItems.length === 0) continue;
+        const key = [...similarItems].sort().join('|');
+        const existing = ingredientGroups.get(key);
+        if (existing) {
+          existing.count = Math.max(existing.count, requiredCount);
+        } else {
+          ingredientGroups.set(key, {
+            items: similarItems,
+            primary: ingredient.item,
+            count: requiredCount
+          });
+        }
+      }
+    }
+
+    const groupedIngredients = Array.from(ingredientGroups.values()).sort((a, b) => a.primary.localeCompare(b.primary));
+
+    for (const group of groupedIngredients) {
+      const ingredientItems = group.items;
+      const ingredientPrimary = group.primary || ingredientItems[0];
       const ingredientContext: BuildContext = {
         ...context,
         visited: nextVisited,
         depth: context.depth + 1,
-        parentPath: [...context.parentPath, ingredientName],
+        parentPath: [...context.parentPath, ingredientPrimary],
         variantConstraints: constraintManager.clone()
       };
 
-      // Build tree for ingredient
-      const ingredientTree = buildRecipeTreeInternal(ctx, [ingredientName], ingredientCount, ingredientContext);
-      
-      // Add ingredient tree as child of craft node
+      const ingredientTree = buildRecipeTreeInternal(ctx, ingredientItems, group.count, ingredientContext);
       craftNode.children.variants.push({ value: ingredientTree });
     }
 
@@ -456,12 +479,14 @@ function buildRecipeTreeInternal(
   // Process mining paths
   const miningPaths = findBlocksThatDrop(mcData, primaryItem);
   if (miningPaths.length > 0) {
+    const mineTargets = context.combineSimilarNodes ? variantsToUse : [primaryItem];
+
     const mineGroup: MineGroupNode = {
       action: 'mine',
       operator: 'OR',
       variantMode: 'any_of', // Any block variant works
-      what: createVariantGroup('any_of', [primaryItem]),
-      targetItem: createVariantGroup('any_of', [primaryItem]),
+      what: createVariantGroup('any_of', mineTargets),
+      targetItem: createVariantGroup('any_of', mineTargets),
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
