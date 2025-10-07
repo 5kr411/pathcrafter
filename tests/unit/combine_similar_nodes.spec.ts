@@ -175,16 +175,19 @@ describe('unit: combine similar nodes', () => {
             combineSimilarNodes: true 
         });
 
-        // Navigate to planks -> craft -> log acquisition
-        let planksNode: TreeNode | null = null;
+        // Navigate to log mining (which now has variants due to the fix)
+        let logNode: TreeNode | null = null;
         if (tree.children && tree.children.variants.length > 0) {
             const firstCraft = tree.children.variants[0].value;
             if (firstCraft.children && firstCraft.children.variants.length > 0) {
-                planksNode = firstCraft.children.variants[0].value;
+                const planksNode = firstCraft.children.variants[0].value;
+                if (planksNode.children && planksNode.children.variants.length > 0) {
+                    logNode = planksNode.children.variants[0].value;
+                }
             }
         }
 
-        expect(planksNode).toBeTruthy();
+        expect(logNode).toBeTruthy();
         
         // Find mine leaf nodes deep in the tree
         const mineLeaves: MineLeafNode[] = [];
@@ -196,8 +199,8 @@ describe('unit: combine similar nodes', () => {
                 node.children.variants.forEach((child: any) => findDeepMineLeaves(child.value));
             }
         };
-        if (planksNode) {
-            findDeepMineLeaves(planksNode);
+        if (logNode) {
+            findDeepMineLeaves(logNode);
         }
 
         // Should have combined mine leaf nodes with multiple variants

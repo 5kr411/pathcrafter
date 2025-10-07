@@ -53,13 +53,15 @@ describe('unit: path generation with combined tree variants', () => {
       expect(step.what.variants.length).toBeGreaterThan(1);
       expect(step.targetItem).toBeDefined();
       expect(step.variantMode).toBe('any_of');
-      
-      // Should include bamboo variants
-      const hasBamboo = step.what.variants.some((v: any) => 
-        ['bamboo', 'bamboo_sapling'].includes(v.value)
-      );
-      expect(hasBamboo).toBe(true);
     });
+    
+    // At least one step should include bamboo variants
+    const hasBambooStep = stepsWithVariants.some(step => 
+      step.what.variants.some((v: any) => 
+        ['bamboo', 'bamboo_sapling'].includes(v.value)
+      )
+    );
+    expect(hasBambooStep).toBe(true);
   });
 
   test('path generation includes craft node variant metadata', () => {

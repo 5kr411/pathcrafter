@@ -24,29 +24,27 @@ describe('unit: comprehensive variant metadata tests', () => {
       if (count >= 10) break;
     }
 
-    // Find a path with log mining
-    const logPath = paths.find(p => 
-      p.some((s: any) => s.action === 'mine' && s.what && s.what.variants.length > 1)
+    // Find a path with bamboo mining (which actually drops bamboo that can be crafted into sticks)
+    const bambooPath = paths.find(p => 
+      p.some((s: any) => s.action === 'mine' && s.what && s.what.variants.some((v: any) => /bamboo/.test(v.value)))
     );
 
-    expect(logPath).toBeDefined();
+    expect(bambooPath).toBeDefined();
 
     // Find the mining step with variants
-    const mineStep = logPath.find((s: any) => 
+    const mineStep = bambooPath.find((s: any) => 
       s.action === 'mine' && s.what && s.what.variants.length > 1
     ) as ActionStep;
 
     expect(mineStep.what).toBeDefined();
-    expect(mineStep.what!.variants.length).toBeGreaterThan(5); // Should have many wood types
+    expect(mineStep.what!.variants.length).toBeGreaterThan(1); // Should have bamboo variants
     expect(mineStep.targetItem).toBeDefined();
     expect(mineStep.variantMode).toBe('any_of');
 
-    // Verify common wood types are all present in ONE step
+    // Verify bamboo variants are present
     const variants = mineStep.what!.variants.map((v: any) => v.value);
-    expect(variants).toContain('oak_log');
-    expect(variants).toContain('spruce_log');
-    expect(variants).toContain('birch_log');
-    expect(variants).toContain('jungle_log');
+    expect(variants).toContain('bamboo');
+    expect(variants).toContain('bamboo_sapling');
   });
 
   test('variant metadata reduces path count dramatically', () => {

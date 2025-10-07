@@ -393,10 +393,20 @@ function buildRecipeTreeInternal(
 
     // Group mining paths by similar blocks if combining is enabled
     if (context.combineSimilarNodes) {
-      // Group mining paths by blocks that drop the same item
+      // Use hybrid grouping: suffix-based for logs, drop-based for ores
       const groupedPaths = new Map<string, BlockSource[]>();
       for (const miningPath of miningPaths) {
-        const similarBlocks = findBlocksWithSameDrop(mcData, miningPath.block);
+        let similarBlocks: string[];
+        
+        // Check if this is an ore (has 'ore' in the name)
+        if (miningPath.block.includes('ore')) {
+          // Use drop-based grouping for ores
+          similarBlocks = findBlocksWithSameDrop(mcData, miningPath.block);
+        } else {
+          // Use suffix-based grouping for other blocks (logs, etc.)
+          similarBlocks = findSimilarItems(mcData, miningPath.block);
+        }
+        
         const key = similarBlocks.sort().join(',');
         
         if (!groupedPaths.has(key)) {
