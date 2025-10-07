@@ -2,8 +2,8 @@ import {
   TreeNode,
   ActionPath,
   CraftNode,
-  SmeltNode,
-  VariantTreeNode
+  VariantTreeNode,
+  RootNode
 } from './types';
 
 import { renderName } from '../utils/render';
@@ -76,242 +76,98 @@ export function logActionTree(tree: TreeNode | null | undefined, depth: number =
   logActionNode(tree, depth, true);
 }
 
-/**
- * Logs a single action node
- */
-    function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisLevel: boolean): void {
+function formatVariantList(group: any, limit: number = 4): string {
+  if (!group || !group.variants || group.variants.length === 0) return '';
+  const names = group.variants.map((v: any) => formatVariantDisplay(v.value));
+  if (names.length <= limit) {
+    return names.join(', ');
+  }
+  return `${names.slice(0, limit).join(', ')}, +${names.length - limit} more`;
+}
+
+function formatVariantDisplay(value: any): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (Array.isArray(value)) {
+    return value.map(formatVariantDisplay).join(' + ');
+  }
+  if (value.item) {
+    const count = value.perCraftCount ?? value.count ?? 1;
+    return `${count} ${value.item}`;
+  }
+  return JSON.stringify(value);
+}
+
+function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisLevel: boolean): void {
   const indent = ' '.repeat(depth * 2);
   const branch = isLastAtThisLevel ? '└─' : '├─';
 
+  if (node.action === 'root' && (node as RootNode).context.depth > 0) {
+    const root = node as RootNode;
+    const label = formatVariantList(root.what);
+    const op = (root as any).operator === 'AND' ? 'ALL' : 'ANY';
+    const mode = root.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+    console.log(`${indent}${branch} ${label || '(no variants)'} (want ${root.count}) [${op}] [${mode}]`);
+    (root.children.variants || []).forEach((child, idx) => logActionNode(child.value, depth + 1, idx === root.children.variants.length - 1));
+    return;
+  }
+
   if (node.action === 'craft') {
     const craftNode = node as CraftNode;
-    const op = craftNode.operator === 'AND' ? 'ALL' : 'ANY';
-    const whatStr = craftNode.what.variants.map(v => v.value).join(', ');
-    console.log(`${indent}${branch} craft in ${whatStr} (${craftNode.count}x) [${op}]`);
+    const op = (craftNode as any).operator === 'AND' ? 'ALL' : 'ANY';
+    const where = formatVariantList(craftNode.what, 3);
+    console.log(`${indent}${branch} craft in ${where || 'unknown'} (${craftNode.count}x) [${op}]`);
 
     if (craftNode.ingredients && craftNode.ingredients.variants.length > 0 && craftNode.result) {
-      // Show first variant
-      const firstIngredients = craftNode.ingredients.variants[0].value
-        .map(i => `${i.perCraftCount} ${renderName(i.item, i.meta)}`)
-        .join(' + ');
-      const firstResult = craftNode.result.variants[0].value;
-      const resultName = renderName(firstResult.item, firstResult.meta);
-      
-      let variantsInfo = '';
-      if (craftNode.result.variants.length > 1) {
-        // Show second variant if it exists
-        if (craftNode.result.variants.length >= 2 && craftNode.ingredients.variants.length >= 2) {
-          const secondIngredients = craftNode.ingredients.variants[1].value
-            .map(i => `${i.perCraftCount} ${renderName(i.item, i.meta)}`)
-            .join(' + ');
-          const secondResult = craftNode.result.variants[1].value;
-          const secondResultName = renderName(secondResult.item, secondResult.meta);
-          variantsInfo = `, ${secondIngredients} to ${secondResult.perCraftCount} ${secondResultName}`;
-          
-          // Show "+x more" for remaining variants
-          if (craftNode.result.variants.length > 2) {
-            variantsInfo += `, +${craftNode.result.variants.length - 2} more`;
-          }
-        } else {
-          variantsInfo = ` (+${craftNode.result.variants.length - 1} more)`;
-        }
-        
-        // Add variant mode indicator
-        const modeLabel = craftNode.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
-        variantsInfo += ` [${modeLabel}]`;
-      }
-      
-      console.log(`${' '.repeat((depth + 1) * 2)}├─ ${firstIngredients} to ${firstResult.perCraftCount} ${resultName}${variantsInfo}`);
+      const inputs = formatVariantList(craftNode.ingredients);
+      const outputs = formatVariantList(craftNode.result);
+      console.log(`${' '.repeat((depth + 1) * 2)}├─ ${inputs} → ${outputs}`);
     }
 
-    const children = craftNode.children.variants || [];
-        children.forEach((child: any) => logActionTree(child.value, depth + 2));
+    (craftNode.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === craftNode.children.variants.length - 1));
     return;
   }
 
   if (node.action === 'mine') {
-    if (node.children && node.children.variants.length > 0) {
-      const op = ('operator' in node && node.operator === 'OR') ? 'ANY' : 'ALL';
-      
-      // Check if children have variants to show in the header
-      let targetInfo = '';
-      let groupVariantsInfo = '';
-      
-          // Find first child with variants to extract the target list
-          const firstChild = node.children.variants.find((c: any) => 
-            c.value.action !== 'require' && c.value.targetItem && c.value.targetItem.variants.length > 1
-          );
-      
-      if (firstChild) {
-        // Show variants in the mine group header
-        const firstTarget = firstChild.value.targetItem.variants[0].value;
-        targetInfo = ` for ${renderName(firstTarget)}`;
-        
-        if (firstChild.value.targetItem.variants.length >= 2) {
-          const secondTarget = firstChild.value.targetItem.variants[1].value;
-          groupVariantsInfo = `, ${renderName(secondTarget)}`;
-          
-          if (firstChild.value.targetItem.variants.length > 2) {
-            groupVariantsInfo += `, +${firstChild.value.targetItem.variants.length - 2} more`;
-          }
-        }
-      } else {
-        const whatStr = node.what.variants.map((v: any) => v.value).join(', ');
-        targetInfo = ` for ${whatStr}`;
-      }
-      
-      console.log(`${indent}${branch} mine${targetInfo}${groupVariantsInfo} (${node.count}x) [${op}]`);
+    const label = formatVariantList(node.what);
+    const target = node.targetItem ? formatVariantList(node.targetItem) : '';
+    const toolInfo = node.tool && node.tool.variants[0].value !== 'any' ? ` (needs ${formatVariantList(node.tool)})` : '';
+    const suffix = target ? ` for ${target}` : '';
+    console.log(`${indent}${branch} mine ${label}${suffix}${toolInfo} (${node.count}x)`);
+    (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
+    return;
+  }
 
-      // Separate require nodes from mine leaves
-      const requireNodes: any[] = [];
-      const mineLeaves: any[] = [];
-      
-          node.children.variants.forEach((child: any) => {
-            if (child.value.action === 'require') {
-              requireNodes.push(child.value);
-            } else {
-              mineLeaves.push(child.value);
-            }
-          });
-      
-      // Print require nodes first
-      requireNodes.forEach(child => {
-        logActionTree(child, depth + 1);
-      });
-      
-          // Print mine leaves - if they have variants, show them compactly
-          mineLeaves.forEach((child: any, idx: any) => {
-        const subIndent = ' '.repeat((depth + 1) * 2);
-        const subBranch = idx === mineLeaves.length - 1 && requireNodes.length === 0 ? '└─' : '├─';
-        const toolInfo = child.tool && child.tool.variants[0].value !== 'any' ? ` (needs ${child.tool.variants[0].value})` : '';
-        
-        // Check if this mine leaf has variants
-        const whatVariants = child.what.variants;
-        const targetItemVariants = child.targetItem?.variants;
-        
-        if (whatVariants && whatVariants.length > 1) {
-          // Show variants compactly: "oak_log, spruce_log, +8 more"
-          const firstBlock = renderName(whatVariants[0].value);
-          const secondBlock = whatVariants.length >= 2 ? renderName(whatVariants[1].value) : '';
-          const moreCount = whatVariants.length - 2;
-          
-          let blockInfo = firstBlock;
-          if (secondBlock) {
-            blockInfo += `, ${secondBlock}`;
-          }
-          if (moreCount > 0) {
-            blockInfo += `, +${moreCount} more`;
-          }
-          
-          // Only show "for X" if targets are different from blocks
-          let targetInfo = '';
-          if (targetItemVariants && targetItemVariants.length > 0) {
-            // Check if targets differ from blocks
-                const blockSet = new Set(whatVariants.map((v: any) => v.value));
-                const targetSet = new Set(targetItemVariants.map((v: any) => v.value));
-                const isDifferent = targetItemVariants.some((t: any) => !blockSet.has(t.value)) || whatVariants.some((b: any) => !targetSet.has(b.value));
-            
-            if (isDifferent) {
-              const firstTarget = renderName(targetItemVariants[0].value);
-              const secondTarget = targetItemVariants.length >= 2 ? renderName(targetItemVariants[1].value) : '';
-              
-              targetInfo = ` for ${firstTarget}`;
-              if (secondTarget) {
-                targetInfo += `, ${secondTarget}`;
-              }
-              if (targetItemVariants.length > 2) {
-                targetInfo += `, +${targetItemVariants.length - 2} more`;
-              }
-            }
-          }
-          
-          const modeLabel = child.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
-          const modeInfo = ` [${modeLabel}]`;
-          
-          console.log(`${subIndent}${subBranch} ${blockInfo}${targetInfo}${toolInfo}${modeInfo}`);
-        } else {
-          // No variants - show normally
-          const blockName = renderName(child.what.variants[0].value);
-          const targetInfo = child.targetItem ? ` for ${renderName(child.targetItem.variants[0].value)}` : '';
-          console.log(`${subIndent}${subBranch} ${blockName}${targetInfo}${toolInfo}`);
-        }
-      });
-    } else {
-      const targetInfo = node.targetItem ? ` for ${renderName(node.targetItem.variants[0].value)}` : '';
-      
-      let variantsInfo = '';
-      if (node.what.variants.length > 1) {
-        // Show second variant if it exists
-        if (node.what.variants.length >= 2) {
-          const secondWhat = renderName(node.what.variants[1].value);
-          const secondTargetInfo = node.targetItem && node.targetItem.variants.length >= 2
-            ? ` for ${renderName(node.targetItem.variants[1].value)}` 
-            : '';
-          variantsInfo = `, ${secondWhat}${secondTargetInfo}`;
-          
-          // Show "+x more" for remaining variants
-          if (node.what.variants.length > 2) {
-            variantsInfo += `, +${node.what.variants.length - 2} more`;
-          }
-        } else {
-          variantsInfo = ` (+${node.what.variants.length - 1} more)`;
-        }
-        
-        // Add variant mode indicator
-        const modeLabel = node.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
-        variantsInfo += ` [${modeLabel}]`;
-      }
-      
-      console.log(`${indent}${branch} ${renderName(node.what.variants[0].value)}${targetInfo}${variantsInfo}`);
-    }
+  if (node.action === 'hunt') {
+    const label = formatVariantList(node.what);
+    const target = node.targetItem ? formatVariantList(node.targetItem) : '';
+    const toolInfo = node.tool && node.tool.variants[0].value !== 'any' ? ` (needs ${formatVariantList(node.tool)})` : '';
+    const chance = node.dropChance ? ` (${formatVariantList(node.dropChance)})` : '';
+    console.log(`${indent}${branch} hunt ${label}${target ? ` for ${target}` : ''}${chance}${toolInfo} (${node.count}x)`);
+    (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }
 
   if (node.action === 'smelt') {
-    if (node.children && node.children.variants.length > 0) {
-      const smeltNode = node as SmeltNode;
-      const op = smeltNode.operator === 'AND' ? 'ALL' : 'ANY';
-      const fuelInfo = smeltNode.fuel ? ` with ${renderName(smeltNode.fuel.variants[0].value)}` : '';
-      console.log(`${indent}${branch} smelt in furnace${fuelInfo} (${smeltNode.count}x) [${op}]`);
-
-      if (smeltNode.input && smeltNode.result) {
-        const firstInput = smeltNode.input.variants[0].value;
-        const firstResult = smeltNode.result.variants[0].value;
-        const ingStr = `${firstInput.perSmelt} ${renderName(firstInput.item)}`;
-        const resStr = `${firstResult.perSmelt} ${renderName(firstResult.item)}`;
-        console.log(`${' '.repeat((depth + 1) * 2)}├─ ${ingStr} to ${resStr}`);
-      }
-
-          smeltNode.children.variants.forEach((child: any) => logActionTree(child.value, depth + 1));
-    } else {
-      console.log(`${indent}${branch} smelt ${renderName(node.what.variants[0].value)}`);
-    }
-    return;
-  }
-
-
-  if (node.action === 'hunt') {
-    if (node.children && node.children.variants.length > 0) {
-      const op = ('operator' in node && node.operator === 'OR') ? 'ANY' : 'ALL';
-      console.log(`${indent}${branch} hunt (${node.count}x) [${op}]`);
-
-          node.children.variants.forEach((child: any, idx: any) => {
-        const subIndent = ' '.repeat((depth + 1) * 2);
-        const subBranch = idx === node.children.variants.length - 1 ? '└─' : '├─';
-        const chance = child.value.dropChance ? ` (${child.value.dropChance.variants[0].value * 100}% chance)` : '';
-        const toolInfo = child.value.tool && child.value.tool.variants[0].value !== 'any' ? ` (needs ${child.value.tool.variants[0].value})` : '';
-        const targetInfo = child.value.targetItem ? ` for ${renderName(child.value.targetItem.variants[0].value)}` : '';
-        console.log(`${subIndent}${subBranch} ${renderName(child.value.what.variants[0].value)}${targetInfo}${chance}${toolInfo}`);
-      });
-    } else {
-      console.log(`${indent}${branch} ${renderName(node.what.variants[0].value)}`);
-    }
+    const label = formatVariantList(node.what);
+    const fuel = node.fuel ? formatVariantList(node.fuel) : '';
+    console.log(`${indent}${branch} smelt ${label}${fuel ? ` using ${fuel}` : ''} (${node.count}x)`);
+    (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }
 
   if (node.action === 'root') {
-    logActionTree(node, depth);
+    const rootNode = node as RootNode;
+    const label = formatVariantList(rootNode.what);
+    const op = (rootNode as any).operator === 'AND' ? 'ALL' : 'ANY';
+    const mode = rootNode.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+    console.log(`${indent}${branch} ${label || '(no variants)'} (want ${rootNode.count}) [${op}] [${mode}]`);
+    (rootNode.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === (rootNode.children.variants.length - 1)));
+    return;
   }
+
+  const what = formatVariantList(node.what);
+  console.log(`${indent}${branch} ${node.action} ${what}`);
 }
 
 /**

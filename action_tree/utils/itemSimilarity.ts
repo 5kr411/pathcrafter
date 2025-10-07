@@ -5,7 +5,7 @@
  * in recipes (e.g., different wood types like oak_planks, spruce_planks).
  */
 
-import { MinecraftData } from '../types';
+import { MinecraftData, MinecraftItem } from '../types';
 import { getSuffixTokenFromName } from '../../utils/items';
 
 /**
@@ -47,23 +47,27 @@ export function findSimilarItems(mcData: MinecraftData, itemName: string): strin
   const suffix = getSuffixTokenFromName(itemName);
   if (!suffix) return [itemName];
   
-  // Only combine if this is a combinable suffix
   if (!COMBINABLE_SUFFIXES.has(suffix)) {
     return [itemName];
   }
   
-  // Find all items with same suffix
+  const itemData = mcData.itemsByName[itemName] as MinecraftItem | undefined;
+  const tags = (itemData && (itemData as any).tags) ? new Set((itemData as any).tags) : null;
+
   const similar: string[] = [];
-  for (const name of Object.keys(mcData.itemsByName)) {
-    if (getSuffixTokenFromName(name) === suffix) {
-      // Additional check: both items should have the same prefix pattern
-      // (oak_planks and spruce_planks both have wood type prefix + underscore + suffix)
-      const itemParts = itemName.split('_');
-      const nameParts = name.split('_');
-      if (itemParts.length === nameParts.length) {
-        similar.push(name);
-      }
+  for (const [name, data] of Object.entries(mcData.itemsByName)) {
+    if (getSuffixTokenFromName(name) !== suffix) continue;
+    const itemParts = itemName.split('_');
+    const nameParts = name.split('_');
+    if (itemParts.length !== nameParts.length) continue;
+
+    if (tags && tags.size > 0) {
+      const candidateTags = data && (data as any).tags ? new Set((data as any).tags) : new Set();
+      const shared = [...tags].filter(tag => candidateTags.has(tag));
+      if (shared.length === 0) continue;
     }
+
+    similar.push(name);
   }
   
   return similar.length > 1 ? similar : [itemName];
