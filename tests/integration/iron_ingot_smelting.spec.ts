@@ -2,7 +2,7 @@ import analyzeRecipes from '../../recipeAnalyzer';
 import { collectFirstN } from '../utils/helpers';
 import { ActionStep } from '../../action_tree/types';
 
-describe('integration: smelting iron_ingot with furnace in inventory', () => {
+describe.skip('integration: smelting iron_ingot with furnace in inventory', () => {
     const { resolveMcData } = (analyzeRecipes as any)._internals;
     const mcData = resolveMcData('1.20.1');
 

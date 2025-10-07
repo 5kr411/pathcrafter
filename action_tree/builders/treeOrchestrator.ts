@@ -22,7 +22,7 @@ import {
   BlockSource
 } from '../types';
 import { resolveMcData } from '../utils/mcDataResolver';
-import { findSimilarItems } from '../utils/itemSimilarity';
+import { findSimilarItems, findBlocksWithSameDrop } from '../utils/itemSimilarity';
 import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 
@@ -393,10 +393,10 @@ function buildRecipeTreeInternal(
 
     // Group mining paths by similar blocks if combining is enabled
     if (context.combineSimilarNodes) {
-      // Group mining paths by similar blocks
+      // Group mining paths by blocks that drop the same item
       const groupedPaths = new Map<string, BlockSource[]>();
       for (const miningPath of miningPaths) {
-        const similarBlocks = findSimilarItems(mcData, miningPath.block);
+        const similarBlocks = findBlocksWithSameDrop(mcData, miningPath.block);
         const key = similarBlocks.sort().join(',');
         
         if (!groupedPaths.has(key)) {

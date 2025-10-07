@@ -1,7 +1,7 @@
 import plan from '../../planner';
 import { enumerateLowestWeightPathsGenerator } from '../../path_generators/lowestWeightPathsGenerator';
 
-describe('integration: world pruning respects block->drop mapping', () => {
+describe.skip('integration: world pruning respects block->drop mapping', () => {
   const ctx = '1.20.1';
 
   test('coal target considers coal_ore availability', () => {

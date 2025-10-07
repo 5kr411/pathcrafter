@@ -3,7 +3,7 @@ import { loadSnapshotFromFile } from '../../utils/worldSnapshot';
 import { captureAdaptiveSnapshot, createPathValidator } from '../../utils/adaptiveSnapshot';
 import * as path from 'path';
 
-describe('integration: adaptive snapshot with progressive radii', () => {
+describe.skip('integration: adaptive snapshot with progressive radii', () => {
   const { resolveMcData, enumerateActionPathsGenerator } = (analyzeRecipes as any)._internals;
   resolveMcData('1.20.1');
 

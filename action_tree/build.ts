@@ -9,7 +9,7 @@
 // Re-export all utility functions for backward compatibility
 export { resolveMcData } from './utils/mcDataResolver';
 export { requiresCraftingTable, dedupeRecipesForItem, getIngredientCounts, hasCircularDependency, findFurnaceSmeltsForItem } from './utils/recipeUtils';
-export { findSimilarItems } from './utils/itemSimilarity';
+export { findSimilarItems, findBlocksWithSameDrop } from './utils/itemSimilarity';
 export { findBlocksThatDrop, findMobsThatDrop } from './utils/sourceLookup';
 
 // Re-export the main buildRecipeTree function from the tree orchestrator

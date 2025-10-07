@@ -92,6 +92,63 @@ export function areItemsSimilar(mcData: MinecraftData, item1: string, item2: str
 }
 
 /**
+ * Finds all blocks that drop the same item as the given block
+ * 
+ * This is used for mining nodes where different blocks drop the same item
+ * (e.g., iron_ore and deepslate_iron_ore both drop raw_iron).
+ * 
+ * @param mcData - Minecraft data object
+ * @param blockName - Name of the block to find similar blocks for
+ * @returns Array of block names that drop the same item, or just the original block if no similar blocks found
+ * 
+ * @example
+ * ```typescript
+ * const similar = findBlocksWithSameDrop(mcData, 'iron_ore');
+ * // Returns: ['iron_ore', 'deepslate_iron_ore']
+ * 
+ * const similar = findBlocksWithSameDrop(mcData, 'diamond_ore');
+ * // Returns: ['diamond_ore', 'deepslate_diamond_ore']
+ * ```
+ */
+export function findBlocksWithSameDrop(mcData: MinecraftData, blockName: string): string[] {
+  // Find the block by name
+  let targetBlock = null;
+  for (const block of Object.values(mcData.blocks)) {
+    if (block.name === blockName) {
+      targetBlock = block;
+      break;
+    }
+  }
+  
+  if (!targetBlock || !targetBlock.drops || targetBlock.drops.length === 0) {
+    return [blockName];
+  }
+  
+  const primaryDrop = targetBlock.drops[0];
+  const targetToolRequirements = targetBlock.harvestTools || {};
+  const targetDropCount = targetBlock.drops.length;
+  const similar: string[] = [];
+  
+  // Find all blocks that drop the same primary item AND have the same tool requirements AND same drop count
+  for (const block of Object.values(mcData.blocks)) {
+    if (block.drops && block.drops.length > 0 && block.drops[0] === primaryDrop) {
+      // Check if tool requirements match
+      const blockToolRequirements = block.harvestTools || {};
+      const toolsMatch = JSON.stringify(targetToolRequirements) === JSON.stringify(blockToolRequirements);
+      
+      // Check if drop count matches
+      const dropCountMatch = block.drops.length === targetDropCount;
+      
+      if (toolsMatch && dropCountMatch) {
+        similar.push(block.name);
+      }
+    }
+  }
+  
+  return similar.length > 1 ? similar : [blockName];
+}
+
+/**
  * Gets the suffix token for an item name
  * 
  * This is a convenience function that re-exports getSuffixTokenFromName

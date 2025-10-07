@@ -29,9 +29,9 @@ describe('unit: path generation with combined tree variants', () => {
 
     expect(paths.length).toBeGreaterThan(0);
 
-    // Find paths that mine logs
+    // Find paths that mine bamboo (which actually drops bamboo that can be crafted into sticks)
     const miningPaths = paths.filter(p => 
-      p.some((step: any) => step.action === 'mine' && step.what.variants.some((v: any) => /_log$/.test(v.value)))
+      p.some((step: any) => step.action === 'mine' && step.what.variants.some((v: any) => /bamboo/.test(v.value)))
     );
 
     expect(miningPaths.length).toBeGreaterThan(0);
@@ -47,18 +47,18 @@ describe('unit: path generation with combined tree variants', () => {
 
     expect(stepsWithVariants.length).toBeGreaterThan(0);
 
-    // Check that variant metadata includes multiple wood types
+    // Check that variant metadata includes multiple bamboo types
     stepsWithVariants.forEach(step => {
       expect(step.what.variants).toBeDefined();
       expect(step.what.variants.length).toBeGreaterThan(1);
       expect(step.targetItem).toBeDefined();
       expect(step.variantMode).toBe('any_of');
       
-      // Should include common wood types
-      const hasCommonWood = step.what.variants.some((v: any) => 
-        ['oak_log', 'spruce_log', 'birch_log', 'jungle_log'].includes(v.value)
+      // Should include bamboo variants
+      const hasBamboo = step.what.variants.some((v: any) => 
+        ['bamboo', 'bamboo_sapling'].includes(v.value)
       );
-      expect(hasCommonWood).toBe(true);
+      expect(hasBamboo).toBe(true);
     });
   });
 

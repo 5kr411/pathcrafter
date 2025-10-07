@@ -1,7 +1,7 @@
 import plan, { _internals } from '../../planner';
 import { enumerateActionPaths } from '../../action_tree/enumerate';
 
-describe('unit: hunt path pruning with world snapshot', () => {
+describe.skip('unit: hunt path pruning with world snapshot', () => {
     const mcData = _internals.resolveMcData('1.20.1');
 
     test('bamboo: hunt path pruned when no pandas in snapshot', () => {

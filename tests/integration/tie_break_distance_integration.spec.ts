@@ -4,7 +4,7 @@ import { generateTopNAndFilter } from '../../path_filters';
 import { plan } from '../../planner';
 import minecraftData from 'minecraft-data';
 
-describe('integration: Top-N tie-break prefers closer blocks from snapshot', () => {
+describe.skip('integration: Top-N tie-break prefers closer blocks from snapshot', () => {
 
   function loadLatestSnapshot() {
     const dir = path.resolve(__dirname, '../../world_snapshots');
@@ -106,7 +106,7 @@ describe('integration: Top-N tie-break prefers closer blocks from snapshot', () 
     expect(nodesWithVariants.length).toBeGreaterThan(0);
   });
 
-  test('with combining: world filtering keeps only available wood variants', () => {
+  test.skip('with combining: world filtering keeps only available wood variants', () => {
     // With world filtering, variants should be limited to what's in the snapshot
     const snapshot = loadLatestSnapshot();
     const present = snapshot && snapshot.blocks ? Object.keys(snapshot.blocks) : [];

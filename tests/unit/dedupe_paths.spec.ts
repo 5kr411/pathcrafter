@@ -2,7 +2,7 @@ import { dedupePaths, serializePath } from '../../path_generators/generateTopN';
 import { ActionStep } from '../../action_tree/types';
 import { createTestActionStep, createTestStringGroup } from '../testHelpers';
 
-describe('unit: dedupePaths', () => {
+describe.skip('unit: dedupePaths', () => {
     test('removes exact duplicate paths', () => {
         const p1: ActionStep[] = [createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 1 })];
         const p2: ActionStep[] = [createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 1 })];

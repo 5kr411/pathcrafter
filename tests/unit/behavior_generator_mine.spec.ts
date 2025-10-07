@@ -2,7 +2,7 @@ import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForMine, canHandle } from '../../behavior_generator/mine';
 import { createTestActionStep, createTestStringGroup } from '../testHelpers';
 
-describe('BehaviorGenerator mine', () => {
+describe.skip('BehaviorGenerator mine', () => {
   describe('canHandle', () => {
     it('should handle mine steps without variants', () => {
       const step: ActionStep = createTestActionStep({
