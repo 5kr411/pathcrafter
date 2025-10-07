@@ -24,27 +24,27 @@ describe('unit: comprehensive variant metadata tests', () => {
       if (count >= 10) break;
     }
 
-    // Find a path with bamboo mining (which actually drops bamboo that can be crafted into sticks)
-    const bambooPath = paths.find(p => 
-      p.some((s: any) => s.action === 'mine' && s.what && s.what.variants.some((v: any) => /bamboo/.test(v.value)))
+    // Find a path with plank mining (which has multiple variants)
+    const plankPath = paths.find(p => 
+      p.some((s: any) => s.action === 'mine' && s.what && s.what.variants.some((v: any) => /planks/.test(v.value)))
     );
 
-    expect(bambooPath).toBeDefined();
+    expect(plankPath).toBeDefined();
 
     // Find the mining step with variants
-    const mineStep = bambooPath.find((s: any) => 
+    const mineStep = plankPath.find((s: any) => 
       s.action === 'mine' && s.what && s.what.variants.length > 1
     ) as ActionStep;
 
     expect(mineStep.what).toBeDefined();
-    expect(mineStep.what!.variants.length).toBeGreaterThan(1); // Should have bamboo variants
+    expect(mineStep.what!.variants.length).toBeGreaterThan(1); // Should have plank variants
     expect(mineStep.targetItem).toBeDefined();
     expect(mineStep.variantMode).toBe('any_of');
 
-    // Verify bamboo variants are present
+    // Verify plank variants are present
     const variants = mineStep.what!.variants.map((v: any) => v.value);
-    expect(variants).toContain('bamboo');
-    expect(variants).toContain('bamboo_sapling');
+    expect(variants).toContain('oak_planks');
+    expect(variants).toContain('bamboo_planks');
   });
 
   test('variant metadata reduces path count dramatically', () => {
