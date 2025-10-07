@@ -191,7 +191,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
 
     if (st.action === 'craft') {
       // If this craft uses the crafting table, require one to be present earlier
-      if (st.what === 'table') {
+      if (st.what.variants[0].value === 'table') {
         incNeed('crafting_table', 1);
       }
 

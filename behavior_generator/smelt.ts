@@ -20,14 +20,14 @@ export function canHandle(step: ActionStep | null | undefined): boolean {
 export function computeTargetsForSmelt(step: ActionStep): SmeltTargets | null {
   if (!canHandle(step)) return null;
 
-  const result = 'result' in step ? (step as any).result : null;
-  const input = 'input' in step ? (step as any).input : null;
-  const fuel = 'fuel' in step ? (step as any).fuel : null;
+  const result = step.result;
+  const input = step.input;
+  const fuel = step.fuel;
 
-  const itemName = result && result.item ? result.item : null;
+  const itemName = result && result.variants.length > 0 ? result.variants[0].value.item : null;
   const amount = Number(step.count || 1);
-  const inputName = input && input.item ? input.item : null;
-  const fuelName = fuel || 'coal';
+  const inputName = input && input.variants.length > 0 ? input.variants[0].value.item : null;
+  const fuelName = fuel && fuel.variants.length > 0 ? fuel.variants[0].value : 'coal';
 
   if (!itemName || amount <= 0) return null;
 

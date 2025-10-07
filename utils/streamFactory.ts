@@ -46,12 +46,13 @@ export function createMakeStream<T extends PathItem = PathItem>(
     }
 
     // Leaf nodes (no children)
-    if (!('children' in node) || !node.children || node.children.length === 0) {
+    if (!('children' in node) || !node.children || node.children.variants.length === 0) {
       if (node.action === 'craft') {
         // Leaf craft nodes don't have variants (only non-leaf craft nodes do in the combined tree structure)
         // So we don't need to handle variants here
         const step: ActionStep = {
           action: 'craft',
+          variantMode: node.variantMode,
           what: node.what,
           count: node.count,
           ...(('result' in node) && { result: (node as any).result }),
@@ -63,7 +64,8 @@ export function createMakeStream<T extends PathItem = PathItem>(
       if (node.action === 'smelt') {
         const step: ActionStep = {
           action: 'smelt',
-          what: 'furnace',
+          variantMode: node.variantMode,
+          what: node.what,
           count: node.count,
           ...(('input' in node) && { input: (node as any).input }),
           ...(('result' in node) && { result: (node as any).result }),
@@ -96,6 +98,7 @@ export function createMakeStream<T extends PathItem = PathItem>(
       if (node.action === 'hunt') {
         const step: ActionStep = {
           action: node.action,
+          variantMode: node.variantMode,
           what: node.what,
           count: node.count,
           ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
@@ -113,7 +116,7 @@ export function createMakeStream<T extends PathItem = PathItem>(
     }
 
     // Nodes with children
-    const children = 'children' in node ? node.children : [];
+    const children = 'children' in node ? node.children.variants.map((v: any) => v.value) : [];
 
     if (node.action === 'root') {
       return makeOrStream(children.map(makeStream));
@@ -151,7 +154,8 @@ export function createMakeStream<T extends PathItem = PathItem>(
 
       const step: ActionStep = {
         action: 'smelt',
-        what: 'furnace',
+        variantMode: node.variantMode,
+        what: node.what,
         count: node.count,
         ...(('input' in node) && { input: (node as any).input }),
         ...(('result' in node) && { result: (node as any).result }),

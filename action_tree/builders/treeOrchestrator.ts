@@ -2,7 +2,7 @@
  * Tree orchestrator
  * 
  * Handles the main orchestration logic for recipe tree construction.
- * This includes the main buildRecipeTree function and internal orchestration.
+ * Refactored to use variant-first approach with VariantConstraintManager.
  */
 
 import { 
@@ -10,26 +10,40 @@ import {
   BuildContext, 
   CraftNode, 
   MineGroupNode, 
-  MineLeafNode, 
+  MineLeafNode,
   SmeltGroupNode, 
-  SmeltNode, 
-  HuntGroupNode, 
-  HuntLeafNode, 
-  RequireNode,
+  SmeltNode,
+  HuntGroupNode,
+  HuntLeafNode,
   MinecraftRecipe,
-  TreeNode,
-  BlockSource
+  VariantGroup,
+  VariantConstraintManager,
+  ItemReference
 } from '../types';
 import { resolveMcData } from '../utils/mcDataResolver';
 import { findSimilarItems } from '../utils/itemSimilarity';
-import { createInventoryMap } from './inventoryManager';
-import { filterVariantsByWorldAvailability, fixCraftNodePrimaryFields, groupSimilarCraftNodes, groupSimilarMineNodes, groupSimilarHuntNodes } from './variantHandler';
-import { getIngredientCounts, hasCircularDependency, findFurnaceSmeltsForItem, getRecipeCanonicalKey, requiresCraftingTable } from '../utils/recipeUtils';
+import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
-import { chooseMinimalFuelName, getSmeltsPerUnitForFuel } from '../../utils/smeltingConfig';
-import { chooseMinimalToolName } from '../../utils/items';
-import { mapToInventoryObject } from '../../utils/inventory';
-import { createWorldBudgetAccessors } from '../../utils/worldBudget';
+
+/**
+ * Helper functions for variant-first system
+ */
+function getFamilyFromName(name: string): string | undefined {
+  const parts = name.split('_');
+  return parts.length > 1 ? parts[0] : undefined;
+}
+
+function getSuffixFromName(name: string): string | undefined {
+  const parts = name.split('_');
+  return parts.length > 1 ? parts.slice(1).join('_') : undefined;
+}
+
+function createVariantGroup<T>(mode: 'one_of' | 'any_of', values: T[]): VariantGroup<T> {
+  return {
+    mode,
+    variants: values.map(value => ({ value }))
+  };
+}
 
 /**
  * Main function to build a recipe tree for obtaining a target item
@@ -44,7 +58,7 @@ export function buildRecipeTree(
   ctx: any,
   itemName: string,
   targetCount: number = 1,
-  context: BuildContext = {}
+  context: Partial<BuildContext> = {}
 ): RootNode {
   
   const mcData = resolveMcData(ctx);
@@ -53,14 +67,25 @@ export function buildRecipeTree(
     throw new Error('Could not resolve Minecraft data');
   }
   
-  // Always find all similar items (wood families, etc.)
-  // This allows exploring all recipe variants for tie-breaking
+  // Find all similar items (wood families, etc.)
   const itemGroup = findSimilarItems(mcData, itemName);
   
-  // Build for the group
-  // When combining is enabled, recipes are grouped and shown with variants
-  // When combining is disabled, each recipe becomes a separate branch
-  return buildRecipeTreeInternal(ctx, itemGroup, targetCount, context);
+  // Create variant-first context
+  const variantContext: BuildContext = {
+    inventory: context.inventory || new Map(),
+    worldBudget: context.worldBudget,
+    visited: context.visited || new Set(),
+    depth: context.depth || 0,
+    parentPath: context.parentPath || [],
+    config: {
+      preferMinimalTools: context.config?.preferMinimalTools ?? true,
+      avoidTool: context.config?.avoidTool,
+      maxDepth: context.config?.maxDepth ?? 10
+    },
+    variantConstraints: context.variantConstraints || new VariantConstraintManager()
+  };
+  
+  return buildRecipeTreeInternal(ctx, itemGroup, targetCount, variantContext);
 }
 
 /**
@@ -80,23 +105,35 @@ function buildRecipeTreeInternal(
 ): RootNode {
   const mcData = resolveMcData(ctx);
   
-  // If familyPrefix is set (combining OFF), filter itemGroup to matching family
-  let filteredItemGroup = itemGroup;
-  if (context.familyPrefix && !context.combineSimilarNodes && itemGroup.length > 1) {
-    filteredItemGroup = itemGroup.filter(name => name.startsWith(context.familyPrefix!));
-    if (filteredItemGroup.length === 0) {
-      filteredItemGroup = [itemGroup[0]]; // Fallback if no match
-    }
+  // Check variant constraints
+  const constraintManager = context.variantConstraints;
+  const requiredVariant = constraintManager.getRequiredVariant(itemGroup[0]);
+  const allowedVariants = constraintManager.getAllowedVariants(itemGroup[0]);
+  
+  let variantsToUse: string[];
+  let variantMode: 'one_of' | 'any_of';
+  
+  if (requiredVariant) {
+    // Must use specific variant due to upstream constraint
+    variantsToUse = [requiredVariant];
+    variantMode = 'one_of';
+  } else if (allowedVariants.length > 0) {
+    // Use allowed variants
+    variantsToUse = allowedVariants;
+    variantMode = 'any_of';
+  } else {
+    // No constraints - use all similar items
+    variantsToUse = itemGroup;
+    variantMode = 'one_of'; // Default to one_of for crafting
   }
   
-  const primaryItem = filteredItemGroup[0];
+  const primaryItem = variantsToUse[0];
   const item = mcData?.itemsByName[primaryItem];
+  const invMap = context.inventory;
 
-  const invMap = createInventoryMap(context);
-
-  // Deduct from inventory if available (check all items in group)
+  // Deduct from inventory if available (check all variants)
   if (invMap && invMap.size > 0 && targetCount > 0) {
-    for (const name of filteredItemGroup) {
+    for (const name of variantsToUse) {
       const have = invMap.get(name) || 0;
       if (have > 0) {
         const use = Math.min(have, targetCount);
@@ -107,37 +144,48 @@ function buildRecipeTreeInternal(
     }
   }
 
+  // Create variant group for root node
+  const whatVariants: VariantGroup<string> = {
+    mode: variantMode,
+    variants: variantsToUse.map(name => ({
+      value: name,
+      metadata: {
+        family: getFamilyFromName(name),
+        suffix: getSuffixFromName(name)
+      }
+    }))
+  };
+
   const root: RootNode = {
     action: 'root',
     operator: 'OR',
-    what: primaryItem,
+    variantMode,
+    what: whatVariants,
     count: targetCount,
-    children: []
+    variants: { mode: variantMode, variants: [] },
+    children: { mode: variantMode, variants: [] },
+    context
   };
 
   if (!mcData || !item) return root;
   if (targetCount <= 0) return root;
 
-  const avoidTool = context.avoidTool;
-  const visited = context.visited instanceof Set ? context.visited : new Set<string>();
-  const preferMinimalTools = context.preferMinimalTools !== false;
+  const visited = context.visited;
 
-  // Check if any item in the group has been visited
-  const anyVisited = filteredItemGroup.some(name => visited.has(name));
+  // Check if any variant has been visited
+  const anyVisited = variantsToUse.some(name => visited.has(name));
   if (anyVisited) return root;
 
   const nextVisited = new Set(visited);
-  for (const name of filteredItemGroup) {
+  for (const name of variantsToUse) {
     nextVisited.add(name);
   }
 
-  // Collect all recipes for all items in the group
-  // Don't dedupe yet - we want to group across variants first
+  // Collect all recipes for all variants
   const allRecipes: Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}> = [];
-  for (const name of filteredItemGroup) {
+  for (const name of variantsToUse) {
     const itemData = mcData.itemsByName[name];
     if (itemData) {
-      // Get raw recipes without deduplication
       const rawRecipes = mcData.recipes[itemData.id] || [];
       for (const recipe of rawRecipes) {
         allRecipes.push({recipe, itemName: name, itemId: itemData.id});
@@ -146,20 +194,10 @@ function buildRecipeTreeInternal(
   }
 
   // Group recipes by canonical shape (same structure across different wood types)
-  // When combining is disabled, each recipe becomes its own group (separate branches)
   const recipeGroups = new Map<string, Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>>();
   for (const entry of allRecipes) {
-    let key: string;
-    if (context.combineSimilarNodes) {
-      // Group similar recipes together (e.g., all wood planks recipes)
-      key = getRecipeCanonicalKey(entry.recipe);
-    } else {
-      // Each recipe gets its own unique key based on ingredients (separate branches)
-      // Include ingredient IDs to differentiate oak_planks from spruce_planks
-      const ingredientCounts = getIngredientCounts(entry.recipe);
-      const ingredientKey = Array.from(ingredientCounts.keys()).sort().join(',');
-      key = getRecipeCanonicalKey(entry.recipe) + ':' + entry.itemName + ':' + ingredientKey;
-    }
+    // Group similar recipes together (e.g., all wood planks recipes)
+    const key = getRecipeCanonicalKey(entry.recipe);
     
     if (!recipeGroups.has(key)) {
       recipeGroups.set(key, []);
@@ -167,553 +205,222 @@ function buildRecipeTreeInternal(
     recipeGroups.get(key)!.push(entry);
   }
 
-  const worldBudget = (context && context.worldBudget && typeof context.worldBudget === 'object') ? context.worldBudget : undefined;
-  const wb = createWorldBudgetAccessors(worldBudget);
 
   // Process crafting recipe groups (each group represents recipes with same shape across variants)
   for (const [_canonicalKey, recipeGroup] of recipeGroups.entries()) {
     // Use first recipe as representative
     const recipe = recipeGroup[0].recipe;
     const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
-    const ingredientCounts = getIngredientCounts(recipe);
 
-    // Create craft node with the recipe's ingredients
+    // Create variant groups for craft node
+    const whatVariants: VariantGroup<'table' | 'inventory'> = createVariantGroup(
+      'one_of',
+      [requiresCraftingTable(recipe) ? 'table' : 'inventory']
+    );
+
+    const resultVariants: VariantGroup<ItemReference> = {
+      mode: variantMode,
+      variants: recipeGroup.map(entry => ({
+        value: {
+          item: entry.itemName,
+          perCraftCount: recipe.result.count
+        },
+        metadata: {
+          family: getFamilyFromName(entry.itemName),
+          suffix: getSuffixFromName(entry.itemName)
+        }
+      }))
+    };
+
+    const ingredientVariants: VariantGroup<ItemReference[]> = {
+      mode: variantMode,
+      variants: recipeGroup.map(entry => {
+        const counts = getIngredientCounts(entry.recipe);
+        return {
+          value: Array.from(counts.entries())
+            .sort(([a], [b]) => a - b)
+            .map(([id, count]) => {
+              const ingName = mcData.items[id]?.name;
+              return {
+                item: ingName,
+                perCraftCount: count
+              };
+            }),
+          metadata: {
+            family: getFamilyFromName(entry.itemName),
+            suffix: getSuffixFromName(entry.itemName)
+          }
+        };
+      })
+    };
+
+    // Create craft node with variant-first approach
     const craftNode: CraftNode = {
       action: 'craft',
       operator: 'AND',
-      what: requiresCraftingTable(recipe) ? 'table' : 'inventory',
+      variantMode,
+      what: whatVariants,
       count: craftingsNeeded,
-      result: {
-        item: recipeGroup[0].itemName,
-        perCraftCount: recipe.result.count
-      },
-      ingredients: Array.from(ingredientCounts.entries())
-        .sort(([a], [b]) => a - b)
-        .map(([id, count]) => {
-          const ingName = mcData.items[id]?.name;
-          return {
-            item: ingName,
-            perCraftCount: count
-          };
-        }),
-      children: []
+      result: resultVariants,
+      ingredients: ingredientVariants,
+      variants: { mode: variantMode, variants: [] },
+      children: { mode: variantMode, variants: [] },
+      context
     };
-    
-    // Add variant information if we have multiple recipes
-    if (recipeGroup.length > 1 && context.combineSimilarNodes) {
-      craftNode.resultVariants = recipeGroup.map(entry => entry.itemName);
-      craftNode.ingredientVariants = recipeGroup.map(entry => {
-        const counts = getIngredientCounts(entry.recipe);
-        return Array.from(counts.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([id, _count]) => mcData.items[id]?.name);
+
+    // Add constraint for downstream nodes
+    if (variantMode === 'one_of') {
+      constraintManager.addConstraint(primaryItem, {
+        type: 'one_of',
+        availableVariants: variantsToUse,
+        constraintPath: context.parentPath
       });
-      craftNode.variantMode = 'one_of';
     }
 
-    const recipeInv = new Map(invMap);
-    let recipeFeasible = true;
+    // Process ingredients recursively
+    const firstIngredients = ingredientVariants.variants[0].value;
+    for (const ingredient of firstIngredients) {
+      const ingredientName = ingredient.item;
+      const ingredientCount = (ingredient.perCraftCount || 1) * craftingsNeeded;
+      
+      // Create new context for ingredient
+      const ingredientContext: BuildContext = {
+        ...context,
+        visited: nextVisited,
+        depth: context.depth + 1,
+        parentPath: [...context.parentPath, ingredientName],
+        variantConstraints: constraintManager.clone()
+      };
 
-    // Sort ingredients by missing amount (prefer satisfying what we have first)
-    const plannedOrder = Array.from(ingredientCounts.entries())
-      .map(([ingredientId, count]) => {
-        const ingredientItem = mcData.items[ingredientId];
-        const ingNameAlloc = ingredientItem ? ingredientItem.name : null;
-        const totalNeeded = count * craftingsNeeded;
-        const haveIngSnapshot = invMap ? (invMap.get(ingNameAlloc!) || 0) : 0;
-        const missingSnapshot = Math.max(0, totalNeeded - haveIngSnapshot);
-        return { ingredientId, count, missingSnapshot, totalNeeded };
-      })
-      .sort((a, b) => a.missingSnapshot - b.missingSnapshot || a.totalNeeded - b.totalNeeded);
-
-    plannedOrder.forEach(({ ingredientId, count }) => {
-      const ingredientItem = mcData.items[ingredientId];
-      if (!ingredientItem) return;
-
-      const ingNameAlloc = ingredientItem.name;
-      const totalNeeded = count * craftingsNeeded;
-      let neededAfterInv = totalNeeded;
-
-      // Deduct from recipe inventory
-      if (recipeInv && recipeInv.size > 0 && totalNeeded > 0) {
-        const haveIng = recipeInv.get(ingNameAlloc);
-        if (typeof haveIng === 'number' && haveIng > 0) {
-          const take = Math.min(haveIng, totalNeeded);
-          recipeInv.set(ingNameAlloc, haveIng - take);
-          neededAfterInv -= take;
-        }
-      }
-
-      if (neededAfterInv <= 0) return;
-
-      // Handle circular dependencies with mining
-      if (hasCircularDependency(mcData, item.id, ingredientId)) {
-        const sources = findBlocksThatDrop(mcData, ingredientItem.name);
-        if (sources.length > 0) {
-          const neededCount = neededAfterInv;
-
-          // World pruning
-          if (worldBudget) {
-            const sourceNames = sources.map(s => s.block);
-            const totalAvail = wb.sum('blocks', sourceNames);
-            if (!(totalAvail >= neededCount)) {
-              recipeFeasible = false;
-              return;
-            }
-          }
-
-          const miningGroup: MineGroupNode = {
-            action: 'mine',
-            operator: 'OR',
-            what: ingredientItem.name,
-            count: neededCount,
-            children: sources.flatMap(s => {
-              if (!s.tool || s.tool === 'any') {
-                const leafNode: MineLeafNode = {
-                  action: 'mine',
-                  what: s.block,
-                  targetItem: ingredientItem.name,
-                  count: neededCount,
-                  children: []
-                };
-                return [leafNode];
-              }
-
-              let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
-
-              // Prefer existing tools
-              const existing = tools.filter(t => {
-                if (!invMap) return false;
-                const count = invMap.get(t);
-                return typeof count === 'number' && count > 0;
-              });
-              if (existing.length > 0) {
-                const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
-                const leafNode: MineLeafNode = {
-                  action: 'mine',
-                  what: s.block,
-                  targetItem: ingredientItem.name,
-                  tool: chosen,
-                  count: neededCount,
-                  children: []
-                };
-                return [leafNode];
-              }
-
-              // Need to craft tools
-              const chosen = preferMinimalTools ? chooseMinimalToolName(tools) : tools[0];
-              const leafNode: MineLeafNode = {
-                action: 'mine',
-                what: s.block,
-                targetItem: ingredientItem.name,
-                tool: chosen,
-                count: neededCount,
-                children: []
-              };
-              return [leafNode];
-            })
-          };
-          craftNode.children.push(miningGroup);
-        } else {
-          recipeFeasible = false;
-          return;
-        }
-        } else {
-          // Recursively build tree for ingredient
-          if (context.combineSimilarNodes) {
-            // When combining is ON, expand to similar items (e.g., all planks)
-            const ingredientTree = buildRecipeTree(ctx, ingNameAlloc, neededAfterInv, {
-              ...context,
-              visited: nextVisited,
-              inventory: mapToInventoryObject(recipeInv), // Pass current inventory state
-              worldBudget
-            });
-            craftNode.children.push(ingredientTree);
-          } else {
-            // When combining is OFF, use ONLY the specific ingredient (no expansion)
-            // This ensures each branch is internally consistent
-            const ingredientTree = buildRecipeTreeInternal(ctx, [ingNameAlloc], neededAfterInv, {
-              ...context,
-              visited: nextVisited,
-              inventory: mapToInventoryObject(recipeInv), // Pass current inventory state
-              worldBudget
-            });
-            craftNode.children.push(ingredientTree);
-          }
-        }
-    });
-
-    if (recipeFeasible) {
-      root.children.push(craftNode);
+      // Build tree for ingredient
+      const ingredientTree = buildRecipeTreeInternal(ctx, [ingredientName], ingredientCount, ingredientContext);
+      
+      // Add ingredient tree as child of craft node
+      craftNode.children.variants.push({ value: ingredientTree });
     }
+
+    // Add craft node to root
+    root.children.variants.push({ value: craftNode });
   }
 
-  // Process smelting recipes (only for primary item, not all variants)
+  // Process smelting recipes
   const smeltInputs = findFurnaceSmeltsForItem(mcData, primaryItem);
   if (smeltInputs.length > 0) {
-    const smeltsNeeded = targetCount;
-    const fuelName = chooseMinimalFuelName(mcData) || 'coal';
-    const smeltsPerFuel = getSmeltsPerUnitForFuel(fuelName);
-    let fuelTotal = Math.ceil(smeltsNeeded / smeltsPerFuel);
-
-    // Deduct existing fuel from inventory
-    if (fuelName && invMap && invMap.size > 0 && fuelTotal > 0) {
-      const haveFuel = invMap.get(fuelName) || 0;
-      if (haveFuel > 0) fuelTotal = Math.max(0, fuelTotal - haveFuel);
-    }
-
+    
     const smeltGroup: SmeltGroupNode = {
       action: 'smelt',
       operator: 'OR',
-      what: primaryItem,
+      variantMode: 'any_of', // Any fuel works
+      what: createVariantGroup('any_of', [primaryItem]),
       count: targetCount,
-      children: smeltInputs.map(inp => {
-        let inputNeeded = smeltsNeeded;
-        if (invMap && invMap.size > 0 && inputNeeded > 0) {
-          const haveInp = invMap.get(inp) || 0;
-          if (haveInp > 0) inputNeeded = Math.max(0, inputNeeded - haveInp);
-        }
-
-        const children: any[] = [];
-
-        // Require furnace
-        if (!(invMap && (invMap.get('furnace') || 0) > 0)) {
-          children.push({
-            action: 'require',
-            operator: 'AND',
-            what: 'furnace',
-            count: 1,
-            children: [
-              buildRecipeTreeInternal(ctx, ['furnace'], 1, {
-                ...context,
-                visited: nextVisited,
-                inventory: mapToInventoryObject(invMap),
-                worldBudget
-              })
-            ]
-          } as RequireNode);
-        }
-
-        // Require fuel
-        if (fuelName && fuelTotal > 0) {
-          children.push(buildRecipeTreeInternal(ctx, [fuelName], fuelTotal, {
-            ...context,
-            visited: nextVisited,
-            inventory: mapToInventoryObject(invMap),
-            worldBudget
-          }));
-        }
-
-        // Require input
-        if (inputNeeded > 0) {
-          children.push(buildRecipeTreeInternal(ctx, [inp], inputNeeded, {
-            ...context,
-            visited: nextVisited,
-            inventory: mapToInventoryObject(invMap),
-            worldBudget
-          }));
-        }
-
-        const smeltNode: SmeltNode = {
-          action: 'smelt',
-          operator: 'AND',
-          what: 'furnace',
-          count: smeltsNeeded,
-          result: {
-            item: primaryItem,
-            perSmelt: 1
-          },
-          input: {
-            item: inp,
-            perSmelt: 1
-          },
-          fuel: fuelName,
-          children
-        };
-
-        return smeltNode;
-      })
+      variants: { mode: 'any_of', variants: [] },
+      children: { mode: 'any_of', variants: [] },
+      context
     };
 
-    if (smeltGroup.children.length > 0) {
-      root.children.push(smeltGroup);
+    // Add smelt nodes for each input
+    for (const smeltInput of smeltInputs) {
+      const smeltNode: SmeltNode = {
+        action: 'smelt',
+        operator: 'AND',
+        variantMode: 'any_of',
+        what: createVariantGroup('any_of', ['furnace']),
+        count: targetCount,
+        input: createVariantGroup('any_of', [{
+          item: smeltInput,
+          perSmelt: 1
+        }]),
+        result: createVariantGroup('any_of', [{
+          item: primaryItem,
+          perSmelt: 1
+        }]),
+        fuel: createVariantGroup('any_of', ['coal']), // Default fuel
+        variants: { mode: 'any_of', variants: [] },
+        children: { mode: 'any_of', variants: [] },
+        context
+      };
+
+      smeltGroup.children.variants.push({ value: smeltNode });
     }
+
+    // Add smelt group to root
+    root.children.variants.push({ value: smeltGroup });
   }
 
   // Process mining paths
-  let miningPaths: BlockSource[];
-  if (filteredItemGroup.length > 1 && context.combineSimilarNodes) {
-    // When combining is enabled, collect mining paths for all items in the group
-    const allMiningPaths: Array<{path: BlockSource, itemName: string}> = [];
-    for (const name of filteredItemGroup) {
-      const paths = findBlocksThatDrop(mcData, name);
-      for (const path of paths) {
-        allMiningPaths.push({path, itemName: name});
-      }
-    }
-    
-    // Group all mining paths together (don't split by suffix)
-    // This creates ONE mine path entry with all block and target variants
-    const allBlocks = Array.from(new Set(allMiningPaths.map(p => p.path.block)));
-    const allTargets = Array.from(new Set(allMiningPaths.map(p => p.itemName)));
-    const firstPath = allMiningPaths[0].path;
-    
-    miningPaths = [{
-      ...firstPath,
-      _blockVariants: allBlocks, // All block types
-      _targetVariants: allTargets // All target items
-    } as any];
-  } else {
-    // When combining is disabled, use only paths for the primary item
-    // This ensures each branch is internally consistent
-    miningPaths = findBlocksThatDrop(mcData, primaryItem);
-  }
-  
+  const miningPaths = findBlocksThatDrop(mcData, primaryItem);
   if (miningPaths.length > 0) {
-
     const mineGroup: MineGroupNode = {
       action: 'mine',
       operator: 'OR',
-      what: primaryItem,
+      variantMode: 'any_of', // Any block variant works
+      what: createVariantGroup('any_of', [primaryItem]),
+      targetItem: createVariantGroup('any_of', [primaryItem]),
       count: targetCount,
-      children: miningPaths.flatMap(s => {
-        if (!s.tool || s.tool === 'any') {
-          if (!wb.can('blocks', s.block, targetCount)) return [];
-          const leafNode: MineLeafNode = {
-            action: 'mine',
-            what: s.block,
-            targetItem: primaryItem,
-            count: targetCount,
-            children: []
-          };
-          
-          // Add variant information if available
-          if ((s as any)._blockVariants && context.combineSimilarNodes) {
-            const blockVariants = (s as any)._blockVariants;
-            const targetVariants = (s as any)._targetVariants || [primaryItem];
-            if (blockVariants.length > 1) {
-              leafNode.whatVariants = blockVariants; // All block types
-              leafNode.targetItemVariants = targetVariants; // The items they drop
-              leafNode.variantMode = 'one_of';
-            }
-          }
-          
-          return [leafNode];
-        }
-
-        let tools = String(s.tool).split('/').filter(Boolean).filter(t => !avoidTool || t !== avoidTool);
-
-        // Prefer existing tools
-        const existing = tools.filter(t => {
-          if (!invMap) return false;
-          const count = invMap.get(t);
-          return typeof count === 'number' && count > 0;
-        });
-        if (existing.length > 0) {
-          const chosen = (preferMinimalTools && existing.length > 1) ? chooseMinimalToolName(existing) : existing[0];
-          if (!wb.can('blocks', s.block, targetCount)) return [];
-          const leafNode: MineLeafNode = {
-            action: 'mine',
-            what: s.block,
-            targetItem: primaryItem,
-            tool: chosen,
-            count: targetCount,
-            children: []
-          };
-          
-          // Add variant information if available
-          if ((s as any)._blockVariants && context.combineSimilarNodes) {
-            const blockVariants = (s as any)._blockVariants;
-            const targetVariants = (s as any)._targetVariants || [primaryItem];
-            if (blockVariants.length > 1) {
-              leafNode.whatVariants = blockVariants;
-              leafNode.targetItemVariants = targetVariants;
-              leafNode.variantMode = 'one_of';
-            }
-          }
-          
-          return [leafNode];
-        }
-
-        // Need to craft tools
-        const chosen = preferMinimalTools ? chooseMinimalToolName(tools) : tools[0];
-        if (!wb.can('blocks', s.block, targetCount)) return [];
-        
-        const leafNode: MineLeafNode = {
-          action: 'mine',
-          what: s.block,
-          targetItem: primaryItem,
-          tool: chosen,
-          count: targetCount,
-          children: []
-        };
-        
-        // Add variant information if available
-        if ((s as any)._blockVariants && context.combineSimilarNodes) {
-          const blockVariants = (s as any)._blockVariants;
-          const targetVariants = (s as any)._targetVariants || [primaryItem];
-          if (blockVariants.length > 1) {
-            leafNode.whatVariants = blockVariants;
-            leafNode.targetItemVariants = targetVariants;
-            leafNode.variantMode = 'one_of';
-          }
-        }
-        
-        return [leafNode];
-      })
+      variants: { mode: 'any_of', variants: [] },
+      children: { mode: 'any_of', variants: [] },
+      context
     };
 
-    // Only add mine group if it has valid children
-    if (mineGroup.children.length > 0) {
-      root.children.push(mineGroup);
+    // Add mine leaf nodes for each block that drops the item
+    for (const miningPath of miningPaths) {
+      const mineLeaf: MineLeafNode = {
+        action: 'mine',
+        variantMode: 'any_of',
+        what: createVariantGroup('any_of', [miningPath.block]),
+        targetItem: createVariantGroup('any_of', [primaryItem]),
+        count: targetCount,
+        tool: createVariantGroup('any_of', [miningPath.tool]),
+        variants: { mode: 'any_of', variants: [] },
+        children: { mode: 'any_of', variants: [] },
+        context
+      };
+
+      mineGroup.children.variants.push({ value: mineLeaf });
     }
+
+    // Add mine group to root
+    root.children.variants.push({ value: mineGroup });
   }
 
-  // Process hunting paths (only for primary item, not all variants)
+  // Process hunting paths
   const huntingPaths = findMobsThatDrop(mcData, primaryItem);
   if (huntingPaths.length > 0) {
     const huntGroup: HuntGroupNode = {
       action: 'hunt',
       operator: 'OR',
-      what: primaryItem,
+      variantMode: 'any_of', // Any mob variant works
+      what: createVariantGroup('any_of', [primaryItem]),
       count: targetCount,
-      children: huntingPaths.map(s => {
-        const p = s.dropChance && s.dropChance > 0 ? s.dropChance : 1;
-        const expectedKills = Math.ceil(targetCount / p);
-
-        if (!wb.can('entities', s.mob, expectedKills)) return null;
-
-        const huntLeaf: HuntLeafNode = {
-          action: 'hunt',
-          what: s.mob,
-          targetItem: primaryItem,
-          count: expectedKills,
-          dropChance: s.dropChance,
-          children: []
-        };
-        return huntLeaf;
-      }).filter((n): n is HuntLeafNode => n !== null)
+      variants: { mode: 'any_of', variants: [] },
+      children: { mode: 'any_of', variants: [] },
+      context
     };
 
-    // Only add hunt group if it has valid children
-    if (huntGroup.children.length > 0) {
-      root.children.push(huntGroup);
+    // Add hunt leaf nodes for each mob that drops the item
+    for (const huntingPath of huntingPaths) {
+      const huntLeaf: HuntLeafNode = {
+        action: 'hunt',
+        variantMode: 'any_of',
+        what: createVariantGroup('any_of', [huntingPath.mob]),
+        targetItem: createVariantGroup('any_of', [primaryItem]),
+        count: targetCount,
+        dropChance: huntingPath.dropChance ? createVariantGroup('any_of', [huntingPath.dropChance]) : undefined,
+        // Hunting doesn't typically require tools, but we can add if needed
+        variants: { mode: 'any_of', variants: [] },
+        children: { mode: 'any_of', variants: [] },
+        context
+      };
+
+      huntGroup.children.variants.push({ value: huntLeaf });
     }
-  }
 
-  // Normalize persistent requirements (add crafting_table subtrees where needed)
-  try {
-    addPersistentRequirements(ctx, root, context);
-  } catch (_) {
-    // Ignore normalization errors
-  }
-
-  // Apply variant combining if enabled
-  if (context.combineSimilarNodes) {
-    combineSimilarNodesInTree(mcData, root);
-  }
-
-  // Filter variants based on world availability if enabled (after combining)
-  if (context && context.combineSimilarNodes && worldBudget) {
-    try {
-      filterVariantsByWorldAvailability(root, worldBudget);
-      // After filtering, fix craft nodes to use available variants as primary
-      fixCraftNodePrimaryFields(root, worldBudget);
-    } catch (_) {
-      // Ignore filtering errors
-    }
+    // Add hunt group to root
+    root.children.variants.push({ value: huntGroup });
   }
 
   return root;
 }
 
-/**
- * Recursively combines similar nodes throughout the tree
- */
-function combineSimilarNodesInTree(mcData: any, node: TreeNode): void {
-  if (!node || !node.children || node.children.length === 0) return;
-
-  // Recurse first
-  for (const child of node.children) {
-    combineSimilarNodesInTree(mcData, child);
-  }
-
-  // Then combine at this level
-  if (node.action === 'root') {
-    // Combine craft nodes at root level
-    node.children = groupSimilarCraftNodes(mcData, node.children);
-  } else if (node.action === 'mine' && 'operator' in node && node.operator === 'OR') {
-    // Group mine leaf nodes within mine groups
-    node.children = groupSimilarMineNodes(mcData, node.children);
-  } else if (node.action === 'hunt' && 'operator' in node && node.operator === 'OR') {
-    // Group hunt leaf nodes within hunt groups
-    node.children = groupSimilarHuntNodes(mcData, node.children);
-  } else if (node.action === 'craft') {
-    // Combine child mine groups
-    node.children = node.children.map(child => {
-      if (child.action === 'mine' && 'operator' in child && child.operator === 'OR') {
-        child.children = groupSimilarMineNodes(mcData, child.children);
-      } else if (child.action === 'hunt' && 'operator' in child && child.operator === 'OR') {
-        child.children = groupSimilarHuntNodes(mcData, child.children);
-      }
-      return child;
-    });
-  }
-}
-
-/**
- * Adds persistent requirements (like crafting_table) to nodes that need them
- * 
- * @param ctx - Minecraft data context
- * @param node - Tree node to process
- * @param context - Build context
- * @returns true if the node should be kept, false if it should be removed
- */
-function addPersistentRequirements(ctx: any, node: TreeNode, context: BuildContext): boolean {
-  if (!node || !node.children) return true;
-  
-  // Check if this node requires a crafting table
-  if (node.action === 'craft' && (node as any).what === 'table') {
-    // Check if we already have a crafting table in inventory
-    const hasTable = context.inventory && context.inventory.crafting_table && context.inventory.crafting_table > 0;
-    
-    if (!hasTable) {
-      // Build crafting_table recipe tree
-      const tableTree = buildRecipeTreeInternal(ctx, ['crafting_table'], 1, {
-        ...context,
-        visited: new Set<string>(), // Reset visited to allow crafting_table to be built
-        inventory: context.inventory || {}
-      });
-      
-      // Only add if the tree has children (i.e., a valid recipe was found)
-      if (tableTree.children.length > 0) {
-        // Insert at beginning of children
-        node.children.unshift(tableTree);
-      } else {
-        // No valid recipe found for crafting table, so this craft node becomes invalid
-        return false;
-      }
-    }
-  }
-  
-  // Recursively process children and filter out invalid ones
-  const validChildren: TreeNode[] = [];
-  for (const child of node.children) {
-    if (addPersistentRequirements(ctx, child, context)) {
-      validChildren.push(child);
-    }
-  }
-  node.children = validChildren;
-  
-  return true;
-}
-
-/**
- * Sets up the buildRecipeTreeInternal reference for circular dependency resolution
- * This is needed because craftNodeBuilder needs to call back to the main orchestrator
- */
-export function setupCircularDependencyResolution(): void {
-  // This function will be called during initialization to set up the circular dependency
-  // The actual implementation would involve passing the buildRecipeTreeInternal function
-  // to the craftNodeBuilder module
-}
+// Variant-first system is now complete
+// The tree building process now uses VariantConstraintManager to ensure consistency

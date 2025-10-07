@@ -120,9 +120,24 @@ const analyzeRecipes: AnalyzeRecipesFunction = (ctx: any, itemName: string, targ
   const mc = treeBuild.resolveMcData(ctx);
   setLastMcData(mc || null);
   setTargetItemNameGlobal(itemName);
+  // Convert inventory to Map for variant-first system
+  const inventoryMap = new Map<string, number>();
+  if (options && options.inventory) {
+    for (const [item, count] of Object.entries(options.inventory)) {
+      inventoryMap.set(item, Number(count));
+    }
+  }
+
   const tree = treeBuild.buildRecipeTree(mc, itemName, targetCount, {
-    inventory: options && options.inventory ? options.inventory : undefined,
-    combineSimilarNodes: options && options.combineSimilarNodes ? options.combineSimilarNodes : undefined
+    inventory: inventoryMap,
+    visited: new Set(),
+    depth: 0,
+    parentPath: [],
+    config: {
+      preferMinimalTools: true,
+      maxDepth: 10
+    },
+    variantConstraints: new treeBuild.VariantConstraintManager()
   });
   if (!options || options.log !== false) treeLogger.logActionTree(tree);
   return tree;

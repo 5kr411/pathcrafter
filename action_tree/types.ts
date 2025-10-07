@@ -1,5 +1,6 @@
 /**
  * Type definitions for the action tree and recipe tree system
+ * Refactored to use variant-first approach
  */
 
 import type { WorldBudget } from '../utils/worldBudget';
@@ -22,20 +23,91 @@ export interface ItemReference {
 }
 
 /**
- * Common properties for all tree nodes
+ * Core variant types for variant-first system
  */
-interface BaseTreeNode {
+export interface Variant<T> {
+  value: T;
+  metadata?: {
+    family?: string;        // "oak", "spruce", "birch"
+    suffix?: string;        // "planks", "log", "stairs"
+    availability?: boolean; // world-specific availability
+    source?: string;        // where this variant came from
+  };
+}
+
+export interface VariantGroup<T> {
+  mode: 'one_of' | 'any_of';
+  variants: Variant<T>[];
+}
+
+/**
+ * Variant constraint tracking
+ */
+export interface VariantConstraint {
+  type: 'one_of' | 'any_of';
+  chosenVariant?: string;
+  availableVariants: string[];
+  constraintPath: string[];
+}
+
+export class VariantConstraintManager {
+  private constraints = new Map<string, VariantConstraint>();
+  
+  addConstraint(itemName: string, constraint: VariantConstraint): void {
+    this.constraints.set(itemName, constraint);
+  }
+  
+  isVariantAllowed(itemName: string, variant: string): boolean {
+    const constraint = this.constraints.get(itemName);
+    if (!constraint) return true;
+    
+    if (constraint.type === 'one_of') {
+      return constraint.chosenVariant === variant;
+    } else {
+      return constraint.availableVariants.includes(variant);
+    }
+  }
+  
+  getRequiredVariant(itemName: string): string | null {
+    const constraint = this.constraints.get(itemName);
+    return constraint?.type === 'one_of' ? constraint.chosenVariant || null : null;
+  }
+  
+  getAllowedVariants(itemName: string): string[] {
+    const constraint = this.constraints.get(itemName);
+    return constraint?.availableVariants || [];
+  }
+  
+  clone(): VariantConstraintManager {
+    const cloned = new VariantConstraintManager();
+    cloned.constraints = new Map(this.constraints);
+    return cloned;
+  }
+}
+
+/**
+ * Variant-first tree node system
+ */
+
+/**
+ * Base tree node with variant-first approach
+ */
+export interface VariantTreeNode {
   action: string;
   operator?: 'AND' | 'OR';
-  what: string;
+  variantMode: 'one_of' | 'any_of';
+  variants: VariantGroup<VariantTreeNode>;
+  children: VariantGroup<VariantTreeNode>;
+  context: BuildContext;
+  
+  what: VariantGroup<string>;
   count: number;
-  children: TreeNode[];
 }
 
 /**
  * Root node of the recipe tree
  */
-export interface RootNode extends BaseTreeNode {
+export interface RootNode extends VariantTreeNode {
   action: 'root';
   operator: 'OR';
 }
@@ -43,63 +115,39 @@ export interface RootNode extends BaseTreeNode {
 /**
  * Craft action node
  */
-export interface CraftNode extends BaseTreeNode {
+export interface CraftNode extends VariantTreeNode {
   action: 'craft';
   operator: 'AND';
-  what: 'table' | 'inventory';
-  result: ItemReference;
-  ingredients: ItemReference[];
-  /**
-   * When combineSimilarNodes is enabled, this contains all variants (e.g., oak_planks, spruce_planks)
-   * Otherwise, it's undefined or contains just the primary result
-   */
-  resultVariants?: string[];
-  ingredientVariants?: string[][];
-  /**
-   * Describes how variants relate to each other:
-   * - 'one_of': Mutually exclusive options (pick one variant)
-   * - 'any_of': Compatible alternatives (could use any/multiple)
-   */
-  variantMode?: 'one_of' | 'any_of';
+  what: VariantGroup<'table' | 'inventory'>;
+  result: VariantGroup<ItemReference>;
+  ingredients: VariantGroup<ItemReference[]>;
 }
 
 /**
  * Mining action node with OR operator for multiple block sources
  */
-export interface MineGroupNode extends BaseTreeNode {
+export interface MineGroupNode extends VariantTreeNode {
   action: 'mine';
   operator: 'OR';
-  targetItem?: string;
+  targetItem: VariantGroup<string>;
 }
 
 /**
  * Leaf mining node (actual mining action)
  */
-export interface MineLeafNode {
+export interface MineLeafNode extends VariantTreeNode {
   action: 'mine';
-  what: string;
-  targetItem?: string;
-  tool?: string;
-  count: number;
+  what: VariantGroup<string>;
+  targetItem: VariantGroup<string>;
+  tool?: VariantGroup<string>;
   operator?: never;
-  children: [];
-  /**
-   * When combineSimilarNodes is enabled, this contains all block variants (e.g., oak_log, spruce_log)
-   */
-  whatVariants?: string[];
-  targetItemVariants?: string[];
-  /**
-   * Describes how variants relate to each other:
-   * - 'one_of': Mutually exclusive options (mine one type of block)
-   * - 'any_of': Compatible alternatives (could mine any/multiple types)
-   */
-  variantMode?: 'one_of' | 'any_of';
+  children: VariantGroup<VariantTreeNode>;
 }
 
 /**
  * Smelting group node with OR operator for multiple input sources
  */
-export interface SmeltGroupNode extends BaseTreeNode {
+export interface SmeltGroupNode extends VariantTreeNode {
   action: 'smelt';
   operator: 'OR';
 }
@@ -107,19 +155,19 @@ export interface SmeltGroupNode extends BaseTreeNode {
 /**
  * Smelting action node with AND operator for dependencies
  */
-export interface SmeltNode extends BaseTreeNode {
+export interface SmeltNode extends VariantTreeNode {
   action: 'smelt';
   operator: 'AND';
-  what: 'furnace';
-  input: ItemReference;
-  result: ItemReference;
-  fuel: string | null;
+  what: VariantGroup<'furnace'>;
+  input: VariantGroup<ItemReference>;
+  result: VariantGroup<ItemReference>;
+  fuel: VariantGroup<string>;
 }
 
 /**
  * Hunting group node with OR operator for multiple mob sources
  */
-export interface HuntGroupNode extends BaseTreeNode {
+export interface HuntGroupNode extends VariantTreeNode {
   action: 'hunt';
   operator: 'OR';
 }
@@ -127,35 +175,23 @@ export interface HuntGroupNode extends BaseTreeNode {
 /**
  * Leaf hunting node (actual hunting action)
  */
-export interface HuntLeafNode {
+export interface HuntLeafNode extends VariantTreeNode {
   action: 'hunt';
-  what: string;
-  targetItem?: string;
-  count: number;
-  dropChance?: number;
-  tool?: string;
+  what: VariantGroup<string>;
+  targetItem: VariantGroup<string>;
+  dropChance?: VariantGroup<number>;
+  tool?: VariantGroup<string>;
   operator?: never;
-  children: [];
-  /**
-   * When combineSimilarNodes is enabled, this contains all mob variants (e.g., zombie, skeleton)
-   */
-  whatVariants?: string[];
-  targetItemVariants?: string[];
-  /**
-   * Describes how variants relate to each other:
-   * - 'one_of': Mutually exclusive options (hunt one type of mob)
-   * - 'any_of': Compatible alternatives (could hunt any/multiple types)
-   */
-  variantMode?: 'one_of' | 'any_of';
+  children: VariantGroup<VariantTreeNode>;
 }
 
 /**
  * Require node for dependencies like tools
  */
-export interface RequireNode extends BaseTreeNode {
+export interface RequireNode extends VariantTreeNode {
   action: 'require';
   operator: 'AND';
-  what: string;
+  what: VariantGroup<string>;
 }
 
 /**
@@ -173,40 +209,20 @@ export type TreeNode =
   | RequireNode;
 
 /**
- * Represents a single action step in an enumerated path
+ * Represents a single action step in an enumerated path with variants
  */
 export interface ActionStep {
   action: 'craft' | 'mine' | 'smelt' | 'hunt' | 'require';
-  what: string;
+  variantMode: 'one_of' | 'any_of';
+  what: VariantGroup<string>;
   count: number;
-  result?: ItemReference;
-  ingredients?: ItemReference[];
-  input?: ItemReference;
-  fuel?: string | null;
-  tool?: string;
-  targetItem?: string;
-  dropChance?: number;
-  /**
-   * When present, contains all alternative variants for mining (e.g., oak_log, spruce_log, birch_log)
-   * The bot can choose which variant to mine at runtime based on world state
-   */
-  whatVariants?: string[];
-  targetItemVariants?: string[];
-  /**
-   * When present, contains all alternative result variants for crafting
-   * The bot can choose which variant to craft at runtime
-   */
-  resultVariants?: string[];
-  /**
-   * When present, contains ingredient variants corresponding to each result variant
-   */
-  ingredientVariants?: string[][];
-  /**
-   * Describes how variants relate to each other:
-   * - 'one_of': Mutually exclusive options (pick one variant at runtime)
-   * - 'any_of': Compatible alternatives (could use any/multiple)
-   */
-  variantMode?: 'one_of' | 'any_of';
+  result?: VariantGroup<ItemReference>;
+  ingredients?: VariantGroup<ItemReference[]>;
+  input?: VariantGroup<ItemReference>;
+  fuel?: VariantGroup<string>;
+  tool?: VariantGroup<string>;
+  targetItem?: VariantGroup<string>;
+  dropChance?: VariantGroup<number>;
 }
 
 /**
@@ -215,21 +231,20 @@ export interface ActionStep {
 export type ActionPath = ActionStep[];
 
 /**
- * Context object for building recipe trees
+ * Context object for building recipe trees with variant constraints
  */
 export interface BuildContext {
-  inventory?: Record<string, number>;
+  inventory: Map<string, number>;
   worldBudget?: WorldBudget;
-  config?: any;
-  avoidTool?: string;
-  visited?: Set<string>;
-  preferMinimalTools?: boolean;
-  combineSimilarNodes?: boolean;
-  /**
-   * When combining is disabled, tracks the current family prefix (e.g., 'oak', 'spruce')
-   * to ensure branches stay internally consistent
-   */
-  familyPrefix?: string;
+  visited: Set<string>;
+  depth: number;
+  parentPath: string[];
+  config: {
+    preferMinimalTools: boolean;
+    avoidTool?: string;
+    maxDepth?: number;
+  };
+  variantConstraints: VariantConstraintManager;
 }
 
 /**

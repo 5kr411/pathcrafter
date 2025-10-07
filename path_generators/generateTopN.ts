@@ -156,12 +156,12 @@ export async function generateTopNPathsFromGenerators(
           const count = Math.max(1, step.count || 1);
           
           // Check if step has variants
-          if (step.whatVariants && step.whatVariants.length > 1) {
+          if (step.what.variants.length > 1) {
             // Find the best available variant (closest distance)
             let bestAvg: number | null = null;
             
-            for (const variant of step.whatVariants) {
-              const rec = snapshot.blocks![variant];
+            for (const variant of step.what.variants) {
+              const rec = snapshot.blocks![variant.value];
               const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
               
               if (avg != null && (bestAvg == null || avg < bestAvg)) {
@@ -177,7 +177,7 @@ export async function generateTopNPathsFromGenerators(
             // If no variants available, path gets infinite score (filtered out later)
           } else {
             // No variants - check the primary block
-            const name = step.what;
+            const name = step.what.variants[0].value;
             const rec = snapshot.blocks![name];
             const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
             

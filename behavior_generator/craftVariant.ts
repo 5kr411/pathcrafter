@@ -13,8 +13,8 @@ import logger from '../utils/logger';
 export function canHandle(step: ActionStep | null | undefined): boolean {
   return !!step && 
          step.action === 'craft' && 
-         (step.what === 'inventory' || step.what === 'table') &&
-         !!(step.resultVariants && step.resultVariants.length > 1);
+         (step.what.variants.some(v => v.value === 'inventory') || step.what.variants.some(v => v.value === 'table')) &&
+         !!(step.result && step.result.variants.length > 1);
 }
 
 /**
@@ -25,8 +25,11 @@ export function canHandle(step: ActionStep | null | undefined): boolean {
 export function computeTargetsForCraftVariant(step: ActionStep): CraftTargets | null {
   if (!canHandle(step)) return null;
 
-  const result = 'result' in step ? (step as any).result : null;
-  const perCraftCount = result && result.perCraftCount ? result.perCraftCount : 1;
+  const result = step.result;
+  if (!result || result.variants.length === 0) return null;
+  
+  const firstResult = result.variants[0].value;
+  const perCraftCount = firstResult.perCraftCount || 1;
   const total = Number(step.count || 1) * perCraftCount;
 
   if (total <= 0) return null;
@@ -35,29 +38,25 @@ export function computeTargetsForCraftVariant(step: ActionStep): CraftTargets | 
   const speciesContext = getCurrentSpeciesContext();
   let itemName: string | null = null;
 
-  if (speciesContext && step.resultVariants) {
+  if (speciesContext && result.variants.length > 1) {
     // Try to find a variant that matches the species context
-    const matchingVariant = step.resultVariants.find(variant => 
-      variant.startsWith(speciesContext)
+    const matchingVariant = result.variants.find(variant => 
+      variant.value.item.startsWith(speciesContext)
     );
     if (matchingVariant) {
-      itemName = matchingVariant;
+      itemName = matchingVariant.value.item;
     }
   }
 
   // Fallback to first variant if no species match or no context
-  if (!itemName && step.resultVariants && step.resultVariants.length > 0) {
-    itemName = step.resultVariants[0];
-  }
-
-  // Final fallback to primary result
-  if (!itemName && result && result.item) {
-    itemName = result.item;
+  if (!itemName && result.variants.length > 0) {
+    itemName = result.variants[0].value.item;
   }
 
   if (!itemName) return null;
 
-  logger.info(`BehaviorGenerator(craft-variant): selected ${itemName} from variants [${step.resultVariants?.join(', ')}] based on species context: ${speciesContext || 'none'}`);
+  const variantNames = result.variants.map(v => v.value.item).join(', ');
+  logger.info(`BehaviorGenerator(craft-variant): selected ${itemName} from variants [${variantNames}] based on species context: ${speciesContext || 'none'}`);
 
   return { itemName, amount: total };
 }
@@ -72,9 +71,9 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   const targets = computeTargetsForCraftVariant(step);
   if (!targets) return null;
 
-  if (step.what === 'inventory') {
+  if (step.what.variants.some(v => v.value === 'inventory')) {
     return createCraftNoTableState(bot as any, targets);
-  } else if (step.what === 'table') {
+  } else if (step.what.variants.some(v => v.value === 'table')) {
     return createCraftWithTableIfNeeded(bot as any, targets);
   }
 

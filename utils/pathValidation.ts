@@ -56,7 +56,7 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
     if ('targetItem' in step) {
       return (step as any).targetItem || step.what;
     }
-    return step.what;
+    return step.what.variants[0].value;
   }
 
   for (const st of path) {
@@ -69,7 +69,7 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
     }
 
     if (st.action === 'craft') {
-      if (requireStations && st.what === 'table') {
+      if (requireStations && st.what.variants[0].value === 'table') {
         const haveTable = (supply.get('crafting_table') || 0) > 0;
         if (!haveTable) return false;
       }

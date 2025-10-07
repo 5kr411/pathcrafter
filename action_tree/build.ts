@@ -15,6 +15,9 @@ export { findBlocksThatDrop, findMobsThatDrop } from './utils/sourceLookup';
 // Re-export the main buildRecipeTree function from the tree orchestrator
 export { buildRecipeTree } from './builders/treeOrchestrator';
 
+// Re-export VariantConstraintManager for variant-first system
+export { VariantConstraintManager } from './types';
+
 // Re-export all builder functions for advanced usage
 export * from './builders';
 

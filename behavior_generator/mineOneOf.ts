@@ -17,7 +17,7 @@ function canHandle(step: ActionStep | null | undefined): boolean {
   if (!step || step.action !== 'mine') return false;
   
   // Handle steps with variant information (from grouped nodes)
-  if (step.whatVariants && step.whatVariants.length > 1) {
+  if (step.what.variants.length > 1) {
     return true;
   }
   
@@ -33,16 +33,16 @@ function computeTargetsForMineOneOf(step: ActionStep): Targets | null {
   let candidates: Candidate[] = [];
   
   // Handle variant-based approach (preferred)
-  if (step.whatVariants && step.whatVariants.length > 1) {
-    const targetItemVariants = step.targetItemVariants || step.whatVariants;
-    candidates = step.whatVariants.map((blockName, index) => ({
-      blockName,
-      itemName: targetItemVariants[index] || blockName,
+  if (step.what.variants.length > 1) {
+    const targetItemVariants = step.targetItem ? step.targetItem.variants : step.what.variants;
+    candidates = step.what.variants.map((blockVariant, index) => ({
+      blockName: blockVariant.value,
+      itemName: targetItemVariants[index] ? targetItemVariants[index].value : blockVariant.value,
       amount
     }));
   } else {
     // Handle legacy meta-based approach for backward compatibility
-    const itemName = step.targetItem ? step.targetItem : step.what;
+    const itemName = step.targetItem ? step.targetItem.variants[0].value : step.what.variants[0].value;
     const rawCandidates = (step as any).meta?.oneOfCandidates || [];
     candidates = rawCandidates
       .map((c: any) => {

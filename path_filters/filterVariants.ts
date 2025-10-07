@@ -61,14 +61,14 @@ function filterStepVariants(
   step: ActionStep,
   availability: WorldAvailability
 ): ActionStep | null {
-  // Handle mining steps with whatVariants
-  if (step.action === 'mine' && step.whatVariants && step.whatVariants.length > 1) {
+  // Handle mining steps with variants
+  if (step.action === 'mine' && step.what.variants.length > 1) {
     const availableVariants: string[] = [];
     const availableTargetItems: string[] = [];
 
-    for (let i = 0; i < step.whatVariants.length; i++) {
-      const variant = step.whatVariants[i];
-      const targetItem = step.targetItemVariants?.[i] || variant;
+    for (let i = 0; i < step.what.variants.length; i++) {
+      const variant = step.what.variants[i].value;
+      const targetItem = step.targetItem?.variants[i]?.value || variant;
       
       // Check if this variant is available in the world
       if (availability.blocks.has(variant) && availability.blocks.get(variant)! > 0) {
@@ -86,47 +86,51 @@ function filterStepVariants(
     if (availableVariants.length === 1) {
       return {
         ...step,
-        what: availableVariants[0],
-        targetItem: availableTargetItems[0],
-        whatVariants: undefined,
-        targetItemVariants: undefined,
-        variantMode: undefined
+        what: {
+          mode: 'one_of' as const,
+          variants: [{ value: availableVariants[0] }]
+        },
+        targetItem: step.targetItem ? {
+          mode: 'one_of' as const,
+          variants: [{ value: availableTargetItems[0] }]
+        } : undefined,
+        variantMode: 'one_of' as const
       };
     }
 
     // Multiple variants available - update the arrays
     return {
       ...step,
-      what: availableVariants[0], // Use first available as primary
-      targetItem: availableTargetItems[0],
-      whatVariants: availableVariants,
-      targetItemVariants: availableTargetItems,
+      what: {
+        mode: step.what.mode,
+        variants: availableVariants.map(v => ({ value: v }))
+      },
+      targetItem: step.targetItem ? {
+        mode: step.targetItem.mode,
+        variants: availableTargetItems.map(v => ({ value: v }))
+      } : undefined,
       variantMode: step.variantMode
     };
   }
 
-  // Handle crafting steps with resultVariants
-  if (step.action === 'craft' && step.resultVariants && step.ingredientVariants && step.resultVariants.length > 1) {
-    // For craft nodes, we don't filter based on ingredient availability
-    // Crafting can produce items that aren't directly available in the world
-    // Only mining nodes should be filtered based on world availability
-    
+  // Handle crafting steps with variants
+  if (step.action === 'craft' && step.result && step.ingredients && step.result.variants.length > 1) {
     // For craft nodes, we don't filter based on ingredient availability
     // Crafting can produce items that aren't directly available in the world
     // Only mining nodes should be filtered based on world availability
     // So we just select the first variant that has at least one available source
     
     let selectedVariantIndex = 0;
-    for (let i = 0; i < step.ingredientVariants.length; i++) {
-      const ingredients = step.ingredientVariants[i];
+    for (let i = 0; i < step.ingredients.variants.length; i++) {
+      const ingredients = step.ingredients.variants[i].value;
       let hasAtLeastOneSource = false;
       
       for (const ingredient of ingredients) {
         // Check if ingredient is available as a block in the world
-        const hasDirectly = availability.blocks.has(ingredient) && availability.blocks.get(ingredient)! > 0;
+        const hasDirectly = availability.blocks.has(ingredient.item) && availability.blocks.get(ingredient.item)! > 0;
         
         // Check if there's a common source (e.g., oak_log for oak_planks)
-        const possibleSource = ingredient.replace(/_planks$/, '_log')
+        const possibleSource = ingredient.item.replace(/_planks$/, '_log')
                                         .replace(/_ingot$/, '_ore');
         const hasSource = availability.blocks.has(possibleSource) && availability.blocks.get(possibleSource)! > 0;
         
@@ -143,42 +147,43 @@ function filterStepVariants(
     }
     
     // If only one variant available, simplify
-    if (step.resultVariants.length === 1) {
+    if (step.result.variants.length === 1) {
       return {
         ...step,
-        result: step.result ? { ...step.result, item: step.resultVariants[0] } : undefined,
-        ingredients: step.ingredients!.map((ing, idx) => ({
-          ...ing,
-          item: step.ingredientVariants![selectedVariantIndex][idx]
-        })),
-        resultVariants: undefined,
-        ingredientVariants: undefined,
-        variantMode: undefined
+        result: {
+          mode: 'one_of' as const,
+          variants: [step.result.variants[0]]
+        },
+        ingredients: {
+          mode: 'one_of' as const,
+          variants: [step.ingredients.variants[selectedVariantIndex]]
+        },
+        variantMode: 'one_of' as const
       };
     }
 
     // Multiple variants available - keep all variants but use available one as primary
     return {
       ...step,
-      result: step.result ? { ...step.result, item: step.resultVariants[selectedVariantIndex] } : undefined,
-      ingredients: step.ingredients!.map((ing, idx) => ({
-        ...ing,
-        item: step.ingredientVariants![selectedVariantIndex][idx]
-      })),
-      resultVariants: step.resultVariants,
-      ingredientVariants: step.ingredientVariants,
+      result: {
+        mode: step.result.mode,
+        variants: step.result.variants
+      },
+      ingredients: {
+        mode: step.ingredients.mode,
+        variants: step.ingredients.variants
+      },
       variantMode: step.variantMode
     };
   }
 
-  // Handle hunting steps with whatVariants (if ever added)
-  if (step.action === 'hunt' && 'whatVariants' in step && Array.isArray((step as any).whatVariants)) {
-    const whatVariants = (step as any).whatVariants as string[];
+  // Handle hunting steps with variants
+  if (step.action === 'hunt' && step.what.variants.length > 1) {
     const availableVariants: string[] = [];
 
-    for (const variant of whatVariants) {
-      if (availability.entities.has(variant) && availability.entities.get(variant)! > 0) {
-        availableVariants.push(variant);
+    for (const variant of step.what.variants) {
+      if (availability.entities.has(variant.value) && availability.entities.get(variant.value)! > 0) {
+        availableVariants.push(variant.value);
       }
     }
 
@@ -189,18 +194,22 @@ function filterStepVariants(
     if (availableVariants.length === 1) {
       return {
         ...step,
-        what: availableVariants[0],
-        whatVariants: undefined,
-        variantMode: undefined
-      } as any;
+        what: {
+          mode: 'one_of' as const,
+          variants: [{ value: availableVariants[0] }]
+        },
+        variantMode: 'one_of' as const
+      };
     }
 
     return {
       ...step,
-      what: availableVariants[0],
-      whatVariants: availableVariants,
-      variantMode: (step as any).variantMode
-    } as any;
+      what: {
+        mode: step.what.mode,
+        variants: availableVariants.map(v => ({ value: v }))
+      },
+      variantMode: step.variantMode
+    };
   }
 
   // No variants or not applicable - return as-is

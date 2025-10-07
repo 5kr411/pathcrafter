@@ -31,10 +31,10 @@ export function* enumerateShortestPathsGenerator(
   function missingConsumablesScoreForCraft(step: ActionStep | null): number {
     if (!step || step.action !== 'craft') return 0;
 
-    const resultItem = step.result && step.result.item;
+    const resultItem = step.result && step.result.variants[0].value.item;
     const suffix = getSuffixTokenFromName(resultItem || '');
     const isTool = suffix && new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']).has(suffix);
-    const ing = Array.isArray(step.ingredients) ? step.ingredients : [];
+    const ing = step.ingredients && step.ingredients.variants.length > 0 ? step.ingredients.variants[0].value : [];
 
     let missing = 0;
     for (const i of ing) {
@@ -58,10 +58,10 @@ export function* enumerateShortestPathsGenerator(
     const last = item.path[item.path.length - 1];
     if (!last || last.action !== 'craft') return 0;
 
-    const resultItem = last.result && last.result.item;
+    const resultItem = last.result && last.result.variants[0].value.item;
     const suffix = getSuffixTokenFromName(resultItem || '');
     const isTool = suffix && new Set(['pickaxe', 'axe', 'shovel', 'hoe', 'sword', 'shears']).has(suffix);
-    const ing = Array.isArray(last.ingredients) ? last.ingredients : [];
+    const ing = last.ingredients && last.ingredients.variants.length > 0 ? last.ingredients.variants[0].value : [];
 
     let missing = 0;
     for (const i of ing) {

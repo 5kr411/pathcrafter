@@ -11,8 +11,8 @@ import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
 export function canHandle(step: ActionStep | null | undefined): boolean {
   return !!step && 
          step.action === 'craft' && 
-         step.what === 'inventory' &&
-         (!step.resultVariants || step.resultVariants.length <= 1);
+         step.what.variants.some(v => v.value === 'inventory') &&
+         (!step.result || step.result.variants.length <= 1);
 }
 
 /**
@@ -23,9 +23,12 @@ export function canHandle(step: ActionStep | null | undefined): boolean {
 export function computeTargetsForCraftInInventory(step: ActionStep): CraftTargets | null {
   if (!canHandle(step)) return null;
 
-  const result = 'result' in step ? (step as any).result : null;
-  const itemName = result && result.item ? result.item : null;
-  const perCraftCount = result && result.perCraftCount ? result.perCraftCount : 1;
+  const result = step.result;
+  if (!result || result.variants.length === 0) return null;
+  
+  const firstResult = result.variants[0].value;
+  const itemName = firstResult.item;
+  const perCraftCount = firstResult.perCraftCount || 1;
   const total = Number(step.count || 1) * perCraftCount;
 
   if (!itemName || total <= 0) return null;

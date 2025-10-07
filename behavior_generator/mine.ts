@@ -14,9 +14,8 @@ export function canHandle(step: ActionStep | null | undefined): boolean {
   // BUT NOT if they have variants - those should be handled by mineOneOf
   return !!step && 
          step.action === 'mine' && 
-         typeof step.what === 'string' && 
-         (!('operator' in step) || !('children' in step) || !(step as any).children || (step as any).children.length === 0) &&
-         (!step.whatVariants || step.whatVariants.length <= 1);
+         step.what.variants.length === 1 && 
+         (!('operator' in step) || !('children' in step) || !(step as any).children || (step as any).children.length === 0);
 }
 
 /**
@@ -28,8 +27,9 @@ export function computeTargetsForMine(step: ActionStep): MineTargets | null {
   if (!canHandle(step)) return null;
 
   // If step has a targetItem, we want that item name in inventory; otherwise, mining the block drops itself
-  const targetItem = 'targetItem' in step ? (step as any).targetItem : undefined;
-  const itemName = targetItem ? targetItem : step.what;
+  const targetItem = step.targetItem ? step.targetItem.variants[0].value : undefined;
+  const blockName = step.what.variants[0].value;
+  const itemName = targetItem ? targetItem : blockName;
   const amount = Number(step.count || 1);
 
   if (!itemName || amount <= 0) return null;
@@ -37,7 +37,7 @@ export function computeTargetsForMine(step: ActionStep): MineTargets | null {
   return { 
     itemName, 
     amount, 
-    blockName: step.what 
+    blockName 
   };
 }
 

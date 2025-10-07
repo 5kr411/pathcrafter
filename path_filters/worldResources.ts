@@ -62,15 +62,15 @@ export function computePathResourceDemand(path: ActionPath): ResourceDemand {
       if (!step) continue;
 
       if (step.action === 'mine') {
-        const name = step.what;
+        const name = step.what.variants[0].value;
         const count = Math.max(1, step.count || 1);
         if (name) {
           blocks.set(name, (blocks.get(name) || 0) + count);
         }
       } else if (step.action === 'hunt') {
-        const name = step.what;
+        const name = step.what.variants[0].value;
         const count = Math.max(1, step.count || 1);
-        const dropChance = 'dropChance' in step ? step.dropChance : undefined;
+        const dropChance = step.dropChance ? step.dropChance.variants[0].value : undefined;
         const chance = typeof dropChance === 'number' && dropChance > 0 && dropChance <= 1 ? dropChance : 1;
         const requiredEncounters = Math.ceil(count / chance);
         if (name) {

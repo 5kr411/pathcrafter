@@ -4,7 +4,7 @@ import { renderName } from './utils/render';
 import { computePathWeight } from './utils/pathUtils';
 import { WorldBudget } from './utils/worldBudget';
 import { WorldSnapshot } from './utils/worldSnapshotTypes';
-import { RootNode, MinecraftData } from './action_tree/types';
+import { RootNode, MinecraftData, VariantConstraintManager } from './action_tree/types';
 import * as treeBuild from './action_tree/build';
 import * as treeLogger from './action_tree/logger';
 import * as treeEnumerate from './action_tree/enumerate';
@@ -168,11 +168,26 @@ export function plan(
     // Ignore errors in building world budget
   }
 
+  // Convert inventory to Map for variant-first system
+  const inventoryMap = new Map<string, number>();
+  if (options && options.inventory) {
+    for (const [item, count] of Object.entries(options.inventory)) {
+      inventoryMap.set(item, count);
+    }
+  }
+
   const tree = treeBuild.buildRecipeTree(ctx, itemName, targetCount, {
-    inventory: options && options.inventory ? options.inventory : undefined,
+    inventory: inventoryMap,
     worldBudget,
-    config: options && options.config ? options.config : undefined,
-    combineSimilarNodes: options && options.combineSimilarNodes ? options.combineSimilarNodes : undefined
+    visited: new Set(),
+    depth: 0,
+    parentPath: [],
+    config: {
+      preferMinimalTools: true,
+      avoidTool: options?.config?.avoidTool,
+      maxDepth: 10
+    },
+    variantConstraints: new VariantConstraintManager()
   });
 
   if (!options || options.log !== false) {

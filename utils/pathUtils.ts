@@ -24,7 +24,8 @@ export function stepWeight(step: ActionStep | null | undefined): number {
   if (count <= 0) return 0;
 
   if (step.action === 'craft') {
-    return (step.what === 'inventory' ? 1 : 10) * count;
+    const whatValue = step.what.variants[0].value;
+    return (whatValue === 'inventory' ? 1 : 10) * count;
   }
 
   if (step.action === 'smelt') return 100 * count;
@@ -59,7 +60,8 @@ export function computePathWeight(path: ActionPath): number {
     if (count <= 0) continue;
 
     if (step.action === 'craft') {
-      total += (step.what === 'inventory' ? 1 : 10) * count;
+      const whatValue = step.what.variants[0].value;
+      total += (whatValue === 'inventory' ? 1 : 10) * count;
     } else if (step.action === 'smelt') {
       total += 100 * count;
     } else if (step.action === 'mine') {
