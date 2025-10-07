@@ -61,6 +61,10 @@ export interface SmeltTargets {
 }
 
 /**
+ * Targets for require action
+ */
+
+/**
  * Shared state between behavior steps
  */
 export interface SharedState {

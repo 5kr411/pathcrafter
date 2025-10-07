@@ -81,21 +81,41 @@ function printPathSummary(paths: any[]) {
     const path = paths[i];
     console.log(`\n  Path ${i + 1} (${path.length} steps):`);
     path.forEach((step: any, stepIndex: number) => {
-      const what = step.what?.variants?.[0]?.value || 'unknown';
       const count = step.count || 1;
-      console.log(`    ${stepIndex + 1}. ${step.action} ${what} (${count}x)`);
+      
+      // Show variant information
+      if (step.what?.variants && step.what.variants.length > 1) {
+        const variantNames = step.what.variants.map((v: any) => v.value).join(', ');
+        console.log(`    ${stepIndex + 1}. ${step.action} [${step.variantMode}] ${variantNames} (${count}x)`);
+      } else {
+        const what = step.what?.variants?.[0]?.value || 'unknown';
+        console.log(`    ${stepIndex + 1}. ${step.action} ${what} (${count}x)`);
+      }
       
       if (step.result) {
-        const resultItem = step.result.variants[0].value.item;
-        const resultCount = step.result.variants[0].value.perCraftCount || 1;
-        console.log(`       → ${resultCount} ${resultItem}`);
+        if (step.result.variants && step.result.variants.length > 1) {
+          const resultVariants = step.result.variants.map((v: any) => `${v.value.perCraftCount || 1} ${v.value.item}`).join(', ');
+          console.log(`       → [${step.variantMode}] ${resultVariants}`);
+        } else {
+          const resultItem = step.result.variants[0].value.item;
+          const resultCount = step.result.variants[0].value.perCraftCount || 1;
+          console.log(`       → ${resultCount} ${resultItem}`);
+        }
       }
       
       if (step.ingredients) {
-        const ingredients = step.ingredients.variants[0].value;
-        if (ingredients.length > 0) {
-          const ingList = ingredients.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
-          console.log(`       ← ${ingList}`);
+        if (step.ingredients.variants && step.ingredients.variants.length > 1) {
+          const ingredientVariants = step.ingredients.variants.map((v: any) => {
+            const ingList = v.value.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
+            return ingList;
+          }).join(', ');
+          console.log(`       ← [${step.variantMode}] ${ingredientVariants}`);
+        } else {
+          const ingredients = step.ingredients.variants[0].value;
+          if (ingredients.length > 0) {
+            const ingList = ingredients.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
+            console.log(`       ← ${ingList}`);
+          }
         }
       }
     });
@@ -128,7 +148,8 @@ function testVariantPlanner(config: TestConfig) {
         preferMinimalTools: true,
         maxDepth: config.maxDepth || 10
       },
-      variantConstraints: new VariantConstraintManager()
+      variantConstraints: new VariantConstraintManager(),
+      combineSimilarNodes: true  // Enable wood variant combining
     };
     
     console.log('\n🔧 Configuration:');

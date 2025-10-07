@@ -109,7 +109,13 @@ export function createMakeStream<T extends PathItem = PathItem>(
       }
 
       if (node.action === 'require') {
-        return function* () { };
+        const step: ActionStep = {
+          action: 'require',
+          variantMode: node.variantMode,
+          what: node.what,
+          count: node.count
+        };
+        return makeLeafStream(step);
       }
 
       return function* () { };

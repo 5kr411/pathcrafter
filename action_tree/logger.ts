@@ -3,7 +3,6 @@ import {
   ActionPath,
   CraftNode,
   SmeltNode,
-  RequireNode,
   VariantTreeNode
 } from './types';
 
@@ -290,15 +289,6 @@ export function logActionTree(tree: TreeNode | null | undefined, depth: number =
     return;
   }
 
-  if (node.action === 'require') {
-    const requireNode = node as RequireNode;
-    const op = requireNode.operator === 'AND' ? 'ALL' : 'ANY';
-    const whatStr = requireNode.what.variants.map((v: any) => v.value).join(', ');
-    console.log(`${indent}${branch} require ${whatStr.replace('tool:', '')} [${op}]`);
-        const children = requireNode.children.variants || [];
-        children.forEach((child: any) => logActionTree(child.value, depth + 1));
-    return;
-  }
 
   if (node.action === 'hunt') {
     if (node.children && node.children.variants.length > 0) {

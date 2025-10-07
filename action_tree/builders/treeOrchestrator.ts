@@ -22,7 +22,7 @@ import {
   BlockSource
 } from '../types';
 import { resolveMcData } from '../utils/mcDataResolver';
-import { findSimilarItems, findBlocksWithSameDrop } from '../utils/itemSimilarity';
+import { findSimilarItems } from '../utils/itemSimilarity';
 import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 
@@ -45,6 +45,71 @@ function createVariantGroup<T>(mode: 'one_of' | 'any_of', values: T[]): VariantG
     variants: values.map(value => ({ value }))
   };
 }
+
+/**
+ * Creates a dependency tree for workstation dependencies
+ */
+function createWorkstationDependencyTree(itemName: string, context: BuildContext, ctx: any): RootNode {
+  // Create a new context for the dependency tree
+  const depContext: BuildContext = {
+    ...context,
+    depth: context.depth + 1,
+    parentPath: [...context.parentPath, itemName]
+  };
+  
+  // Build the full tree to acquire the workstation
+  return buildRecipeTreeInternal(ctx, [itemName], 1, depContext);
+}
+
+/**
+ * Creates a dependency tree for tool dependencies
+ */
+function createToolDependencyTree(toolName: string, context: BuildContext, ctx: any): RootNode {
+  // Create a new context for the dependency tree
+  const depContext: BuildContext = {
+    ...context,
+    depth: context.depth + 1,
+    parentPath: [...context.parentPath, toolName]
+  };
+  
+  // Build the full tree to acquire the tool
+  return buildRecipeTreeInternal(ctx, [toolName], 1, depContext);
+}
+
+/**
+ * Checks if a workstation dependency is already satisfied in the tree
+ */
+function hasWorkstationDependency(node: any, workstationName: string): boolean {
+  if (!node || !node.children || !node.children.variants) return false;
+  
+  return node.children.variants.some((child: any) => {
+    const childNode = child.value;
+    if (childNode && childNode.action === 'root' && 
+        childNode.what && childNode.what.variants[0] && 
+        childNode.what.variants[0].value === workstationName) {
+      return true;
+    }
+    return hasWorkstationDependency(childNode, workstationName);
+  });
+}
+
+/**
+ * Checks if a tool dependency is already satisfied in the tree
+ */
+function hasToolDependency(node: any, toolName: string): boolean {
+  if (!node || !node.children || !node.children.variants) return false;
+  
+  return node.children.variants.some((child: any) => {
+    const childNode = child.value;
+    if (childNode && childNode.action === 'root' && 
+        childNode.what && childNode.what.variants[0] && 
+        childNode.what.variants[0].value === toolName) {
+      return true;
+    }
+    return hasToolDependency(childNode, toolName);
+  });
+}
+
 
 /**
  * Main function to build a recipe tree for obtaining a target item
@@ -306,6 +371,12 @@ function buildRecipeTreeInternal(
       });
     }
 
+    // Add crafting table dependency if needed
+    if (requiresCraftingTable(recipe) && !hasWorkstationDependency(craftNode, 'crafting_table')) {
+      const craftingTableTree = createWorkstationDependencyTree('crafting_table', context, ctx);
+      craftNode.children.variants.push({ value: craftingTableTree });
+    }
+
     // Process ingredients recursively
     const firstIngredients = ingredientVariants.variants[0].value;
     for (const ingredient of firstIngredients) {
@@ -369,6 +440,12 @@ function buildRecipeTreeInternal(
         context
       };
 
+      // Add furnace dependency if not already present
+      if (!hasWorkstationDependency(smeltNode, 'furnace')) {
+        const furnaceTree = createWorkstationDependencyTree('furnace', context, ctx);
+        smeltNode.children.variants.push({ value: furnaceTree });
+      }
+
       smeltGroup.children.variants.push({ value: smeltNode });
     }
 
@@ -391,64 +468,53 @@ function buildRecipeTreeInternal(
       context
     };
 
-    // Group mining paths by similar blocks if combining is enabled
-    if (context.combineSimilarNodes) {
-      // Use hybrid grouping: suffix-based for logs, drop-based for ores
-      const groupedPaths = new Map<string, BlockSource[]>();
-      for (const miningPath of miningPaths) {
-        let similarBlocks: string[];
-        
-        // Check if this is an ore (has 'ore' in the name)
-        if (miningPath.block.includes('ore')) {
-          // Use drop-based grouping for ores
-          similarBlocks = findBlocksWithSameDrop(mcData, miningPath.block);
-        } else {
-          // Use suffix-based grouping for other blocks (logs, etc.)
-          similarBlocks = findSimilarItems(mcData, miningPath.block);
+    // Group mining paths by tool requirement (always combine paths with same tool)
+    const groupedByTool = new Map<string, BlockSource[]>();
+    for (const miningPath of miningPaths) {
+      const requiredTool = miningPath.tool;
+      const minimalTool = requiredTool && requiredTool !== 'any' ? requiredTool.split('/')[0] : requiredTool;
+      const toolKey = minimalTool || 'any';
+      
+      if (!groupedByTool.has(toolKey)) {
+        groupedByTool.set(toolKey, []);
+      }
+      groupedByTool.get(toolKey)!.push(miningPath);
+    }
+
+    // Create mine leaf nodes for each tool group
+    for (const [toolKey, pathGroup] of groupedByTool) {
+      const minimalTool = toolKey === 'any' ? 'any' : toolKey;
+      let blocks = pathGroup.map(p => p.block);
+      
+      // If combining is enabled, expand blocks to include similar variants
+      if (context.combineSimilarNodes) {
+        const allSimilarBlocks = new Set<string>();
+        for (const block of blocks) {
+          const similarBlocks = findSimilarItems(mcData, block);
+          similarBlocks.forEach(b => allSimilarBlocks.add(b));
         }
-        
-        const key = similarBlocks.sort().join(',');
-        
-        if (!groupedPaths.has(key)) {
-          groupedPaths.set(key, []);
-        }
-        groupedPaths.get(key)!.push(miningPath);
+        blocks = Array.from(allSimilarBlocks);
+      }
+      
+      const mineLeaf: MineLeafNode = {
+        action: 'mine',
+        variantMode: 'any_of',
+        what: createVariantGroup('any_of', blocks),
+        targetItem: createVariantGroup('any_of', variantsToUse),
+        count: targetCount,
+        tool: createVariantGroup('any_of', [minimalTool]),
+        variants: { mode: 'any_of', variants: [] },
+        children: { mode: 'any_of', variants: [] },
+        context
+      };
+
+      // Add tool dependency if needed and not already present
+      if (minimalTool && minimalTool !== 'any' && !hasToolDependency(mineLeaf, minimalTool)) {
+        const toolTree = createToolDependencyTree(minimalTool, context, ctx);
+        mineLeaf.children.variants.push({ value: toolTree });
       }
 
-      // Create mine leaf nodes for each group of similar blocks
-      for (const [key, pathGroup] of groupedPaths) {
-        const similarBlocks = key.split(',');
-        const mineLeaf: MineLeafNode = {
-          action: 'mine',
-          variantMode: 'any_of',
-          what: createVariantGroup('any_of', similarBlocks),
-          targetItem: createVariantGroup('any_of', variantsToUse),
-          count: targetCount,
-          tool: createVariantGroup('any_of', [pathGroup[0].tool]),
-          variants: { mode: 'any_of', variants: [] },
-          children: { mode: 'any_of', variants: [] },
-          context
-        };
-
-        mineGroup.children.variants.push({ value: mineLeaf });
-      }
-    } else {
-      // Add mine leaf nodes for each block that drops the item (no combining)
-      for (const miningPath of miningPaths) {
-        const mineLeaf: MineLeafNode = {
-          action: 'mine',
-          variantMode: 'any_of',
-          what: createVariantGroup('any_of', [miningPath.block]),
-          targetItem: createVariantGroup('any_of', [primaryItem]),
-          count: targetCount,
-          tool: createVariantGroup('any_of', [miningPath.tool]),
-          variants: { mode: 'any_of', variants: [] },
-          children: { mode: 'any_of', variants: [] },
-          context
-        };
-
-        mineGroup.children.variants.push({ value: mineLeaf });
-      }
+      mineGroup.children.variants.push({ value: mineLeaf });
     }
 
     // Add mine group to root

@@ -2,12 +2,12 @@ import {
   TreeNode,
   ActionPath,
   ActionStep,
-  RequireNode,
   CraftNode,
   MineLeafNode,
   SmeltNode,
   HuntLeafNode,
-  VariantTreeNode
+  VariantTreeNode,
+  RootNode
 } from './types';
 
 /**
@@ -19,23 +19,14 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
       function enumerate(node: VariantTreeNode | null | undefined): ActionPath[] {
     if (!node) return [];
 
-    // Root node: aggregate all child paths
+    // Root node: combine all child paths sequentially (preserve variants)
     if (node.action === 'root') {
-      const results: ActionPath[] = [];
       const children = node.children.variants || [];
-      children.forEach(child => {
-        const childPaths = enumerate(child.value);
-        results.push(...childPaths);
-      });
-      return results;
-    }
-
-    // Require node: AND operation - combine all child paths sequentially
-    if (node.action === 'require') {
-      const requireNode = node as RequireNode;
-      const children = requireNode.children.variants || [];
-      if (children.length === 0) return [];
-
+      
+      if (children.length === 0) {
+        return [[]];
+      }
+      
       let combined: ActionPath[] = [[]];
       for (const child of children) {
         const childPaths = enumerate(child.value);
@@ -52,7 +43,28 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
       return combined;
     }
 
-    // Craft node: AND operation - combine ingredient paths then append craft action
+    // Root node (dependency tree): AND operation - combine all child paths sequentially
+    if (node.action === 'root' && (node as RootNode).context.depth > 0) {
+      const rootNode = node as RootNode;
+      const children = rootNode.children.variants || [];
+      
+      let combined: ActionPath[] = [[]];
+      for (const child of children) {
+        const childPaths = enumerate(child.value);
+        if (childPaths.length === 0) return [];
+
+        const nextCombined: ActionPath[] = [];
+        combined.forEach(prefix => {
+          childPaths.forEach(seq => {
+            nextCombined.push(prefix.concat(seq));
+          });
+        });
+        combined = nextCombined;
+      }
+      return combined;
+    }
+
+    // Craft node: combine ingredient paths then append craft action (preserve variants)
     if (node.action === 'craft') {
       const craftNode = node as CraftNode;
       const children = craftNode.children.variants || [];
@@ -70,19 +82,20 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
         return [[actionStep]];
       }
 
-      const perChildPaths = children.map(child => enumerate(child.value));
-      if (perChildPaths.some(p => p.length === 0)) return [];
-
+      // Combine all child paths sequentially
       let combined: ActionPath[] = [[]];
-      perChildPaths.forEach(pathSet => {
+      for (const child of children) {
+        const childPaths = enumerate(child.value);
+        if (childPaths.length === 0) return [];
+
         const nextCombined: ActionPath[] = [];
         combined.forEach(prefix => {
-          pathSet.forEach(childPath => {
-            nextCombined.push(prefix.concat(childPath));
+          childPaths.forEach(seq => {
+            nextCombined.push(prefix.concat(seq));
           });
         });
         combined = nextCombined;
-      });
+      }
 
       // Append the craft action at the end
       const actionStep: ActionStep = {
@@ -157,9 +170,27 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
 
     // Leaf mine or hunt node: return single-step path
     if ((node.action === 'mine' || node.action === 'hunt') && 
-        node.children.variants.length === 0) {
+        !('operator' in node)) {
       const leafNode = node as MineLeafNode | HuntLeafNode;
       
+      // Handle dependencies first
+      const children = leafNode.children.variants || [];
+      let combined: ActionPath[] = [[]];
+      
+      for (const child of children) {
+        const childPaths = enumerate(child.value);
+        if (childPaths.length === 0) return [];
+
+        const nextCombined: ActionPath[] = [];
+        combined.forEach(prefix => {
+          childPaths.forEach(seq => {
+            nextCombined.push(prefix.concat(seq));
+          });
+        });
+        combined = nextCombined;
+      }
+      
+      // Append the mine/hunt action
       const actionStep: ActionStep = {
         action: leafNode.action,
         variantMode: leafNode.variantMode,
@@ -169,7 +200,9 @@ export function enumerateActionPaths(tree: TreeNode): ActionPath[] {
         tool: leafNode.tool,
         targetItem: leafNode.targetItem
       };
-      return [[actionStep]];
+      
+      combined = combined.map(seq => seq.concat([actionStep]));
+      return combined;
     }
 
     return [];

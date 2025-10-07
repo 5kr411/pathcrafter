@@ -188,11 +188,6 @@ export interface HuntLeafNode extends VariantTreeNode {
 /**
  * Require node for dependencies like tools
  */
-export interface RequireNode extends VariantTreeNode {
-  action: 'require';
-  operator: 'AND';
-  what: VariantGroup<string>;
-}
 
 /**
  * Union type of all possible tree nodes
@@ -206,7 +201,7 @@ export type TreeNode =
   | SmeltNode
   | HuntGroupNode
   | HuntLeafNode
-  | RequireNode;
+;
 
 /**
  * Represents a single action step in an enumerated path with variants
