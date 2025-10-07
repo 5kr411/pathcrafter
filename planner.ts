@@ -153,6 +153,7 @@ export function plan(
   targetCount: number = 1,
   options: PlanOptions = {}
 ): RootNode {
+  
   const mc = treeBuild.resolveMcData(ctx);
   setLastMcData(mc || null);
   setTargetItemNameGlobal(itemName);

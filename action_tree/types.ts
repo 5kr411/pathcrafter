@@ -136,6 +136,17 @@ export interface HuntLeafNode {
   tool?: string;
   operator?: never;
   children: [];
+  /**
+   * When combineSimilarNodes is enabled, this contains all mob variants (e.g., zombie, skeleton)
+   */
+  whatVariants?: string[];
+  targetItemVariants?: string[];
+  /**
+   * Describes how variants relate to each other:
+   * - 'one_of': Mutually exclusive options (hunt one type of mob)
+   * - 'any_of': Compatible alternatives (could hunt any/multiple types)
+   */
+  variantMode?: 'one_of' | 'any_of';
 }
 
 /**

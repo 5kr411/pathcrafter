@@ -188,7 +188,7 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     expect(filtered.length).toBeGreaterThanOrEqual(0);
   });
 
-  test('filters crafting when ingredient source is missing', () => {
+  test('keeps crafting variants even when ingredient sources are missing', () => {
     const paths: ActionPath[] = [
       [
         {
@@ -213,8 +213,13 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
 
     const filtered = filterPathVariantsByWorld(paths, snapshot);
     
-    // Path should be filtered out or have no variants
-    expect(filtered.length).toBe(0);
+    // Craft variants are not filtered based on ingredient availability
+    // Crafting can produce items that aren't directly available in the world
+    // Only mining nodes should be filtered based on world availability
+    expect(filtered.length).toBe(1);
+    const step = filtered[0][0];
+    expect(step.resultVariants).toEqual(['oak_planks', 'spruce_planks']);
+    expect(step.ingredientVariants).toEqual([['oak_log'], ['spruce_log']]);
   });
 
   test('handles complex multi-ingredient crafting', () => {

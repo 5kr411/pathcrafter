@@ -6,7 +6,7 @@
  * and fixing craft node primary fields after filtering.
  */
 
-import { TreeNode, CraftNode, MineLeafNode } from '../types';
+import { TreeNode, CraftNode, MineLeafNode, HuntLeafNode } from '../types';
 import { createWorldBudgetAccessors } from '../../utils/worldBudget';
 
 /**
@@ -116,6 +116,54 @@ export function groupSimilarMineNodes(_mcData: any, nodes: TreeNode[]): TreeNode
 }
 
 /**
+ * Groups similar hunt nodes with variants tracked
+ * 
+ * @param mcData - Minecraft data object
+ * @param nodes - Array of nodes to group
+ * @returns Grouped nodes with variants
+ */
+export function groupSimilarHuntNodes(_mcData: any, nodes: TreeNode[]): TreeNode[] {
+  const huntNodes = nodes.filter((n): n is HuntLeafNode => n.action === 'hunt');
+  const nonHuntNodes = nodes.filter(n => n.action !== 'hunt');
+
+  if (huntNodes.length === 0) return nodes;
+
+  // Group hunt nodes by target item suffix
+  const groupsByTarget = new Map<string, HuntLeafNode[]>();
+  for (const node of huntNodes) {
+    const targetSuffix = node.targetItem?.split('_').pop() || node.what.split('_').pop() || '';
+    const key = `${targetSuffix}`;
+    
+    if (!groupsByTarget.has(key)) {
+      groupsByTarget.set(key, []);
+    }
+    groupsByTarget.get(key)!.push(node);
+  }
+
+  const groupedNodes: TreeNode[] = [];
+
+  // Combine groups with multiple variants
+  for (const [_targetKey, group] of groupsByTarget.entries()) {
+    if (group.length === 1) {
+      groupedNodes.push(group[0]);
+      continue;
+    }
+
+    // Use first node as representative
+    const representative = { ...group[0] } as HuntLeafNode;
+    
+    // Add variant information
+    representative.whatVariants = group.map(n => n.what);
+    representative.targetItemVariants = group.map(n => n.targetItem || n.what);
+    representative.variantMode = 'one_of'; // Mob variants are mutually exclusive
+
+    groupedNodes.push(representative);
+  }
+
+  return [...groupedNodes, ...nonHuntNodes];
+}
+
+/**
  * Filters variant arrays based on world availability
  * Removes variants that aren't available and prunes nodes with no valid variants
  * 
@@ -127,6 +175,7 @@ export function filterVariantsByWorldAvailability(node: TreeNode, worldBudget: a
   if (!worldBudget) return true;
 
   const wb = createWorldBudgetAccessors(worldBudget);
+  
 
   // Handle mine leaf nodes with variants
   if (node.action === 'mine') {
@@ -167,6 +216,112 @@ export function filterVariantsByWorldAvailability(node: TreeNode, worldBudget: a
           }
         }
       }
+    } else {
+      // No variants - check if primary block is available
+      if (!wb.can('blocks', mineLeaf.what, mineLeaf.count)) {
+        return false; // Remove node if primary block isn't available
+      }
+    }
+  }
+
+  // Handle craft nodes with variants
+  if (node.action === 'craft') {
+    const craftNode = node as CraftNode;
+    
+    if (craftNode.resultVariants && craftNode.ingredientVariants && 
+        craftNode.resultVariants.length > 1) {
+      
+      // Filter variants based on ingredient availability in the world
+      const validIndices: number[] = [];
+      
+      for (let i = 0; i < craftNode.ingredientVariants.length; i++) {
+        // For craft nodes, we don't filter based on ingredient availability
+        // Crafting can produce items that aren't directly available in the world
+        // Only mining nodes should be filtered based on world availability
+        validIndices.push(i);
+      }
+
+      if (validIndices.length === 0) {
+        return false; // No valid variants, remove node
+      }
+
+      if (validIndices.length < craftNode.resultVariants.length) {
+        // Update the primary result to the first valid variant
+        craftNode.result.item = craftNode.resultVariants[validIndices[0]];
+        craftNode.ingredients = craftNode.ingredientVariants[validIndices[0]].map(item => ({
+          item,
+          perCraftCount: 1
+        }));
+
+        // If only 1 variant remains, clear the variant fields (no choice to make)
+        if (validIndices.length === 1) {
+          delete craftNode.resultVariants;
+          delete craftNode.ingredientVariants;
+          delete craftNode.variantMode;
+        } else {
+          // Filter the variants to only valid ones
+          craftNode.resultVariants = validIndices.map(i => craftNode.resultVariants![i]);
+          craftNode.ingredientVariants = validIndices.map(i => craftNode.ingredientVariants![i]);
+        }
+      }
+    } else {
+      // No variants - check if primary ingredients are available
+      for (const ingredient of craftNode.ingredients) {
+        if (!wb.can('blocks', ingredient.item, craftNode.count)) {
+          return false; // Remove node if primary ingredients aren't available
+        }
+      }
+    }
+  }
+
+  // Handle hunt leaf nodes with variants (if they exist)
+  if (node.action === 'hunt') {
+    const huntLeaf = node as any;
+    
+    if ('whatVariants' in huntLeaf && Array.isArray(huntLeaf.whatVariants)) {
+      const whatVariants = huntLeaf.whatVariants as string[];
+      
+      if (whatVariants.length > 1) {
+        // Filter variants based on entity availability
+        const validIndices: number[] = [];
+        
+        for (let i = 0; i < whatVariants.length; i++) {
+          const entityName = whatVariants[i];
+          if (wb.can('entities', entityName, huntLeaf.count)) {
+            validIndices.push(i);
+          }
+        }
+
+        if (validIndices.length === 0) {
+          return false; // No valid variants, remove node
+        }
+
+        if (validIndices.length < whatVariants.length) {
+          // Update the primary entity to the first valid variant
+          huntLeaf.what = whatVariants[validIndices[0]];
+          if (huntLeaf.targetItemVariants && huntLeaf.targetItemVariants[validIndices[0]]) {
+            huntLeaf.targetItem = huntLeaf.targetItemVariants[validIndices[0]];
+          }
+
+          // If only 1 variant remains, clear the variant fields (no choice to make)
+          if (validIndices.length === 1) {
+            delete huntLeaf.whatVariants;
+            delete huntLeaf.targetItemVariants;
+            delete huntLeaf.variantMode;
+          } else {
+            // Filter the variants to only valid ones
+            huntLeaf.whatVariants = validIndices.map(i => whatVariants[i]);
+            if (huntLeaf.targetItemVariants) {
+              huntLeaf.targetItemVariants = validIndices.map(i => huntLeaf.targetItemVariants![i]);
+            }
+          }
+        }
+      }
+    } else {
+      // No variants - check if primary entity is available
+      if (!wb.can('entities', huntLeaf.what, huntLeaf.count)) {
+        return false; // Remove node if primary entity isn't available
+      }
     }
   }
 
@@ -180,6 +335,7 @@ export function filterVariantsByWorldAvailability(node: TreeNode, worldBudget: a
       }
     }
     node.children = filteredChildren;
+    
   }
 
   return true;
@@ -187,6 +343,9 @@ export function filterVariantsByWorldAvailability(node: TreeNode, worldBudget: a
 
 /**
  * Fixes craft node primary fields after filtering to use actually available variants
+ * 
+ * This function is now primarily used for nodes that weren't filtered by the main
+ * filterVariantsByWorldAvailability function, ensuring consistency in primary field selection.
  * 
  * @param node - Tree node to fix
  * @param worldBudget - World budget for availability checks
@@ -201,7 +360,7 @@ export function fixCraftNodePrimaryFields(node: TreeNode, worldBudget: any): voi
     }
   }
 
-  // Fix craft nodes with variants
+  // Fix craft nodes with variants that weren't filtered out
   if (node.action === 'craft') {
     const craftNode = node as CraftNode;
     

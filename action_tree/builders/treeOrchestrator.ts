@@ -23,7 +23,7 @@ import {
 import { resolveMcData } from '../utils/mcDataResolver';
 import { findSimilarItems } from '../utils/itemSimilarity';
 import { createInventoryMap } from './inventoryManager';
-import { filterVariantsByWorldAvailability, fixCraftNodePrimaryFields, groupSimilarCraftNodes, groupSimilarMineNodes } from './variantHandler';
+import { filterVariantsByWorldAvailability, fixCraftNodePrimaryFields, groupSimilarCraftNodes, groupSimilarMineNodes, groupSimilarHuntNodes } from './variantHandler';
 import { getIngredientCounts, hasCircularDependency, findFurnaceSmeltsForItem, getRecipeCanonicalKey, requiresCraftingTable } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 import { chooseMinimalFuelName, getSmeltsPerUnitForFuel } from '../../utils/smeltingConfig';
@@ -46,6 +46,7 @@ export function buildRecipeTree(
   targetCount: number = 1,
   context: BuildContext = {}
 ): RootNode {
+  
   const mcData = resolveMcData(ctx);
   
   if (!mcData) {
@@ -607,7 +608,12 @@ function buildRecipeTreeInternal(
     // Ignore normalization errors
   }
 
-  // Filter variants based on world availability if enabled
+  // Apply variant combining if enabled
+  if (context.combineSimilarNodes) {
+    combineSimilarNodesInTree(mcData, root);
+  }
+
+  // Filter variants based on world availability if enabled (after combining)
   if (context && context.combineSimilarNodes && worldBudget) {
     try {
       filterVariantsByWorldAvailability(root, worldBudget);
@@ -616,11 +622,6 @@ function buildRecipeTreeInternal(
     } catch (_) {
       // Ignore filtering errors
     }
-  }
-
-  // Apply variant combining if enabled
-  if (context.combineSimilarNodes) {
-    combineSimilarNodesInTree(mcData, root);
   }
 
   return root;
@@ -644,11 +645,16 @@ function combineSimilarNodesInTree(mcData: any, node: TreeNode): void {
   } else if (node.action === 'mine' && 'operator' in node && node.operator === 'OR') {
     // Group mine leaf nodes within mine groups
     node.children = groupSimilarMineNodes(mcData, node.children);
+  } else if (node.action === 'hunt' && 'operator' in node && node.operator === 'OR') {
+    // Group hunt leaf nodes within hunt groups
+    node.children = groupSimilarHuntNodes(mcData, node.children);
   } else if (node.action === 'craft') {
     // Combine child mine groups
     node.children = node.children.map(child => {
       if (child.action === 'mine' && 'operator' in child && child.operator === 'OR') {
         child.children = groupSimilarMineNodes(mcData, child.children);
+      } else if (child.action === 'hunt' && 'operator' in child && child.operator === 'OR') {
+        child.children = groupSimilarHuntNodes(mcData, child.children);
       }
       return child;
     });
@@ -661,9 +667,10 @@ function combineSimilarNodesInTree(mcData: any, node: TreeNode): void {
  * @param ctx - Minecraft data context
  * @param node - Tree node to process
  * @param context - Build context
+ * @returns true if the node should be kept, false if it should be removed
  */
-function addPersistentRequirements(ctx: any, node: TreeNode, context: BuildContext): void {
-  if (!node || !node.children) return;
+function addPersistentRequirements(ctx: any, node: TreeNode, context: BuildContext): boolean {
+  if (!node || !node.children) return true;
   
   // Check if this node requires a crafting table
   if (node.action === 'craft' && (node as any).what === 'table') {
@@ -682,14 +689,23 @@ function addPersistentRequirements(ctx: any, node: TreeNode, context: BuildConte
       if (tableTree.children.length > 0) {
         // Insert at beginning of children
         node.children.unshift(tableTree);
+      } else {
+        // No valid recipe found for crafting table, so this craft node becomes invalid
+        return false;
       }
     }
   }
   
-  // Recursively process children
+  // Recursively process children and filter out invalid ones
+  const validChildren: TreeNode[] = [];
   for (const child of node.children) {
-    addPersistentRequirements(ctx, child, context);
+    if (addPersistentRequirements(ctx, child, context)) {
+      validChildren.push(child);
+    }
   }
+  node.children = validChildren;
+  
+  return true;
 }
 
 /**

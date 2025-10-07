@@ -98,7 +98,7 @@ describe('unit: filterPathVariantsByWorld', () => {
     expect(step.variantMode).toBeUndefined();
   });
 
-  test('filters craft step variants based on ingredient availability', () => {
+  test('keeps craft step variants and selects available ingredients', () => {
     const paths: ActionPath[] = [
       [
         {
@@ -131,9 +131,18 @@ describe('unit: filterPathVariantsByWorld', () => {
     expect(filtered.length).toBe(1);
     const step = filtered[0][0];
     
-    // Should only keep variants with available ingredients
-    expect(step.resultVariants).toEqual(['oak_planks', 'birch_planks']);
-    expect(step.ingredientVariants).toEqual([['oak_log'], ['birch_log']]);
+    // Craft variants are not filtered - crafting can produce items that aren't directly available
+    // Only mining nodes should be filtered based on world availability
+    expect(step.resultVariants).toEqual(['oak_planks', 'spruce_planks', 'birch_planks']);
+    expect(step.ingredientVariants).toEqual([
+      ['oak_log'],
+      ['spruce_log'],
+      ['birch_log']
+    ]);
+    
+    // But the primary ingredients should be updated to use available sources
+    expect(step.result?.item).toBe('oak_planks'); // First variant with available source
+    expect(step.ingredients?.[0]?.item).toBe('oak_log'); // Corresponding ingredient
   });
 
   test('keeps steps without variants unchanged', () => {

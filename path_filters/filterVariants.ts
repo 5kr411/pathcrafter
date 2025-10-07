@@ -107,20 +107,22 @@ function filterStepVariants(
 
   // Handle crafting steps with resultVariants
   if (step.action === 'craft' && step.resultVariants && step.ingredientVariants && step.resultVariants.length > 1) {
-    const availableResults: string[] = [];
-    const availableIngredients: string[][] = [];
-
-    // For each result variant, check if its ingredients could be available
-    for (let i = 0; i < step.resultVariants.length; i++) {
+    // For craft nodes, we don't filter based on ingredient availability
+    // Crafting can produce items that aren't directly available in the world
+    // Only mining nodes should be filtered based on world availability
+    
+    // For craft nodes, we don't filter based on ingredient availability
+    // Crafting can produce items that aren't directly available in the world
+    // Only mining nodes should be filtered based on world availability
+    // So we just select the first variant that has at least one available source
+    
+    let selectedVariantIndex = 0;
+    for (let i = 0; i < step.ingredientVariants.length; i++) {
       const ingredients = step.ingredientVariants[i];
-      
-      // Check if all ingredients for this variant could be acquired
-      // For now, we use a simple heuristic: check if the primary ingredient exists as a block
-      // This works for wood families (oak_log -> oak_planks, etc.)
-      let variantPossible = true;
+      let hasAtLeastOneSource = false;
       
       for (const ingredient of ingredients) {
-        // Check both direct availability and common sources
+        // Check if ingredient is available as a block in the world
         const hasDirectly = availability.blocks.has(ingredient) && availability.blocks.get(ingredient)! > 0;
         
         // Check if there's a common source (e.g., oak_log for oak_planks)
@@ -128,31 +130,26 @@ function filterStepVariants(
                                         .replace(/_ingot$/, '_ore');
         const hasSource = availability.blocks.has(possibleSource) && availability.blocks.get(possibleSource)! > 0;
         
-        if (!hasDirectly && !hasSource) {
-          variantPossible = false;
+        if (hasDirectly || hasSource) {
+          hasAtLeastOneSource = true;
           break;
         }
       }
       
-      if (variantPossible) {
-        availableResults.push(step.resultVariants[i]);
-        availableIngredients.push(ingredients);
+      if (hasAtLeastOneSource) {
+        selectedVariantIndex = i;
+        break;
       }
     }
-
-    // If no variants available, filter out this step
-    if (availableResults.length === 0) {
-      return null;
-    }
-
+    
     // If only one variant available, simplify
-    if (availableResults.length === 1) {
+    if (step.resultVariants.length === 1) {
       return {
         ...step,
-        result: step.result ? { ...step.result, item: availableResults[0] } : undefined,
+        result: step.result ? { ...step.result, item: step.resultVariants[0] } : undefined,
         ingredients: step.ingredients!.map((ing, idx) => ({
           ...ing,
-          item: availableIngredients[0][idx]
+          item: step.ingredientVariants![selectedVariantIndex][idx]
         })),
         resultVariants: undefined,
         ingredientVariants: undefined,
@@ -160,16 +157,16 @@ function filterStepVariants(
       };
     }
 
-    // Multiple variants available - update the arrays
+    // Multiple variants available - keep all variants but use available one as primary
     return {
       ...step,
-      result: step.result ? { ...step.result, item: availableResults[0] } : undefined,
+      result: step.result ? { ...step.result, item: step.resultVariants[selectedVariantIndex] } : undefined,
       ingredients: step.ingredients!.map((ing, idx) => ({
         ...ing,
-        item: availableIngredients[0][idx]
+        item: step.ingredientVariants![selectedVariantIndex][idx]
       })),
-      resultVariants: availableResults,
-      ingredientVariants: availableIngredients,
+      resultVariants: step.resultVariants,
+      ingredientVariants: step.ingredientVariants,
       variantMode: step.variantMode
     };
   }

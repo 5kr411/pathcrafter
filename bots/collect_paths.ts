@@ -79,7 +79,7 @@ const RUNTIME: RuntimeConfig = {
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10,
   usePersistentWorker: true, // Keep planning worker alive between commands (enumerator pool size is set in planning_worker.ts)
-  combineSimilarNodes: false // Enable variant combining (e.g., all wood planks together)
+  combineSimilarNodes: true // Enable variant combining (e.g., all wood planks together)
 };
 
 // Set logger level from config (can be overridden by LOG_LEVEL env var)
