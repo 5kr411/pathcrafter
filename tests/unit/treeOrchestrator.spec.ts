@@ -3,6 +3,7 @@
  */
 
 import { buildRecipeTree } from '../../action_tree/builders';
+import { BuildContext, VariantConstraintManager } from '../../action_tree/types';
 
 describe('treeOrchestrator', () => {
   describe('buildRecipeTree', () => {
@@ -51,8 +52,13 @@ describe('treeOrchestrator', () => {
         recipes: {}
       };
 
-      const context = {
-        inventory: { 'stick': 5 }
+      const context: Partial<BuildContext> = {
+        inventory: new Map([['stick', 5]]),
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: new VariantConstraintManager()
       };
 
       const tree = buildRecipeTree(mockMcData, 'stick', 1, context);
@@ -101,8 +107,13 @@ describe('treeOrchestrator', () => {
         }
       };
 
-      const context = {
-        combineSimilarNodes: true
+      const context: Partial<BuildContext> = {
+        inventory: new Map(),
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: new VariantConstraintManager()
       };
 
       const tree = buildRecipeTree(mockMcData, 'oak_planks', 1, context);

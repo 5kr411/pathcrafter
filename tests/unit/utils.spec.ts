@@ -18,21 +18,21 @@ describe('unit: crafting table dependency', () => {
     const mcData = (analyzeRecipes as any)._internals.resolveMcData('1.20.1');
 
     function usesTable(step: ActionStep): boolean { 
-        return step && step.action === 'craft' && step.what === 'table'; 
+        return step && step.action === 'craft' && step.what.variants[0].value === 'table'; 
     }
     
     function produces(name: string, step: ActionStep): boolean {
         if (!step) return false;
-        if (step.action === 'craft') return !!(step.result && step.result.item === name);
-        if (step.action === 'mine' || step.action === 'hunt') return ((step as any).targetItem || step.what) === name;
-        if (step.action === 'smelt') return !!(step.result && step.result.item === name);
+        if (step.action === 'craft') return !!(step.result && step.result.variants[0].value.item === name);
+        if (step.action === 'mine' || step.action === 'hunt') return ((step as any).targetItem?.variants[0].value || step.what.variants[0].value) === name;
+        if (step.action === 'smelt') return !!(step.result && step.result.variants[0].value.item === name);
         return false;
     }
     
     function hasTableBeforeUse(path: ActionStep[]): boolean {
         let tables = 0;
         for (const st of path) {
-            if (produces('crafting_table', st)) tables += (st.result && st.result.perCraftCount ? st.result.perCraftCount : 1) * (st.count || 1);
+            if (produces('crafting_table', st)) tables += (st.result && st.result.variants[0].value.perCraftCount ? st.result.variants[0].value.perCraftCount : 1) * (st.count || 1);
             if (usesTable(st)) { if (tables <= 0) return false; }
         }
         return true;

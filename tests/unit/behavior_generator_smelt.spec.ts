@@ -1,15 +1,16 @@
 import * as genSmelt from '../../behavior_generator/smelt';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
 
 describe('unit: behavior_generator smelt mapping', () => {
   test('computeTargetsForSmelt extracts result/input/fuel/count', () => {
-    const step = { 
-      action: 'smelt' as const, 
-      what: 'furnace', 
+    const step = createTestActionStep({ 
+      action: 'smelt', 
+      what: createTestStringGroup('furnace'), 
       count: 3, 
-      input: { item: 'raw_iron', perSmelt: 1 }, 
-      result: { item: 'iron_ingot', perSmelt: 1 }, 
-      fuel: 'coal' 
-    };
+      input: createTestItemReferenceGroup('raw_iron', 1), 
+      result: createTestItemReferenceGroup('iron_ingot', 1), 
+      fuel: createTestStringGroup('coal')
+    });
     const t = genSmelt.computeTargetsForSmelt(step);
     expect(t).toBeTruthy();
     expect(t!.itemName).toBe('iron_ingot');

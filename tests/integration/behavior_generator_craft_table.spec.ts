@@ -11,7 +11,7 @@ describe('integration: behavior_generator craft-in-table', () => {
         const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const [path] = Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory })) as ActionStep[][];
         expect(path).toBeDefined();
-        const craftTableStep = path.find((s: any) => s.action === 'craft' && s.what === 'table' && s.result && s.result.item === 'wooden_pickaxe');
+        const craftTableStep = path.find((s: any) => s.action === 'craft' && s.what.variants[0].value === 'table' && s.result && s.result.variants[0].value.item === 'wooden_pickaxe');
         expect(craftTableStep).toBeDefined();
         const mc = require('minecraft-data')('1.20.1');
         const bot = { 

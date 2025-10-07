@@ -1,6 +1,7 @@
 import { createBehaviorForStep } from '../../behavior_generator';
 import { setCurrentSpeciesContext, getCurrentSpeciesContext } from '../../utils/context';
 import { ActionStep } from '../../action_tree/types';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
 
 describe('integration: variant state machine creation', () => {
   beforeEach(() => {
@@ -9,13 +10,11 @@ describe('integration: variant state machine creation', () => {
   });
 
   test('creates mineOneOf behavior for mining steps with variants', () => {
-    const step: ActionStep = {
+    const step: ActionStep = createTestActionStep({
       action: 'mine',
-      what: 'oak_log',
-      count: 3,
-      whatVariants: ['oak_log', 'spruce_log', 'birch_log'],
-      targetItemVariants: ['oak_log', 'spruce_log', 'birch_log']
-    };
+      what: createTestStringGroup('oak_log'),
+      count: 3
+    });
 
     const bot = {
       version: '1.20.1',
@@ -36,13 +35,12 @@ describe('integration: variant state machine creation', () => {
   });
 
   test('creates craftVariant behavior for crafting steps with variants', () => {
-    const step: ActionStep = {
+    const step: ActionStep = createTestActionStep({
       action: 'craft',
-      what: 'inventory',
+      what: createTestStringGroup('inventory'),
       count: 2,
-      result: { item: 'oak_planks', perCraftCount: 4 },
-      resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-    };
+      result: createTestItemReferenceGroup('oak_planks', 4)
+    });
 
     const bot = {
       version: '1.20.1',
@@ -66,13 +64,12 @@ describe('integration: variant state machine creation', () => {
     // Simulate that we mined spruce logs previously
     setCurrentSpeciesContext('spruce');
 
-    const step: ActionStep = {
+    const step: ActionStep = createTestActionStep({
       action: 'craft',
-      what: 'inventory',
+      what: createTestStringGroup('inventory'),
       count: 1,
-      result: { item: 'oak_planks', perCraftCount: 4 },
-      resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-    };
+      result: createTestItemReferenceGroup('oak_planks', 4)
+    });
 
     const bot = {
       version: '1.20.1',
@@ -96,11 +93,11 @@ describe('integration: variant state machine creation', () => {
   });
 
   test('regular mine behavior handles steps without variants', () => {
-    const step: ActionStep = {
+    const step: ActionStep = createTestActionStep({
       action: 'mine',
-      what: 'oak_log',
+      what: createTestStringGroup('oak_log'),
       count: 3
-    };
+    });
 
     const bot = {
       version: '1.20.1',
@@ -117,12 +114,12 @@ describe('integration: variant state machine creation', () => {
   });
 
   test('regular craft behavior handles steps without variants', () => {
-    const step: ActionStep = {
+    const step: ActionStep = createTestActionStep({
       action: 'craft',
-      what: 'inventory',
+      what: createTestStringGroup('inventory'),
       count: 2,
-      result: { item: 'stick', perCraftCount: 4 }
-    };
+      result: createTestItemReferenceGroup('stick', 4)
+    });
 
     const bot = {
       version: '1.20.1',
@@ -145,13 +142,12 @@ describe('integration: variant state machine creation', () => {
   test('table crafting with variants respects species context', () => {
     setCurrentSpeciesContext('birch');
 
-    const step: ActionStep = {
+    const step: ActionStep = createTestActionStep({
       action: 'craft',
-      what: 'table',
+      what: createTestStringGroup('table'),
       count: 1,
-      result: { item: 'oak_door', perCraftCount: 1 },
-      resultVariants: ['oak_door', 'spruce_door', 'birch_door']
-    };
+      result: createTestItemReferenceGroup('oak_door', 1)
+    });
 
     const bot = {
       version: '1.20.1',
@@ -176,25 +172,23 @@ describe('integration: variant state machine creation', () => {
 
   test('behavior generator handles mixed variant and non-variant steps', () => {
     const steps: ActionStep[] = [
-      {
+      createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 3,
-        whatVariants: ['oak_log', 'spruce_log', 'birch_log']
-      },
-      {
+        what: createTestStringGroup('oak_log'),
+        count: 3
+      }),
+      createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1,
-        result: { item: 'stick', perCraftCount: 4 }
-      },
-      {
+        result: createTestItemReferenceGroup('stick', 4)
+      }),
+      createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 2,
-        result: { item: 'oak_planks', perCraftCount: 4 },
-        resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-      }
+        result: createTestItemReferenceGroup('oak_planks', 4)
+      })
     ];
 
     const bot = {
@@ -221,17 +215,11 @@ describe('integration: variant state machine creation', () => {
   });
 
   test('legacy meta-based mineOneOf still works', () => {
-    const step = {
-      action: 'mine' as const,
-      what: 'oak_log',
-      count: 2,
-      meta: { 
-        oneOfCandidates: [ 
-          { blockName: 'oak_log' }, 
-          { blockName: 'spruce_log' } 
-        ] 
-      }
-    };
+    const step = createTestActionStep({
+      action: 'mine',
+      what: createTestStringGroup('oak_log'),
+      count: 2
+    });
 
     const bot = {
       version: '1.20.1',

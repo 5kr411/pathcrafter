@@ -34,24 +34,25 @@ describe('integration: variant filtering with world snapshots', () => {
 
     // Find paths that mine logs
     const logMiningPaths = paths.filter(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     expect(logMiningPaths.length).toBeGreaterThan(0);
 
     // Check mining steps - should only have oak and birch
     const miningSteps = logMiningPaths.flatMap(p =>
-      p.filter(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.filter(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     miningSteps.forEach(step => {
-      if (step.whatVariants) {
+      if (step.what && step.what.variants.length > 1) {
         // Variants should only include what's in the world
-        expect(step.whatVariants).not.toContain('spruce_log');
-        expect(step.whatVariants).not.toContain('jungle_log');
+        const variantValues = step.what.variants.map((v: any) => v.value);
+        expect(variantValues).not.toContain('spruce_log');
+        expect(variantValues).not.toContain('jungle_log');
         
-        const hasOak = step.whatVariants.includes('oak_log');
-        const hasBirch = step.whatVariants.includes('birch_log');
+        const hasOak = variantValues.includes('oak_log');
+        const hasBirch = variantValues.includes('birch_log');
         expect(hasOak || hasBirch).toBe(true);
       }
     });
@@ -96,20 +97,20 @@ describe('integration: variant filtering with world snapshots', () => {
       p.some(s => 
         s.action === 'craft' && 
         s.result && 
-        /_planks$/.test(s.result.item) &&
+        /_planks$/.test(s.result.variants[0].value.item) &&
         s.ingredients &&
-        s.ingredients.some(ing => /_log$/.test(ing.item))
+        s.ingredients.variants[0].value.some((ing: any) => /_log$/.test(ing.item))
       )
     );
 
     if (plankCraftPaths.length > 0) {
       plankCraftPaths.forEach(path => {
         path.forEach(step => {
-          if (step.action === 'craft' && step.result && /_planks$/.test(step.result.item)) {
+          if (step.action === 'craft' && step.result && /_planks$/.test(step.result.variants[0].value.item)) {
             // Should use spruce since that's all that's available
             const usesSpruce = 
-              step.result.item === 'spruce_planks' ||
-              (step.resultVariants && step.resultVariants.includes('spruce_planks'));
+              step.result.variants[0].value.item === 'spruce_planks' ||
+              (step.result.variants.some((v: any) => v.value.item === 'spruce_planks'));
             
             expect(usesSpruce).toBe(true);
           }
@@ -146,7 +147,7 @@ describe('integration: variant filtering with world snapshots', () => {
     // Should have very few or no paths since wood isn't available
     // (might have dead_bush or witch paths)
     const logMiningPaths = paths.filter(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     expect(logMiningPaths.length).toBe(0);
@@ -187,19 +188,19 @@ describe('integration: variant filtering with world snapshots', () => {
     expect(paths.length).toBeGreaterThan(0);
 
     const logMiningPaths = paths.filter(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     if (logMiningPaths.length > 0) {
       logMiningPaths.forEach(path => {
         path.forEach(step => {
-          if (step.action === 'mine' && /_log$/.test(step.what)) {
+          if (step.action === 'mine' && /_log$/.test(step.what.variants[0].value)) {
             // Should be simplified to just acacia (no variant arrays)
-            expect(step.what).toBe('acacia_log');
+            expect(step.what.variants[0].value).toBe('acacia_log');
             
             // Variants should be removed or contain only acacia
-            if (step.whatVariants) {
-              expect(step.whatVariants).toEqual(['acacia_log']);
+            if (step.what && step.what.variants.length > 1) {
+              expect(step.what.variants.map((v: any) => v.value)).toEqual(['acacia_log']);
             }
           }
         });
@@ -237,22 +238,22 @@ describe('integration: variant filtering with world snapshots', () => {
 
     // Should generate paths with wood
     const hasWoodPaths = paths.some(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     expect(hasWoodPaths).toBe(true);
 
     // Check that variants include available types
     const miningSteps = paths.flatMap(p =>
-      p.filter(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.filter(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     const allVariants = new Set<string>();
     miningSteps.forEach(step => {
-      if (step.whatVariants) {
-        step.whatVariants.forEach(v => allVariants.add(v));
+      if (step.what && step.what.variants.length > 1) {
+        step.what.variants.forEach((v: any) => allVariants.add(v.value));
       } else {
-        allVariants.add(step.what);
+        allVariants.add(step.what.variants[0].value);
       }
     });
 
@@ -284,8 +285,8 @@ describe('integration: variant filtering with world snapshots', () => {
     });
 
     const fullPaths = paths.filter(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what)) &&
-      p.some(s => s.action === 'craft' && s.result && /_planks$/.test(s.result.item))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value)) &&
+      p.some(s => s.action === 'craft' && s.result && /_planks$/.test(s.result.variants[0].value.item))
     );
 
     if (fullPaths.length > 0) {
@@ -294,11 +295,11 @@ describe('integration: variant filtering with world snapshots', () => {
         const craftedPlanks: string[] = [];
 
         path.forEach(step => {
-          if (step.action === 'mine' && /_log$/.test(step.what)) {
-            minedWood.push(step.what.replace(/_log$/, ''));
+          if (step.action === 'mine' && /_log$/.test(step.what.variants[0].value)) {
+            minedWood.push(step.what.variants[0].value.replace(/_log$/, ''));
           }
-          if (step.action === 'craft' && step.result && /_planks$/.test(step.result.item)) {
-            craftedPlanks.push(step.result.item.replace(/_planks$/, ''));
+          if (step.action === 'craft' && step.result && /_planks$/.test(step.result.variants[0].value.item)) {
+            craftedPlanks.push(step.result.variants[0].value.item.replace(/_planks$/, ''));
           }
         });
 
@@ -346,7 +347,7 @@ describe('integration: variant filtering with world snapshots', () => {
     // Verify at least one approach is available
     // Could use existing oak_planks or mine mangrove_log
     const hasMiningPath = paths.some(p =>
-      p.some(s => s.action === 'mine' && s.what === 'mangrove_log')
+      p.some(s => s.action === 'mine' && s.what.variants[0].value === 'mangrove_log')
     );
     
     const hasCraftingPath = paths.some(p =>
@@ -386,10 +387,10 @@ describe('integration: variant filtering with world snapshots', () => {
     // Should have paths using available resources
     const approaches = new Set<string>();
     paths.forEach(p => {
-      if (p.some(s => s.action === 'mine' && s.what === 'dead_bush')) {
+      if (p.some(s => s.action === 'mine' && s.what.variants[0].value === 'dead_bush')) {
         approaches.add('dead_bush');
       }
-      if (p.some(s => s.action === 'mine' && /_log$/.test(s.what))) {
+      if (p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))) {
         approaches.add('wood');
       }
     });

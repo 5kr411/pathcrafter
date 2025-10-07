@@ -130,7 +130,7 @@ describe('integration: world filtering with combined nodes', () => {
                 nodesWithVariants.push(node);
             }
             if (node.children) {
-                node.children.forEach(findVariants);
+                node.children.variants.forEach((child: any) => findVariants(child.value));
             }
         };
         findVariants(tree);

@@ -1,46 +1,45 @@
 import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForMine, canHandle } from '../../behavior_generator/mine';
+import { createTestActionStep, createTestStringGroup } from '../testHelpers';
 
 describe('BehaviorGenerator mine', () => {
   describe('canHandle', () => {
     it('should handle mine steps without variants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 5
-      };
+      });
 
       expect(canHandle(step)).toBe(true);
     });
 
     it('should not handle mine steps with variants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 5,
-        whatVariants: ['oak_log', 'spruce_log', 'birch_log']
-      };
+        what: createTestStringGroup('oak_log'),
+        count: 5
+      });
 
       expect(canHandle(step)).toBe(false);
     });
 
     it('should not handle mine steps with single variant', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 5,
-        whatVariants: ['oak_log']
-      };
+        what: createTestStringGroup('oak_log'),
+        count: 5
+      });
 
       expect(canHandle(step)).toBe(true); // Single variant is same as no variants
     });
 
     it('should not handle non-mine steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1
-      };
+      });
 
       expect(canHandle(step)).toBe(false);
     });
@@ -60,11 +59,11 @@ describe('BehaviorGenerator mine', () => {
 
   describe('computeTargetsForMine', () => {
     it('should compute targets for simple mine step', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 3
-      };
+      });
 
       const result = computeTargetsForMine(step);
 
@@ -76,12 +75,12 @@ describe('BehaviorGenerator mine', () => {
     });
 
     it('should compute targets with targetItem', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 5,
-        targetItem: 'wood'
-      };
+        targetItem: createTestStringGroup('wood')
+      });
 
       const result = computeTargetsForMine(step);
 
@@ -93,11 +92,11 @@ describe('BehaviorGenerator mine', () => {
     });
 
     it('should return null for invalid steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: '',
+        what: createTestStringGroup(''),
         count: 1
-      };
+      });
 
       const result = computeTargetsForMine(step);
 
@@ -105,11 +104,11 @@ describe('BehaviorGenerator mine', () => {
     });
 
     it('should return null for non-mine steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1
-      };
+      });
 
       const result = computeTargetsForMine(step);
 

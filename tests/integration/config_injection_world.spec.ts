@@ -11,9 +11,9 @@ describe('integration: config injection with world pruning', () => {
     };
     const tree = plan(mc, 'oak_planks', 2, { log: false, inventory: {}, pruneWithWorld: true, worldSnapshot: snapshot });
     // Walk tree to find ingredient selection node if present
-    const craftNode = (tree.children || []).find((ch: any) => ch && ch.action === 'craft');
+    const craftNode = (tree.children?.variants || []).find((ch: any) => ch.value && ch.value.action === 'craft')?.value;
     expect(!!craftNode).toBe(true);
-    const ing = (craftNode as any).ingredients || [];
+    const ing = (craftNode as any).ingredients?.variants || [];
     const anyGeneric = ing.some((i: any) => i && i.meta && i.meta.generic === true);
     expect(anyGeneric).toBe(false);
   });

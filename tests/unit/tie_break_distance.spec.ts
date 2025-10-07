@@ -29,7 +29,7 @@ describe('unit: Top-N tie-break by snapshot distance', () => {
     
     expect(paths.length).toBeGreaterThan(0);
     const first = paths[0];
-    const minedBlocks = first.filter(s => s && s.action === 'mine').map(s => s.what);
+    const minedBlocks = first.filter(s => s && s.action === 'mine').map(s => s.what.variants[0].value);
     const logsInPath = minedBlocks.filter(n => /_log$/.test(n));
     
     // Should have at least one log being mined

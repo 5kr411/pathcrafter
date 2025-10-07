@@ -14,6 +14,7 @@ import {
   hasPersistentItem, 
   deductTargetFromInventory 
 } from '../../action_tree/builders';
+import { VariantConstraintManager } from '../../action_tree/types';
 
 describe('inventoryManager', () => {
   describe('createInventoryMap', () => {
@@ -174,15 +175,19 @@ describe('inventoryManager', () => {
   describe('updateContextWithInventory', () => {
     test('updates context with new inventory', () => {
       const originalContext = {
-        inventory: { 'oak_log': 5 },
-        combineSimilarNodes: true
+        inventory: new Map([['oak_log', 5]]),
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: new VariantConstraintManager()
       } as any;
       
       const invMap = new Map([['oak_log', 10], ['coal', 3]]);
       const updatedContext = updateContextWithInventory(originalContext, invMap);
       
       expect(updatedContext.inventory).toEqual({ 'oak_log': 10, 'coal': 3 });
-      expect(updatedContext.combineSimilarNodes).toBe(true);
+      expect(updatedContext.config).toBeDefined();
     });
   });
 

@@ -1,37 +1,35 @@
 import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForMineOneOf, canHandle } from '../../behavior_generator/mineOneOf';
+import { createTestActionStep, createTestStringGroup } from '../testHelpers';
 
 describe('BehaviorGenerator mineOneOf', () => {
   describe('canHandle', () => {
     it('should handle mine steps with whatVariants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 5,
-        whatVariants: ['oak_log', 'spruce_log', 'birch_log'],
-        targetItemVariants: ['oak_log', 'spruce_log', 'birch_log']
-      };
+        what: createTestStringGroup('oak_log'),
+        count: 5
+      });
 
       expect(canHandle(step)).toBe(true);
     });
 
     it('should not handle mine steps without variants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 5
-      };
+      });
 
       expect(canHandle(step)).toBe(false);
     });
 
     it('should not handle mine steps with single variant', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 5,
-        whatVariants: ['oak_log']
-      };
+        what: createTestStringGroup('oak_log'),
+        count: 5
+      });
 
       expect(canHandle(step)).toBe(false);
     });
@@ -53,11 +51,11 @@ describe('BehaviorGenerator mineOneOf', () => {
     });
 
     it('should not handle non-mine steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1
-      };
+      });
 
       expect(canHandle(step)).toBe(false);
     });
@@ -65,13 +63,11 @@ describe('BehaviorGenerator mineOneOf', () => {
 
   describe('computeTargetsForMineOneOf', () => {
     it('should compute targets for variant-based approach', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 3,
-        whatVariants: ['oak_log', 'spruce_log', 'birch_log'],
-        targetItemVariants: ['oak_log', 'spruce_log', 'birch_log']
-      };
+        what: createTestStringGroup('oak_log'),
+        count: 3
+      });
 
       const result = computeTargetsForMineOneOf(step);
 
@@ -86,12 +82,11 @@ describe('BehaviorGenerator mineOneOf', () => {
     });
 
     it('should handle missing targetItemVariants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
-        count: 2,
-        whatVariants: ['oak_log', 'spruce_log']
-      };
+        what: createTestStringGroup('oak_log'),
+        count: 2
+      });
 
       const result = computeTargetsForMineOneOf(step);
 
@@ -132,11 +127,11 @@ describe('BehaviorGenerator mineOneOf', () => {
     });
 
     it('should return null for invalid steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 1
-      };
+      });
 
       const result = computeTargetsForMineOneOf(step);
 

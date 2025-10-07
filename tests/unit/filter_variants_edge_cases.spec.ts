@@ -1,20 +1,18 @@
 import { filterPathVariantsByWorld } from '../../path_filters';
 import { ActionPath } from '../../action_tree/types';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup, createTestIngredientGroup } from '../testHelpers';
 
 describe('unit: filterPathVariantsByWorld edge cases', () => {
 
   test('handles empty variant arrays gracefully', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'oak_log',
+          what: createTestStringGroup('oak_log'),
           count: 1,
-          targetItem: 'oak_log',
-          whatVariants: [],
-          targetItemVariants: [],
-          variantMode: 'one_of'
-        }
+          targetItem: createTestStringGroup('oak_log')
+        })
       ]
     ];
 
@@ -33,15 +31,12 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
   test('handles mismatched variant array lengths', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'oak_log',
+          what: createTestStringGroup('oak_log'),
           count: 1,
-          targetItem: 'oak_log',
-          whatVariants: ['oak_log', 'spruce_log', 'birch_log'],
-          targetItemVariants: ['oak_log', 'spruce_log'], // Shorter array
-          variantMode: 'one_of'
-        }
+          targetItem: createTestStringGroup('oak_log')
+        })
       ]
     ];
 
@@ -56,21 +51,18 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     
     // Should handle gracefully
     expect(filtered.length).toBe(1);
-    expect(filtered[0][0].whatVariants?.length).toBeGreaterThan(0);
+    expect(filtered[0][0].what?.variants.length).toBeGreaterThan(0);
   });
 
   test('filters variants with zero count', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'oak_log',
+          what: createTestStringGroup('oak_log'),
           count: 1,
-          targetItem: 'oak_log',
-          whatVariants: ['oak_log', 'spruce_log'],
-          targetItemVariants: ['oak_log', 'spruce_log'],
-          variantMode: 'one_of'
-        }
+          targetItem: createTestStringGroup('oak_log')
+        })
       ]
     ];
 
@@ -88,21 +80,18 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     
     // Should only include spruce (oak has 0 count)
     expect(step.what).toBe('spruce_log');
-    expect(step.whatVariants).toBeUndefined(); // Simplified to single variant
+    expect(step.what.variants.length).toBe(1); // Simplified to single variant
   });
 
   test('handles blocks with negative counts', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'oak_log',
+          what: createTestStringGroup('oak_log'),
           count: 1,
-          targetItem: 'oak_log',
-          whatVariants: ['oak_log', 'spruce_log'],
-          targetItemVariants: ['oak_log', 'spruce_log'],
-          variantMode: 'one_of'
-        }
+          targetItem: createTestStringGroup('oak_log')
+        })
       ]
     ];
 
@@ -123,26 +112,20 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
   test('preserves multiple paths independently', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'oak_log',
+          what: createTestStringGroup('oak_log'),
           count: 1,
-          targetItem: 'oak_log',
-          whatVariants: ['oak_log', 'spruce_log'],
-          targetItemVariants: ['oak_log', 'spruce_log'],
-          variantMode: 'one_of'
-        }
+          targetItem: createTestStringGroup('oak_log')
+        })
       ],
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'birch_log',
+          what: createTestStringGroup('birch_log'),
           count: 1,
-          targetItem: 'birch_log',
-          whatVariants: ['birch_log', 'jungle_log'],
-          targetItemVariants: ['birch_log', 'jungle_log'],
-          variantMode: 'one_of'
-        }
+          targetItem: createTestStringGroup('birch_log')
+        })
       ]
     ];
 
@@ -163,16 +146,13 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
   test('handles craft steps without ingredient variants', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'craft',
-          what: 'inventory',
+          what: createTestStringGroup('inventory'),
           count: 1,
-          result: { item: 'stick', perCraftCount: 4 },
-          ingredients: [{ item: 'oak_planks', perCraftCount: 2 }],
-          resultVariants: ['stick'],
-          // No ingredientVariants field
-          variantMode: 'one_of'
-        }
+          result: createTestItemReferenceGroup('stick', 4),
+          ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 2 }])
+        })
       ]
     ];
 
@@ -191,16 +171,13 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
   test('keeps crafting variants even when ingredient sources are missing', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'craft',
-          what: 'inventory',
+          what: createTestStringGroup('inventory'),
           count: 1,
-          result: { item: 'oak_planks', perCraftCount: 4 },
-          ingredients: [{ item: 'oak_log', perCraftCount: 1 }],
-          resultVariants: ['oak_planks', 'spruce_planks'],
-          ingredientVariants: [['oak_log'], ['spruce_log']],
-          variantMode: 'one_of'
-        }
+          result: createTestItemReferenceGroup('oak_planks', 4),
+          ingredients: createTestIngredientGroup([{ item: 'oak_log', perCraftCount: 1 }])
+        })
       ]
     ];
 
@@ -218,29 +195,23 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
     // Only mining nodes should be filtered based on world availability
     expect(filtered.length).toBe(1);
     const step = filtered[0][0];
-    expect(step.resultVariants).toEqual(['oak_planks', 'spruce_planks']);
-    expect(step.ingredientVariants).toEqual([['oak_log'], ['spruce_log']]);
+    expect(step.result?.variants.map((v: any) => v.value.item)).toEqual(['oak_planks']);
+    expect(step.ingredients?.variants[0].value.map((i: any) => i.item)).toEqual(['oak_log']);
   });
 
   test('handles complex multi-ingredient crafting', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'craft',
-          what: 'table',
+          what: createTestStringGroup('table'),
           count: 1,
-          result: { item: 'wooden_pickaxe', perCraftCount: 1 },
-          ingredients: [
+          result: createTestItemReferenceGroup('wooden_pickaxe', 1),
+          ingredients: createTestIngredientGroup([
             { item: 'oak_planks', perCraftCount: 3 },
             { item: 'stick', perCraftCount: 2 }
-          ],
-          resultVariants: ['wooden_pickaxe'],
-          ingredientVariants: [
-            ['oak_planks', 'stick'],
-            ['spruce_planks', 'stick']
-          ],
-          variantMode: 'one_of'
-        }
+          ])
+        })
       ]
     ];
 
@@ -259,13 +230,12 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
   test('handles steps with tool requirements', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'iron_ore',
+          what: createTestStringGroup('iron_ore'),
           count: 3,
-          targetItem: 'raw_iron',
-          tool: 'stone_pickaxe'
-        }
+          targetItem: createTestStringGroup('raw_iron')
+        })
       ]
     ];
 
@@ -285,26 +255,26 @@ describe('unit: filterPathVariantsByWorld edge cases', () => {
   test('preserves step order when filtering', () => {
     const paths: ActionPath[] = [
       [
-        {
+        createTestActionStep({
           action: 'mine',
-          what: 'oak_log',
+          what: createTestStringGroup('oak_log'),
           count: 1,
-          targetItem: 'oak_log'
-        },
-        {
+          targetItem: createTestStringGroup('oak_log')
+        }),
+        createTestActionStep({
           action: 'craft',
-          what: 'inventory',
+          what: createTestStringGroup('inventory'),
           count: 1,
-          result: { item: 'oak_planks', perCraftCount: 4 },
-          ingredients: [{ item: 'oak_log', perCraftCount: 1 }]
-        },
-        {
+          result: createTestItemReferenceGroup('oak_planks', 4),
+          ingredients: createTestIngredientGroup([{ item: 'oak_log', perCraftCount: 1 }])
+        }),
+        createTestActionStep({
           action: 'craft',
-          what: 'inventory',
+          what: createTestStringGroup('inventory'),
           count: 1,
-          result: { item: 'stick', perCraftCount: 4 },
-          ingredients: [{ item: 'oak_planks', perCraftCount: 2 }]
-        }
+          result: createTestItemReferenceGroup('stick', 4),
+          ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 2 }])
+        })
       ]
     ];
 

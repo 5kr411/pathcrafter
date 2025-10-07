@@ -30,7 +30,7 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
         let found = false;
         let checked = 0;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
-            if (path.some((step: ActionStep) => step.action === 'smelt' && (step as any).fuel === 'coal' && step.result?.item === 'iron_ingot')) { found = true; break; }
+            if (path.some((step: ActionStep) => step.action === 'smelt' && (step as any).fuel === 'coal' && step.result?.variants[0].value.item === 'iron_ingot')) { found = true; break; }
             if (++checked >= 5) break;
         }
         expect(found).toBe(true);
@@ -75,9 +75,9 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
 
         function produced(step: ActionStep): string | null {
             if (!step) return null;
-            if (step.action === 'craft' && step.result && step.result.item) return step.result.item;
-            if (step.action === 'smelt' && step.result && step.result.item) return step.result.item;
-            if ((step.action === 'mine' || step.action === 'hunt') && ((step as any).targetItem || step.what)) return ((step as any).targetItem || step.what);
+            if (step.action === 'craft' && step.result && step.result.variants[0].value.item) return step.result.variants[0].value.item;
+            if (step.action === 'smelt' && step.result && step.result.variants[0].value.item) return step.result.variants[0].value.item;
+            if ((step.action === 'mine' || step.action === 'hunt') && ((step as any).targetItem?.variants[0].value || step.what.variants[0].value)) return ((step as any).targetItem?.variants[0].value || step.what.variants[0].value);
             return null;
         }
 

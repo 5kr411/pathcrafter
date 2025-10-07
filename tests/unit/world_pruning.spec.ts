@@ -13,7 +13,7 @@ describe('unit: planner world-pruning (generic wood disabled)', () => {
     const tree = plan(ctx, 'raw_iron', 1, { log: false, inventory, pruneWithWorld: true, worldSnapshot });
     const paths = Array.from(enumerateActionPathsGenerator(tree, { inventory }));
     // Without iron_ore available, expect paths that smelt or other sources only; no mine iron_ore
-    const hasMineIronOre = paths.some(seq => seq.some(s => s.action === 'mine' && s.what === 'iron_ore'));
+    const hasMineIronOre = paths.some(seq => seq.some(s => s.action === 'mine' && s.what.variants[0].value === 'iron_ore'));
     expect(hasMineIronOre).toBe(false);
   });
 
@@ -27,7 +27,7 @@ describe('unit: planner world-pruning (generic wood disabled)', () => {
     const paths = Array.from(enumerateActionPathsGenerator(tree, { inventory }));
     // With only 1 iron_ore, producing 2 raw_iron from pure mining should be pruned
     const hasMineTwoIron = paths.some(seq => {
-      const mines = seq.filter(s => s.action === 'mine' && s.what === 'iron_ore');
+      const mines = seq.filter(s => s.action === 'mine' && s.what.variants[0].value === 'iron_ore');
       const total = mines.reduce((a, s) => a + (s.count || 0), 0);
       return total >= 2;
     });

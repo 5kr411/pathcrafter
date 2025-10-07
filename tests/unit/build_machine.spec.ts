@@ -1,5 +1,6 @@
 import { buildStateMachineForPath, _internals } from '../../behavior_generator/buildMachine';
 import { ActionStep } from '../../action_tree/types';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup, createTestIngredientGroup } from '../testHelpers';
 
 describe('unit: buildStateMachineForPath', () => {
     test('creates sequence for mixed steps', () => {
@@ -17,13 +18,13 @@ describe('unit: buildStateMachineForPath', () => {
             } 
         } as any;
         const path: ActionStep[] = [
-            { action: 'mine', what: 'oak_log', targetItem: 'oak_log', count: 3 },
-            { action: 'craft', what: 'inventory', count: 1, result: { item: 'oak_planks', perCraftCount: 4 }, ingredients: [{ item: 'oak_log', perCraftCount: 1 }] },
-            { action: 'craft', what: 'inventory', count: 1, result: { item: 'crafting_table', perCraftCount: 1 }, ingredients: [{ item: 'oak_planks', perCraftCount: 4 }] },
-            { action: 'craft', what: 'inventory', count: 1, result: { item: 'oak_planks', perCraftCount: 4 }, ingredients: [{ item: 'oak_log', perCraftCount: 1 }] },
-            { action: 'craft', what: 'inventory', count: 1, result: { item: 'stick', perCraftCount: 4 }, ingredients: [{ item: 'oak_planks', perCraftCount: 2 }] },
-            { action: 'craft', what: 'inventory', count: 1, result: { item: 'oak_planks', perCraftCount: 4 }, ingredients: [{ item: 'oak_log', perCraftCount: 1 }] },
-            { action: 'craft', what: 'table', count: 1, result: { item: 'wooden_pickaxe', perCraftCount: 1 }, ingredients: [{ item: 'oak_planks', perCraftCount: 3 }, { item: 'stick', perCraftCount: 2 }] }
+            createTestActionStep({ action: 'mine', what: createTestStringGroup('oak_log'), targetItem: createTestStringGroup('oak_log'), count: 3 }),
+            createTestActionStep({ action: 'craft', what: createTestStringGroup('inventory'), count: 1, result: createTestItemReferenceGroup('oak_planks', 4), ingredients: createTestIngredientGroup([{ item: 'oak_log', perCraftCount: 1 }]) }),
+            createTestActionStep({ action: 'craft', what: createTestStringGroup('inventory'), count: 1, result: createTestItemReferenceGroup('crafting_table', 1), ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 4 }]) }),
+            createTestActionStep({ action: 'craft', what: createTestStringGroup('inventory'), count: 1, result: createTestItemReferenceGroup('oak_planks', 4), ingredients: createTestIngredientGroup([{ item: 'oak_log', perCraftCount: 1 }]) }),
+            createTestActionStep({ action: 'craft', what: createTestStringGroup('inventory'), count: 1, result: createTestItemReferenceGroup('stick', 4), ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 2 }]) }),
+            createTestActionStep({ action: 'craft', what: createTestStringGroup('inventory'), count: 1, result: createTestItemReferenceGroup('oak_planks', 4), ingredients: createTestIngredientGroup([{ item: 'oak_log', perCraftCount: 1 }]) }),
+            createTestActionStep({ action: 'craft', what: createTestStringGroup('table'), count: 1, result: createTestItemReferenceGroup('wooden_pickaxe', 1), ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 3 }, { item: 'stick', perCraftCount: 2 }]) })
         ];
 
         const sm = buildStateMachineForPath(bot, path);

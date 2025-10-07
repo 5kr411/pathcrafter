@@ -41,22 +41,22 @@ describe('integration: variant filtering with combined nodes', () => {
         mineLeaves.push(node as MineLeafNode);
       }
       if (node.children) {
-        node.children.forEach(findMineLeaves);
+        node.children.variants.forEach((child: any) => findMineLeaves(child.value));
       }
     };
     findMineLeaves(tree);
 
     // Find leaves with variants
-    const withVariants = mineLeaves.filter(n => n.whatVariants && n.whatVariants.length > 1);
+    const withVariants = mineLeaves.filter(n => n.what && n.what.variants.length > 1);
 
     if (withVariants.length > 0) {
       // Check that only available wood types are in variants
       withVariants.forEach(leaf => {
-        if (leaf.whatVariants!.some(w => w.includes('log'))) {
-          const hasOak = leaf.whatVariants!.some(w => w.includes('oak_log'));
-          const hasBirch = leaf.whatVariants!.some(w => w.includes('birch_log'));
-          const hasCherry = leaf.whatVariants!.some(w => w.includes('cherry_log'));
-          const hasSpruce = leaf.whatVariants!.some(w => w.includes('spruce_log'));
+        if (leaf.what.variants.some((v: any) => v.value.includes('log'))) {
+          const hasOak = leaf.what.variants.some((v: any) => v.value.includes('oak_log'));
+          const hasBirch = leaf.what.variants.some((v: any) => v.value.includes('birch_log'));
+          const hasCherry = leaf.what.variants.some((v: any) => v.value.includes('cherry_log'));
+          const hasSpruce = leaf.what.variants.some((v: any) => v.value.includes('spruce_log'));
 
           // Should have available types
           expect(hasOak || hasBirch || hasCherry).toBe(true);
@@ -99,13 +99,13 @@ describe('integration: variant filtering with combined nodes', () => {
         craftNodes.push(node as CraftNode);
       }
       if (node.children) {
-        node.children.forEach(findCraftNodes);
+        node.children.variants.forEach((child: any) => findCraftNodes(child.value));
       }
     };
     findCraftNodes(tree);
 
     // Check craft nodes with variants
-    const withVariants = craftNodes.filter(n => n.resultVariants && n.resultVariants.length > 1);
+    const withVariants = craftNodes.filter(n => n.result && n.result.variants.length > 1);
 
     // Check that craft nodes with variants exist
     // Since craft variants are no longer filtered by ingredient availability,
@@ -114,8 +114,8 @@ describe('integration: variant filtering with combined nodes', () => {
     
     // Verify that craft nodes have variants (not filtered out)
     withVariants.forEach(craftNode => {
-      expect(craftNode.resultVariants).toBeDefined();
-      expect(craftNode.resultVariants!.length).toBeGreaterThan(0);
+      expect(craftNode.result).toBeDefined();
+      expect(craftNode.result!.variants.length).toBeGreaterThan(0);
     });
   });
 
@@ -154,15 +154,15 @@ describe('integration: variant filtering with combined nodes', () => {
 
     // Check that paths only use available wood types
     const miningSteps = paths.flatMap(p =>
-      p.filter(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.filter(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     const allVariants = new Set<string>();
     miningSteps.forEach(step => {
-      if (step.whatVariants) {
-        step.whatVariants.forEach(v => allVariants.add(v));
+      if (step.what && step.what.variants.length > 1) {
+        step.what.variants.forEach((v: any) => allVariants.add(v.value));
       } else {
-        allVariants.add(step.what);
+        allVariants.add(step.what.variants[0].value);
       }
     });
 
@@ -203,20 +203,20 @@ describe('integration: variant filtering with combined nodes', () => {
         huntNodes.push(node as HuntLeafNode);
       }
       if (node.children) {
-        node.children.forEach(findHuntNodes);
+        node.children.variants.forEach((child: any) => findHuntNodes(child.value));
       }
     };
     findHuntNodes(tree);
 
     // Check hunt nodes with variants
-    const withVariants = huntNodes.filter(n => n.whatVariants && n.whatVariants.length > 1);
+    const withVariants = huntNodes.filter(n => n.what && n.what.variants.length > 1);
 
     if (withVariants.length > 0) {
       withVariants.forEach(huntNode => {
         // Should only have available mob types
-        const hasZombie = huntNode.whatVariants!.some(w => w.includes('zombie'));
-        const hasSkeleton = huntNode.whatVariants!.some(w => w.includes('skeleton'));
-        const hasSpider = huntNode.whatVariants!.some(w => w.includes('spider'));
+        const hasZombie = huntNode.what!.variants.some((w: any) => w.value.includes('zombie'));
+        const hasSkeleton = huntNode.what!.variants.some((w: any) => w.value.includes('skeleton'));
+        const hasSpider = huntNode.what!.variants.some((w: any) => w.value.includes('spider'));
 
         // Should have available types
         expect(hasZombie || hasSkeleton).toBe(true);
@@ -253,7 +253,7 @@ describe('integration: variant filtering with combined nodes', () => {
 
     // Should have very few or no paths since no wood is available
     const woodPaths = paths.filter(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
     );
 
     expect(woodPaths.length).toBe(0);
@@ -285,19 +285,19 @@ describe('integration: variant filtering with combined nodes', () => {
 
     if (paths.length > 0) {
       const logMiningPaths = paths.filter(p =>
-        p.some(s => s.action === 'mine' && /_log$/.test(s.what))
+        p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))
       );
 
       if (logMiningPaths.length > 0) {
         logMiningPaths.forEach(path => {
           path.forEach(step => {
-            if (step.action === 'mine' && /_log$/.test(step.what)) {
+            if (step.action === 'mine' && /_log$/.test(step.what.variants[0].value)) {
               // Should be simplified to just acacia (no variant arrays)
-              expect(step.what).toBe('acacia_log');
+              expect(step.what.variants[0].value).toBe('acacia_log');
               
               // Variants should be removed or contain only acacia
-              if (step.whatVariants) {
-                expect(step.whatVariants).toEqual(['acacia_log']);
+              if (step.what && step.what.variants.length > 1) {
+                expect(step.what.variants.map((v: any) => v.value)).toEqual(['acacia_log']);
               }
             }
           });
@@ -330,8 +330,8 @@ describe('integration: variant filtering with combined nodes', () => {
     });
 
     const fullPaths = paths.filter(p =>
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what)) &&
-      p.some(s => s.action === 'craft' && s.result && /_planks$/.test(s.result.item))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value)) &&
+      p.some(s => s.action === 'craft' && s.result && /_planks$/.test(s.result.variants[0].value.item))
     );
 
     if (fullPaths.length > 0) {
@@ -340,11 +340,11 @@ describe('integration: variant filtering with combined nodes', () => {
         const craftedPlanks: string[] = [];
 
         path.forEach(step => {
-          if (step.action === 'mine' && /_log$/.test(step.what)) {
-            minedWood.push(step.what.replace(/_log$/, ''));
+          if (step.action === 'mine' && /_log$/.test(step.what.variants[0].value)) {
+            minedWood.push(step.what.variants[0].value.replace(/_log$/, ''));
           }
-          if (step.action === 'craft' && step.result && /_planks$/.test(step.result.item)) {
-            craftedPlanks.push(step.result.item.replace(/_planks$/, ''));
+          if (step.action === 'craft' && step.result && /_planks$/.test(step.result.variants[0].value.item)) {
+            craftedPlanks.push(step.result.variants[0].value.item.replace(/_planks$/, ''));
           }
         });
 
@@ -392,13 +392,13 @@ describe('integration: variant filtering with combined nodes', () => {
     // Should have paths using available resources
     const approaches = new Set<string>();
     paths.forEach(p => {
-      if (p.some(s => s.action === 'mine' && s.what === 'dead_bush')) {
+      if (p.some(s => s.action === 'mine' && s.what.variants[0].value === 'dead_bush')) {
         approaches.add('dead_bush');
       }
-      if (p.some(s => s.action === 'mine' && /_log$/.test(s.what))) {
+      if (p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value))) {
         approaches.add('wood');
       }
-      if (p.some(s => s.action === 'hunt' && s.what === 'zombie')) {
+      if (p.some(s => s.action === 'hunt' && s.what.variants[0].value === 'zombie')) {
         approaches.add('hunt');
       }
     });

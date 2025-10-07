@@ -37,21 +37,21 @@ describe('unit: world filtering with combined nodes', () => {
                 mineLeaves.push(node as MineLeafNode);
             }
             if (node.children) {
-                node.children.forEach(findMineLeaves);
+                node.children.variants.forEach((child: any) => findMineLeaves(child.value));
             }
         };
         findMineLeaves(tree);
 
         // Find leaves with variants
-        const withVariants = mineLeaves.filter(n => n.whatVariants && n.whatVariants.length > 1);
+        const withVariants = mineLeaves.filter(n => n.what && n.what.variants.length > 1);
 
         if (withVariants.length > 0) {
             // Check that only oak and birch logs are in variants (not spruce, jungle, etc.)
             withVariants.forEach(leaf => {
-                if (leaf.whatVariants!.some(w => w.includes('log'))) {
-                    const hasOak = leaf.whatVariants!.some(w => w.includes('oak_log'));
-                    const hasBirch = leaf.whatVariants!.some(w => w.includes('birch_log'));
-                    const hasSpruce = leaf.whatVariants!.some(w => w.includes('spruce_log'));
+                if (leaf.what!.variants.some((w: any) => w.value.includes('log'))) {
+                    const hasOak = leaf.what!.variants.some((w: any) => w.value.includes('oak_log'));
+                    const hasBirch = leaf.what!.variants.some((w: any) => w.value.includes('birch_log'));
+                    const hasSpruce = leaf.what!.variants.some((w: any) => w.value.includes('spruce_log'));
 
                     // Should have oak and/or birch
                     expect(hasOak || hasBirch).toBe(true);
@@ -133,19 +133,19 @@ describe('unit: world filtering with combined nodes', () => {
                 mineLeaves.push(node as MineLeafNode);
             }
             if (node.children) {
-                node.children.forEach(findMineLeaves);
+                node.children.variants.forEach((child: any) => findMineLeaves(child.value));
             }
         };
         findMineLeaves(tree);
 
-        const withVariants = mineLeaves.filter(n => n.whatVariants && n.whatVariants.length > 1);
+        const withVariants = mineLeaves.filter(n => n.what && n.what.variants.length > 1);
 
         if (withVariants.length > 0) {
             // Should have multiple wood types since they're all available
             withVariants.forEach(leaf => {
-                if (leaf.whatVariants!.some(w => w.includes('log'))) {
+                if (leaf.what!.variants.some((w: any) => w.value.includes('log'))) {
                     // Should have at least 4 different log types
-                    expect(leaf.whatVariants!.length).toBeGreaterThanOrEqual(4);
+                    expect(leaf.what!.variants.length).toBeGreaterThanOrEqual(4);
                 }
             });
         }

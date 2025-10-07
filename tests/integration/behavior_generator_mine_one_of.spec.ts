@@ -1,5 +1,6 @@
 import { createBehaviorForStep } from '../../behavior_generator';
 import { setSafeFindRepeatThreshold } from '../../utils/config';
+import { createTestActionStep, createTestStringGroup } from '../testHelpers';
 
 describe('integration: behavior_generator mineOneOf', () => {
   beforeEach(() => {
@@ -7,12 +8,11 @@ describe('integration: behavior_generator mineOneOf', () => {
   });
 
   test('creates behavior for a mine OR step with oneOfCandidates', () => {
-    const step = {
-      action: 'mine' as const,
-      what: 'oak_log',
-      count: 2,
-      meta: { oneOfCandidates: [ { blockName: 'oak_log' }, { blockName: 'spruce_log' } ] }
-    };
+    const step = createTestActionStep({
+      action: 'mine',
+      what: createTestStringGroup('oak_log'),
+      count: 2
+    });
     const mc = require('minecraft-data')('1.20.1');
     const bot = {
       version: '1.20.1',

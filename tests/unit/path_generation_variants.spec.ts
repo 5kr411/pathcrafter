@@ -314,7 +314,7 @@ describe('unit: path generation with combined tree variants', () => {
 
     // Should have variety in approaches
     const hasMinedLog = paths.some(p => 
-      p.some(step => step.action === 'mine' && /_log$/.test(step.what))
+      p.some(step => step.action === 'mine' && /_log$/.test(step.what.variants[0].value))
     );
     
     expect(hasMinedLog).toBe(true);

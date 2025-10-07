@@ -1,8 +1,9 @@
 import { _internals, createBehaviorForStep } from '../../behavior_generator';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
 
 describe('unit: behavior_generator craft-in-table mapping', () => {
     test('computeTargetsForCraftInTable calculates total amount', () => {
-        const step = { action: 'craft' as const, what: 'table', count: 2, result: { item: 'wooden_pickaxe', perCraftCount: 1 } };
+        const step = createTestActionStep({ action: 'craft', what: createTestStringGroup('table'), count: 2, result: createTestItemReferenceGroup('wooden_pickaxe', 1) });
         const t = _internals.computeTargetsForCraftInTable(step);
         expect(t).toEqual({ itemName: 'wooden_pickaxe', amount: 2 });
     });
@@ -28,7 +29,7 @@ describe('unit: behavior_generator craft-in-table mapping', () => {
                 } 
             } 
         } as any;
-        const step = { action: 'craft' as const, what: 'table', count: 1, result: { item: 'wooden_pickaxe', perCraftCount: 1 } };
+        const step = createTestActionStep({ action: 'craft', what: createTestStringGroup('table'), count: 1, result: createTestItemReferenceGroup('wooden_pickaxe', 1) });
         const behavior = createBehaviorForStep(bot, step);
         expect(behavior).toBeTruthy();
         expect(typeof behavior).toBe('object');

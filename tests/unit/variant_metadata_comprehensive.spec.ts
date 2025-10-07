@@ -33,16 +33,16 @@ describe('unit: comprehensive variant metadata tests', () => {
 
     // Find the mining step with variants
     const mineStep = logPath.find((s: any) => 
-      s.action === 'mine' && s.whatVariants && s.whatVariants.length > 1
+      s.action === 'mine' && s.what && s.what.variants.length > 1
     ) as ActionStep;
 
-    expect(mineStep.whatVariants).toBeDefined();
-    expect(mineStep.whatVariants!.length).toBeGreaterThan(5); // Should have many wood types
-    expect(mineStep.targetItemVariants).toBeDefined();
+    expect(mineStep.what).toBeDefined();
+    expect(mineStep.what!.variants.length).toBeGreaterThan(5); // Should have many wood types
+    expect(mineStep.targetItem).toBeDefined();
     expect(mineStep.variantMode).toBe('one_of');
 
     // Verify common wood types are all present in ONE step
-    const variants = mineStep.whatVariants!;
+    const variants = mineStep.what!.variants.map((v: any) => v.value);
     expect(variants).toContain('oak_log');
     expect(variants).toContain('spruce_log');
     expect(variants).toContain('birch_log');
@@ -102,21 +102,21 @@ describe('unit: comprehensive variant metadata tests', () => {
 
     // Find a craft step with variants
     const craftSteps = paths.flatMap(p => p).filter((s: any) => 
-      s.action === 'craft' && s.resultVariants && s.resultVariants.length > 1
+      s.action === 'craft' && s.result && s.result.variants.length > 1
     ) as ActionStep[];
 
     expect(craftSteps.length).toBeGreaterThan(0);
 
     craftSteps.forEach(step => {
-      expect(step.resultVariants).toBeDefined();
-      expect(step.ingredientVariants).toBeDefined();
+      expect(step.result).toBeDefined();
+      expect(step.ingredients).toBeDefined();
       
       // Each result variant should have corresponding ingredient variant
-      expect(step.ingredientVariants!.length).toBe(step.resultVariants!.length);
+      expect(step.ingredients!.variants.length).toBe(step.result!.variants.length);
       
       // Each ingredient variant should match the primary ingredients structure
-      step.ingredientVariants!.forEach(variantIngs => {
-        expect(variantIngs.length).toBe(step.ingredients!.length);
+      step.ingredients!.variants.forEach((variantIngs: any) => {
+        expect(variantIngs.value.length).toBe(step.ingredients!.variants[0].value.length);
       });
     });
   });

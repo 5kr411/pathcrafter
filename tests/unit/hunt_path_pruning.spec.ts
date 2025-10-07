@@ -27,10 +27,10 @@ describe('unit: hunt path pruning with world snapshot', () => {
 
         // Should have mine group but not hunt group
         expect(tree.children).toBeDefined();
-        expect(tree.children!.length).toBeGreaterThan(0);
+        expect(tree.children!.variants.length).toBeGreaterThan(0);
         
-        const hasHuntChild = tree.children!.some((child: any) => child.action === 'hunt');
-        const hasMineChild = tree.children!.some((child: any) => child.action === 'mine');
+        const hasHuntChild = tree.children!.variants.some((child: any) => child.value.action === 'hunt');
+        const hasMineChild = tree.children!.variants.some((child: any) => child.value.action === 'mine');
         
         expect(hasHuntChild).toBe(false); // No hunt path when no pandas
         expect(hasMineChild).toBe(true);  // Mine path should exist
@@ -60,10 +60,10 @@ describe('unit: hunt path pruning with world snapshot', () => {
         });
 
         expect(tree.children).toBeDefined();
-        expect(tree.children!.length).toBeGreaterThan(0);
+        expect(tree.children!.variants.length).toBeGreaterThan(0);
         
-        const hasHuntChild = tree.children!.some((child: any) => child.action === 'hunt');
-        const hasMineChild = tree.children!.some((child: any) => child.action === 'mine');
+        const hasHuntChild = tree.children!.variants.some((child: any) => child.value.action === 'hunt');
+        const hasMineChild = tree.children!.variants.some((child: any) => child.value.action === 'mine');
         
         expect(hasHuntChild).toBe(true);  // Hunt path when pandas present
         expect(hasMineChild).toBe(true);  // Mine path also exists
@@ -91,10 +91,10 @@ describe('unit: hunt path pruning with world snapshot', () => {
         });
 
         expect(tree.children).toBeDefined();
-        expect(tree.children!.length).toBeGreaterThan(0);
+        expect(tree.children!.variants.length).toBeGreaterThan(0);
         
-        const hasHuntChild = tree.children!.some((child: any) => child.action === 'hunt');
-        const hasMineChild = tree.children!.some((child: any) => child.action === 'mine');
+        const hasHuntChild = tree.children!.variants.some((child: any) => child.value.action === 'hunt');
+        const hasMineChild = tree.children!.variants.some((child: any) => child.value.action === 'mine');
         
         expect(hasHuntChild).toBe(true);   // Hunt path when pandas present
         expect(hasMineChild).toBe(false);  // No mine path when no blocks
@@ -121,7 +121,7 @@ describe('unit: hunt path pruning with world snapshot', () => {
 
         // Tree should have no valid children
         expect(tree.children).toBeDefined();
-        expect(tree.children!.length).toBe(0);
+        expect(tree.children!.variants.length).toBe(0);
     });
 
     test('string: hunt path pruned when no spiders in snapshot', () => {
@@ -148,14 +148,14 @@ describe('unit: hunt path pruning with world snapshot', () => {
         expect(tree.children).toBeDefined();
         
         // Check that hunt group is not present or has no children
-        const huntChild = tree.children!.find((child: any) => child.action === 'hunt');
+        const huntChild = tree.children!.variants.find((child: any) => child.value.action === 'hunt');
         if (huntChild) {
             // If hunt group exists, it should have no children (filtered)
-            expect((huntChild as any).children.length).toBe(0);
+            expect((huntChild.value as any).children.variants.length).toBe(0);
         }
         
         // Mine path should exist for cobweb
-        const hasMineChild = tree.children!.some((child: any) => child.action === 'mine');
+        const hasMineChild = tree.children!.variants.some((child: any) => child.value.action === 'mine');
         expect(hasMineChild).toBe(true);
     });
 
@@ -181,10 +181,10 @@ describe('unit: hunt path pruning with world snapshot', () => {
         });
 
         expect(tree.children).toBeDefined();
-        expect(tree.children!.length).toBeGreaterThan(0);
+        expect(tree.children!.variants.length).toBeGreaterThan(0);
         
-        const hasHuntChild = tree.children!.some((child: any) => child.action === 'hunt');
-        const hasMineChild = tree.children!.some((child: any) => child.action === 'mine');
+        const hasHuntChild = tree.children!.variants.some((child: any) => child.value.action === 'hunt');
+        const hasMineChild = tree.children!.variants.some((child: any) => child.value.action === 'mine');
         
         expect(hasHuntChild).toBe(true);   // Hunt path for zombies
         expect(hasMineChild).toBe(false);  // No mining for rotten flesh
@@ -211,7 +211,7 @@ describe('unit: hunt path pruning with world snapshot', () => {
 
         // Should have no valid paths
         expect(tree.children).toBeDefined();
-        expect(tree.children!.length).toBe(0);
+        expect(tree.children!.variants.length).toBe(0);
     });
 
     test('enumerated paths should not include hunt actions when entities absent', () => {
@@ -241,7 +241,7 @@ describe('unit: hunt path pruning with world snapshot', () => {
         // No path should contain a hunt action for panda
         for (const path of paths) {
             const hasHuntAction = path.some(step => 
-                step.action === 'hunt' && step.what === 'panda'
+                step.action === 'hunt' && step.what.variants[0].value === 'panda'
             );
             expect(hasHuntAction).toBe(false);
         }

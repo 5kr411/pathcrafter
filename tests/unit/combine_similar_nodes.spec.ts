@@ -19,13 +19,13 @@ describe('unit: combine similar nodes', () => {
                 craftNodes.push(node as CraftNode);
             }
             if (node.children) {
-                node.children.forEach(findCraftNodes);
+                node.children.variants.forEach((child: any) => findCraftNodes(child.value));
             }
         };
         findCraftNodes(tree);
 
         const planksCrafts = craftNodes.filter(n => 
-            n.result && n.result.item.includes('planks')
+            n.result && n.result.variants[0].value.item.includes('planks')
         );
 
         // Without combining, we should have at least one planks craft node
@@ -34,7 +34,7 @@ describe('unit: combine similar nodes', () => {
         
         // None should have variants
         planksCrafts.forEach(n => {
-            expect(n.resultVariants).toBeUndefined();
+            expect(n.variants.variants.length).toBe(1);
         });
     });
 
@@ -52,13 +52,13 @@ describe('unit: combine similar nodes', () => {
                 craftNodes.push(node as CraftNode);
             }
             if (node.children) {
-                node.children.forEach(findCraftNodes);
+                node.children.variants.forEach((child: any) => findCraftNodes(child.value));
             }
         };
         findCraftNodes(tree);
 
         const planksCrafts = craftNodes.filter(n => 
-            n.result && n.result.item.includes('planks')
+            n.result && n.result.variants[0].value.item.includes('planks')
         );
 
         // Should have fewer planks crafts due to combining
@@ -66,7 +66,7 @@ describe('unit: combine similar nodes', () => {
         
         // At least one should have variants (combined wood families)
         const withVariants = planksCrafts.filter(n => 
-            n.resultVariants && n.resultVariants.length > 1
+            n.result && n.result.variants.length > 1
         );
         expect(withVariants.length).toBeGreaterThan(0);
     });
@@ -85,7 +85,7 @@ describe('unit: combine similar nodes', () => {
                 mineLeaves.push(node as MineLeafNode);
             }
             if (node.children) {
-                node.children.forEach(findMineLeaves);
+                node.children.variants.forEach((child: any) => findMineLeaves(child.value));
             }
         };
         findMineLeaves(tree);
@@ -93,7 +93,7 @@ describe('unit: combine similar nodes', () => {
         // Check for combined planks mining nodes (planks can be mined as blocks in the game)
         // OR check for any mine nodes with variants
         const anyWithVariants = mineLeaves.filter(n => 
-            n.whatVariants && n.whatVariants.length > 1
+            n.what && n.what.variants.length > 1
         );
 
         // Should have at least one combined mine node
@@ -103,7 +103,7 @@ describe('unit: combine similar nodes', () => {
         
         // If there are variants, verify they're structured correctly
         anyWithVariants.forEach(n => {
-            expect(n.whatVariants!.length).toBeGreaterThan(1);
+            expect(n.what!.variants.length).toBeGreaterThan(1);
         });
     });
 
@@ -121,20 +121,20 @@ describe('unit: combine similar nodes', () => {
                 craftNodes.push(node as CraftNode);
             }
             if (node.children) {
-                node.children.forEach(findCraftNodes);
+                node.children.variants.forEach((child: any) => findCraftNodes(child.value));
             }
         };
         findCraftNodes(tree);
 
         const stickCrafts = craftNodes.filter(n => 
-            n.result && n.result.item === 'stick'
+            n.result && n.result.variants[0].value.item === 'stick'
         );
 
         // Each stick craft should maintain proper ingredient count
         stickCrafts.forEach(n => {
             expect(n.ingredients).toBeDefined();
-            expect(n.ingredients.length).toBe(1);
-            expect(n.ingredients[0].perCraftCount).toBe(2);
+            expect(n.ingredients.variants[0].value.length).toBe(1);
+            expect(n.ingredients.variants[0].value[0].perCraftCount).toBe(2);
         });
     });
 
@@ -152,13 +152,13 @@ describe('unit: combine similar nodes', () => {
                 craftNodes.push(node as CraftNode);
             }
             if (node.children) {
-                node.children.forEach(findCraftNodes);
+                node.children.variants.forEach((child: any) => findCraftNodes(child.value));
             }
         };
         findCraftNodes(tree);
 
         const withVariants = craftNodes.filter(n => 
-            n.resultVariants && n.resultVariants.length > 1
+            n.result && n.result.variants.length > 1
         );
 
         // All combined nodes should have variantMode set to 'one_of'
@@ -193,7 +193,7 @@ describe('unit: combine similar nodes', () => {
                 mineLeaves.push(node as MineLeafNode);
             }
             if (node.children) {
-                node.children.forEach(findDeepMineLeaves);
+                node.children.variants.forEach((child: any) => findDeepMineLeaves(child.value));
             }
         };
         if (planksNode) {
@@ -202,7 +202,7 @@ describe('unit: combine similar nodes', () => {
 
         // Should have combined mine leaf nodes with multiple variants
         const combinedLeaves = mineLeaves.filter(n => 
-            n.whatVariants && n.whatVariants.length > 1
+            n.what && n.what.variants.length > 1
         );
         
         expect(combinedLeaves.length).toBeGreaterThan(0);
@@ -210,7 +210,7 @@ describe('unit: combine similar nodes', () => {
         // Verify they have variantMode set
         combinedLeaves.forEach(n => {
             expect(n.variantMode).toBe('one_of');
-            expect(n.whatVariants!.length).toBeGreaterThan(1);
+            expect(n.what!.variants.length).toBeGreaterThan(1);
         });
     });
 
@@ -228,7 +228,7 @@ describe('unit: combine similar nodes', () => {
                 craftNodes.push(node as CraftNode);
             }
             if (node.children) {
-                node.children.forEach(findCraftNodes);
+                node.children.variants.forEach((child: any) => findCraftNodes(child.value));
             }
         };
         findCraftNodes(tree);
@@ -236,15 +236,15 @@ describe('unit: combine similar nodes', () => {
         // oak_wood crafting requires 4 logs (different from log->planks which requires 1)
         // These should not be combined even if they have similar suffixes
         craftNodes.forEach(n => {
-            if (n.resultVariants && n.resultVariants.length > 1) {
+            if (n.result && n.result.variants.length > 1) {
                 // All variants in a group should have same ingredient count per craft
-                expect(n.ingredients.length).toBeGreaterThan(0);
+                expect(n.ingredients.variants[0].value.length).toBeGreaterThan(0);
                 
                 // If combining, all should use same ingredient amounts
-                if (n.ingredientVariants) {
-                    n.ingredientVariants.forEach(variant => {
+                if (n.ingredients && n.ingredients.variants.length > 1) {
+                    n.ingredients.variants.forEach((variant: any) => {
                         // Each variant should have same structure
-                        expect(variant.length).toBe(n.ingredients.length);
+                        expect(variant.value.length).toBe(n.ingredients.variants[0].value.length);
                     });
                 }
             }

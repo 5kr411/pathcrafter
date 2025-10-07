@@ -1,6 +1,7 @@
 import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForCraftVariant, canHandle } from '../../behavior_generator/craftVariant';
 import { setCurrentSpeciesContext } from '../../utils/context';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
 
 describe('BehaviorGenerator craftVariant', () => {
   beforeEach(() => {
@@ -10,58 +11,55 @@ describe('BehaviorGenerator craftVariant', () => {
 
   describe('canHandle', () => {
     it('should handle craft steps with resultVariants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1,
-        result: { item: 'oak_planks', perCraftCount: 4 },
-        resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-      };
+        result: createTestItemReferenceGroup('oak_planks', 4)
+      });
 
       expect(canHandle(step)).toBe(true);
     });
 
     it('should handle table crafting with resultVariants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'table',
+        what: createTestStringGroup('table'),
         count: 1,
-        result: { item: 'oak_door', perCraftCount: 1 },
-        resultVariants: ['oak_door', 'spruce_door', 'birch_door']
-      };
+        result: createTestItemReferenceGroup('oak_door', 1)
+      });
 
       expect(canHandle(step)).toBe(true);
     });
 
     it('should not handle craft steps without variants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1,
-        result: { item: 'stick', perCraftCount: 4 }
-      };
+        result: createTestItemReferenceGroup('stick', 4)
+      });
 
       expect(canHandle(step)).toBe(false);
     });
 
     it('should not handle craft steps with single variant', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1,
-        result: { item: 'oak_planks', perCraftCount: 4 },
-        resultVariants: ['oak_planks']
-      };
+        result: createTestItemReferenceGroup('oak_planks', 4)
+      });
 
       expect(canHandle(step)).toBe(false);
     });
 
     it('should not handle non-craft steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 1
-      };
+      });
 
       expect(canHandle(step)).toBe(false);
     });
@@ -71,13 +69,12 @@ describe('BehaviorGenerator craftVariant', () => {
     it('should select variant based on species context', () => {
       setCurrentSpeciesContext('oak');
 
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 2,
-        result: { item: 'oak_planks', perCraftCount: 4 },
-        resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-      };
+        result: createTestItemReferenceGroup('oak_planks', 4)
+      });
 
       const result = computeTargetsForCraftVariant(step);
 
@@ -90,13 +87,12 @@ describe('BehaviorGenerator craftVariant', () => {
     it('should select spruce variant when species context is spruce', () => {
       setCurrentSpeciesContext('spruce');
 
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'table',
+        what: createTestStringGroup('table'),
         count: 1,
-        result: { item: 'oak_door', perCraftCount: 1 },
-        resultVariants: ['oak_door', 'spruce_door', 'birch_door']
-      };
+        result: createTestItemReferenceGroup('oak_door', 1)
+      });
 
       const result = computeTargetsForCraftVariant(step);
 
@@ -107,13 +103,12 @@ describe('BehaviorGenerator craftVariant', () => {
     });
 
     it('should fallback to first variant when no species context', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 3,
-        result: { item: 'oak_planks', perCraftCount: 4 },
-        resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-      };
+        result: createTestItemReferenceGroup('oak_planks', 4)
+      });
 
       const result = computeTargetsForCraftVariant(step);
 
@@ -126,13 +121,12 @@ describe('BehaviorGenerator craftVariant', () => {
     it('should fallback to first variant when species context does not match', () => {
       setCurrentSpeciesContext('jungle'); // Not in variants
 
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1,
-        result: { item: 'oak_planks', perCraftCount: 4 },
-        resultVariants: ['oak_planks', 'spruce_planks', 'birch_planks']
-      };
+        result: createTestItemReferenceGroup('oak_planks', 4)
+      });
 
       const result = computeTargetsForCraftVariant(step);
 
@@ -143,12 +137,12 @@ describe('BehaviorGenerator craftVariant', () => {
     });
 
     it('should return null when no variants', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 2,
-        result: { item: 'stick', perCraftCount: 4 }
-      };
+        result: createTestItemReferenceGroup('stick', 4)
+      });
 
       const result = computeTargetsForCraftVariant(step);
 
@@ -156,11 +150,11 @@ describe('BehaviorGenerator craftVariant', () => {
     });
 
     it('should return null for invalid steps', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 0
-      };
+      });
 
       const result = computeTargetsForCraftVariant(step);
 
@@ -168,12 +162,12 @@ describe('BehaviorGenerator craftVariant', () => {
     });
 
     it('should handle missing result gracefully', () => {
-      const step: ActionStep = {
+      const step: ActionStep = createTestActionStep({
         action: 'craft',
-        what: 'inventory',
+        what: createTestStringGroup('inventory'),
         count: 1,
-        resultVariants: ['oak_planks', 'spruce_planks']
-      };
+        result: createTestItemReferenceGroup('oak_planks', 1)
+      });
 
       const result = computeTargetsForCraftVariant(step);
 

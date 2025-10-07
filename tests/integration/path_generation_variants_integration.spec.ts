@@ -34,10 +34,10 @@ describe('integration: path generation with combined tree variants', () => {
     const approaches = new Set<string>();
     paths.forEach(path => {
       path.forEach(step => {
-        if (step.action === 'mine' && /_log$/.test(step.what)) {
+        if (step.action === 'mine' && /_log$/.test(step.what.variants[0].value)) {
           approaches.add('log');
         }
-        if (step.action === 'mine' && step.what === 'dead_bush') {
+        if (step.action === 'mine' && step.what.variants[0].value === 'dead_bush') {
           approaches.add('dead_bush');
         }
       });
@@ -83,12 +83,12 @@ describe('integration: path generation with combined tree variants', () => {
     const woodTypesUsed = new Set<string>();
     paths.forEach(path => {
       path.forEach(step => {
-        if (step.action === 'mine' && /_log$/.test(step.what)) {
-          woodTypesUsed.add(step.what);
+        if (step.action === 'mine' && /_log$/.test(step.what.variants[0].value)) {
+          woodTypesUsed.add(step.what.variants[0].value);
         }
         if (step.action === 'craft' && step.result && 
-            step.result.item.includes('planks')) {
-          woodTypesUsed.add(step.result.item);
+            step.result.variants[0].value.item.includes('planks')) {
+          woodTypesUsed.add(step.result.variants[0].value.item);
         }
       });
     });
@@ -101,7 +101,7 @@ describe('integration: path generation with combined tree variants', () => {
       const hasPickaxeCraft = path.some(s => 
         s.action === 'craft' && 
         s.result && 
-        s.result.item === 'wooden_pickaxe'
+        s.result.variants[0].value.item === 'wooden_pickaxe'
       );
       expect(hasPickaxeCraft).toBe(true);
     });
@@ -124,14 +124,14 @@ describe('integration: path generation with combined tree variants', () => {
       const craftSteps = path.filter(s => 
         s.action === 'craft' && 
         s.result && 
-        s.result.item === 'oak_planks'
+        s.result.variants[0].value.item === 'oak_planks'
       );
       
       if (craftSteps.length > 0) {
         // Should have mined or used oak-related items
         const hasOakIngredient = craftSteps.some(craft =>
           craft.ingredients && 
-          craft.ingredients.some((ing: any) => 
+          craft.ingredients.variants[0].value.some((ing: any) => 
             ing.item && ing.item.includes('oak')
           )
         );
@@ -168,7 +168,7 @@ describe('integration: path generation with combined tree variants', () => {
 
     // Should generate paths with wood mining
     const hasWoodMining = paths.some(path =>
-      path.some(step => step.action === 'mine' && /_log$/.test(step.what))
+      path.some(step => step.action === 'mine' && /_log$/.test(step.what.variants[0].value))
     );
     
     expect(hasWoodMining || paths.length > 0).toBe(true);
@@ -193,7 +193,7 @@ describe('integration: path generation with combined tree variants', () => {
 
     // At least some paths should craft the table (not mine it)
     const craftingPaths = paths.filter(p =>
-      p.some(s => s.action === 'craft' && s.result && s.result.item === 'crafting_table')
+      p.some(s => s.action === 'craft' && s.result && s.result.variants[0].value.item === 'crafting_table')
     );
     expect(craftingPaths.length).toBeGreaterThan(0);
 
@@ -203,8 +203,8 @@ describe('integration: path generation with combined tree variants', () => {
 
     // At least one path should mine wood and craft planks
     const fullPaths = paths.filter(p => 
-      p.some(s => s.action === 'mine' && /_log$/.test(s.what)) &&
-      p.some(s => s.action === 'craft' && s.result && s.result.item.includes('planks'))
+      p.some(s => s.action === 'mine' && /_log$/.test(s.what.variants[0].value)) &&
+      p.some(s => s.action === 'craft' && s.result && s.result.variants[0].value.item.includes('planks'))
     );
     expect(fullPaths.length).toBeGreaterThan(0);
   });
@@ -226,8 +226,8 @@ describe('integration: path generation with combined tree variants', () => {
       
       // Should have appropriate mining/crafting counts
       const totalSticksCrafted = path
-        .filter(s => s.action === 'craft' && s.result && s.result.item === 'stick')
-        .reduce((sum, s) => sum + (s.result?.perCraftCount || 0) * (s.count || 1), 0);
+        .filter(s => s.action === 'craft' && s.result && s.result.variants[0].value.item === 'stick')
+        .reduce((sum, s) => sum + (s.result?.variants[0].value.perCraftCount || 0) * (s.count || 1), 0);
       
       if (totalSticksCrafted > 0) {
         // Should produce at least the target amount
@@ -253,8 +253,8 @@ describe('integration: path generation with combined tree variants', () => {
     paths.forEach(path => {
       path.forEach(step => {
         if (step.action === 'mine') {
-          if (step.what === 'bamboo') approaches.add('bamboo');
-          if (/_log$/.test(step.what)) approaches.add('log');
+          if (step.what.variants[0].value === 'bamboo') approaches.add('bamboo');
+          if (/_log$/.test(step.what.variants[0].value)) approaches.add('log');
         }
       });
     });

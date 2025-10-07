@@ -4,14 +4,14 @@ import { ActionStep } from '../../action_tree/types';
 function normalizePath(path: ActionStep[]): string {
     return path.map(s => {
         if (s.action === 'craft') {
-            const ings = (s.ingredients || []).map(i => `${i.perCraftCount} ${i.item}`).join('+');
-            const res = s.result ? `${s.result.perCraftCount} ${s.result.item}` : '?';
-            return `craft ${s.what} ${s.count} ${ings}->${res}`;
+            const ings = (s.ingredients?.variants[0].value || []).map((i: any) => `${i.perCraftCount} ${i.item}`).join('+');
+            const res = s.result ? `${s.result.variants[0].value.perCraftCount} ${s.result.variants[0].value.item}` : '?';
+            return `craft ${s.what.variants[0].value} ${s.count} ${ings}->${res}`;
         }
-        if (s.action === 'smelt') return `smelt ${s.count} ${(s.input && s.input.item)}->${(s.result && s.result.item)}`;
-        if (s.action === 'mine') return `mine ${((s as any).targetItem || s.what)} ${s.count}`;
-        if (s.action === 'hunt') return `hunt ${((s as any).targetItem || s.what)} ${s.count}`;
-        return `${s.action} ${s.what} ${s.count}`;
+        if (s.action === 'smelt') return `smelt ${s.count} ${(s.input && s.input.variants[0].value.item)}->${(s.result && s.result.variants[0].value.item)}`;
+        if (s.action === 'mine') return `mine ${((s as any).targetItem?.variants[0].value || s.what.variants[0].value)} ${s.count}`;
+        if (s.action === 'hunt') return `hunt ${((s as any).targetItem?.variants[0].value || s.what.variants[0].value)} ${s.count}`;
+        return `${s.action} ${s.what.variants[0].value} ${s.count}`;
     }).join(' | ');
 }
 
