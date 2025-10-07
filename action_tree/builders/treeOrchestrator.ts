@@ -378,11 +378,15 @@ function buildRecipeTreeInternal(
     }
 
     // Process ingredients recursively
+    // When combining similar nodes, we only need to process one representative variant's ingredients
+    // since all variants in the group have structurally similar recipes
     const ingredientVariantsList = ingredientVariants.variants || [];
     const ingredientGroups = new Map<string, { items: string[]; primary: string; count: number }>();
 
-    for (const variant of ingredientVariantsList) {
-      const ingredients = variant.value || [];
+    // Use only the first variant's ingredients to avoid creating duplicate branches
+    const representativeVariant = ingredientVariantsList[0];
+    if (representativeVariant) {
+      const ingredients = representativeVariant.value || [];
       for (const ingredient of ingredients) {
         if (!ingredient?.item) continue;
         const perCraft = ingredient.perCraftCount || 1;
@@ -478,6 +482,23 @@ function buildRecipeTreeInternal(
 
   // Process mining paths
   const miningPaths = findBlocksThatDrop(mcData, primaryItem);
+  const canonicalBlockByItem = new Map<string, string>();
+  const blockVariantsByCanonical = new Map<string, string[]>();
+  miningPaths.forEach(path => {
+    const blockName = path.block;
+    const similar = context.combineSimilarNodes ? findSimilarItems(mcData, blockName) : [blockName];
+    
+    // Store all block variants for this canonical block
+    if (!blockVariantsByCanonical.has(blockName)) {
+      blockVariantsByCanonical.set(blockName, similar);
+    }
+    
+    similar.forEach(itemName => {
+      if (!canonicalBlockByItem.has(itemName)) {
+        canonicalBlockByItem.set(itemName, blockName);
+      }
+    });
+  });
   if (miningPaths.length > 0) {
     const mineTargets = context.combineSimilarNodes ? variantsToUse : [primaryItem];
 
@@ -507,40 +528,78 @@ function buildRecipeTreeInternal(
     }
 
     // Create mine leaf nodes for each tool group
+    const mineLeafByCanon = new Map<string, MineLeafNode>();
+
     for (const [toolKey, pathGroup] of groupedByTool) {
-      const minimalTool = toolKey === 'any' ? 'any' : toolKey;
-      let blocks = pathGroup.map(p => p.block);
-      
-      // If combining is enabled, expand blocks to include similar variants
-      if (context.combineSimilarNodes) {
-        const allSimilarBlocks = new Set<string>();
-        for (const block of blocks) {
-          const similarBlocks = findSimilarItems(mcData, block);
-          similarBlocks.forEach(b => allSimilarBlocks.add(b));
-        }
-        blocks = Array.from(allSimilarBlocks);
-      }
-      
-      const mineLeaf: MineLeafNode = {
+      const minimalTool = toolKey === 'any' ? undefined : toolKey;
+      const blocks = pathGroup.map(p => p.block);
+
+      const baseLeaf: MineLeafNode = {
         action: 'mine',
         variantMode: 'any_of',
         what: createVariantGroup('any_of', blocks),
         targetItem: createVariantGroup('any_of', variantsToUse),
         count: targetCount,
-        tool: createVariantGroup('any_of', [minimalTool]),
+        ...(minimalTool ? { tool: createVariantGroup('any_of', [minimalTool]) } : {}),
         variants: { mode: 'any_of', variants: [] },
         children: { mode: 'any_of', variants: [] },
         context
       };
 
       // Add tool dependency if needed and not already present
-      if (minimalTool && minimalTool !== 'any' && !hasToolDependency(mineLeaf, minimalTool)) {
+      if (minimalTool && !hasToolDependency(baseLeaf, minimalTool)) {
         const toolTree = createToolDependencyTree(minimalTool, context, ctx);
-        mineLeaf.children.variants.push({ value: toolTree });
+        baseLeaf.children.variants.push({ value: toolTree });
       }
 
-      mineGroup.children.variants.push({ value: mineLeaf });
+      // When combining similar nodes, collect all unique canonical blocks
+      // and create a single node with all variants instead of one per variant
+      if (context.combineSimilarNodes) {
+        // Group variants by their canonical block
+        const blockToVariants = new Map<string, string[]>();
+        for (const variantName of variantsToUse) {
+          const canonicalBlock = canonicalBlockByItem.get(variantName);
+          if (canonicalBlock) {
+            if (!blockToVariants.has(canonicalBlock)) {
+              blockToVariants.set(canonicalBlock, []);
+            }
+            blockToVariants.get(canonicalBlock)!.push(variantName);
+          }
+        }
+
+        // Create a single leaf per canonical block with all its block and target variants
+        for (const [canonicalBlock, targetVariants] of blockToVariants.entries()) {
+          const canonKey = canonicalBlock;
+          if (!mineLeafByCanon.has(canonKey)) {
+            // Get all block variants for this canonical block
+            const blockVariants = blockVariantsByCanonical.get(canonicalBlock) || [canonicalBlock];
+            
+            const leaf: MineLeafNode = {
+              ...baseLeaf,
+              what: createVariantGroup('any_of', blockVariants),
+              targetItem: createVariantGroup('any_of', targetVariants)
+            };
+
+            // Clone children to avoid shared mutable state
+            leaf.children = {
+              mode: baseLeaf.children.mode,
+              variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
+            };
+
+            mineLeafByCanon.set(canonKey, leaf);
+          }
+        }
+      } else {
+        const canonKey = blocks[0];
+        if (!mineLeafByCanon.has(canonKey)) {
+          mineLeafByCanon.set(canonKey, baseLeaf);
+        }
+      }
     }
+
+    mineLeafByCanon.forEach(leaf => {
+      mineGroup.children.variants.push({ value: leaf });
+    });
 
     // Add mine group to root
     root.children.variants.push({ value: mineGroup });

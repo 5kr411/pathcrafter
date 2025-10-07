@@ -77,7 +77,14 @@ export function logActionTree(tree: TreeNode | null | undefined, depth: number =
 }
 
 function formatVariantValues(values: any[], limit: number = 3): string {
-  const names = values.map(formatVariantDisplay);
+  const seen = new Set<string>();
+  const names: string[] = [];
+  values.map(formatVariantDisplay).forEach(name => {
+    if (!seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  });
   if (names.length <= limit) {
     return names.join(', ');
   }

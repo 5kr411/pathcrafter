@@ -84,8 +84,19 @@ function printPathSummary(paths: any[]) {
       const count = step.count || 1;
       
       // Show variant information
-      if (step.what?.variants && step.what.variants.length > 1) {
-        const variantNames = step.what.variants.map((v: any) => v.value).join(', ');
+      // For mine/hunt actions, show both block variants and target item variants
+      if ((step.action === 'mine' || step.action === 'hunt') && step.targetItem?.variants) {
+        if (step.what?.variants && step.what.variants.length > 1) {
+          const whatVariants = formatVariantStrings(step.what.variants.map((v: any) => v.value));
+          const targetVariants = formatVariantStrings(step.targetItem.variants.map((v: any) => v.value));
+          console.log(`    ${stepIndex + 1}. ${step.action} [${step.variantMode}] ${whatVariants} for [${step.variantMode}] ${targetVariants} (${count}x)`);
+        } else {
+          const what = step.what?.variants?.[0]?.value || 'unknown';
+          const targetVariants = formatVariantStrings(step.targetItem.variants.map((v: any) => v.value));
+          console.log(`    ${stepIndex + 1}. ${step.action} ${what} for [${step.variantMode}] ${targetVariants} (${count}x)`);
+        }
+      } else if (step.what?.variants && step.what.variants.length > 1) {
+        const variantNames = formatVariantStrings(step.what.variants.map((v: any) => v.value));
         console.log(`    ${stepIndex + 1}. ${step.action} [${step.variantMode}] ${variantNames} (${count}x)`);
       } else {
         const what = step.what?.variants?.[0]?.value || 'unknown';
@@ -94,7 +105,12 @@ function printPathSummary(paths: any[]) {
       
       if (step.result) {
         if (step.result.variants && step.result.variants.length > 1) {
-          const resultVariants = step.result.variants.map((v: any) => `${v.value.perCraftCount || 1} ${v.value.item}`).join(', ');
+          const resultVariants = formatVariantStrings(step.result.variants.map((v: any) => {
+            const value = v.value;
+            const quantity = value.perCraftCount || value.perSmelt || value.count || 1;
+            const itemName = value.item || value;
+            return `${quantity} ${itemName}`;
+          }));
           console.log(`       → [${step.variantMode}] ${resultVariants}`);
         } else {
           const resultItem = step.result.variants[0].value.item;
@@ -105,10 +121,10 @@ function printPathSummary(paths: any[]) {
       
       if (step.ingredients) {
         if (step.ingredients.variants && step.ingredients.variants.length > 1) {
-          const ingredientVariants = step.ingredients.variants.map((v: any) => {
+          const ingredientVariants = formatVariantStrings(step.ingredients.variants.map((v: any) => {
             const ingList = v.value.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
             return ingList;
-          }).join(', ');
+          }));
           console.log(`       ← [${step.variantMode}] ${ingredientVariants}`);
         } else {
           const ingredients = step.ingredients.variants[0].value;
@@ -124,6 +140,22 @@ function printPathSummary(paths: any[]) {
   if (paths.length > maxShow) {
     console.log(`\n  ... and ${paths.length - maxShow} more paths`);
   }
+}
+
+function formatVariantStrings(values: any[], limit: number = 3): string {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  values.forEach(value => {
+    const str = typeof value === 'string' ? value : String(value);
+    if (!seen.has(str)) {
+      seen.add(str);
+      unique.push(str);
+    }
+  });
+  if (unique.length <= limit) {
+    return unique.join(', ');
+  }
+  return `${unique.slice(0, limit).join(', ')}, +${unique.length - limit} more`;
 }
 
 function testVariantPlanner(config: TestConfig) {

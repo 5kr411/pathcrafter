@@ -96,7 +96,16 @@ function enumerateSmeltNode(node: SmeltNode): ActionPath[] {
 }
 
 function enumerateGatherNode(node: MineLeafNode | HuntLeafNode): ActionPath[] {
-  const dependencies = node.children.variants || [];
+  if ((node as any).operator === 'OR') {
+    const children = node.children?.variants || [];
+    const paths: ActionPath[] = [];
+    for (const child of children) {
+      paths.push(...enumerateNode(child.value).map(simplifyPath));
+    }
+    return paths.length > 0 ? paths : [[]];
+  }
+
+  const dependencies = node.children?.variants || [];
   const dependencyPaths = combineChildrenAsAnd(dependencies);
 
   const gatherStep: ActionStep = cloneStep({
