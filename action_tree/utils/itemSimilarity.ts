@@ -229,3 +229,49 @@ export function getItemSuffix(itemName: string): string | null {
 export function isCombinableSuffix(suffix: string): boolean {
   return COMBINABLE_SUFFIXES.has(suffix);
 }
+
+/**
+ * Finds similar items within the same family (e.g., only oak variants for oak_planks)
+ * 
+ * This filters similar items to only those sharing the same family prefix.
+ * For example, if you ask for oak_planks, it will only return oak-related items,
+ * not spruce or birch planks.
+ * 
+ * @param mcData - Minecraft data object
+ * @param itemName - Name of the item to find same-family items for
+ * @returns Array of items in the same family, or just the original item if none found
+ * 
+ * @example
+ * ```typescript
+ * const sameFamily = findSameFamilyItems(mcData, 'oak_planks');
+ * // Returns: ['oak_planks'] (not other wood types)
+ * 
+ * const sameFamily = findSameFamilyItems(mcData, 'oak_log');
+ * // Returns: ['oak_log'] (not spruce_log or birch_log)
+ * ```
+ */
+export function findSameFamilyItems(mcData: MinecraftData, itemName: string): string[] {
+  const suffix = getSuffixTokenFromName(itemName);
+  if (!suffix || !COMBINABLE_SUFFIXES.has(suffix)) {
+    return [itemName];
+  }
+  
+  // Get the family (e.g., "oak" from "oak_planks")
+  const family = normalizeVariantBase(getNameWithoutSuffix(itemName));
+  if (!family) {
+    return [itemName];
+  }
+  
+  // Only return items with the same family and suffix
+  const sameFamily: string[] = [];
+  for (const [name] of Object.entries(mcData.itemsByName)) {
+    if (getSuffixTokenFromName(name) !== suffix) continue;
+    
+    const nameFamily = normalizeVariantBase(getNameWithoutSuffix(name));
+    if (nameFamily === family) {
+      sameFamily.push(name);
+    }
+  }
+  
+  return sameFamily.length > 0 ? sameFamily : [itemName];
+}

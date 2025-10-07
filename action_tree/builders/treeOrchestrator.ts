@@ -22,7 +22,7 @@ import {
   BlockSource
 } from '../types';
 import { resolveMcData } from '../utils/mcDataResolver';
-import { findSimilarItems } from '../utils/itemSimilarity';
+import { findSameFamilyItems } from '../utils/itemSimilarity';
 import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 
@@ -133,8 +133,9 @@ export function buildRecipeTree(
     throw new Error('Could not resolve Minecraft data');
   }
   
-  // Find all similar items (wood families, etc.) only if combining is enabled
-  const itemGroup = context.combineSimilarNodes ? findSimilarItems(mcData, itemName) : [itemName];
+  // For the root target, only find items within the same family (e.g., oak_planks -> only oak variants)
+  // This ensures that asking for oak_planks doesn't return spruce/birch as options
+  const itemGroup = context.combineSimilarNodes ? findSameFamilyItems(mcData, itemName) : [itemName];
   
   // Create variant-first context
   const variantContext: BuildContext = {
@@ -391,8 +392,9 @@ function buildRecipeTreeInternal(
         if (!ingredient?.item) continue;
         const perCraft = ingredient.perCraftCount || 1;
         const requiredCount = perCraft * craftingsNeeded;
+        // Use family-aware matching: oak_planks should only accept oak logs, not spruce
         const similarItems = context.combineSimilarNodes
-          ? Array.from(new Set(findSimilarItems(mcData, ingredient.item)))
+          ? Array.from(new Set(findSameFamilyItems(mcData, ingredient.item)))
           : [ingredient.item];
         if (similarItems.length === 0) continue;
         const key = [...similarItems].sort().join('|');
@@ -486,7 +488,8 @@ function buildRecipeTreeInternal(
   const blockVariantsByCanonical = new Map<string, string[]>();
   miningPaths.forEach(path => {
     const blockName = path.block;
-    const similar = context.combineSimilarNodes ? findSimilarItems(mcData, blockName) : [blockName];
+    // Use family-aware matching: oak_log should only match oak blocks, not spruce
+    const similar = context.combineSimilarNodes ? findSameFamilyItems(mcData, blockName) : [blockName];
     
     // Store all block variants for this canonical block
     if (!blockVariantsByCanonical.has(blockName)) {
