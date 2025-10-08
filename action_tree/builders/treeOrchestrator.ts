@@ -25,6 +25,7 @@ import { resolveMcData } from '../utils/mcDataResolver';
 import { findSameFamilyItems } from '../utils/itemSimilarity';
 import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
+import { getSuffixTokenFromName } from '../../utils/items';
 
 /**
  * Helper functions for variant-first system
@@ -249,6 +250,142 @@ function buildRecipeTreeInternal(
     nextVisited.add(name);
   }
 
+  // Helper function to create a craft node for a recipe group
+  function createCraftNodeForGroup(
+    recipeGroup: Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>,
+    craftingsNeeded: number,
+    variantMode: 'one_of' | 'any_of',
+    parentNode: RootNode,
+    context: BuildContext,
+    mcData: any,
+    visited: Set<string>,
+    ctx: any
+  ) {
+    const recipe = recipeGroup[0].recipe;
+    
+    const whatVariants: VariantGroup<'table' | 'inventory'> = createVariantGroup(
+      'one_of',
+      [requiresCraftingTable(recipe) ? 'table' : 'inventory']
+    );
+
+    const resultVariants: VariantGroup<ItemReference> = {
+      mode: context.combineSimilarNodes ? variantMode : 'one_of',
+      variants: context.combineSimilarNodes 
+        ? recipeGroup.map(entry => ({
+            value: {
+              item: entry.itemName,
+              perCraftCount: recipe.result.count
+            },
+            metadata: {
+              family: getFamilyFromName(entry.itemName),
+              suffix: getSuffixFromName(entry.itemName)
+            }
+          }))
+        : [{
+            value: {
+              item: recipeGroup[0].itemName,
+              perCraftCount: recipe.result.count
+            },
+            metadata: {
+              family: getFamilyFromName(recipeGroup[0].itemName),
+              suffix: getSuffixFromName(recipeGroup[0].itemName)
+            }
+          }]
+    };
+
+    const ingredientVariants: VariantGroup<ItemReference[]> = {
+      mode: context.combineSimilarNodes ? variantMode : 'one_of',
+      variants: context.combineSimilarNodes 
+        ? recipeGroup.map(entry => {
+            const counts = getIngredientCounts(entry.recipe);
+            return {
+              value: Array.from(counts.entries())
+                .sort(([a], [b]) => a - b)
+                .map(([id, count]) => {
+                  const ingName = mcData.items[id]?.name;
+                  return {
+                    item: ingName,
+                    perCraftCount: count
+                  };
+                }),
+              metadata: {
+                family: getFamilyFromName(entry.itemName),
+                suffix: getSuffixFromName(entry.itemName)
+              }
+            };
+          })
+        : [{
+            value: Array.from(getIngredientCounts(recipeGroup[0].recipe).entries())
+              .sort(([a], [b]) => a - b)
+              .map(([id, count]) => {
+                const ingName = mcData.items[id]?.name;
+                return {
+                  item: ingName,
+                  perCraftCount: count
+                };
+              }),
+            metadata: {
+              family: getFamilyFromName(recipeGroup[0].itemName),
+              suffix: getSuffixFromName(recipeGroup[0].itemName)
+            }
+          }]
+    };
+
+    const craftNode: CraftNode = {
+      action: 'craft',
+      operator: 'AND',
+      variantMode,
+      what: whatVariants,
+      count: craftingsNeeded,
+      result: resultVariants,
+      ingredients: ingredientVariants,
+      variants: { mode: variantMode, variants: [] },
+      children: { mode: variantMode, variants: [] },
+      context
+    };
+
+    if (variantMode === 'one_of') {
+      constraintManager.addConstraint(primaryItem, {
+        type: 'one_of',
+        availableVariants: variantsToUse,
+        constraintPath: context.parentPath
+      });
+    }
+
+    if (requiresCraftingTable(recipe) && !hasWorkstationDependency(craftNode, 'crafting_table')) {
+      const craftingTableTree = createWorkstationDependencyTree('crafting_table', context, ctx);
+      craftNode.children.variants.push({ value: craftingTableTree });
+    }
+
+    // Process ingredients (simplified version for specific recipe group)
+    const representativeVariant = ingredientVariants.variants[0];
+    if (representativeVariant) {
+      const ingredients = representativeVariant.value || [];
+      for (const ingredient of ingredients) {
+        if (!ingredient?.item) continue;
+        const perCraft = ingredient.perCraftCount || 1;
+        const requiredCount = perCraft * craftingsNeeded;
+        const similarItems = context.combineSimilarNodes
+          ? Array.from(new Set(findSameFamilyItems(mcData, ingredient.item)))
+          : [ingredient.item];
+        if (similarItems.length === 0) continue;
+        
+        const ingredientContext: BuildContext = {
+          ...context,
+          visited,
+          depth: context.depth + 1,
+          parentPath: [...context.parentPath, ingredient.item],
+          variantConstraints: constraintManager.clone()
+        };
+
+        const ingredientTree = buildRecipeTreeInternal(ctx, similarItems, requiredCount, ingredientContext);
+        craftNode.children.variants.push({ value: ingredientTree });
+      }
+    }
+
+    parentNode.children.variants.push({ value: craftNode });
+  }
+
   // Collect all recipes for all variants
   const allRecipes: Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}> = [];
   for (const name of variantsToUse) {
@@ -261,10 +398,10 @@ function buildRecipeTreeInternal(
     }
   }
 
-  // Group recipes by canonical shape (same structure across different wood types)
+  // Group recipes by canonical shape (same structure)
+  // All recipes with the same shape will be combined, with ingredient alternatives as OR branches
   const recipeGroups = new Map<string, Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>>();
   for (const entry of allRecipes) {
-    // Group similar recipes together only if combining is enabled
     const key = context.combineSimilarNodes ? getRecipeCanonicalKey(entry.recipe) : entry.itemName;
     
     if (!recipeGroups.has(key)) {
@@ -279,6 +416,32 @@ function buildRecipeTreeInternal(
     // Use first recipe as representative
     const recipe = recipeGroup[0].recipe;
     const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
+    
+    // Group recipes by ingredient suffix to identify alternatives
+    // (oak_log recipes vs oak_wood recipes are alternatives, not cumulative)
+    const recipeBySuffix = new Map<string, Array<{recipe: MinecraftRecipe, itemName: string, itemId: number}>>();
+    for (const entry of recipeGroup) {
+      const ingredientCounts = getIngredientCounts(entry.recipe);
+      const ingredientNames = Array.from(ingredientCounts.keys())
+        .map(id => mcData.items[id]?.name)
+        .filter(Boolean);
+      
+      // Use suffix as key (log, wood, planks, etc.)
+      const suffixKey = ingredientNames.map(name => getSuffixTokenFromName(name) || name).sort().join(',');
+      if (!recipeBySuffix.has(suffixKey)) {
+        recipeBySuffix.set(suffixKey, []);
+      }
+      recipeBySuffix.get(suffixKey)!.push(entry);
+    }
+    
+    // If there are multiple ingredient alternatives (log vs wood), create separate craft nodes
+    // These will be OR branches at the root level
+    if (recipeBySuffix.size > 1 && context.combineSimilarNodes) {
+      for (const [_suffix, subGroup] of recipeBySuffix.entries()) {
+        createCraftNodeForGroup(subGroup, craftingsNeeded, variantMode, root, context, mcData, nextVisited, ctx);
+      }
+      continue; // Skip the default single craft node creation below
+    }
 
     // Create variant groups for craft node
     const whatVariants: VariantGroup<'table' | 'inventory'> = createVariantGroup(
@@ -379,39 +542,58 @@ function buildRecipeTreeInternal(
     }
 
     // Process ingredients recursively
-    // When combining similar nodes, we only need to process one representative variant's ingredients
-    // since all variants in the group have structurally similar recipes
+    // Group ingredients by suffix (oak_log and stripped_oak_log together, oak_wood and stripped_oak_wood together)
+    // These become OR alternatives (you can use logs OR wood, not both)
     const ingredientVariantsList = ingredientVariants.variants || [];
-    const ingredientGroups = new Map<string, { items: string[]; primary: string; count: number }>();
+    const ingredientGroupsBySuffix = new Map<string, { items: string[]; primary: string; count: number }>();
 
-    // Use only the first variant's ingredients to avoid creating duplicate branches
-    const representativeVariant = ingredientVariantsList[0];
-    if (representativeVariant) {
-      const ingredients = representativeVariant.value || [];
+    // Collect all unique ingredient items across all recipe variants
+    const allIngredientItems = new Set<string>();
+    for (const variant of ingredientVariantsList) {
+      const ingredients = variant.value || [];
       for (const ingredient of ingredients) {
-        if (!ingredient?.item) continue;
-        const perCraft = ingredient.perCraftCount || 1;
-        const requiredCount = perCraft * craftingsNeeded;
-        // Use family-aware matching: oak_planks should only accept oak logs, not spruce
-        const similarItems = context.combineSimilarNodes
-          ? Array.from(new Set(findSameFamilyItems(mcData, ingredient.item)))
-          : [ingredient.item];
-        if (similarItems.length === 0) continue;
-        const key = [...similarItems].sort().join('|');
-        const existing = ingredientGroups.get(key);
-        if (existing) {
-          existing.count = Math.max(existing.count, requiredCount);
-        } else {
-          ingredientGroups.set(key, {
-            items: similarItems,
-            primary: ingredient.item,
-            count: requiredCount
-          });
+        if (ingredient?.item) {
+          allIngredientItems.add(ingredient.item);
         }
       }
     }
 
-    const groupedIngredients = Array.from(ingredientGroups.values()).sort((a, b) => a.primary.localeCompare(b.primary));
+    // Group ingredients by suffix family (log vs wood vs planks, etc.)
+    for (const ingredientItem of allIngredientItems) {
+      // Find the actual count from one of the recipe variants
+      let actualCount = 1;
+      for (const variant of ingredientVariantsList) {
+        const ingredients = variant.value || [];
+        const matchingIngredient = ingredients.find(ing => ing?.item === ingredientItem);
+        if (matchingIngredient) {
+          actualCount = matchingIngredient.perCraftCount || 1;
+          break;
+        }
+      }
+      
+      const requiredCount = actualCount * craftingsNeeded;
+      // Use family-aware matching: oak_planks should only accept oak family items
+      const similarItems = context.combineSimilarNodes
+        ? Array.from(new Set(findSameFamilyItems(mcData, ingredientItem)))
+        : [ingredientItem];
+      if (similarItems.length === 0) continue;
+      
+      // Group by suffix to create OR alternatives
+      const suffix = getSuffixTokenFromName(ingredientItem) || ingredientItem;
+      if (!ingredientGroupsBySuffix.has(suffix)) {
+        ingredientGroupsBySuffix.set(suffix, {
+          items: similarItems,
+          primary: ingredientItem,
+          count: requiredCount
+        });
+      } else {
+        // Merge items with the same suffix
+        const existing = ingredientGroupsBySuffix.get(suffix)!;
+        existing.items = Array.from(new Set([...existing.items, ...similarItems]));
+      }
+    }
+
+    const groupedIngredients = Array.from(ingredientGroupsBySuffix.values()).sort((a, b) => a.primary.localeCompare(b.primary));
 
     for (const group of groupedIngredients) {
       const ingredientItems = group.items;

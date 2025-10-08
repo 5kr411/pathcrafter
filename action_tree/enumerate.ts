@@ -50,7 +50,10 @@ function enumerateRoot(node: RootNode): ActionPath[] {
     paths.push(...enumerateNode(child.value).map(simplifyPath));
   }
 
-  return paths.length > 0 ? paths : [[]];
+  const mergeEnabled = shouldMergeSimilar(node);
+  const finalPaths = mergeEnabled ? mergeEquivalentPaths(paths) : paths;
+
+  return finalPaths.length > 0 ? finalPaths : [[]];
 }
 
 function enumerateCraftNode(node: CraftNode): ActionPath[] {
@@ -76,7 +79,9 @@ function enumerateSmeltNode(node: SmeltNode): ActionPath[] {
     for (const child of children) {
       paths.push(...enumerateNode(child.value).map(simplifyPath));
     }
-    return paths.length > 0 ? paths : [[]];
+    const mergeEnabled = shouldMergeSimilar(node);
+    const finalPaths = mergeEnabled ? mergeEquivalentPaths(paths) : paths;
+    return finalPaths.length > 0 ? finalPaths : [[]];
   }
 
   const dependencies = node.children.variants || [];
@@ -102,7 +107,9 @@ function enumerateGatherNode(node: MineLeafNode | HuntLeafNode): ActionPath[] {
     for (const child of children) {
       paths.push(...enumerateNode(child.value).map(simplifyPath));
     }
-    return paths.length > 0 ? paths : [[]];
+    const mergeEnabled = shouldMergeSimilar(node);
+    const finalPaths = mergeEnabled ? mergeEquivalentPaths(paths) : paths;
+    return finalPaths.length > 0 ? finalPaths : [[]];
   }
 
   const dependencies = node.children?.variants || [];
@@ -244,5 +251,106 @@ function mergeVariantGroup(target: any, source: any): void {
       existing.add(key);
     }
   });
+}
+
+function shouldMergeSimilar(node: VariantTreeNode | null | undefined): boolean {
+  return Boolean(node?.context?.combineSimilarNodes);
+}
+
+function mergeEquivalentPaths(paths: ActionPath[]): ActionPath[] {
+  if (paths.length <= 1) return paths;
+
+  const mergedByKey = new Map<string, ActionPath>();
+
+  for (const path of paths) {
+    const key = serialisePathForMerging(path);
+
+    const existing = mergedByKey.get(key);
+    if (!existing) {
+      mergedByKey.set(key, path.map(cloneStep));
+      continue;
+    }
+
+    for (let i = 0; i < existing.length; i++) {
+      const existingStep = existing[i];
+      const incomingStep = path[i];
+
+      if (!existingStep || !incomingStep) continue;
+
+      mergeVariantGroup(existingStep.what, incomingStep.what);
+      mergeVariantGroup(existingStep.result, incomingStep.result);
+      mergeVariantGroup(existingStep.ingredients, incomingStep.ingredients);
+      mergeVariantGroup(existingStep.input, incomingStep.input);
+      mergeVariantGroup(existingStep.fuel, incomingStep.fuel);
+      mergeVariantGroup(existingStep.tool, incomingStep.tool);
+      mergeVariantGroup(existingStep.targetItem, incomingStep.targetItem);
+      mergeVariantGroup(existingStep.dropChance, incomingStep.dropChance);
+
+      if (typeof existingStep.count === 'number' && typeof incomingStep.count === 'number') {
+        existingStep.count = Math.max(existingStep.count, incomingStep.count);
+      }
+    }
+  }
+
+  return Array.from(mergedByKey.values()).map(path => path.map(cloneStep));
+}
+
+function serialisePathForMerging(path: ActionPath): string {
+  return path.map(serialiseStepForMerging).join('>');
+}
+
+function serialiseStepForMerging(step: ActionStep): string {
+  const fields = [
+    step.action,
+    step.variantMode,
+    serialiseVariantGroupForKey(step.what, true),
+    serialiseVariantGroupForKey(step.result, true, normaliseResultVariant),
+    serialiseVariantGroupForKey(step.ingredients, true, normaliseIngredientsVariant),
+    serialiseVariantGroupForKey(step.input, true),
+    serialiseVariantGroupForKey(step.fuel, true),
+    serialiseVariantGroupForKey(step.tool, true),
+    serialiseVariantGroupForKey(step.targetItem, true),
+    serialiseVariantGroupForKey(step.dropChance, true)
+  ];
+
+  return fields.join('|');
+}
+
+function serialiseVariantGroupForKey(
+  group: any,
+  ignoreValues?: boolean,
+  valueNormaliser?: (value: any) => any
+): string {
+  if (!group) return '';
+  const serialisedVariants = (group.variants || [])
+    .map((variant: any) => {
+      if (ignoreValues) {
+        return variant.metadata?.family || '';
+      }
+      const value = valueNormaliser ? valueNormaliser(variant.value) : variant.value;
+      return JSON.stringify(value);
+    })
+    .sort();
+  return `${group.mode}|${serialisedVariants.join(',')}`;
+}
+
+function normaliseResultVariant(result: any): any {
+  if (!result) return result;
+  const { item: _ignoredItem, perCraftCount: _ignoredPerCraft, ...rest } = result;
+  return rest;
+}
+
+function normaliseIngredientsVariant(ingredients: any): any {
+  if (!Array.isArray(ingredients)) return ingredients;
+  return ingredients
+    .map((ing: any) => {
+      const { item: _ignoredItem, ...rest } = ing || {};
+      return rest;
+    })
+    .sort((a: any, b: any) => {
+      const countA = a?.perCraftCount ?? 0;
+      const countB = b?.perCraftCount ?? 0;
+      return countA - countB;
+    });
 }
 
