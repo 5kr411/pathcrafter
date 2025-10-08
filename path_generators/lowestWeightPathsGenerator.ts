@@ -1,7 +1,11 @@
 import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions } from './types';
-import { enumerateActionPaths } from '../action_tree/enumerate';
-import { computePathWeight } from '../utils/pathUtils';
+import { computePathWeight, stepWeight } from '../utils/pathUtils';
+import { createStreamingEnumerator } from './utils/streamingEnumerator';
+
+function clonePath(path: ActionPath): ActionPath {
+  return path.map(step => ({ ...step }));
+}
 
 /**
  * Enumerates paths from a tree in lowest-weight-first order
@@ -11,15 +15,14 @@ import { computePathWeight } from '../utils/pathUtils';
  */
 export function* enumerateLowestWeightPathsGenerator(
   tree: TreeNode,
-  _options: GeneratorOptions = {}
+  options: GeneratorOptions = {}
 ): Generator<ActionPath, void, unknown> {
-  // Use the new variant-first enumerator and sort by weight
-  const paths = enumerateActionPaths(tree);
-  
-  // Sort paths by weight (lowest first)
-  const sortedPaths = paths.sort((a, b) => computePathWeight(a) - computePathWeight(b));
-  
-  for (const path of sortedPaths) {
-    yield path;
+  const stream = createStreamingEnumerator(tree, options, {
+    scorePath: computePathWeight,
+    scoreStep: stepWeight
+  });
+
+  for (const item of stream()) {
+    yield clonePath(item.path);
   }
 }

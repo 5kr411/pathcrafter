@@ -1,6 +1,10 @@
 import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions } from './types';
-import { enumerateActionPaths } from '../action_tree/enumerate';
+import { createStreamingEnumerator } from './utils/streamingEnumerator';
+
+function clonePath(path: ActionPath): ActionPath {
+  return path.map(step => ({ ...step }));
+}
 
 /**
  * Enumerates action paths from a tree using a basic generator strategy
@@ -10,13 +14,15 @@ import { enumerateActionPaths } from '../action_tree/enumerate';
  */
 export function* enumerateActionPathsGenerator(
   tree: TreeNode,
-  _options: GeneratorOptions = {}
+  options: GeneratorOptions = {}
 ): Generator<ActionPath, void, unknown> {
-  // Use the new variant-first enumerator
-  const paths = enumerateActionPaths(tree);
-  
-  for (const path of paths) {
-    yield path;
+  const stream = createStreamingEnumerator(tree, options, {
+    scorePath: () => 0,
+    scoreStep: () => 0
+  });
+
+  for (const item of stream()) {
+    yield clonePath(item.path);
   }
 }
 

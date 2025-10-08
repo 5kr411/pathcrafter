@@ -1,7 +1,7 @@
 import analyzeRecipes from '../../recipeAnalyzer';
 
 describe('integration: combine wood families reduces branching', () => {
-    const { resolveMcData, countActionPaths } = (analyzeRecipes as any)._internals;
+    const { resolveMcData } = (analyzeRecipes as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('stick tree has fewer nodes with combineSimilarNodes=true', () => {
@@ -35,29 +35,33 @@ describe('integration: combine wood families reduces branching', () => {
         expect(hasVariants(treeWithout)).toBe(false);
     });
 
-    test('wooden_pickaxe tree has fewer paths with combineSimilarNodes=true', () => {
-        const treeWithout = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
+    test('wooden_pickaxe tree merges alternative ingredient chains', () => {
+        const { enumerateActionPaths } = (analyzeRecipes as any)._internals;
+
+        const separateTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
             log: false, 
             inventory: {}, 
             combineSimilarNodes: false 
         });
-        
-        const treeWith = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
+        const separatePaths = enumerateActionPaths(separateTree);
+
+        const combinedTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
             log: false, 
             inventory: {}, 
             combineSimilarNodes: true 
         });
+        const combinedPaths = enumerateActionPaths(combinedTree);
 
-        // Note: The combined tree may actually have MORE paths because it shows
-        // all recipe options (for flexibility), but the display is compressed
-        // The benefit is in readability, not path reduction
-        
-        // Both should have at least some valid paths
-        const pathsWithout = countActionPaths(treeWithout);
-        const pathsWith = countActionPaths(treeWith);
-        
-        expect(pathsWith).toBeGreaterThan(0);
-        expect(pathsWithout).toBeGreaterThan(0);
+        // Combined tree exposes all ingredient families within shared steps,
+        // so the enumerated path count is expected to grow instead of shrink.
+        expect(combinedPaths.length).toBeGreaterThan(separatePaths.length);
+
+        // Ensure merged craft steps still expose variant options
+        const pickCraftStep = combinedPaths
+            .flatMap((path: any[]) => path)
+            .find((step: any) => step.action === 'craft' && step.result?.variants?.some((v: any) => v.value.item === 'wooden_pickaxe'));
+        expect(pickCraftStep).toBeDefined();
+        expect((pickCraftStep!.ingredients?.variants || []).length).toBeGreaterThan(1);
     });
 
     test('crafting_table tree has fewer nodes with combineSimilarNodes=true', () => {

@@ -1,6 +1,10 @@
 import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions } from './types';
-import { enumerateActionPaths } from '../action_tree/enumerate';
+import { createStreamingEnumerator } from './utils/streamingEnumerator';
+
+function clonePath(path: ActionPath): ActionPath {
+  return path.map(step => ({ ...step }));
+}
 
 /**
  * Enumerates paths from a tree in shortest-first order
@@ -10,16 +14,15 @@ import { enumerateActionPaths } from '../action_tree/enumerate';
  */
 export function* enumerateShortestPathsGenerator(
   tree: TreeNode,
-  _options: GeneratorOptions = {}
+  options: GeneratorOptions = {}
 ): Generator<ActionPath, void, unknown> {
-  // Use the new variant-first enumerator and sort by length
-  const paths = enumerateActionPaths(tree);
-  
-  // Sort paths by length (shortest first)
-  const sortedPaths = paths.sort((a, b) => a.length - b.length);
-  
-  for (const path of sortedPaths) {
-    yield path;
+  const stream = createStreamingEnumerator(tree, options, {
+    scorePath: path => path.length,
+    scoreStep: step => (step?.count ? Math.max(1, Number(step.count)) : 1)
+  });
+
+  for (const item of stream()) {
+    yield clonePath(item.path);
   }
 }
 

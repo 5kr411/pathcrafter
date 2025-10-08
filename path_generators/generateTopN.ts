@@ -3,8 +3,10 @@ import { Worker } from 'worker_threads';
 import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions, EnumeratorJob, WorkerMessage } from './types';
 
-import { _internals as plannerInternals } from '../planner';
 import { computePathWeight } from '../utils/pathUtils';
+import { enumerateActionPathsGenerator } from './actionPathsGenerator';
+import { enumerateShortestPathsGenerator } from './shortestPathsGenerator';
+import { enumerateLowestWeightPathsGenerator } from './lowestWeightPathsGenerator';
 
 /**
  * Takes the first N items from an iterator
@@ -111,19 +113,19 @@ export async function generateTopNPathsFromGenerators(
     // Fallback to synchronous generation
     try {
       const a: ActionPath[] = [];
-      const iterA = plannerInternals.enumerateActionPathsGenerator(tree, { inventory });
+      const iterA = enumerateActionPathsGenerator(tree, { inventory });
       for (const p of takeN(iterA, perGenerator)) {
         a.push(p as ActionPath);
       }
 
       const b: ActionPath[] = [];
-      const iterS = plannerInternals.enumerateShortestPathsGenerator(tree, { inventory });
+      const iterS = enumerateShortestPathsGenerator(tree, { inventory });
       for (const p of takeN(iterS, perGenerator)) {
         b.push(p as ActionPath);
       }
 
       const c: ActionPath[] = [];
-      const iterL = plannerInternals.enumerateLowestWeightPathsGenerator(tree, { inventory });
+      const iterL = enumerateLowestWeightPathsGenerator(tree, { inventory });
       for (const p of takeN(iterL, perGenerator)) {
         c.push(p as ActionPath);
       }
