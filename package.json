@@ -8,7 +8,9 @@
     "build:watch": "tsc --watch",
     "test": "jest --runInBand",
     "test:watch": "jest --watch",
-    "test:ci": "jest --ci"
+    "test:ci": "jest --ci",
+    "test:unit": "jest --runInBand tests/unit",
+    "test:integration": "jest --runInBand tests/integration"
   },
   "author": "",
   "license": "ISC",

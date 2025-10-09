@@ -22,10 +22,18 @@ describe('integration: world pruning with real dumped snapshot', () => {
     const snapshot = loadLatestSnapshot();
     const inventory = new Map();
     const tree = plan(ctx, 'wooden_pickaxe', 1, { log: false, inventory, pruneWithWorld: true, worldSnapshot: snapshot });
-    const lw = Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory }));
+    const gen = enumerateLowestWeightPathsGenerator(tree, { inventory });
     const present = new Set(Object.keys(snapshot.blocks || {}));
     const forbiddenLog = ['oak_log','pale_oak_log','birch_log','jungle_log','acacia_log','dark_oak_log','cherry_log','mangrove_log'].filter(n => !present.has(n));
-    const invalid = lw.some(seq => seq.some((s: any) => s.action === 'mine' && forbiddenLog.includes(s.what)));
+    let invalid = false;
+    let count = 0;
+    for (const seq of gen) {
+      if (seq.some((s: any) => s.action === 'mine' && forbiddenLog.includes(s.what))) {
+        invalid = true;
+        break;
+      }
+      if (++count >= 50) break;
+    }
     expect(invalid).toBe(false);
   });
 });

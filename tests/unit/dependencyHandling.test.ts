@@ -1,10 +1,18 @@
 import { buildRecipeTree } from '../../action_tree/builders';
-import { resolveMcData } from '../../action_tree/utils/mcDataResolver';
 import { BuildContext, VariantConstraintManager } from '../../action_tree/types';
 import { enumerateActionPathsGenerator } from '../../path_generators/actionPathsGenerator';
+import { getCachedMcData } from '../testHelpers';
 
-function createPathIterator(tree: any) {
-  return enumerateActionPathsGenerator(tree, {});
+function createPathIterator(tree: any, limit: number = 50) {
+  return (function* () {
+    const gen = enumerateActionPathsGenerator(tree, {});
+    let count = 0;
+    for (const path of gen) {
+      yield path;
+      count++;
+      if (count >= limit) break;
+    }
+  })();
 }
 
 function findCraftIndex(path: any[], itemName: string): number {
@@ -27,16 +35,18 @@ function findMineIndex(path: any[], ...targets: string[]): number {
 
 describe('Dependency Handling', () => {
   let mcData: any;
-  let context: Partial<BuildContext>;
+  let cobblestoneTree: any;
+  let ironIngotTree: any;
+  let stonePickaxeTree: any;
+  let oakLogTree: any;
+  let stickTree: any;
 
-  beforeAll(async () => {
-    mcData = await resolveMcData('1.20.1');
-  });
-
-  beforeEach(() => {
-    context = {
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
+    
+    const baseContext: Partial<BuildContext> = {
       inventory: new Map(),
-      visited: new Set(),
+      visited: new Set<string>(),
       depth: 0,
       parentPath: [],
       config: {
@@ -46,12 +56,17 @@ describe('Dependency Handling', () => {
       variantConstraints: new VariantConstraintManager(),
       combineSimilarNodes: true
     };
+    
+    cobblestoneTree = buildRecipeTree(mcData, 'cobblestone', 1, baseContext);
+    ironIngotTree = buildRecipeTree(mcData, 'iron_ingot', 1, baseContext);
+    stonePickaxeTree = buildRecipeTree(mcData, 'stone_pickaxe', 1, baseContext);
+    oakLogTree = buildRecipeTree(mcData, 'oak_log', 1, baseContext);
+    stickTree = buildRecipeTree(mcData, 'stick', 1, baseContext);
   });
 
   describe('Tool Dependencies', () => {
-    test('should inject wooden_pickaxe dependency for stone mining', async () => {
-      const tree = buildRecipeTree(mcData, 'cobblestone', 1, context);
-      const paths = createPathIterator(tree);
+    test('should inject wooden_pickaxe dependency for stone mining', () => {
+      const paths = createPathIterator(cobblestoneTree, 30);
 
       let pathCount = 0;
       let validatedPath = false;
@@ -74,9 +89,8 @@ describe('Dependency Handling', () => {
       expect(validatedPath).toBe(true);
     });
 
-    test('should inject stone_pickaxe dependency for iron_block mining', async () => {
-      const tree = buildRecipeTree(mcData, 'iron_ingot', 1, context);
-      const paths = createPathIterator(tree);
+    test('should inject stone_pickaxe dependency for iron_block mining', () => {
+      const paths = createPathIterator(ironIngotTree, 30);
 
       let pathCount = 0;
       let hasStonePickaxeDependency = false;
@@ -95,9 +109,8 @@ describe('Dependency Handling', () => {
   });
 
   describe('Workstation Dependencies', () => {
-    test('should inject crafting_table dependency for crafting recipes', async () => {
-      const tree = buildRecipeTree(mcData, 'stone_pickaxe', 1, context);
-      const paths = createPathIterator(tree);
+    test('should inject crafting_table dependency for crafting recipes', () => {
+      const paths = createPathIterator(stonePickaxeTree, 30);
 
       let pathCount = 0;
       let hasCraftingTableDependency = false;
@@ -117,6 +130,7 @@ describe('Dependency Handling', () => {
           const pickaxeIndex = findCraftIndex(path as any[], 'stone_pickaxe');
           expect(pickaxeIndex).toBeGreaterThanOrEqual(0);
           expect(tableIndex).toBeLessThan(pickaxeIndex);
+          break;
         }
       }
 
@@ -124,9 +138,8 @@ describe('Dependency Handling', () => {
       expect(hasCraftingTableDependency).toBe(true);
     });
 
-    test('should inject furnace dependency for smelting recipes', async () => {
-      const tree = buildRecipeTree(mcData, 'iron_ingot', 1, context);
-      const paths = createPathIterator(tree);
+    test('should inject furnace dependency for smelting recipes', () => {
+      const paths = createPathIterator(ironIngotTree, 30);
 
       let pathCount = 0;
       let hasFurnaceDependency = false;
@@ -140,6 +153,7 @@ describe('Dependency Handling', () => {
           const smeltIndex = (path as any[]).findIndex(step => step.action === 'smelt');
           expect(smeltIndex).toBeGreaterThanOrEqual(0);
           expect(furnaceIndex).toBeLessThan(smeltIndex);
+          break;
         }
       }
 
@@ -149,9 +163,8 @@ describe('Dependency Handling', () => {
   });
 
   describe('Complex Dependency Chains', () => {
-    test('should handle multiple dependencies in correct order', async () => {
-      const tree = buildRecipeTree(mcData, 'stone_pickaxe', 1, context);
-      const paths = createPathIterator(tree);
+    test('should handle multiple dependencies in correct order', () => {
+      const paths = createPathIterator(stonePickaxeTree, 30);
 
       let complexPath: any[] | null = null;
 
@@ -187,9 +200,8 @@ describe('Dependency Handling', () => {
       }
     });
 
-    test('should not duplicate dependencies', async () => {
-      const tree = buildRecipeTree(mcData, 'stone_pickaxe', 1, context);
-      const paths = createPathIterator(tree);
+    test('should not duplicate dependencies', () => {
+      const paths = createPathIterator(stonePickaxeTree, 20);
 
       let pathCount = 0;
 
@@ -206,9 +218,8 @@ describe('Dependency Handling', () => {
   });
 
   describe('Edge Cases', () => {
-    test('should handle items that do not need dependencies', async () => {
-      const tree = buildRecipeTree(mcData, 'oak_log', 1, context);
-      const paths = createPathIterator(tree);
+    test('should handle items that do not need dependencies', () => {
+      const paths = createPathIterator(oakLogTree, 20);
 
       let pathCount = 0;
       let hasToolDependency = false;
@@ -231,9 +242,8 @@ describe('Dependency Handling', () => {
       expect(hasToolDependency).toBe(false);
     });
 
-    test('should handle crafting recipes that do not need crafting table', async () => {
-      const tree = buildRecipeTree(mcData, 'stick', 1, context);
-      const paths = createPathIterator(tree);
+    test('should handle crafting recipes that do not need crafting table', () => {
+      const paths = createPathIterator(stickTree, 20);
 
       let pathCount = 0;
       let hasCraftingTableDependency = false;

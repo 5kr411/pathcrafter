@@ -12,3 +12,9 @@ if (!process.env.LOG_LEVEL) {
 import logger from '../utils/logger';
 logger.setLevel(process.env.LOG_LEVEL || 'SILENT');
 
+(global as any).TEST_CACHE = {
+    mcData: new Map(),
+    trees: new Map(),
+    paths: new Map()
+};
+

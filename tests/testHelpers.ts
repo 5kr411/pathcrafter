@@ -3,6 +3,40 @@
  */
 
 import { VariantGroup, ActionStep, ItemReference } from '../action_tree/types';
+import { resolveMcData } from '../action_tree/utils/mcDataResolver';
+import { buildRecipeTree } from '../action_tree/builders';
+import { enumerateActionPathsGenerator } from '../path_generators/actionPathsGenerator';
+
+const getCache = () => (global as any).TEST_CACHE || { mcData: new Map(), trees: new Map(), paths: new Map() };
+
+export function getCachedMcData(version: string = '1.20.1'): any {
+    const cache = getCache().mcData;
+    if (!cache.has(version)) {
+        cache.set(version, resolveMcData(version));
+    }
+    return cache.get(version);
+}
+
+export function getCachedTree(mcData: any, item: string, count: number, context: any): any {
+    const key = JSON.stringify({ item, count, context });
+    const cache = getCache().trees;
+    if (!cache.has(key)) {
+        cache.set(key, buildRecipeTree(mcData, item, count, context));
+    }
+    return cache.get(key);
+}
+
+export function limitedPathIterator(tree: any, options: any = {}, limit: number = 20): Generator<any[], void, unknown> {
+    return (function* () {
+        const gen = enumerateActionPathsGenerator(tree, options);
+        let count = 0;
+        for (const path of gen) {
+            yield path;
+            count++;
+            if (count >= limit) break;
+        }
+    })();
+}
 
 /**
  * Creates a VariantGroup from a single value
