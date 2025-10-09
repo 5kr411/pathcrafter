@@ -13,7 +13,12 @@ describe.skip('unit: Top-up scenarios prefer minimal additional mining', () => {
     }
 
     test('stone_pickaxe with 2 cobblestone prefers cobblestone top-up (shortest and lowest)', () => {
-        const inventory = { cobblestone: 2, stick: 2, crafting_table: 1, oak_planks: 10 };
+        const inventory = new Map([
+            ['cobblestone', 2],
+            ['stick', 2],
+            ['crafting_table', 1],
+            ['oak_planks', 10]
+        ]);
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
             blocks: { 
@@ -43,7 +48,13 @@ describe.skip('unit: Top-up scenarios prefer minimal additional mining', () => {
     });
 
     test('raw_iron with 2 cobblestone prefers cobblestone top-up (shortest and lowest)', () => {
-        const inventory = { cobblestone: 2, stick: 2, crafting_table: 1, oak_planks: 10, wooden_pickaxe: 1 };
+        const inventory = new Map([
+            ['cobblestone', 2],
+            ['stick', 2],
+            ['crafting_table', 1],
+            ['oak_planks', 10],
+            ['wooden_pickaxe', 1]
+        ]);
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
             blocks: { 

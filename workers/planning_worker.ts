@@ -56,8 +56,12 @@ parentPort.on('message', async (msg: PlanMessage) => {
     const mcData = _internals.resolveMcData(mcVersion || '1.20.1');
     logger.debug(`PlanningWorker: building recipe tree`);
     const tBuildStart = Date.now();
+    
+    // Convert inventory from Record to Map (workers can't serialize Maps)
+    const inventoryMap = inventory ? new Map(Object.entries(inventory)) : undefined;
+    
     const tree = plan(mcData, item, count, {
-      inventory,
+      inventory: inventoryMap,
       log: false,
       pruneWithWorld: !!pruneWithWorld,
       worldSnapshot: snapshot

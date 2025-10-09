@@ -14,7 +14,7 @@ describe('unit: comprehensive variant metadata tests', () => {
     });
 
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateActionPathsGenerator(tree, { inventory: new Map() });
     
     // Should only need a few paths now
     let count = 0;
@@ -62,14 +62,14 @@ describe('unit: comprehensive variant metadata tests', () => {
 
     // Count paths for both
     let noCombineCount = 0;
-    const genNoCombine = enumerateActionPathsGenerator(treeWithoutCombining, { inventory: {} });
+    const genNoCombine = enumerateActionPathsGenerator(treeWithoutCombining, { inventory: new Map() });
     for (const _ of genNoCombine) {
       noCombineCount++;
       if (noCombineCount >= 50) break;
     }
 
     let combineCount = 0;
-    const genCombine = enumerateActionPathsGenerator(treeWithCombining, { inventory: {} });
+    const genCombine = enumerateActionPathsGenerator(treeWithCombining, { inventory: new Map() });
     for (const _ of genCombine) {
       combineCount++;
       if (combineCount >= 50) break;
@@ -90,7 +90,7 @@ describe('unit: comprehensive variant metadata tests', () => {
     });
 
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateActionPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {
@@ -121,16 +121,17 @@ describe('unit: comprehensive variant metadata tests', () => {
   });
 
   test('performance: generates paths quickly with metadata', () => {
+    const inventory = new Map([['crafting_table', 1]]);
     const tree = plan(mcData, 'wooden_pickaxe', 1, { 
       log: false, 
-      inventory: { crafting_table: 1 }, 
+      inventory, 
       combineSimilarNodes: true 
     });
 
     const startTime = Date.now();
     
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: { crafting_table: 1 } });
+    const gen = enumerateActionPathsGenerator(tree, { inventory });
     
     let count = 0;
     for (const path of gen) {
@@ -161,7 +162,7 @@ describe('unit: comprehensive variant metadata tests', () => {
 
     generators.forEach(generatorFn => {
       const paths: any[] = [];
-      const gen = generatorFn(tree, { inventory: {} });
+      const gen = generatorFn(tree, { inventory: new Map() });
       
       let count = 0;
       for (const path of gen) {

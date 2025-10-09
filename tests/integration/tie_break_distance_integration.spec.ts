@@ -32,7 +32,7 @@ describe.skip('integration: Top-N tie-break prefers closer blocks from snapshot'
     
     // Need crafting table in inventory or available in world
     const hasCraftingTable = (snapshot.blocks && 'crafting_table' in snapshot.blocks) || false;
-    const inventory: Record<string, number> = hasCraftingTable ? {} : { crafting_table: 1 };
+    const inventory = hasCraftingTable ? new Map() : new Map([['crafting_table', 1]]);
     
     const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
       inventory,
@@ -75,7 +75,7 @@ describe.skip('integration: Top-N tie-break prefers closer blocks from snapshot'
     if (!present.some(n => /_log$/.test(n))) return; // skip if snapshot has no logs
     
     const mcData = minecraftData('1.20.1');
-    const inventory = {};
+    const inventory = new Map();
     
     const tree = plan(mcData, 'wooden_pickaxe', 1, {
       inventory,
@@ -115,7 +115,7 @@ describe.skip('integration: Top-N tie-break prefers closer blocks from snapshot'
     if (presentLogs.length === 0) return; // skip if snapshot has no logs
     
     const mcData = minecraftData('1.20.1');
-    const inventory = {};
+    const inventory = new Map();
     
     const tree = plan(mcData, 'wooden_pickaxe', 1, {
       inventory,

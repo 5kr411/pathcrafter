@@ -28,7 +28,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
 
     const tree = plan(mcData, 'stick', 1, {
       log: false,
-      inventory: {},
+      inventory: new Map(),
       combineSimilarNodes: true,
       pruneWithWorld: true,
       worldSnapshot: snapshot
@@ -86,7 +86,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
 
     const tree = plan(mcData, 'wooden_pickaxe', 1, {
       log: false,
-      inventory: {},
+      inventory: new Map(),
       combineSimilarNodes: true,
       pruneWithWorld: true,
       worldSnapshot: snapshot
@@ -136,7 +136,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -190,7 +190,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
 
     const tree = plan(mcData, 'bone', 1, {
       log: false,
-      inventory: {},
+      inventory: new Map(),
       combineSimilarNodes: true,
       pruneWithWorld: true,
       worldSnapshot: snapshot
@@ -243,7 +243,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 20,
       log: false,
@@ -275,7 +275,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -321,7 +321,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -373,7 +373,7 @@ describe.skip('integration: variant filtering with combined nodes', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,

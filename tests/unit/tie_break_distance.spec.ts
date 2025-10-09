@@ -17,7 +17,7 @@ describe.skip('unit: Top-N tie-break by snapshot distance', () => {
       },
       entities: {}
     };
-    const inventory = { crafting_table: 1 };
+    const inventory = new Map([['crafting_table', 1]]);
     const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
       inventory,
       worldSnapshot: snapshot,
@@ -57,7 +57,7 @@ describe.skip('unit: Top-N tie-break by snapshot distance', () => {
       entities: {}
     };
     const mcData = minecraftData('1.20.1');
-    const inventory = { crafting_table: 1 };
+    const inventory = new Map([['crafting_table', 1]]);
     
       const tree = plan(mcData, 'wooden_pickaxe', 1, {
         inventory,
@@ -120,7 +120,7 @@ describe.skip('unit: Top-N tie-break by snapshot distance', () => {
       entities: {}
     };
     const mcData = minecraftData('1.20.1');
-    const inventory = { crafting_table: 1 };
+    const inventory = new Map([['crafting_table', 1]]);
     
     const tree = plan(mcData, 'wooden_pickaxe', 1, {
       inventory,

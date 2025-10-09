@@ -20,7 +20,7 @@ describe('integration: world pruning with real dumped snapshot', () => {
 
   test('wooden_pickaxe plan avoids species not present in snapshot', () => {
     const snapshot = loadLatestSnapshot();
-    const inventory = {};
+    const inventory = new Map();
     const tree = plan(ctx, 'wooden_pickaxe', 1, { log: false, inventory, pruneWithWorld: true, worldSnapshot: snapshot });
     const lw = Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory }));
     const present = new Set(Object.keys(snapshot.blocks || {}));

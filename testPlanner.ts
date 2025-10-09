@@ -16,10 +16,10 @@ const mcData = resolveMcData('1.20.1');
 
 const item = 'wooden_pickaxe';
 const count = 1;
-const inventory = { /*cobblestone: 2, stick: 2, crafting_table: 1 */ };
+const inventory = new Map(/* [['cobblestone', 2], ['stick', 2], ['crafting_table', 1]] */);
 const combineSimilarNodes = true; // Set to false to see full tree explosion
 logger.info(`Analyzing target item: ${item} x${count}`);
-logger.info(`\nUsing inventory: ${JSON.stringify(inventory)}`);
+logger.info(`\nUsing inventory: ${JSON.stringify(Array.from(inventory.entries()))}`);
 logger.info(`\nCombine similar nodes: ${combineSimilarNodes}`);
 const tree = plan(mcData, item, count, { log: false, inventory, combineSimilarNodes });
 

@@ -7,7 +7,7 @@ describe.skip('integration: behavior_generator craft-in-table', () => {
     const mcData = resolveMcData('1.20.1');
 
     test('creates behavior for a craft-in-table step from planner path with break step', () => {
-        const inventory = { oak_planks: 4, stick: 2 };
+        const inventory = new Map([["oak_planks", 4], ["stick", 2]]);
         const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const [path] = Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory })) as ActionStep[][];
         expect(path).toBeDefined();

@@ -24,7 +24,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         const tree = analyzeRecipes(mcData, 'stick', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -36,7 +36,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         // Enumerate some paths to ensure they're valid
         const shortestPaths = [];
-        const gen = enumerateShortestPathsGenerator(tree, { inventory: {} });
+        const gen = enumerateShortestPathsGenerator(tree, { inventory: new Map() });
         for (let i = 0; i < 5; i++) {
             const next = gen.next();
             if (next.done) break;
@@ -65,7 +65,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         const tree = analyzeRecipes(mcData, 'stick', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -114,7 +114,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         const tree = analyzeRecipes(mcData, 'stick', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -163,7 +163,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         const tree = analyzeRecipes(mcData, 'raw_iron', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -218,7 +218,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         const tree = analyzeRecipes(mcData, 'raw_gold', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -289,7 +289,7 @@ describe('integration: world filtering with combined nodes', () => {
 
         const tree = analyzeRecipes(mcData, 'diamond', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot

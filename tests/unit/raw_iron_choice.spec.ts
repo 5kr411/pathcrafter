@@ -11,7 +11,7 @@ describe('unit: raw_iron choice with stone_pickaxe in inventory', () => {
     }
 
     test('x1 prefers iron_ore over raw_iron_block (lowest-weight)', () => {
-        const inventory = { stone_pickaxe: 1 };
+        const inventory = new Map([['stone_pickaxe', 1]]);
         const tree = plan(mc, 'raw_iron', 1, { log: false, inventory });
         const lwFirst = firstPathSteps(enumerateLowestWeightPathsGenerator(tree, { inventory }));
         const lwMines = lwFirst.filter((s: any) => s && s.action === 'mine').map((s: any) => s.what.variants[0].value);
@@ -20,7 +20,7 @@ describe('unit: raw_iron choice with stone_pickaxe in inventory', () => {
     });
 
     test('x3 prefers raw_iron_block over iron_ore (lowest-weight)', () => {
-        const inventory = { stone_pickaxe: 1 };
+        const inventory = new Map([['stone_pickaxe', 1]]);
         const tree = plan(mc, 'raw_iron', 3, { log: false, inventory });
         const lwFirst = firstPathSteps(enumerateLowestWeightPathsGenerator(tree, { inventory }));
         const lwMines = lwFirst.filter((s: any) => s && s.action === 'mine').map((s: any) => s.what.variants[0].value);

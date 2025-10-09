@@ -5,7 +5,7 @@ describe.skip('unit: planner world-pruning (generic wood disabled)', () => {
   const ctx = '1.20.1';
 
   test('insufficient ore count prunes mining paths', () => {
-    const inventory = { stone_pickaxe: 1 };
+    const inventory = new Map([['stone_pickaxe', 1]]);
     const worldSnapshot = {
       version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
       blocks: { iron_ore: { count: 0, closestDistance: null, averageDistance: 0 } }, entities: {}
@@ -18,7 +18,7 @@ describe.skip('unit: planner world-pruning (generic wood disabled)', () => {
   });
 
   test('limited ore count allows only requested quantity', () => {
-    const inventory = { stone_pickaxe: 1 };
+    const inventory = new Map([['stone_pickaxe', 1]]);
     const worldSnapshot = {
       version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
       blocks: { iron_ore: { count: 1, closestDistance: 10, averageDistance: 10 } }, entities: {}

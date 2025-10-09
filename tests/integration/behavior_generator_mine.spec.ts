@@ -8,7 +8,7 @@ describe('integration: behavior_generator mine', () => {
 
     test('creates behavior for a mine leaf step from planner path', () => {
         // Start with tools already available to avoid expensive tree generation
-        const inventory = { wooden_pickaxe: 1 };
+        const inventory = new Map([["wooden_pickaxe", 1]]);
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
             blocks: { cobblestone: { count: 10, closestDistance: 5, averageDistance: 10 } },

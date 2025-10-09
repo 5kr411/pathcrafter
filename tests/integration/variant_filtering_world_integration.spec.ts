@@ -19,7 +19,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const rawPaths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 20,
       log: false,
@@ -74,7 +74,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const rawPaths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -136,7 +136,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 20,
       log: false,
@@ -169,7 +169,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const rawPaths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -226,7 +226,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
-      inventory: { crafting_table: 1 },
+      inventory: new Map([["crafting_table", 1]]),
       worldSnapshot: snapshot,
       perGenerator: 20,
       log: false,
@@ -276,7 +276,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -325,7 +325,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const rawPaths = await generateTopNAndFilter('1.20.1', 'stick', 4, {
-      inventory: { oak_planks: 2 }, // Have some oak planks already
+      inventory: new Map([['oak_planks', 2]]), // Have some oak planks already
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -374,7 +374,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -411,7 +411,7 @@ describe.skip('integration: variant filtering with world snapshots', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 20,
       log: false,

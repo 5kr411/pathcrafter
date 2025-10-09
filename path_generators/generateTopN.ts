@@ -60,14 +60,19 @@ export async function generateTopNPathsFromGenerators(
   const inventory = options && options.inventory ? options.inventory : undefined;
   const snapshot = options && options.worldSnapshot ? options.worldSnapshot : null;
 
+  // Convert Map to Record for worker serialization (workers can't serialize Maps)
+  const inventoryRecord = inventory instanceof Map 
+    ? Object.fromEntries(inventory.entries())
+    : undefined;
+
   // Determine worker path - use dist for compiled code, or find it relative to source
   const workerPath = __dirname.includes('/dist/') 
     ? path.resolve(__dirname, '../workers/enumerator_worker.js')
     : path.resolve(__dirname, '../dist/workers/enumerator_worker.js');
   const jobs: EnumeratorJob[] = [
-    { generator: 'action', tree, inventory, limit: perGenerator },
-    { generator: 'shortest', tree, inventory, limit: perGenerator },
-    { generator: 'lowest', tree, inventory, limit: perGenerator }
+    { generator: 'action', tree, inventory: inventoryRecord, limit: perGenerator },
+    { generator: 'shortest', tree, inventory: inventoryRecord, limit: perGenerator },
+    { generator: 'lowest', tree, inventory: inventoryRecord, limit: perGenerator }
   ];
 
   let results: ActionPath[][] = [];

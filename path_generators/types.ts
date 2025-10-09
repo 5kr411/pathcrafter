@@ -8,7 +8,7 @@ import { ActionPath, ActionStep } from '../action_tree/types';
  * Options for path generation
  */
 export interface GeneratorOptions {
-  inventory?: Record<string, number>;
+  inventory?: Map<string, number>;
   worldSnapshot?: WorldSnapshot;
   [key: string]: any;
 }

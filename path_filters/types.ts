@@ -65,7 +65,7 @@ export interface FilterOptions {
  * Options for path generation and filtering
  */
 export interface GenerateAndFilterOptions {
-  inventory?: Record<string, number>;
+  inventory?: Map<string, number>;
   worldSnapshot?: WorldSnapshot;
   perGenerator?: number;
   log?: boolean;

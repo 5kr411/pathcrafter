@@ -50,7 +50,7 @@ describe.skip('integration: aggregate top-N and dedupe across generators', () =>
 
     test('aggregated paths are returned sorted by non-decreasing weight', async () => {
         const { computePathWeight } = (analyzeRecipes as any)._internals;
-        const inventory = { crafting_table: 1, oak_planks: 3 };
+        const inventory = new Map([['crafting_table', 1], ['oak_planks', 3]]);
         const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const perGenerator = 20;
         const combinedSorted = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);

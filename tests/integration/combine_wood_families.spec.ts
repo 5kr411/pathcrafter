@@ -7,13 +7,13 @@ describe('integration: combine wood families reduces branching', () => {
     test('stick tree has fewer nodes with combineSimilarNodes=true', () => {
         const treeWithout = analyzeRecipes(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: false 
         });
         
         const treeWith = analyzeRecipes(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -40,14 +40,14 @@ describe('integration: combine wood families reduces branching', () => {
 
         const separateTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: false 
         });
         const separatePaths = enumerateActionPaths(separateTree);
 
         const combinedTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
         const combinedPaths = enumerateActionPaths(combinedTree);
@@ -67,13 +67,13 @@ describe('integration: combine wood families reduces branching', () => {
     test('crafting_table tree has fewer nodes with combineSimilarNodes=true', () => {
         const treeWithout = analyzeRecipes(mcData, 'crafting_table', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: false 
         });
         
         const treeWith = analyzeRecipes(mcData, 'crafting_table', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -121,7 +121,7 @@ describe('integration: combine wood families reduces branching', () => {
     test('combined tree maintains correct counts', () => {
         const tree = analyzeRecipes(mcData, 'stick', 4, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -146,7 +146,7 @@ describe('integration: combine wood families reduces branching', () => {
     test('combining propagates deep into subtrees', () => {
         const tree = analyzeRecipes(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 

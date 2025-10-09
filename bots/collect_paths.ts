@@ -299,6 +299,7 @@ bot.once('spawn', () => {
     );
     const version = bot.version || '1.20.1';
     const invObj = getInventoryObject(bot);
+    const inventoryMap = new Map(Object.entries(invObj));
 
     // Build adaptive snapshot options
     const snapOpts: SnapshotOptions = { radii: RUNTIME.snapshotRadii };
@@ -316,7 +317,7 @@ bot.once('spawn', () => {
       try {
         const mcData = minecraftData(version);
         const tree = planner(mcData, target.item, target.count, {
-          inventory: invObj,
+          inventory: inventoryMap,
           log: false,
           pruneWithWorld: RUNTIME.pruneWithWorld,
           combineSimilarNodes: RUNTIME.combineSimilarNodes,

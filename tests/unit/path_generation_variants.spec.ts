@@ -18,7 +18,7 @@ describe('unit: path generation with combined tree variants', () => {
 
     // Generate paths using action generator
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateActionPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {
@@ -74,7 +74,7 @@ describe('unit: path generation with combined tree variants', () => {
 
     // Generate paths
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateActionPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {
@@ -148,7 +148,7 @@ describe('unit: path generation with combined tree variants', () => {
     });
 
     const paths: any[] = [];
-    const gen = enumerateShortestPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateShortestPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {
@@ -181,7 +181,7 @@ describe('unit: path generation with combined tree variants', () => {
     });
 
     const paths: any[] = [];
-    const gen = enumerateLowestWeightPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateLowestWeightPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {
@@ -204,7 +204,7 @@ describe('unit: path generation with combined tree variants', () => {
     });
 
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateActionPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {
@@ -251,7 +251,7 @@ describe('unit: path generation with combined tree variants', () => {
     });
 
     const pathsNoCombine: any[] = [];
-    const genNoCombine = enumerateActionPathsGenerator(treeNoCombine, { inventory: {} });
+    const genNoCombine = enumerateActionPathsGenerator(treeNoCombine, { inventory: new Map() });
     
     let count = 0;
     for (const path of genNoCombine) {
@@ -263,12 +263,12 @@ describe('unit: path generation with combined tree variants', () => {
     // Tree with combining
     const treeCombined = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
     const pathsCombined: any[] = [];
-    const genCombined = enumerateActionPathsGenerator(treeCombined, { inventory: {} });
+    const genCombined = enumerateActionPathsGenerator(treeCombined, { inventory: new Map() });
     
     count = 0;
     for (const path of genCombined) {
@@ -308,7 +308,7 @@ describe('unit: path generation with combined tree variants', () => {
       combineSimilarNodes: true 
     });
 
-    const paths = await generateTopNPathsFromGenerators(tree, { inventory: {} }, 10);
+    const paths = await generateTopNPathsFromGenerators(tree, { inventory: new Map() }, 10);
 
     expect(paths.length).toBeGreaterThan(0);
     expect(paths.length).toBeLessThanOrEqual(30); // 10 per generator * 3 generators
@@ -333,7 +333,7 @@ describe('unit: path generation with combined tree variants', () => {
     });
 
     const paths: any[] = [];
-    const gen = enumerateActionPathsGenerator(tree, { inventory: {} });
+    const gen = enumerateActionPathsGenerator(tree, { inventory: new Map() });
     
     let count = 0;
     for (const path of gen) {

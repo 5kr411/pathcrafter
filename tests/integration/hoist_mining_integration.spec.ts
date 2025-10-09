@@ -20,7 +20,7 @@ describe.skip('integration: mining hoist applied post generation/filtering', () 
     resolveMcData('1.20.1');
 
     test('wooden_pickaxe: repeated log mining is hoisted into first occurrence', async () => {
-        const inventory = { crafting_table: 1 };
+        const inventory = new Map([["crafting_table", 1]]);
         const perGenerator = 50;
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2, radius: 32, yMin: 0, yMax: 255,
@@ -46,7 +46,7 @@ describe.skip('integration: mining hoist applied post generation/filtering', () 
     });
 
     test('hoisting respects tool differences', async () => {
-        const inventory = { crafting_table: 1, oak_planks: 10, wooden_pickaxe: 1 };
+        const inventory = new Map([["crafting_table", 1], ["oak_planks", 10], ["wooden_pickaxe", 1]]);
         const perGenerator = 20; // Reduced for speed
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,

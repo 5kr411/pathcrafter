@@ -20,7 +20,7 @@ describe('integration: path generation with combined tree variants', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 20,
       log: false,
@@ -49,7 +49,7 @@ describe('integration: path generation with combined tree variants', () => {
 
   test('combined variant paths work with inventory', async () => {
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 4, {
-      inventory: { oak_log: 2 },
+      inventory: new Map([['oak_log', 2]]),
       perGenerator: 15,
       log: false,
       pruneWithWorld: false,
@@ -70,7 +70,7 @@ describe('integration: path generation with combined tree variants', () => {
 
   test('variant expansion creates diverse paths for complex items', async () => {
     const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
-      inventory: { crafting_table: 1 },
+      inventory: new Map([['crafting_table', 1]]),
       perGenerator: 20,
       log: false,
       pruneWithWorld: false,
@@ -109,7 +109,7 @@ describe('integration: path generation with combined tree variants', () => {
 
   test('variant paths maintain consistency within each path', async () => {
     const paths = await generateTopNAndFilter('1.20.1', 'oak_planks', 4, {
-      inventory: {},
+      inventory: new Map(),
       perGenerator: 15,
       log: false,
       pruneWithWorld: false,
@@ -156,7 +156,7 @@ describe('integration: path generation with combined tree variants', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
@@ -176,7 +176,7 @@ describe('integration: path generation with combined tree variants', () => {
 
   test('generateTopNAndFilter produces valid paths with combined tree', async () => {
     const paths = await generateTopNAndFilter('1.20.1', 'crafting_table', 1, {
-      inventory: {},
+      inventory: new Map(),
       perGenerator: 10,
       log: false,
       pruneWithWorld: false,
@@ -211,7 +211,7 @@ describe('integration: path generation with combined tree variants', () => {
 
   test('variant paths work with multiple target counts', async () => {
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 64, {
-      inventory: {},
+      inventory: new Map(),
       perGenerator: 10,
       log: false,
       pruneWithWorld: false,
@@ -239,7 +239,7 @@ describe('integration: path generation with combined tree variants', () => {
   test('variant expansion handles bamboo alternative correctly', async () => {
     // Bamboo is an alternative wood source for sticks
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       perGenerator: 30,
       log: false,
       pruneWithWorld: false,
@@ -280,7 +280,7 @@ describe('integration: path generation with combined tree variants', () => {
     };
 
     const paths = await generateTopNAndFilter('1.20.1', 'stick', 1, {
-      inventory: {},
+      inventory: new Map(),
       worldSnapshot: snapshot,
       perGenerator: 15,
       log: false,
