@@ -26,6 +26,7 @@ import { findSameFamilyItems, findSimilarItems, findBlocksWithSameDrop } from '.
 import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 import { getSuffixTokenFromName } from '../../utils/items';
+import { canConsumeWorld, ResourceKind } from '../../utils/worldBudget';
 
 /**
  * Helper functions for variant-first system
@@ -45,6 +46,29 @@ function createVariantGroup<T>(mode: 'one_of' | 'any_of', values: T[]): VariantG
     mode,
     variants: values.map(value => ({ value }))
   };
+}
+
+function isWorldPruningEnabled(context: BuildContext): boolean {
+  return Boolean(context.pruneWithWorld && context.worldBudget);
+}
+
+function filterResourceVariants(
+  context: BuildContext,
+  kind: ResourceKind,
+  variants: string[]
+): string[] {
+  const unique = Array.from(new Set(variants));
+  if (!isWorldPruningEnabled(context)) {
+    return unique;
+  }
+
+  const worldBudget = context.worldBudget!;
+  const filtered = unique.filter(name => canConsumeWorld(worldBudget, kind, name, 1));
+  if (filtered.length === 0) {
+    return [];
+  }
+
+  return filtered;
 }
 
 /**
@@ -142,6 +166,7 @@ export function buildRecipeTree(
   const variantContext: BuildContext = {
     inventory: context.inventory || new Map(),
     worldBudget: context.worldBudget,
+    pruneWithWorld: context.pruneWithWorld,
     visited: context.visited || new Set(),
     depth: context.depth || 0,
     parentPath: context.parentPath || [],
@@ -700,44 +725,46 @@ function buildRecipeTreeInternal(
   });
   if (miningPaths.length > 0) {
     const mineTargets = context.combineSimilarNodes ? variantsToUse : [primaryItem];
+    const usingMineTargets = mineTargets;
 
     const mineGroup: MineGroupNode = {
       action: 'mine',
       operator: 'OR',
-      variantMode: 'any_of', // Any block variant works
-      what: createVariantGroup('any_of', mineTargets),
-      targetItem: createVariantGroup('any_of', mineTargets),
+      variantMode: 'any_of',
+      what: createVariantGroup('any_of', usingMineTargets),
+      targetItem: createVariantGroup('any_of', usingMineTargets),
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
       context: mineContext
     };
 
-    // Group mining paths by tool requirement (always combine paths with same tool)
     const groupedByTool = new Map<string, BlockSource[]>();
     for (const miningPath of miningPaths) {
       const requiredTool = miningPath.tool;
       const minimalTool = requiredTool && requiredTool !== 'any' ? requiredTool.split('/')[0] : requiredTool;
       const toolKey = minimalTool || 'any';
-      
       if (!groupedByTool.has(toolKey)) {
         groupedByTool.set(toolKey, []);
       }
       groupedByTool.get(toolKey)!.push(miningPath);
     }
 
-    // Create mine leaf nodes for each tool group
     const mineLeafByCanon = new Map<string, MineLeafNode>();
 
     for (const [toolKey, pathGroup] of groupedByTool) {
       const minimalTool = toolKey === 'any' ? undefined : toolKey;
       const blocks = pathGroup.map(p => p.block);
+      const filteredBlocks = filterResourceVariants(mineContext, 'blocks', blocks);
+      if (filteredBlocks.length === 0) {
+        continue;
+      }
 
       const baseLeaf: MineLeafNode = {
         action: 'mine',
         variantMode: 'any_of',
-        what: createVariantGroup('any_of', blocks),
-        targetItem: createVariantGroup('any_of', variantsToUse),
+        what: createVariantGroup('any_of', filteredBlocks),
+        targetItem: createVariantGroup('any_of', usingMineTargets),
         count: targetCount,
         ...(minimalTool ? { tool: createVariantGroup('any_of', [minimalTool]) } : {}),
         variants: { mode: 'any_of', variants: [] },
@@ -745,34 +772,31 @@ function buildRecipeTreeInternal(
         context: mineContext
       };
 
-      // Add tool dependency if needed and not already present
       if (minimalTool && !hasToolDependency(baseLeaf, minimalTool)) {
         const toolTree = createToolDependencyTree(minimalTool, mineContext, ctx);
         baseLeaf.children.variants.push({ value: toolTree });
       }
 
-      // When combining similar nodes, collect all unique canonical blocks
-      // and create a single node with all variants instead of one per variant
       if (context.combineSimilarNodes) {
-        // Group blocks by their canonical block
         const seenCanonical = new Set<string>();
-        for (const blockName of blocks) {
+        for (const blockName of filteredBlocks) {
           const canonicalBlock = canonicalBlockByItem.get(blockName) || blockName;
           if (!seenCanonical.has(canonicalBlock)) {
             seenCanonical.add(canonicalBlock);
-            
             const canonKey = canonicalBlock;
             if (!mineLeafByCanon.has(canonKey)) {
-              // Get all block variants for this canonical block
               const blockVariants = blockVariantsByCanonical.get(canonicalBlock) || [canonicalBlock];
-              
+              const filteredVariants = filterResourceVariants(mineContext, 'blocks', blockVariants);
+              if (filteredVariants.length === 0) {
+                continue;
+              }
+
               const leaf: MineLeafNode = {
                 ...baseLeaf,
-                what: createVariantGroup('any_of', blockVariants),
-                targetItem: createVariantGroup('any_of', variantsToUse)
+                what: createVariantGroup('any_of', filteredVariants),
+                targetItem: createVariantGroup('any_of', usingMineTargets)
               };
 
-              // Clone children to avoid shared mutable state
               leaf.children = {
                 mode: baseLeaf.children.mode,
                 variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
@@ -783,7 +807,7 @@ function buildRecipeTreeInternal(
           }
         }
       } else {
-        const canonKey = blocks[0];
+        const canonKey = filteredBlocks[0];
         if (!mineLeafByCanon.has(canonKey)) {
           mineLeafByCanon.set(canonKey, baseLeaf);
         }
@@ -794,8 +818,9 @@ function buildRecipeTreeInternal(
       mineGroup.children.variants.push({ value: leaf });
     });
 
-    // Add mine group to root
-    root.children.variants.push({ value: mineGroup });
+    if (mineGroup.children.variants.length > 0) {
+      root.children.variants.push({ value: mineGroup });
+    }
   }
 
   // Process hunting paths
@@ -804,37 +829,48 @@ function buildRecipeTreeInternal(
   const huntContext = { ...context, inventory: huntInventory };
   const huntingPaths = findMobsThatDrop(mcData, primaryItem);
   if (huntingPaths.length > 0) {
-    const huntGroup: HuntGroupNode = {
+    const huntVariants = huntingPaths.map(path => path.mob);
+    const filteredHuntVariants = filterResourceVariants(huntContext, 'entities', huntVariants);
+    const skipHuntBranch = filteredHuntVariants.length === 0 && isWorldPruningEnabled(huntContext);
+    const huntSourceNames = filteredHuntVariants.length > 0 ? filteredHuntVariants : huntVariants;
+
+    if (!skipHuntBranch) {
+      const huntGroup: HuntGroupNode = {
       action: 'hunt',
       operator: 'OR',
       variantMode: 'any_of', // Any mob variant works
-      what: createVariantGroup('any_of', [primaryItem]),
+        what: createVariantGroup('any_of', huntSourceNames),
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
       context: huntContext
-    };
-
-    // Add hunt leaf nodes for each mob that drops the item
-    for (const huntingPath of huntingPaths) {
-      const huntLeaf: HuntLeafNode = {
-        action: 'hunt',
-        variantMode: 'any_of',
-        what: createVariantGroup('any_of', [huntingPath.mob]),
-        targetItem: createVariantGroup('any_of', [primaryItem]),
-        count: targetCount,
-        dropChance: huntingPath.dropChance ? createVariantGroup('any_of', [huntingPath.dropChance]) : undefined,
-        // Hunting doesn't typically require tools, but we can add if needed
-        variants: { mode: 'any_of', variants: [] },
-        children: { mode: 'any_of', variants: [] },
-        context: huntContext
       };
 
-      huntGroup.children.variants.push({ value: huntLeaf });
-    }
+      // Add hunt leaf nodes for each mob that drops the item
+      for (const huntingPath of huntingPaths) {
+        if (!huntSourceNames.includes(huntingPath.mob)) {
+          continue;
+        }
+        const huntLeaf: HuntLeafNode = {
+          action: 'hunt',
+          variantMode: 'any_of',
+          what: createVariantGroup('any_of', [huntingPath.mob]),
+          targetItem: createVariantGroup('any_of', [primaryItem]),
+          count: targetCount,
+          dropChance: huntingPath.dropChance ? createVariantGroup('any_of', [huntingPath.dropChance]) : undefined,
+          // Hunting doesn't typically require tools, but we can add if needed
+          variants: { mode: 'any_of', variants: [] },
+          children: { mode: 'any_of', variants: [] },
+          context: huntContext
+        };
 
-    // Add hunt group to root
-    root.children.variants.push({ value: huntGroup });
+        huntGroup.children.variants.push({ value: huntLeaf });
+      }
+
+      if (huntGroup.children.variants.length > 0) {
+        root.children.variants.push({ value: huntGroup });
+      }
+    }
   }
 
   return root;

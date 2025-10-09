@@ -231,6 +231,7 @@ export type ActionPath = ActionStep[];
 export interface BuildContext {
   inventory: Map<string, number>;
   worldBudget?: WorldBudget;
+  pruneWithWorld?: boolean;
   visited: Set<string>;
   depth: number;
   parentPath: string[];

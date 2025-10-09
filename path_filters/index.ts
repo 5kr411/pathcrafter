@@ -4,14 +4,12 @@ import { GenerateAndFilterOptions } from './types';
 // Re-export core filtering functions
 export { 
   buildWorldAvailability, 
-  computePathResourceDemand, 
   isDemandSatisfiedByAvailability,
   explainDemandShortfall
 } from './worldResources';
 
 // Path validation removed - tree ensures validity
 export { filterPathVariantsByWorld } from './filterVariants';
-export { filterPathsByWorldSnapshot } from './filterByWorld';
 
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';

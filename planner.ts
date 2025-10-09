@@ -173,6 +173,7 @@ export function plan(
   const tree = treeBuild.buildRecipeTree(ctx, itemName, targetCount, {
     inventory: inventoryMap,
     worldBudget,
+    pruneWithWorld: options?.pruneWithWorld === true,
     visited: new Set(),
     depth: 0,
     parentPath: [],

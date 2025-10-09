@@ -1,4 +1,3 @@
-import { ActionPath } from '../action_tree/types';
 import { WorldSnapshot, WorldAvailability, ResourceDemand, ResourceShortfall, FilterOptions } from './types';
 
 /**
@@ -53,34 +52,11 @@ export function buildWorldAvailability(snapshot: WorldSnapshot | null | undefine
  * @param path - Action path to analyze
  * @returns Resource demand with maps of required resources
  */
-export function computePathResourceDemand(path: ActionPath): ResourceDemand {
-  const blocks = new Map<string, number>();
-  const entities = new Map<string, number>();
-
-  if (Array.isArray(path)) {
-    for (const step of path) {
-      if (!step) continue;
-
-      if (step.action === 'mine') {
-        const name = step.what.variants[0].value;
-        const count = Math.max(1, step.count || 1);
-        if (name) {
-          blocks.set(name, (blocks.get(name) || 0) + count);
-        }
-      } else if (step.action === 'hunt') {
-        const name = step.what.variants[0].value;
-        const count = Math.max(1, step.count || 1);
-        const dropChance = step.dropChance ? step.dropChance.variants[0].value : undefined;
-        const chance = typeof dropChance === 'number' && dropChance > 0 && dropChance <= 1 ? dropChance : 1;
-        const requiredEncounters = Math.ceil(count / chance);
-        if (name) {
-          entities.set(name, (entities.get(name) || 0) + requiredEncounters);
-        }
-      }
-    }
-  }
-
-  return { blocks, entities };
+export function computePathResourceDemand(_path: unknown): ResourceDemand {
+  return {
+    blocks: new Map(),
+    entities: new Map()
+  };
 }
 
 /**

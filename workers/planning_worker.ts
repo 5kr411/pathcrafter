@@ -6,7 +6,6 @@ import { getPlanningTelemetryEnabled, setPlanningTelemetryEnabled } from '../uti
 import { dedupePaths } from '../path_generators/generateTopN';
 import { computePathWeight } from '../utils/pathUtils';
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
-import { computePathResourceDemand } from '../path_filters/worldResources';
 import { WorkerPool } from '../utils/workerPool';
 import plan, { _internals } from '../planner';
 import logger from '../utils/logger';
@@ -154,43 +153,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
     const tFilterStart = Date.now();
     const merged = dedupePaths(([] as ActionPath[]).concat(a, s, l));
 
-    // Tie-break equal weight paths using average distance score if snapshot provided
-    if (snapshot && snapshot.blocks && typeof snapshot.blocks === 'object') {
-      /**
-       * Computes a distance score for a path based on resource locations
-       */
-      function distScore(path: ActionPath): number {
-        try {
-          const demand = computePathResourceDemand(path);
-          let total = 0;
-          let cnt = 0;
-
-          if (demand && demand.blocks && demand.blocks.forEach && snapshot && snapshot.blocks) {
-            demand.blocks.forEach((need, name) => {
-              const rec = snapshot.blocks![name];
-              const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
-              if (avg != null) {
-                total += avg * Math.max(1, need || 1);
-                cnt += Math.max(1, need || 1);
-              }
-            });
-          }
-
-          return cnt > 0 ? total / cnt : Number.POSITIVE_INFINITY;
-        } catch (_) {
-          return Number.POSITIVE_INFINITY;
-        }
-      }
-
-      merged.sort((x, y) => {
-        const wx = computePathWeight(x);
-        const wy = computePathWeight(y);
-        if (wx !== wy) return wx - wy;
-        return distScore(x) - distScore(y);
-      });
-    } else {
-      merged.sort((x, y) => computePathWeight(x) - computePathWeight(y));
-    }
+    merged.sort((x, y) => computePathWeight(x) - computePathWeight(y));
 
     const ranked = hoistMiningInPaths(merged);
     const tFilterMs = Date.now() - tFilterStart;
