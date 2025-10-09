@@ -2,7 +2,7 @@ import { hoistMiningInPath, hoistMiningInPaths } from '../../path_optimizations/
 import { ActionStep } from '../../action_tree/types';
 import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup, createTestIngredientGroup } from '../testHelpers';
 
-describe.skip('unit: hoist mining optimizer', () => {
+describe('unit: hoist mining optimizer', () => {
     test('merges identical mining steps and sums counts', () => {
         const path: ActionStep[] = [
             createTestActionStep({ action: 'mine', what: createTestStringGroup('oak_log'), count: 1 }),
@@ -24,9 +24,9 @@ describe.skip('unit: hoist mining optimizer', () => {
 
     test('separates mining steps by tool key', () => {
         const path: ActionStep[] = [
-            createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 1 }),
-            createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 2 }),
-            createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 3 })
+            createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 1, tool: createTestStringGroup('wooden_pickaxe') }),
+            createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 2, tool: createTestStringGroup('stone_pickaxe') }),
+            createTestActionStep({ action: 'mine', what: createTestStringGroup('stone'), count: 3, tool: createTestStringGroup('wooden_pickaxe') })
         ];
         const out = hoistMiningInPath(path);
         const wood = out.find(s => s.action === 'mine' && s.tool?.variants[0].value === 'wooden_pickaxe');

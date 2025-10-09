@@ -2,7 +2,7 @@ import { ActionStep } from '../../action_tree/types';
 import { computeTargetsForMine, canHandle } from '../../behavior_generator/mine';
 import { createTestActionStep, createTestStringGroup } from '../testHelpers';
 
-describe.skip('BehaviorGenerator mine', () => {
+describe('BehaviorGenerator mine', () => {
   describe('canHandle', () => {
     it('should handle mine steps without variants', () => {
       const step: ActionStep = createTestActionStep({
@@ -47,10 +47,10 @@ describe.skip('BehaviorGenerator mine', () => {
     it('should not handle mine steps with operator and children', () => {
       const step: ActionStep = {
         action: 'mine',
-        what: 'oak_log',
+        what: createTestStringGroup('oak_log'),
         count: 5,
         operator: 'OR',
-        children: [{ action: 'mine', what: 'spruce_log', count: 5 }]
+        children: [{ action: 'mine', what: createTestStringGroup('spruce_log'), count: 5 }]
       } as any;
 
       expect(canHandle(step)).toBe(false);

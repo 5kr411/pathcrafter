@@ -5,7 +5,7 @@ describe('unit: combine similar nodes', () => {
     const { resolveMcData, buildRecipeTree } = (analyzeRecipes as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
-    test.skip('combineSimilarNodes=false creates separate oak and spruce craft nodes', () => {
+    test('combineSimilarNodes=false creates separate oak and spruce craft nodes', () => {
         const tree = buildRecipeTree(mcData, 'stick', 1, { 
             log: false, 
             inventory: new Map(), 

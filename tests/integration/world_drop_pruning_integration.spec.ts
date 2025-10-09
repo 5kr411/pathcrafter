@@ -1,6 +1,7 @@
 import plan from '../../planner';
 import { enumerateLowestWeightPathsGenerator } from '../../path_generators/lowestWeightPathsGenerator';
 
+// TODO: World pruning logic needs investigation - related to world_pruning.spec.ts
 describe.skip('integration: world pruning respects block->drop mapping', () => {
   const ctx = '1.20.1';
 

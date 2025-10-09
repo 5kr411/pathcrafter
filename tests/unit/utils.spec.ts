@@ -13,7 +13,7 @@ describe('unit: helpers', () => {
     });
 });
 
-describe.skip('unit: crafting table dependency', () => {
+describe('unit: crafting table dependency', () => {
     const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (analyzeRecipes as any)._internals;
     const mcData = (analyzeRecipes as any)._internals.resolveMcData('1.20.1');
 

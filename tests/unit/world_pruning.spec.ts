@@ -1,7 +1,9 @@
 import plan from '../../planner';
 import { enumerateActionPathsGenerator } from '../../path_generators/actionPathsGenerator';
 
-describe.skip('unit: planner world-pruning (generic wood disabled)', () => {
+// TODO: World pruning logic needs investigation - tests fail because pruning doesn't work as expected
+// May need to verify if pruneWithWorld actually prunes based on block counts
+describe.skip('unit: planner world-pruning', () => {
   const ctx = '1.20.1';
 
   test('insufficient ore count prunes mining paths', () => {
