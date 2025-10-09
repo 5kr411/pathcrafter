@@ -45,6 +45,11 @@ export function createMakeStream<T extends PathItem = PathItem>(
       return function* () { };
     }
 
+    // Handle satisfied items (count <= 0) as leaf nodes that produce empty paths
+    if (node.count <= 0) {
+      return function* () { yield { path: [] } as unknown as T; };
+    }
+
     // Leaf nodes (no children)
     if (!('children' in node) || !node.children || node.children.variants.length === 0) {
       if (node.action === 'craft') {
@@ -76,20 +81,20 @@ export function createMakeStream<T extends PathItem = PathItem>(
 
       if (node.action === 'mine') {
         const mineNode = node as any;
-        
+
         // Create single step with variant metadata if present
         const step: ActionStep = {
           action: 'mine',
           what: node.what,
           count: node.count,
+          variantMode: node.variantMode,
           ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
           ...(('tool' in node) && { tool: (node as any).tool }),
           ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
           // Include variant metadata for runtime decision-making
           ...(mineNode.whatVariants && mineNode.whatVariants.length > 1 && {
             whatVariants: mineNode.whatVariants,
-            targetItemVariants: mineNode.targetItemVariants,
-            variantMode: mineNode.variantMode
+            targetItemVariants: mineNode.targetItemVariants
           })
         };
         return makeLeafStream(step);
@@ -115,24 +120,28 @@ export function createMakeStream<T extends PathItem = PathItem>(
     const children = 'children' in node ? node.children.variants.map((v: any) => v.value) : [];
 
     if (node.action === 'root') {
+      if (children.length === 0) {
+        // Root node with no children means the item is already satisfied
+        return function* () { yield { path: [] } as unknown as T; };
+      }
       return makeOrStream(children.map(makeStream));
     }
 
     if (node.action === 'craft') {
       const craftNode = node as any;
-      
+
       // Create single step with variant metadata if present
       const step: ActionStep = {
         action: 'craft',
         what: node.what,
         count: node.count,
+        variantMode: node.variantMode,
         ...(('result' in node) && { result: (node as any).result }),
         ...(('ingredients' in node) && { ingredients: (node as any).ingredients }),
         // Include variant metadata for runtime decision-making
         ...(craftNode.resultVariants && craftNode.resultVariants.length > 1 && {
           resultVariants: craftNode.resultVariants,
-          ingredientVariants: craftNode.ingredientVariants,
-          variantMode: craftNode.variantMode
+          ingredientVariants: craftNode.ingredientVariants
         })
       };
       return makeAndStream(children.map(makeStream), step);
@@ -161,6 +170,24 @@ export function createMakeStream<T extends PathItem = PathItem>(
       if (operator === 'OR') {
         return makeOrStream(children.map(makeStream));
       }
+
+      // For mine/hunt nodes without OR operator, combine dependencies as AND then append the gather step
+      const gatherNode = node as any;
+      const gatherStep: ActionStep = {
+        action: node.action,
+        what: node.what,
+        count: node.count,
+        variantMode: node.variantMode,
+        ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+        ...(('tool' in node) && { tool: (node as any).tool }),
+        ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
+        // Include variant metadata for runtime decision-making
+        ...(gatherNode.whatVariants && gatherNode.whatVariants.length > 1 && {
+          whatVariants: gatherNode.whatVariants,
+          targetItemVariants: gatherNode.targetItemVariants
+        })
+      };
+      return makeAndStream(children.map(makeStream), gatherStep);
     }
 
     return makeOrStream(children.map(makeStream));
