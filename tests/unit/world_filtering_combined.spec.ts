@@ -24,7 +24,7 @@ describe('unit: world filtering with combined nodes', () => {
 
         const tree = plan(mcData, 'stick', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -81,7 +81,7 @@ describe('unit: world filtering with combined nodes', () => {
 
         const tree = plan(mcData, 'oak_planks', 4, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot
@@ -119,7 +119,7 @@ describe('unit: world filtering with combined nodes', () => {
 
         const tree = plan(mcData, 'stick', 1, {
             log: false,
-            inventory: {},
+            inventory: new Map(),
             combineSimilarNodes: true,
             pruneWithWorld: true,
             worldSnapshot

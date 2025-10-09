@@ -12,7 +12,7 @@ describe('unit: path generation with combined tree variants', () => {
     // Generate a tree with combined similar nodes
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -68,7 +68,7 @@ describe('unit: path generation with combined tree variants', () => {
     // Generate a tree with combined similar nodes
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -143,7 +143,7 @@ describe('unit: path generation with combined tree variants', () => {
   test('shortest path generator includes variant metadata', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -176,7 +176,7 @@ describe('unit: path generation with combined tree variants', () => {
   test('lowest weight path generator handles variants correctly', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -199,7 +199,7 @@ describe('unit: path generation with combined tree variants', () => {
   test('variant metadata maintains correct ingredient structure', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -246,7 +246,7 @@ describe('unit: path generation with combined tree variants', () => {
     // Tree without combining
     const treeNoCombine = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: false 
     });
 
@@ -304,7 +304,7 @@ describe('unit: path generation with combined tree variants', () => {
   test('generateTopNPathsFromGenerators works with combined tree', async () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -328,7 +328,7 @@ describe('unit: path generation with combined tree variants', () => {
   test('variant metadata preserves targetItem variants correctly', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 

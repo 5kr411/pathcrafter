@@ -19,7 +19,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'bamboo', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -53,7 +53,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'bamboo', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -84,7 +84,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'bamboo', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -113,7 +113,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'bamboo', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -139,7 +139,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'string', 5, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -174,7 +174,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'rotten_flesh', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -203,7 +203,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'rotten_flesh', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot
@@ -229,7 +229,7 @@ describe.skip('unit: hunt path pruning with world snapshot', () => {
         };
 
         const tree = plan(mcData, 'bamboo', 10, {
-            inventory: {},
+            inventory: new Map(),
             log: false,
             pruneWithWorld: true,
             worldSnapshot: snapshot

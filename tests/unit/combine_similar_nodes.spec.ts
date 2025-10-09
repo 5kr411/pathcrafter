@@ -8,7 +8,7 @@ describe('unit: combine similar nodes', () => {
     test.skip('combineSimilarNodes=false creates separate oak and spruce craft nodes', () => {
         const tree = buildRecipeTree(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: false 
         });
 
@@ -41,7 +41,7 @@ describe('unit: combine similar nodes', () => {
     test('combineSimilarNodes=true combines wood family craft nodes', () => {
         const tree = buildRecipeTree(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -74,7 +74,7 @@ describe('unit: combine similar nodes', () => {
     test('combineSimilarNodes=true combines mining nodes with same tool and suffix', () => {
         const tree = buildRecipeTree(mcData, 'stick', 2, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -110,7 +110,7 @@ describe('unit: combine similar nodes', () => {
     test('combineSimilarNodes preserves recipe shape when combining', () => {
         const tree = buildRecipeTree(mcData, 'stick', 2, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -141,7 +141,7 @@ describe('unit: combine similar nodes', () => {
     test('combineSimilarNodes sets variantMode to one_of', () => {
         const tree = buildRecipeTree(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -171,7 +171,7 @@ describe('unit: combine similar nodes', () => {
     test('combineSimilarNodes propagates deep into the tree', () => {
         const tree = buildRecipeTree(mcData, 'stick', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
@@ -229,7 +229,7 @@ describe('unit: combine similar nodes', () => {
     test('combineSimilarNodes does not combine different recipe shapes', () => {
         const tree = buildRecipeTree(mcData, 'oak_wood', 1, { 
             log: false, 
-            inventory: {}, 
+            inventory: new Map(), 
             combineSimilarNodes: true 
         });
 

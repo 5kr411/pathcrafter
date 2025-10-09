@@ -9,7 +9,7 @@ describe('unit: comprehensive variant metadata tests', () => {
   test('variant metadata captures all wood types in single path', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -50,13 +50,13 @@ describe('unit: comprehensive variant metadata tests', () => {
   test('variant metadata reduces path count dramatically', () => {
     const treeWithoutCombining = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: false 
     });
 
     const treeWithCombining = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -85,7 +85,7 @@ describe('unit: comprehensive variant metadata tests', () => {
   test('variant metadata includes ingredient variants for crafting', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 
@@ -148,7 +148,7 @@ describe('unit: comprehensive variant metadata tests', () => {
   test('variant metadata works with all three path generators', () => {
     const tree = plan(mcData, 'stick', 1, { 
       log: false, 
-      inventory: {}, 
+      inventory: new Map(), 
       combineSimilarNodes: true 
     });
 

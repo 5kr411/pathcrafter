@@ -22,7 +22,7 @@ import {
   BlockSource
 } from '../types';
 import { resolveMcData } from '../utils/mcDataResolver';
-import { findSameFamilyItems } from '../utils/itemSimilarity';
+import { findSameFamilyItems, findSimilarItems, findBlocksWithSameDrop } from '../utils/itemSimilarity';
 import { getIngredientCounts, findFurnaceSmeltsForItem, requiresCraftingTable, getRecipeCanonicalKey } from '../utils/recipeUtils';
 import { findBlocksThatDrop, findMobsThatDrop } from '../utils/sourceLookup';
 import { getSuffixTokenFromName } from '../../utils/items';
@@ -366,7 +366,7 @@ function buildRecipeTreeInternal(
         const perCraft = ingredient.perCraftCount || 1;
         const requiredCount = perCraft * craftingsNeeded;
         const similarItems = context.combineSimilarNodes
-          ? Array.from(new Set(findSameFamilyItems(mcData, ingredient.item)))
+          ? Array.from(new Set(findSimilarItems(mcData, ingredient.item)))
           : [ingredient.item];
         if (similarItems.length === 0) continue;
         
@@ -438,7 +438,10 @@ function buildRecipeTreeInternal(
     // These will be OR branches at the root level
     if (recipeBySuffix.size > 1 && context.combineSimilarNodes) {
       for (const [_suffix, subGroup] of recipeBySuffix.entries()) {
-        createCraftNodeForGroup(subGroup, craftingsNeeded, variantMode, root, context, mcData, nextVisited, ctx);
+        // Clone inventory for each OR branch so they don't interfere with each other
+        const branchInventory = invMap ? new Map(invMap) : invMap;
+        const branchContext = { ...context, inventory: branchInventory };
+        createCraftNodeForGroup(subGroup, craftingsNeeded, variantMode, root, branchContext, mcData, nextVisited, ctx);
       }
       continue; // Skip the default single craft node creation below
     }
@@ -572,9 +575,9 @@ function buildRecipeTreeInternal(
       }
       
       const requiredCount = actualCount * craftingsNeeded;
-      // Use family-aware matching: oak_planks should only accept oak family items
+      // Use cross-family matching for ingredients: any log type can be used to craft planks
       const similarItems = context.combineSimilarNodes
-        ? Array.from(new Set(findSameFamilyItems(mcData, ingredientItem)))
+        ? Array.from(new Set(findSimilarItems(mcData, ingredientItem)))
         : [ingredientItem];
       if (similarItems.length === 0) continue;
       
@@ -615,6 +618,9 @@ function buildRecipeTreeInternal(
   }
 
   // Process smelting recipes
+  // Clone inventory for this OR branch
+  const smeltInventory = invMap ? new Map(invMap) : invMap;
+  const smeltContext = { ...context, inventory: smeltInventory };
   const smeltInputs = findFurnaceSmeltsForItem(mcData, primaryItem);
   if (smeltInputs.length > 0) {
     
@@ -626,7 +632,7 @@ function buildRecipeTreeInternal(
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
-      context
+      context: smeltContext
     };
 
     // Add smelt nodes for each input
@@ -648,12 +654,12 @@ function buildRecipeTreeInternal(
         fuel: createVariantGroup('any_of', ['coal']), // Default fuel
         variants: { mode: 'any_of', variants: [] },
         children: { mode: 'any_of', variants: [] },
-        context
+        context: smeltContext
       };
 
       // Add furnace dependency if not already present
       if (!hasWorkstationDependency(smeltNode, 'furnace')) {
-        const furnaceTree = createWorkstationDependencyTree('furnace', context, ctx);
+        const furnaceTree = createWorkstationDependencyTree('furnace', smeltContext, ctx);
         smeltNode.children.variants.push({ value: furnaceTree });
       }
 
@@ -665,13 +671,21 @@ function buildRecipeTreeInternal(
   }
 
   // Process mining paths
+  // Clone inventory for this OR branch
+  const mineInventory = invMap ? new Map(invMap) : invMap;
+  const mineContext = { ...context, inventory: mineInventory };
   const miningPaths = findBlocksThatDrop(mcData, primaryItem);
   const canonicalBlockByItem = new Map<string, string>();
   const blockVariantsByCanonical = new Map<string, string[]>();
   miningPaths.forEach(path => {
     const blockName = path.block;
-    // Use family-aware matching: oak_log should only match oak blocks, not spruce
-    const similar = context.combineSimilarNodes ? findSameFamilyItems(mcData, blockName) : [blockName];
+    // For blocks, use two strategies:
+    // 1. findBlocksWithSameDrop for ore-like blocks (groups blocks that drop the same item with same tool requirements)
+    // 2. findSimilarItems for wood-like blocks (groups blocks with same suffix like logs)
+    const sameDrop = context.combineSimilarNodes ? findBlocksWithSameDrop(mcData, blockName) : [blockName];
+    const sameFamily = context.combineSimilarNodes ? findSimilarItems(mcData, blockName) : [blockName];
+    // Use whichever returns more results (prioritize drop-based grouping if it finds matches)
+    const similar = sameDrop.length > sameFamily.length ? sameDrop : sameFamily;
     
     // Store all block variants for this canonical block
     if (!blockVariantsByCanonical.has(blockName)) {
@@ -696,7 +710,7 @@ function buildRecipeTreeInternal(
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
-      context
+      context: mineContext
     };
 
     // Group mining paths by tool requirement (always combine paths with same tool)
@@ -728,50 +742,44 @@ function buildRecipeTreeInternal(
         ...(minimalTool ? { tool: createVariantGroup('any_of', [minimalTool]) } : {}),
         variants: { mode: 'any_of', variants: [] },
         children: { mode: 'any_of', variants: [] },
-        context
+        context: mineContext
       };
 
       // Add tool dependency if needed and not already present
       if (minimalTool && !hasToolDependency(baseLeaf, minimalTool)) {
-        const toolTree = createToolDependencyTree(minimalTool, context, ctx);
+        const toolTree = createToolDependencyTree(minimalTool, mineContext, ctx);
         baseLeaf.children.variants.push({ value: toolTree });
       }
 
       // When combining similar nodes, collect all unique canonical blocks
       // and create a single node with all variants instead of one per variant
       if (context.combineSimilarNodes) {
-        // Group variants by their canonical block
-        const blockToVariants = new Map<string, string[]>();
-        for (const variantName of variantsToUse) {
-          const canonicalBlock = canonicalBlockByItem.get(variantName);
-          if (canonicalBlock) {
-            if (!blockToVariants.has(canonicalBlock)) {
-              blockToVariants.set(canonicalBlock, []);
-            }
-            blockToVariants.get(canonicalBlock)!.push(variantName);
-          }
-        }
-
-        // Create a single leaf per canonical block with all its block and target variants
-        for (const [canonicalBlock, targetVariants] of blockToVariants.entries()) {
-          const canonKey = canonicalBlock;
-          if (!mineLeafByCanon.has(canonKey)) {
-            // Get all block variants for this canonical block
-            const blockVariants = blockVariantsByCanonical.get(canonicalBlock) || [canonicalBlock];
+        // Group blocks by their canonical block
+        const seenCanonical = new Set<string>();
+        for (const blockName of blocks) {
+          const canonicalBlock = canonicalBlockByItem.get(blockName) || blockName;
+          if (!seenCanonical.has(canonicalBlock)) {
+            seenCanonical.add(canonicalBlock);
             
-            const leaf: MineLeafNode = {
-              ...baseLeaf,
-              what: createVariantGroup('any_of', blockVariants),
-              targetItem: createVariantGroup('any_of', targetVariants)
-            };
+            const canonKey = canonicalBlock;
+            if (!mineLeafByCanon.has(canonKey)) {
+              // Get all block variants for this canonical block
+              const blockVariants = blockVariantsByCanonical.get(canonicalBlock) || [canonicalBlock];
+              
+              const leaf: MineLeafNode = {
+                ...baseLeaf,
+                what: createVariantGroup('any_of', blockVariants),
+                targetItem: createVariantGroup('any_of', variantsToUse)
+              };
 
-            // Clone children to avoid shared mutable state
-            leaf.children = {
-              mode: baseLeaf.children.mode,
-              variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
-            };
+              // Clone children to avoid shared mutable state
+              leaf.children = {
+                mode: baseLeaf.children.mode,
+                variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
+              };
 
-            mineLeafByCanon.set(canonKey, leaf);
+              mineLeafByCanon.set(canonKey, leaf);
+            }
           }
         }
       } else {
@@ -791,6 +799,9 @@ function buildRecipeTreeInternal(
   }
 
   // Process hunting paths
+  // Clone inventory for this OR branch
+  const huntInventory = invMap ? new Map(invMap) : invMap;
+  const huntContext = { ...context, inventory: huntInventory };
   const huntingPaths = findMobsThatDrop(mcData, primaryItem);
   if (huntingPaths.length > 0) {
     const huntGroup: HuntGroupNode = {
@@ -801,7 +812,7 @@ function buildRecipeTreeInternal(
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
-      context
+      context: huntContext
     };
 
     // Add hunt leaf nodes for each mob that drops the item
@@ -816,7 +827,7 @@ function buildRecipeTreeInternal(
         // Hunting doesn't typically require tools, but we can add if needed
         variants: { mode: 'any_of', variants: [] },
         children: { mode: 'any_of', variants: [] },
-        context
+        context: huntContext
       };
 
       huntGroup.children.variants.push({ value: huntLeaf });

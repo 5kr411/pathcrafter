@@ -21,7 +21,7 @@ export interface PlanOptions {
   /**
    * Current inventory items (item name -> count)
    */
-  inventory?: Record<string, number>;
+  inventory?: Map<string, number> | Record<string, number>;
 
   /**
    * Whether to prune based on world availability
@@ -169,11 +169,13 @@ export function plan(
   }
 
   // Convert inventory to Map for variant-first system
-  const inventoryMap = new Map<string, number>();
-  if (options && options.inventory) {
-    for (const [item, count] of Object.entries(options.inventory)) {
-      inventoryMap.set(item, count);
-    }
+  let inventoryMap: Map<string, number>;
+  if (!options || !options.inventory) {
+    inventoryMap = new Map();
+  } else if (options.inventory instanceof Map) {
+    inventoryMap = options.inventory;
+  } else {
+    inventoryMap = new Map(Object.entries(options.inventory));
   }
 
   const tree = treeBuild.buildRecipeTree(ctx, itemName, targetCount, {
