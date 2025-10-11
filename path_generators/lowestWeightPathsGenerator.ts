@@ -2,10 +2,7 @@ import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions } from './types';
 import { computePathWeight, stepWeight } from '../utils/pathUtils';
 import { createStreamingEnumerator } from './utils/streamingEnumerator';
-
-function clonePath(path: ActionPath): ActionPath {
-  return path.map(step => ({ ...step }));
-}
+import { clonePath } from './utils/pathOperations';
 
 /**
  * Enumerates paths from a tree in lowest-weight-first order

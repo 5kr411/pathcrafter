@@ -1,10 +1,7 @@
 import { ActionPath, TreeNode } from '../action_tree/types';
 import { GeneratorOptions } from './types';
 import { createStreamingEnumerator } from './utils/streamingEnumerator';
-
-function clonePath(path: ActionPath): ActionPath {
-  return path.map(step => ({ ...step }));
-}
+import { clonePath } from './utils/pathOperations';
 
 /**
  * Enumerates action paths from a tree using a basic generator strategy
