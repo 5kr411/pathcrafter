@@ -738,13 +738,37 @@ function buildRecipeTreeInternal(
   if (miningPaths.length > 0) {
     const mineTargets = context.combineSimilarNodes ? variantsToUse : [primaryItem];
     const usingMineTargets = mineTargets;
+    
+    // Determine which target items can actually be obtained from available blocks
+    const allFilteredBlocks = new Set<string>();
+    for (const miningPath of miningPaths) {
+      const filtered = filterResourceVariants(mineContext, 'blocks', [miningPath.block]);
+      filtered.forEach(b => allFilteredBlocks.add(b));
+    }
+    
+    const filteredTargetItems = new Set<string>();
+    for (const blockName of allFilteredBlocks) {
+      const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+      if (block && block.drops) {
+        block.drops.forEach((dropId: number) => {
+          const itemName = mcData.items[dropId]?.name;
+          if (itemName && usingMineTargets.includes(itemName)) {
+            filteredTargetItems.add(itemName);
+          }
+        });
+      }
+    }
+    
+    const availableMineTargets = filteredTargetItems.size > 0 
+      ? Array.from(filteredTargetItems) 
+      : usingMineTargets;
 
     const mineGroup: MineGroupNode = {
       action: 'mine',
       operator: 'OR',
       variantMode: 'any_of',
-      what: createVariantGroup('any_of', usingMineTargets),
-      targetItem: createVariantGroup('any_of', usingMineTargets),
+      what: createVariantGroup('any_of', availableMineTargets),
+      targetItem: createVariantGroup('any_of', availableMineTargets),
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
       children: { mode: 'any_of', variants: [] },
@@ -772,11 +796,28 @@ function buildRecipeTreeInternal(
         continue;
       }
 
+      // Determine which target items can be obtained from these filtered blocks
+      const leafTargetItems = new Set<string>();
+      for (const blockName of filteredBlocks) {
+        const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+        if (block && block.drops) {
+          block.drops.forEach((dropId: number) => {
+            const itemName = mcData.items[dropId]?.name;
+            if (itemName && availableMineTargets.includes(itemName)) {
+              leafTargetItems.add(itemName);
+            }
+          });
+        }
+      }
+      const leafAvailableTargets = leafTargetItems.size > 0 
+        ? Array.from(leafTargetItems) 
+        : availableMineTargets;
+
       const baseLeaf: MineLeafNode = {
         action: 'mine',
         variantMode: 'any_of',
         what: createVariantGroup('any_of', filteredBlocks),
-        targetItem: createVariantGroup('any_of', usingMineTargets),
+        targetItem: createVariantGroup('any_of', leafAvailableTargets),
         count: targetCount,
         ...(minimalTool ? { tool: createVariantGroup('any_of', [minimalTool]) } : {}),
         variants: { mode: 'any_of', variants: [] },
@@ -803,10 +844,27 @@ function buildRecipeTreeInternal(
                 continue;
               }
 
+              // Determine which target items can be obtained from these filtered variant blocks
+              const variantTargetItems = new Set<string>();
+              for (const blockName of filteredVariants) {
+                const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+                if (block && block.drops) {
+                  block.drops.forEach((dropId: number) => {
+                    const itemName = mcData.items[dropId]?.name;
+                    if (itemName && availableMineTargets.includes(itemName)) {
+                      variantTargetItems.add(itemName);
+                    }
+                  });
+                }
+              }
+              const variantAvailableTargets = variantTargetItems.size > 0 
+                ? Array.from(variantTargetItems) 
+                : availableMineTargets;
+
               const leaf: MineLeafNode = {
                 ...baseLeaf,
                 what: createVariantGroup('any_of', filteredVariants),
-                targetItem: createVariantGroup('any_of', usingMineTargets)
+                targetItem: createVariantGroup('any_of', variantAvailableTargets)
               };
 
               leaf.children = {
@@ -845,12 +903,36 @@ function buildRecipeTreeInternal(
     const filteredHuntVariants = filterResourceVariants(huntContext, 'entities', huntVariants);
     const skipHuntBranch = filteredHuntVariants.length === 0 && isWorldPruningEnabled(huntContext);
     const huntSourceNames = filteredHuntVariants.length > 0 ? filteredHuntVariants : huntVariants;
+    
+    // Determine which target items can actually be obtained from available mobs
+    const huntTargets = context.combineSimilarNodes ? variantsToUse : [primaryItem];
+    const filteredHuntTargets = new Set<string>();
+    
+    // Check what items the available mobs drop
+    if (filteredHuntVariants.length > 0) {
+      for (const mobName of huntSourceNames) {
+        Object.entries(mcData.entityLoot || {}).forEach(([_entityId, lootTable]: [string, any]) => {
+          if (lootTable && lootTable.entity === mobName && lootTable.drops) {
+            lootTable.drops.forEach((drop: any) => {
+              const dropItemName = drop.item?.toLowerCase().replace(' ', '_');
+              if (dropItemName && huntTargets.includes(dropItemName)) {
+                filteredHuntTargets.add(dropItemName);
+              }
+            });
+          }
+        });
+      }
+    }
+    
+    const availableHuntTargets = filteredHuntTargets.size > 0 
+      ? Array.from(filteredHuntTargets) 
+      : huntTargets;
 
     if (!skipHuntBranch) {
       const huntGroup: HuntGroupNode = {
       action: 'hunt',
       operator: 'OR',
-      variantMode: 'any_of', // Any mob variant works
+      variantMode: 'any_of',
         what: createVariantGroup('any_of', huntSourceNames),
       count: targetCount,
       variants: { mode: 'any_of', variants: [] },
@@ -863,14 +945,30 @@ function buildRecipeTreeInternal(
         if (!huntSourceNames.includes(huntingPath.mob)) {
           continue;
         }
+        
+        // Determine which target items this specific mob drops
+        const mobTargetItems = new Set<string>();
+        Object.entries(mcData.entityLoot || {}).forEach(([_entityId, lootTable]: [string, any]) => {
+          if (lootTable && lootTable.entity === huntingPath.mob && lootTable.drops) {
+            lootTable.drops.forEach((drop: any) => {
+              const dropItemName = drop.item?.toLowerCase().replace(' ', '_');
+              if (dropItemName && availableHuntTargets.includes(dropItemName)) {
+                mobTargetItems.add(dropItemName);
+              }
+            });
+          }
+        });
+        const leafHuntTargets = mobTargetItems.size > 0 
+          ? Array.from(mobTargetItems) 
+          : availableHuntTargets;
+        
         const huntLeaf: HuntLeafNode = {
           action: 'hunt',
           variantMode: 'any_of',
           what: createVariantGroup('any_of', [huntingPath.mob]),
-          targetItem: createVariantGroup('any_of', [primaryItem]),
+          targetItem: createVariantGroup('any_of', leafHuntTargets),
           count: targetCount,
           dropChance: huntingPath.dropChance ? createVariantGroup('any_of', [huntingPath.dropChance]) : undefined,
-          // Hunting doesn't typically require tools, but we can add if needed
           variants: { mode: 'any_of', variants: [] },
           children: { mode: 'any_of', variants: [] },
           context: huntContext
