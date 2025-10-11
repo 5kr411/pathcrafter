@@ -38,6 +38,7 @@ export function applyPostBuildFiltering(
 
 /**
  * Post-order traversal to filter craft variants based on child availability
+ * Also prunes dead branches (nodes with no viable variants)
  * Returns true if any changes were made
  */
 function filterCraftVariantsInTree(
@@ -49,14 +50,26 @@ function filterCraftVariantsInTree(
 
   let changed = false;
 
+  // Process children first (post-order traversal)
   if (node.children && node.children.variants) {
     for (const child of node.children.variants) {
       if (filterCraftVariantsInTree(child.value, context, mcData)) {
         changed = true;
       }
     }
+    
+    // Prune dead branches: remove children that have no viable variants
+    const originalChildCount = node.children.variants.length;
+    node.children.variants = node.children.variants.filter((child: any) => 
+      isNodeViable(child.value)
+    );
+    
+    if (node.children.variants.length < originalChildCount) {
+      changed = true;
+    }
   }
 
+  // Filter this node's variants
   if (node.action === 'craft') {
     if (filterSingleCraftNode(node, context, mcData)) {
       changed = true;
@@ -64,6 +77,38 @@ function filterCraftVariantsInTree(
   }
 
   return changed;
+}
+
+/**
+ * Determines if a node is still viable (has usable variants)
+ * A node is viable if:
+ * - It's a mine or hunt node (leaf nodes)
+ * - It's a root node with at least one child (means there's a way to get it)
+ * - It's a craft node with at least one result variant
+ */
+function isNodeViable(node: any): boolean {
+  if (!node) return false;
+  
+  // Leaf nodes (mine/hunt) are always viable
+  if (node.action === 'mine' || node.action === 'hunt') {
+    return true;
+  }
+  
+  // Root nodes are only viable if they have children (paths to obtain the item)
+  if (node.action === 'root') {
+    return node.children && 
+           node.children.variants && 
+           node.children.variants.length > 0;
+  }
+  
+  // Craft nodes are viable only if they have result variants
+  if (node.action === 'craft') {
+    return node.result && 
+           node.result.variants && 
+           node.result.variants.length > 0;
+  }
+  
+  return false;
 }
 
 /**
@@ -85,8 +130,11 @@ function filterSingleCraftNode(
     collectAvailableFamiliesFromNode(child.value, availableIngredientFamilies);
   }
 
+  // If no ingredients are available, clear all variants
   if (availableIngredientFamilies.size === 0) {
-    return false;
+    craftNode.result.variants = [];
+    craftNode.ingredients.variants = [];
+    return originalCount > 0;
   }
 
   const filteredResultVariants = craftNode.result.variants.filter(
