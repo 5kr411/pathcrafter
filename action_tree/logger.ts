@@ -150,9 +150,8 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
   if (node.action === 'root' && (node as RootNode).context.depth > 0) {
     const root = node as RootNode;
     const label = formatVariantList(root.what);
-    const op = (root as any).operator === 'AND' ? 'ALL' : 'ANY';
     const mode = root.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
-    console.log(`${indent}${branch} ${label || '(no variants)'} (want ${root.count}) [${op}] [${mode}]`);
+    console.log(`${indent}${branch} ${label || '(no variants)'} (want ${root.count}) [${mode}]`);
     (root.children.variants || []).forEach((child, idx) => logActionNode(child.value, depth + 1, idx === root.children.variants.length - 1));
     return;
   }
@@ -192,7 +191,9 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
 
     const toolInfo = node.tool && node.tool.variants[0].value !== 'any' ? ` (needs ${formatVariantList(node.tool)})` : '';
     const suffix = target ? ` for ${target}` : '';
-    console.log(`${indent}${branch} mine ${label}${suffix}${toolInfo} (${node.count}x)`);
+    const variantCount = node.what?.variants?.length || 0;
+    const mode = variantCount > 1 && node.variantMode ? ` [${node.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF'}]` : '';
+    console.log(`${indent}${branch} mine ${label}${suffix}${toolInfo} (${node.count}x)${mode}`);
     (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }
@@ -219,8 +220,7 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
     const rootNode = node as RootNode;
     const label = formatVariantList(rootNode.what);
     const op = (rootNode as any).operator === 'AND' ? 'ALL' : 'ANY';
-    const mode = rootNode.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
-    console.log(`${indent}${branch} ${label || '(no variants)'} (want ${rootNode.count}) [${op}] [${mode}]`);
+    console.log(`${indent}${branch} ${label || '(no variants)'} (want ${rootNode.count}) [${op}]`);
     (rootNode.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === (rootNode.children.variants.length - 1)));
     return;
   }

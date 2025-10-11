@@ -149,15 +149,18 @@ function printPathSummary(paths: any[], maxPaths: number) {
         if (step.what?.variants && step.what.variants.length > 1) {
           const whatVariants = formatVariantStrings(step.what.variants.map((v: any) => v.value));
           const targetVariants = formatVariantStrings(step.targetItem.variants.map((v: any) => v.value));
-          console.log(`    ${stepIndex + 1}. ${step.action} [${step.variantMode}] ${whatVariants} for [${step.variantMode}] ${targetVariants} (${count}x)`);
+          const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          console.log(`    ${stepIndex + 1}. ${step.action} [${modeLabel}] ${whatVariants} for [${modeLabel}] ${targetVariants} (${count}x)`);
         } else {
           const what = step.what?.variants?.[0]?.value || 'unknown';
           const targetVariants = formatVariantStrings(step.targetItem.variants.map((v: any) => v.value));
-          console.log(`    ${stepIndex + 1}. ${step.action} ${what} for [${step.variantMode}] ${targetVariants} (${count}x)`);
+          const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          console.log(`    ${stepIndex + 1}. ${step.action} ${what} for [${modeLabel}] ${targetVariants} (${count}x)`);
         }
       } else if (step.what?.variants && step.what.variants.length > 1) {
         const variantNames = formatVariantStrings(step.what.variants.map((v: any) => v.value));
-        console.log(`    ${stepIndex + 1}. ${step.action} [${step.variantMode}] ${variantNames} (${count}x)`);
+        const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+        console.log(`    ${stepIndex + 1}. ${step.action} [${modeLabel}] ${variantNames} (${count}x)`);
       } else {
         const what = step.what?.variants?.[0]?.value || 'unknown';
         console.log(`    ${stepIndex + 1}. ${step.action} ${what} (${count}x)`);
@@ -171,7 +174,8 @@ function printPathSummary(paths: any[], maxPaths: number) {
             const itemName = value.item || value;
             return `${quantity} ${itemName}`;
           }));
-          console.log(`       → [${step.variantMode}] ${resultVariants}`);
+          const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          console.log(`       → [${modeLabel}] ${resultVariants}`);
         } else {
           const resultItem = step.result.variants[0].value.item;
           const resultCount = step.result.variants[0].value.perCraftCount || 1;
@@ -185,7 +189,8 @@ function printPathSummary(paths: any[], maxPaths: number) {
             const ingList = v.value.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
             return ingList;
           }));
-          console.log(`       ← [${step.variantMode}] ${ingredientVariants}`);
+          const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          console.log(`       ← [${modeLabel}] ${ingredientVariants}`);
         } else {
           const ingredients = step.ingredients.variants[0].value;
           if (ingredients.length > 0) {

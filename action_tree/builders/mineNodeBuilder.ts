@@ -132,6 +132,23 @@ function groupMiningPathsByTool(miningPaths: BlockSource[]): Map<string, BlockSo
 }
 
 /**
+ * Determines the variant mode for mining based on what items the blocks drop
+ * - If all blocks drop the same item(s), use 'any_of' (e.g., diamond_ore and deepslate_diamond_ore both drop diamond)
+ * - If blocks drop different items, use 'one_of' (e.g., oak_log, spruce_log drop different log types)
+ * 
+ * Note: This should be called with unfiltered target items to preserve semantic meaning even after world pruning.
+ */
+function determineMineVariantMode(
+  targetItems: string[]
+): 'one_of' | 'any_of' {
+  if (targetItems.length > 1) {
+    return 'one_of';
+  }
+  
+  return 'any_of';
+}
+
+/**
  * Builds mine leaf nodes for a tool group
  */
 function buildMineLeafNodes(
@@ -160,15 +177,40 @@ function buildMineLeafNodes(
     availableMineTargets
   );
 
+  const allVariantsForThisGroup: string[] = [];
+  blocks.forEach(block => {
+    const variants = blockVariantsByCanonical.get(block) || [block];
+    variants.forEach(v => {
+      if (!allVariantsForThisGroup.includes(v)) {
+        allVariantsForThisGroup.push(v);
+      }
+    });
+  });
+
+  const allPossibleTargetItems = new Set<string>();
+  for (const blockName of allVariantsForThisGroup) {
+    const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+    if (block && (block as any).drops) {
+      (block as any).drops.forEach((dropId: number) => {
+        const itemName = mcData.items[dropId]?.name;
+        if (itemName) {
+          allPossibleTargetItems.add(itemName);
+        }
+      });
+    }
+  }
+
+  const variantMode = determineMineVariantMode(Array.from(allPossibleTargetItems));
+
   const baseLeaf: MineLeafNode = {
     action: 'mine',
-    variantMode: 'any_of',
-    what: createVariantGroup('any_of', filteredBlocks),
-    targetItem: createVariantGroup('any_of', leafTargetItems),
+    variantMode,
+    what: createVariantGroup(variantMode, filteredBlocks),
+    targetItem: createVariantGroup(variantMode, leafTargetItems),
     count: targetCount,
     ...(minimalTool ? { tool: createVariantGroup('any_of', [minimalTool]) } : {}),
-    variants: { mode: 'any_of', variants: [] },
-    children: { mode: 'any_of', variants: [] },
+    variants: { mode: variantMode, variants: [] },
+    children: { mode: variantMode, variants: [] },
     context
   };
 
@@ -196,15 +238,31 @@ function buildMineLeafNodes(
             availableMineTargets
           );
 
+          const allPossibleVariantTargetItems = new Set<string>();
+          for (const blockName of blockVariants) {
+            const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+            if (block && (block as any).drops) {
+              (block as any).drops.forEach((dropId: number) => {
+                const itemName = mcData.items[dropId]?.name;
+                if (itemName) {
+                  allPossibleVariantTargetItems.add(itemName);
+                }
+              });
+            }
+          }
+
+          const variantMode = determineMineVariantMode(Array.from(allPossibleVariantTargetItems));
+
           const leaf: MineLeafNode = {
             ...baseLeaf,
-            what: createVariantGroup('any_of', filteredVariants),
-            targetItem: createVariantGroup('any_of', variantTargetItems)
-          };
-
-          leaf.children = {
-            mode: baseLeaf.children.mode,
-            variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
+            variantMode,
+            what: createVariantGroup(variantMode, filteredVariants),
+            targetItem: createVariantGroup(variantMode, variantTargetItems),
+            variants: { mode: variantMode, variants: [] },
+            children: {
+              mode: variantMode,
+              variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
+            }
           };
 
           mineLeafByCanon.set(canonKey, leaf);

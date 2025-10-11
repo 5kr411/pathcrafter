@@ -39,7 +39,9 @@ describe('unit: comprehensive variant metadata tests', () => {
     expect(mineStep.what).toBeDefined();
     expect(mineStep.what!.variants.length).toBeGreaterThan(1); // Should have plank variants
     expect(mineStep.targetItem).toBeDefined();
-    expect(mineStep.variantMode).toBe('any_of');
+    // Planks drop themselves (oak_planks drops oak_planks, bamboo_planks drops bamboo_planks)
+    // so different planks drop different items -> one_of mode
+    expect(mineStep.variantMode).toBe('one_of');
 
     // Verify plank variants are present
     const variants = mineStep.what!.variants.map((v: any) => v.value);

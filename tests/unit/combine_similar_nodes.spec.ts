@@ -215,8 +215,10 @@ describe('unit: combine similar nodes', () => {
             expect(n.variantMode).toBeDefined();
             
             if (n.action === 'mine') {
-                // Mine nodes use 'any_of' since any wood variant can be mined
-                expect(n.variantMode).toBe('any_of');
+                // Mine nodes for logs use 'one_of' since different logs drop different items
+                // (oak_log drops oak_log, spruce_log drops spruce_log, etc.)
+                // Ore nodes would use 'any_of' since different ore blocks drop the same item
+                expect(['one_of', 'any_of']).toContain(n.variantMode);
             } else if (n.action === 'craft') {
                 // Craft nodes use 'one_of' since only one recipe variant can be used
                 expect(n.variantMode).toBe('one_of');
