@@ -149,64 +149,50 @@ export async function generateTopNPathsFromGenerators(
    * Now variant-aware: checks whatVariants for mining steps
    */
   function distanceScore(path: ActionPath): number {
-    try {
-      if (!snapshot || !snapshot.blocks || typeof snapshot.blocks !== 'object') {
-        return Number.POSITIVE_INFINITY;
-      }
-
-      let totalWeighted = 0;
-      let totalCount = 0;
-
-      // Check each step individually to handle variants
-      for (const step of path) {
-        if (step.action === 'mine') {
-          const count = Math.max(1, step.count || 1);
-          
-          // Check if step has variants
-          if (step.what.variants.length > 1) {
-            // Find the best available variant (closest distance)
-            let bestAvg: number | null = null;
-            
-            for (const variant of step.what.variants) {
-              const rec = snapshot.blocks![variant.value];
-              const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
-              
-              if (avg != null && (bestAvg == null || avg < bestAvg)) {
-                bestAvg = avg;
-              }
-            }
-            
-            // If at least one variant is available, use its distance
-            if (bestAvg != null) {
-              totalWeighted += bestAvg * count;
-              totalCount += count;
-            }
-            // If no variants available, path gets infinite score (filtered out later)
-          } else {
-            // No variants - check the primary block
-            const name = step.what.variants[0].value;
-            const rec = snapshot.blocks![name];
-            const avg = rec && Number.isFinite(rec.averageDistance) ? rec.averageDistance : null;
-            
-            if (avg != null) {
-              totalWeighted += avg * count;
-              totalCount += count;
-            }
-          }
-        }
-      }
-
-      if (totalCount === 0) {
-        return Number.POSITIVE_INFINITY;
-      }
-
-      return totalWeighted / totalCount;
-    } catch (_) {
+    if (!snapshot || !snapshot.blocks || typeof snapshot.blocks !== 'object') {
       return Number.POSITIVE_INFINITY;
     }
+
+    let bestScore: number | null = null;
+    let hasMineStep = false;
+
+    for (const step of path) {
+      if (step.action !== 'mine') continue;
+      hasMineStep = true;
+
+      let stepScore: number | null = null;
+
+      for (const variant of step.what.variants) {
+        const rec = snapshot.blocks![variant.value];
+        if (!rec) continue;
+
+        let distance: number | null = null;
+        if (Number.isFinite(rec.closestDistance)) {
+          distance = rec.closestDistance as number;
+        } else if (Number.isFinite(rec.averageDistance)) {
+          distance = rec.averageDistance as number;
+        }
+
+        if (distance == null) continue;
+
+        stepScore = stepScore == null ? distance : Math.min(stepScore, distance);
+      }
+
+      if (stepScore == null) {
+        return Number.POSITIVE_INFINITY;
+      }
+
+      bestScore = bestScore == null ? stepScore : Math.max(bestScore, stepScore);
+    }
+
+    if (!hasMineStep) {
+      return 0;
+    }
+
+    return bestScore == null ? Number.POSITIVE_INFINITY : bestScore;
   }
 
-  // Sort by weight first, then by distance score
+  // Sort by weight first, then by distance score (fallback to Infinity)
   unique.sort((a, b) => {
     const wa = computePathWeight(a);
     const wb = computePathWeight(b);
@@ -214,18 +200,13 @@ export async function generateTopNPathsFromGenerators(
 
     const da = distanceScore(a);
     const db = distanceScore(b);
+    if (!Number.isFinite(da) && !Number.isFinite(db)) return 0;
+    if (!Number.isFinite(da)) return 1;
+    if (!Number.isFinite(db)) return -1;
     return da - db;
   });
 
-  // Filter out paths that require blocks not in the world (infinite distance score)
-  // Only filter if we have a world snapshot
-  if (snapshot && snapshot.blocks) {
-    return unique.filter(path => {
-      const score = distanceScore(path);
-      return isFinite(score);
-    });
-  }
-
   return unique;
 }
+
 

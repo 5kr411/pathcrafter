@@ -699,7 +699,19 @@ function buildRecipeTreeInternal(
   // Clone inventory for this OR branch
   const mineInventory = invMap ? new Map(invMap) : invMap;
   const mineContext = { ...context, inventory: mineInventory };
-  const miningPaths = findBlocksThatDrop(mcData, primaryItem);
+  
+  const allMiningPaths: BlockSource[] = [];
+  const seenBlocks = new Set<string>();
+  for (const variant of variantsToUse) {
+    const paths = findBlocksThatDrop(mcData, variant);
+    for (const path of paths) {
+      if (!seenBlocks.has(path.block)) {
+        seenBlocks.add(path.block);
+        allMiningPaths.push(path);
+      }
+    }
+  }
+  const miningPaths = allMiningPaths;
   const canonicalBlockByItem = new Map<string, string>();
   const blockVariantsByCanonical = new Map<string, string[]>();
   miningPaths.forEach(path => {

@@ -9,7 +9,6 @@ import { ActionPath, ActionStep } from '../action_tree/types';
  */
 export interface GeneratorOptions {
   inventory?: Map<string, number>;
-  worldSnapshot?: WorldSnapshot;
   [key: string]: any;
 }
 
@@ -20,12 +19,14 @@ export interface WorldSnapshot {
   blocks?: {
     [blockName: string]: {
       averageDistance?: number;
+      closestDistance?: number | null;
       count?: number;
     };
   };
   entities?: {
     [entityName: string]: {
       averageDistance?: number;
+      closestDistance?: number | null;
       count?: number;
     };
   };

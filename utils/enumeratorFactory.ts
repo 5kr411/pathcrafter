@@ -11,7 +11,8 @@ import { createMakeStream } from './streamFactory';
  * Options for creating an enumerator context
  */
 export interface EnumeratorOptions {
-  inventory?: Record<string, any>;
+  inventory?: Record<string, any> | Map<string, number> | null;
+  worldSnapshot?: any;
   [key: string]: any;
 }
 
@@ -46,9 +47,14 @@ export interface EnumeratorContext {
 export function createEnumeratorContext(
   options: EnumeratorOptions = {}
 ): EnumeratorContext {
-  const invObj = options && options.inventory && typeof options.inventory === 'object' 
-    ? options.inventory 
-    : null;
+  const invSource = options?.inventory;
+  let invObj: Record<string, any> | null = null;
+
+  if (invSource instanceof Map) {
+    invObj = Object.fromEntries(invSource.entries());
+  } else if (invSource && typeof invSource === 'object') {
+    invObj = invSource as Record<string, any>;
+  }
 
   const persistentNames = buildPersistentNamesSet();
   

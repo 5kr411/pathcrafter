@@ -8,8 +8,8 @@ interface PathStreamItem extends PathItem {
 }
 
 interface StreamingScoreConfig {
-  scorePath: (path: ActionPath) => number;
-  scoreStep: (step: ActionStep | null) => number;
+  scorePath: (path: ActionPath, options: GeneratorOptions) => number;
+  scoreStep: (step: ActionStep | null, options: GeneratorOptions) => number;
 }
 
 function normaliseConfig(config?: Partial<StreamingScoreConfig>): StreamingScoreConfig {
@@ -25,11 +25,10 @@ export function createStreamingEnumerator(
   config?: Partial<StreamingScoreConfig>
 ): StreamFunction<PathStreamItem> {
   const scores = normaliseConfig(config);
-  const ctx = createEnumeratorContext({ inventory: options.inventory });
-
+  const ctx = createEnumeratorContext({ inventory: options.inventory, worldSnapshot: options.worldSnapshot });
   const priority = createPriorityStreams<PathStreamItem>({
-    getItemScore: item => scores.scorePath(item.path),
-    getParentStepScore: step => scores.scoreStep(step),
+    getItemScore: item => scores.scorePath(item.path, options),
+    getParentStepScore: step => scores.scoreStep(step, options),
     finalizeItem: path => ({ path })
   });
 

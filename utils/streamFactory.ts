@@ -121,7 +121,9 @@ export function createMakeStream<T extends PathItem = PathItem>(
 
     if (node.action === 'root') {
       if (children.length === 0) {
-        // Root node with no children means the item is already satisfied
+        if (node.count > 0) {
+          return function* () { };
+        }
         return function* () { yield { path: [] } as unknown as T; };
       }
       return makeOrStream(children.map(makeStream));
@@ -150,6 +152,18 @@ export function createMakeStream<T extends PathItem = PathItem>(
     if (node.action === 'smelt') {
       const operator = 'operator' in node ? node.operator : undefined;
       if (operator === 'OR') {
+        if (children.length === 0) {
+          const step: ActionStep = {
+            action: 'smelt',
+            variantMode: node.variantMode,
+            what: node.what,
+            count: node.count,
+            ...(('input' in node) && { input: (node as any).input }),
+            ...(('result' in node) && { result: (node as any).result }),
+            ...(('fuel' in node) && { fuel: (node as any).fuel })
+          };
+          return makeLeafStream(step);
+        }
         return makeOrStream(children.map(makeStream));
       }
 
@@ -168,6 +182,23 @@ export function createMakeStream<T extends PathItem = PathItem>(
     if (node.action === 'mine' || node.action === 'hunt') {
       const operator = 'operator' in node ? node.operator : undefined;
       if (operator === 'OR') {
+        if (children.length === 0) {
+          const gatherNode = node as any;
+          const step: ActionStep = {
+            action: node.action,
+            what: node.what,
+            count: node.count,
+            variantMode: node.variantMode,
+            ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+            ...(('tool' in node) && { tool: (node as any).tool }),
+            ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
+            ...(gatherNode.whatVariants && gatherNode.whatVariants.length > 1 && {
+              whatVariants: gatherNode.whatVariants,
+              targetItemVariants: gatherNode.targetItemVariants
+            })
+          };
+          return makeLeafStream(step);
+        }
         return makeOrStream(children.map(makeStream));
       }
 
