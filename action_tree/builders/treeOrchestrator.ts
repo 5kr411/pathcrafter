@@ -20,6 +20,7 @@ import { buildCraftNodes } from './craftNodeBuilder';
 import { buildMineNodes } from './mineNodeBuilder';
 import { buildSmeltNodes } from './smeltNodeBuilder';
 import { buildHuntNodes } from './huntNodeBuilder';
+import { applyPostBuildFiltering } from './postBuildFilter';
 
 /**
  * Main function to build a recipe tree for obtaining a target item
@@ -61,7 +62,12 @@ export function buildRecipeTree(
     combineSimilarNodes: context.combineSimilarNodes
   };
   
-  return buildRecipeTreeInternal(ctx, itemGroup, targetCount, variantContext);
+  const tree = buildRecipeTreeInternal(ctx, itemGroup, targetCount, variantContext);
+  
+  // Apply post-build filtering to remove craft variants with unavailable ingredients
+  applyPostBuildFiltering(tree, variantContext, mcData);
+  
+  return tree;
 }
 
 /**

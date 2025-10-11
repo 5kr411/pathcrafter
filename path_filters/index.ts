@@ -8,9 +8,6 @@ export {
   explainDemandShortfall
 } from './worldResources';
 
-// Path validation removed - tree ensures validity
-export { filterPathVariantsByWorld } from './filterVariants';
-
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
 import { getPruneWithWorldEnabled, getDefaultPerGeneratorPaths } from '../utils/config';

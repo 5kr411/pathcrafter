@@ -307,4 +307,3 @@ function processIngredientDependencies(
     craftNode.children.variants.push({ value: ingredientTree });
   }
 }
-

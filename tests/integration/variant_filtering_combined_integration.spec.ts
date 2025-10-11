@@ -6,7 +6,7 @@ import { plan } from '../../planner';
 import { generateTopNAndFilter } from '../../path_filters';
 import { TreeNode, MineLeafNode, CraftNode, HuntLeafNode } from '../../action_tree/types';
 
-// SKIPPED: Variant filtering with combined nodes feature is not fully implemented.
+// Tests variant filtering with combined nodes feature.
 // When combineSimilarNodes is enabled, the planner creates variant groups for similar items
 // (e.g., all wood types as variants). This test suite validates that:
 // 1. Variants are filtered based on world snapshot availability (pruneWithWorld)
@@ -14,8 +14,7 @@ import { TreeNode, MineLeafNode, CraftNode, HuntLeafNode } from '../../action_tr
 // 3. Craft variants are consistent with available ingredients
 // 4. Paths are correctly generated with filtered variants
 // 5. Single-variant scenarios are simplified appropriately
-// The feature requires implementation of world-aware variant filtering during tree building.
-describe.skip('integration: variant filtering with combined nodes', () => {
+describe('integration: variant filtering with combined nodes', () => {
   const mcData = (plan as any)._internals.resolveMcData('1.20.1');
 
   test('filters wood variants to only available types when combining is enabled', async () => {
@@ -362,6 +361,73 @@ describe.skip('integration: variant filtering with combined nodes', () => {
         expect(craftedPlanks.some(w => w === 'cherry')).toBe(true);
       });
     }
+  });
+
+  test('filters table craft variants based on ingredient availability', async () => {
+    const snapshot = {
+      version: '1.20.1',
+      dimension: 'overworld',
+      center: { x: 0, y: 64, z: 0 },
+      radius: 64,
+      yMin: 0,
+      yMax: 255,
+      blocks: {
+        cherry_log: { count: 40, closestDistance: 7, averageDistance: 14 }
+      },
+      entities: {}
+    };
+
+    const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, {
+      inventory: new Map(),
+      worldSnapshot: snapshot,
+      perGenerator: 15,
+      log: false,
+      pruneWithWorld: true,
+      combineSimilarNodes: true
+    });
+
+    expect(paths.length).toBeGreaterThan(0);
+
+    const pathsWithTableCraft = paths.filter(p =>
+      p.some(s => s.action === 'craft' && s.what.variants[0].value === 'table')
+    );
+
+    expect(pathsWithTableCraft.length).toBeGreaterThan(0);
+
+    pathsWithTableCraft.forEach(path => {
+      path.forEach(step => {
+        if (step.action === 'craft' && step.what.variants[0].value === 'table') {
+          if (step.result && step.result.variants.length > 1) {
+            const resultItems = step.result.variants.map((v: any) => v.value.item);
+            expect(resultItems.every((item: string) => item === 'wooden_pickaxe')).toBe(true);
+          }
+
+          // Check that plank ingredients include cherry (since only cherry_log is available)
+          if (step.ingredients && step.ingredients.variants.length > 0) {
+            const plankIngredients = step.ingredients.variants.map((variant: any) => {
+              const ingredients = variant.value || [];
+              return ingredients.find((ing: any) => ing.item && ing.item.includes('_planks'));
+            }).filter(Boolean);
+            
+            // Should have cherry_planks among the variants
+            const hasCherry = plankIngredients.some((ing: any) => ing.item === 'cherry_planks');
+            expect(hasCherry).toBe(true);
+            
+            // Should not have unavailable wood types like spruce/oak if only cherry is in world
+            // Note: Some plank types (bamboo, crimson, warped) don't require logs
+            const regularWoodPlanks = plankIngredients.filter((ing: any) => 
+              ing.item &&  ing.item.match(/^(oak|spruce|birch|jungle|acacia|dark_oak|mangrove)_planks$/)
+            );
+            if (regularWoodPlanks.length > 0) {
+              // If there are regular wood planks, they should all be cherry
+              regularWoodPlanks.forEach((ing: any) => {
+                expect(ing.item).toBe('cherry_planks');
+              });
+            }
+          }
+        }
+      });
+    });
   });
 
   test('handles mixed availability scenarios', async () => {
