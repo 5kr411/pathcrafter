@@ -15,13 +15,7 @@ function firstMineCounts(path: ActionStep[]) {
     return { first, mineIndices };
 }
 
-// SKIPPED: Mining hoist optimization feature is not fully implemented or tested.
-// This optimization would combine multiple mining steps for the same resource into a single
-// aggregated mining step at the earliest occurrence in the path. For example, if a path mines
-// 2 oak_log early and 3 oak_log later, the optimization would hoist them into a single
-// "mine 5 oak_log" step at the first occurrence. This reduces redundant positioning and improves
-// execution efficiency. The tests also verify that hoisting respects tool differences.
-describe.skip('integration: mining hoist applied post generation/filtering', () => {
+describe('integration: mining hoist applied post generation/filtering', () => {
     const { resolveMcData } = (analyzeRecipes as any)._internals;
     resolveMcData('1.20.1');
 
@@ -35,19 +29,19 @@ describe.skip('integration: mining hoist applied post generation/filtering', () 
         };
         const paths = await generateTopNAndFilter('1.20.1', 'wooden_pickaxe', 1, { inventory, perGenerator, log: false, worldSnapshot: snapshot, pruneWithWorld: true });
         expect(paths.length).toBeGreaterThan(0);
-        const p = paths.find(pp => pp.some((s: any) => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log'))));
+        const p = paths.find(pp => pp.some((s: any) => s.action === 'mine' && s.what && s.what.variants && s.what.variants[0] && s.what.variants[0].value.endsWith('_log')));
         expect(!!p).toBe(true);
         const { mineIndices } = firstMineCounts(p!);
         expect(mineIndices.length).toBeGreaterThan(0);
         // only one mining step for logs should remain if multiple existed originally
-        const logMines = p!.filter((s: any) => s.action === 'mine' && typeof (s.targetItem || s.what) === 'string' && ((s.targetItem || s.what).endsWith('_log')));
+        const logMines = p!.filter((s: any) => s.action === 'mine' && s.what && s.what.variants && s.what.variants[0] && s.what.variants[0].value.endsWith('_log'));
         expect(logMines.length).toBe(1);
         // sanity: aggregated count >= 2
         expect(logMines[0].count).toBeGreaterThanOrEqual(2);
         // and no earlier same-key mining step exists before the kept one
         const kept = logMines[0];
         const keptIdx = p!.indexOf(kept);
-        const hasEarlierSameKey = p!.slice(0, keptIdx).some((s: any) => s && s.action === 'mine' && s.what === kept.what && ((s as any).targetItem || null) === ((kept as any).targetItem || null) && ((s as any).tool || null) === ((kept as any).tool || null));
+        const hasEarlierSameKey = p!.slice(0, keptIdx).some((s: any) => s && s.action === 'mine' && JSON.stringify(s.what) === JSON.stringify(kept.what) && JSON.stringify((s as any).targetItem || null) === JSON.stringify((kept as any).targetItem || null) && JSON.stringify((s as any).tool || null) === JSON.stringify((kept as any).tool || null));
         expect(hasEarlierSameKey).toBe(false);
     });
 

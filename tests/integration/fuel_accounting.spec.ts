@@ -4,11 +4,7 @@ describe('integration: fuel accounting for multiple smelts', () => {
     const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
-    // SKIPPED: Fuel field structure or accounting logic may have changed since this test was written.
-    // The fuel accounting logic needs to be reviewed and updated to match the current implementation
-    // before this test can be enabled. This test verifies that smelting 9 items correctly accounts
-    // for the fuel consumption (expecting >=2 coal units).
-    test.skip('smelting 9 stone consumes >=2 coal units in a valid path', () => {
+    test('smelting 9 stone consumes >=2 coal units in a valid path', () => {
         const inventory = { furnace: 1, cobblestone: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
@@ -20,10 +16,11 @@ describe('integration: fuel accounting for multiple smelts', () => {
         let foundFuelOk = false;
         let checked = 0;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
-            const smeltSteps = path.filter((s: any) => s.action === 'smelt' && s.result?.item === 'stone');
+            const smeltSteps = path.filter((s: any) => s.action === 'smelt' && s.result && s.result.variants && s.result.variants[0] && s.result.variants[0].value.item === 'stone');
             let requiredCoal = 0;
             for (const st of smeltSteps) {
-                if ((st as any).fuel === 'coal') {
+                const fuel = st.fuel && st.fuel.variants && st.fuel.variants[0] ? st.fuel.variants[0].value : null;
+                if (fuel === 'coal') {
                     const count = Number(st.count) || 1;
                     const perFuel = 8; // from config
                     requiredCoal += Math.ceil(count / perFuel);

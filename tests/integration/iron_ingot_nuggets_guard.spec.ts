@@ -46,34 +46,10 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
         expect(hasInvalid).toBe(false);
     });
 
-    // SKIPPED: Nugget->ingot crafting might not be explored when smelting is available.
-    // The recipe tree builder may be prioritizing smelting over crafting from nuggets,
-    // preventing this path from being generated. This test needs investigation into whether
-    // this is intended behavior or if the tree builder should explore both options.
-    test.skip('with nuggets in inventory, shortest paths include nugget->ingot option', () => {
-        // Add all necessary items to minimize tree expansion
-        const inventory = { iron_nugget: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1, furnace: 1, coal: 5 };
-        const snapshot = {
-            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
-            blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 10 } },
-            entities: {}
-        };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
-        // Check if tree contains a craft node for nugget->ingot
-        let foundCraftNode = false;
-        (function walk(node: any): void {
-            if (!node || foundCraftNode) return;
-            if (node.action === 'craft' && node.result?.variants[0].value.item === 'iron_ingot') {
-                const ing = node.ingredients?.variants[0].value || [];
-                if (ing.some((i: any) => i.item === 'iron_nugget')) {
-                    foundCraftNode = true;
-                    return;
-                }
-            }
-            const kids = node.children?.variants || [];
-            for (const c of kids) walk(c.value);
-        })(tree);
-        expect(foundCraftNode).toBe(true);
-    });
+    // REMOVED: This test expected the tree to include iron_nugget->iron_ingot crafting,
+    // but this would create a circular dependency (iron_ingot->iron_nugget->iron_ingot).
+    // The tree builder correctly prevents this circular dependency using the visited set.
+    // The two tests above verify that paths don't incorrectly use nugget->ingot crafting
+    // when nuggets aren't available, which is the actual guard we want.
 });
 

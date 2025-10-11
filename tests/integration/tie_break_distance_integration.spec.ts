@@ -4,12 +4,7 @@ import { generateTopNAndFilter } from '../../path_filters';
 import { plan } from '../../planner';
 import minecraftData from 'minecraft-data';
 
-// SKIPPED: Distance-based tie-breaking for path selection is not fully implemented.
-// These tests validate that when multiple paths have equal weight/cost, the system
-// should prefer paths that use resources closer to the player (based on world snapshot data).
-// This feature would improve efficiency by minimizing travel distance when multiple
-// equivalent resource options exist (e.g., oak_log at distance 5 vs spruce_log at distance 20).
-describe.skip('integration: Top-N tie-break prefers closer blocks from snapshot', () => {
+describe('integration: Top-N tie-break prefers closer blocks from snapshot', () => {
 
   function loadLatestSnapshot() {
     const dir = path.resolve(__dirname, '../../world_snapshots');
@@ -111,10 +106,7 @@ describe.skip('integration: Top-N tie-break prefers closer blocks from snapshot'
     expect(nodesWithVariants.length).toBeGreaterThan(0);
   });
 
-  // SKIPPED: World filtering for variants is not fully implemented in tree building.
-  // This test verifies that when combineSimilarNodes and pruneWithWorld are both enabled,
-  // the tree should only contain variants for resources actually available in the world snapshot.
-  test.skip('with combining: world filtering keeps only available wood variants', () => {
+  test('with combining: world filtering keeps only available wood variants', () => {
     // With world filtering, variants should be limited to what's in the snapshot
     const snapshot = loadLatestSnapshot();
     const present = snapshot && snapshot.blocks ? Object.keys(snapshot.blocks) : [];
