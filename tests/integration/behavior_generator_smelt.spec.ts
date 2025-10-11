@@ -5,7 +5,7 @@ describe('integration: behavior_generator smelt', () => {
   const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
   const mcData = resolveMcData('1.20.1');
 
-  test.skip('creates behavior for a smelt leaf step from planner path', () => {
+  test('creates behavior for a smelt leaf step from planner path', () => {
     // Provide all needed items to minimize tree generation
     const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
     const snapshot = {
@@ -21,7 +21,7 @@ describe('integration: behavior_generator smelt', () => {
       break;
     }
     expect(path).toBeDefined();
-    const found = path.find((s: any) => s.action === 'smelt' && s.result?.item === 'iron_ingot');
+    const found = path.find((s: any) => s.action === 'smelt' && s.result?.variants[0].value.item === 'iron_ingot');
     expect(found).toBeTruthy();
     // Smoke build of state machine (no runtime execution here)
     const fakeBot = {} as any;

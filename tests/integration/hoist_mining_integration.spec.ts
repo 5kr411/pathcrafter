@@ -15,6 +15,12 @@ function firstMineCounts(path: ActionStep[]) {
     return { first, mineIndices };
 }
 
+// SKIPPED: Mining hoist optimization feature is not fully implemented or tested.
+// This optimization would combine multiple mining steps for the same resource into a single
+// aggregated mining step at the earliest occurrence in the path. For example, if a path mines
+// 2 oak_log early and 3 oak_log later, the optimization would hoist them into a single
+// "mine 5 oak_log" step at the first occurrence. This reduces redundant positioning and improves
+// execution efficiency. The tests also verify that hoisting respects tool differences.
 describe.skip('integration: mining hoist applied post generation/filtering', () => {
     const { resolveMcData } = (analyzeRecipes as any)._internals;
     resolveMcData('1.20.1');

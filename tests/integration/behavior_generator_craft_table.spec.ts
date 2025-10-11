@@ -2,7 +2,7 @@ import { ActionStep } from '../../action_tree/types';
 import plan from '../../planner';
 import { createBehaviorForStep } from '../../behavior_generator';
 
-describe.skip('integration: behavior_generator craft-in-table', () => {
+describe('integration: behavior_generator craft-in-table', () => {
     const { resolveMcData, enumerateLowestWeightPathsGenerator } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 

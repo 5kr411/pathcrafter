@@ -2,6 +2,10 @@ import { generateTopNAndFilter } from '../../path_filters';
 import { plan } from '../../planner';
 import minecraftData from 'minecraft-data';
 
+// SKIPPED: Distance-based tie-breaking for path selection is not fully implemented.
+// These unit tests verify the tie-breaking logic with controlled snapshots, ensuring that
+// paths using closer resources are preferred when paths have equal weights. This is the
+// unit test counterpart to the integration tests in tie_break_distance_integration.spec.ts.
 describe.skip('unit: Top-N tie-break by snapshot distance', () => {
 
   test('without combining: tie-breaking prefers closer wood species', async () => {

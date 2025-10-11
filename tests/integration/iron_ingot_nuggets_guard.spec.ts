@@ -46,7 +46,10 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
         expect(hasInvalid).toBe(false);
     });
 
-    // TODO: nugget->ingot crafting might not be explored when smelting is available
+    // SKIPPED: Nugget->ingot crafting might not be explored when smelting is available.
+    // The recipe tree builder may be prioritizing smelting over crafting from nuggets,
+    // preventing this path from being generated. This test needs investigation into whether
+    // this is intended behavior or if the tree builder should explore both options.
     test.skip('with nuggets in inventory, shortest paths include nugget->ingot option', () => {
         // Add all necessary items to minimize tree expansion
         const inventory = { iron_nugget: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1, furnace: 1, coal: 5 };

@@ -6,6 +6,15 @@ import { plan } from '../../planner';
 import { generateTopNAndFilter } from '../../path_filters';
 import { TreeNode, MineLeafNode, CraftNode, HuntLeafNode } from '../../action_tree/types';
 
+// SKIPPED: Variant filtering with combined nodes feature is not fully implemented.
+// When combineSimilarNodes is enabled, the planner creates variant groups for similar items
+// (e.g., all wood types as variants). This test suite validates that:
+// 1. Variants are filtered based on world snapshot availability (pruneWithWorld)
+// 2. Only available wood/mob types appear in variants
+// 3. Craft variants are consistent with available ingredients
+// 4. Paths are correctly generated with filtered variants
+// 5. Single-variant scenarios are simplified appropriately
+// The feature requires implementation of world-aware variant filtering during tree building.
 describe.skip('integration: variant filtering with combined nodes', () => {
   const mcData = (plan as any)._internals.resolveMcData('1.20.1');
 

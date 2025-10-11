@@ -4,7 +4,10 @@ describe('integration: fuel accounting for multiple smelts', () => {
     const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
-    // TODO: fuel field structure or accounting logic may have changed
+    // SKIPPED: Fuel field structure or accounting logic may have changed since this test was written.
+    // The fuel accounting logic needs to be reviewed and updated to match the current implementation
+    // before this test can be enabled. This test verifies that smelting 9 items correctly accounts
+    // for the fuel consumption (expecting >=2 coal units).
     test.skip('smelting 9 stone consumes >=2 coal units in a valid path', () => {
         const inventory = { furnace: 1, cobblestone: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
         const snapshot = {

@@ -6,8 +6,10 @@ import * as craftTable from './craftTable';
 import * as craftVariant from './craftVariant';
 import * as mine from './mine';
 import * as mineOneOf from './mineOneOf';
+import * as smelt from './smelt';
 
 const ACTION_HANDLERS: ActionHandler[] = [
+  smelt,
   craftVariant, // Check for variant crafting first
   craftInventory,
   craftTable,
@@ -49,6 +51,7 @@ export const _internals = {
   computeTargetsForCraftInTable: craftTable.computeTargetsForCraftInTable,
   computeTargetsForCraftVariant: craftVariant.computeTargetsForCraftVariant,
   computeTargetsForMine: mine.computeTargetsForMine,
-  computeTargetsForMineOneOf: mineOneOf.computeTargetsForMineOneOf
+  computeTargetsForMineOneOf: mineOneOf.computeTargetsForMineOneOf,
+  computeTargetsForSmelt: smelt.computeTargetsForSmelt
 };
 

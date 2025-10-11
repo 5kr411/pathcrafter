@@ -3,6 +3,14 @@ import { loadSnapshotFromFile } from '../../utils/worldSnapshot';
 import { captureAdaptiveSnapshot, createPathValidator } from '../../utils/adaptiveSnapshot';
 import * as path from 'path';
 
+// SKIPPED: Adaptive snapshot with progressive radii feature is not fully tested.
+// This feature automatically adjusts the world scan radius based on resource availability.
+// It starts with a small radius and progressively increases until a valid path can be found.
+// Benefits: 1) Reduces scanning time when resources are nearby, 2) Ensures fallback to larger
+// areas when needed, 3) Validates that sufficient resources exist before planning.
+// The tests verify: starting with small radii when resources are close, expanding when resources
+// are distant, falling back to largest radius when no valid paths exist, and working without
+// a validator (returning first radius immediately).
 describe.skip('integration: adaptive snapshot with progressive radii', () => {
   const { resolveMcData, enumerateActionPathsGenerator } = (analyzeRecipes as any)._internals;
   resolveMcData('1.20.1');
