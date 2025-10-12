@@ -165,23 +165,25 @@ export function findBlocksWithSameDrop(mcData: MinecraftData, blockName: string)
     return [blockName];
   }
   
-  const primaryDrop = targetBlock.drops[0];
+  const targetDrops = targetBlock.drops;
   const targetToolRequirements = targetBlock.harvestTools || {};
-  const targetDropCount = targetBlock.drops.length;
   const similar: string[] = [];
   
-  // Find all blocks that drop the same primary item AND have the same tool requirements AND same drop count
+  // Find all blocks that drop the exact same set of items with same tool requirements
   for (const block of Object.values(mcData.blocks)) {
-    if (block.drops && block.drops.length > 0 && block.drops[0] === primaryDrop) {
-      // Check if tool requirements match
-      const blockToolRequirements = block.harvestTools || {};
-      const toolsMatch = JSON.stringify(targetToolRequirements) === JSON.stringify(blockToolRequirements);
+    if (block.drops && block.drops.length > 0) {
+      // Check if drops match exactly (same items in same order)
+      const dropsMatch = block.drops.length === targetDrops.length &&
+        block.drops.every((dropId, index) => dropId === targetDrops[index]);
       
-      // Check if drop count matches
-      const dropCountMatch = block.drops.length === targetDropCount;
-      
-      if (toolsMatch && dropCountMatch) {
-        similar.push(block.name);
+      if (dropsMatch) {
+        // Check if tool requirements match
+        const blockToolRequirements = block.harvestTools || {};
+        const toolsMatch = JSON.stringify(targetToolRequirements) === JSON.stringify(blockToolRequirements);
+        
+        if (toolsMatch) {
+          similar.push(block.name);
+        }
       }
     }
   }

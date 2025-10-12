@@ -23,7 +23,7 @@ import {
   BuildRecipeTreeFn,
   injectToolDependency
 } from './dependencyInjector';
-import { findSimilarItems, findBlocksWithSameDrop } from '../utils/itemSimilarity';
+import { findBlocksWithSameDrop, findSimilarItems } from '../utils/itemSimilarity';
 
 /**
  * Builds mining nodes for an item and adds them to the root node
@@ -45,9 +45,18 @@ export function buildMineNodes(
   
   miningPaths.forEach(path => {
     const blockName = path.block;
-    const sameDrop = context.combineSimilarNodes ? findBlocksWithSameDrop(mcData, blockName) : [blockName];
-    const sameFamily = context.combineSimilarNodes ? findSimilarItems(mcData, blockName) : [blockName];
-    const similar = sameDrop.length > sameFamily.length ? sameDrop : sameFamily;
+    let similar: string[];
+    
+    if (context.combineSimilarNodes) {
+      const sameDrop = findBlocksWithSameDrop(mcData, blockName);
+      if (sameDrop.length > 1) {
+        similar = sameDrop;
+      } else {
+        similar = findSimilarItems(mcData, blockName);
+      }
+    } else {
+      similar = [blockName];
+    }
     
     if (!blockVariantsByCanonical.has(blockName)) {
       blockVariantsByCanonical.set(blockName, similar);
