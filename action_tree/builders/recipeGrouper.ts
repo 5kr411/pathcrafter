@@ -6,7 +6,7 @@
  */
 
 import { MinecraftRecipe } from '../types';
-import { getRecipeCanonicalKey, getIngredientCounts } from '../utils/recipeUtils';
+import { getRecipeCanonicalKey, getIngredientCounts, normalizeWoodSuffix } from '../utils/recipeUtils';
 import { getSuffixTokenFromName } from '../../utils/items';
 
 /**
@@ -73,7 +73,8 @@ export function groupRecipesBySuffix(
  * Extracts suffix pattern from recipe ingredients
  * 
  * Creates a key based on ingredient suffixes (e.g., "log" or "wood")
- * to identify alternative recipes.
+ * to identify alternative recipes. Uses normalized suffixes for wood-related
+ * items to enable aggressive grouping across log/wood/stem/hyphae.
  */
 export function getIngredientSuffixKey(recipe: MinecraftRecipe, mcData: any): string {
   const ingredientCounts = getIngredientCounts(recipe);
@@ -82,7 +83,10 @@ export function getIngredientSuffixKey(recipe: MinecraftRecipe, mcData: any): st
     .filter(Boolean);
   
   const suffixKey = ingredientNames
-    .map(name => getSuffixTokenFromName(name) || name)
+    .map(name => {
+      const suffix = getSuffixTokenFromName(name) || name;
+      return normalizeWoodSuffix(suffix);
+    })
     .sort()
     .join(',');
   

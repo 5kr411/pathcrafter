@@ -275,3 +275,39 @@ export function findSameFamilyItems(mcData: MinecraftData, itemName: string): st
   
   return sameFamily.length > 0 ? sameFamily : [itemName];
 }
+
+/**
+ * Finds all items that can satisfy an ingredient requirement by suffix
+ * 
+ * This is more permissive than findSimilarItems and groups ALL items with the same
+ * suffix, regardless of tags or wood variant families. This is used for ingredient
+ * resolution where any planks can satisfy a planks requirement.
+ * 
+ * @param mcData - Minecraft data object
+ * @param itemName - Name of the item to find ingredient alternatives for
+ * @returns Array of all items with the same combinable suffix
+ * 
+ * @example
+ * ```typescript
+ * const alternatives = findIngredientAlternatives(mcData, 'oak_planks');
+ * // Returns: ['oak_planks', 'spruce_planks', ..., 'bamboo_planks', 'crimson_planks', etc.]
+ * 
+ * const alternatives = findIngredientAlternatives(mcData, 'iron_ingot');
+ * // Returns: ['iron_ingot'] (not combinable)
+ * ```
+ */
+export function findIngredientAlternatives(mcData: MinecraftData, itemName: string): string[] {
+  const suffix = getSuffixTokenFromName(itemName);
+  if (!suffix || !COMBINABLE_SUFFIXES.has(suffix)) {
+    return [itemName];
+  }
+  
+  const alternatives: string[] = [];
+  for (const [name] of Object.entries(mcData.itemsByName)) {
+    if (getSuffixTokenFromName(name) === suffix) {
+      alternatives.push(name);
+    }
+  }
+  
+  return alternatives.length > 1 ? alternatives : [itemName];
+}

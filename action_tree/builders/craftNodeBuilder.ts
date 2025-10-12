@@ -33,7 +33,7 @@ import {
   injectWorkstationDependency
 } from './dependencyInjector';
 import { requiresCraftingTable, getIngredientCounts } from '../utils/recipeUtils';
-import { findSimilarItems } from '../utils/itemSimilarity';
+import { findIngredientAlternatives } from '../utils/itemSimilarity';
 import { getSuffixTokenFromName } from '../../utils/items';
 
 /**
@@ -278,7 +278,7 @@ function processIngredientDependencies(
     
     const requiredCount = actualCount * craftingsNeeded;
     const similarItems = context.combineSimilarNodes
-      ? Array.from(new Set(findSimilarItems(mcData, ingredientItem)))
+      ? Array.from(new Set(findIngredientAlternatives(mcData, ingredientItem)))
       : [ingredientItem];
     if (similarItems.length === 0) continue;
     

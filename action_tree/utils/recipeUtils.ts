@@ -10,6 +10,35 @@ import { getSuffixTokenFromName } from '../../utils/items';
 import { getFurnaceInputsFor } from '../../utils/smeltingConfig';
 
 /**
+ * Wood-related suffixes that should be normalized for aggressive grouping
+ */
+const WOOD_SUFFIXES = new Set(['log', 'wood', 'stem', 'hyphae']);
+
+/**
+ * Normalizes wood-related suffixes for aggressive grouping
+ * 
+ * This allows recipes using different wood sources (log, wood, stem, hyphae)
+ * to be grouped together when they produce the same output count.
+ * 
+ * @param suffix - Item suffix to normalize
+ * @returns Normalized suffix or original if not wood-related
+ * 
+ * @example
+ * ```typescript
+ * normalizeWoodSuffix('log') // returns 'wood_source'
+ * normalizeWoodSuffix('stem') // returns 'wood_source'
+ * normalizeWoodSuffix('hyphae') // returns 'wood_source'
+ * normalizeWoodSuffix('planks') // returns 'planks' (unchanged)
+ * ```
+ */
+export function normalizeWoodSuffix(suffix: string): string {
+  if (WOOD_SUFFIXES.has(suffix)) {
+    return 'wood_source';
+  }
+  return suffix;
+}
+
+/**
  * Gets the item name from an item ID
  * 
  * @param mcData - Minecraft data object
