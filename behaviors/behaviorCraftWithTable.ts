@@ -3,6 +3,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 const minecraftData = require('minecraft-data');
 
 import { getItemCountInInventory } from '../utils/inventory';
+import createPlaceNearState from './behaviorPlaceNear';
 import logger from '../utils/logger';
 
 interface Vec3Like {
@@ -40,18 +41,10 @@ interface MinecraftData {
 }
 
 const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
-  const craftItemWithTable = async (itemName: string, additionalNeeded: number): Promise<boolean> => {
-    const mcData: MinecraftData = minecraftData(bot.version);
-    const item = mcData.itemsByName[itemName];
-
-    if (!item) {
-      logger.error(`BehaviorCraftWithTable: Item ${itemName} not found`);
-      return false;
-    }
-
+  function findCraftingTableNearby(): Block | null {
     let craftingTable: Block | null = null;
     try {
-      // Prefer placed position if provided (from craftTable behavior)
+      // Prefer placed position if provided (from place behavior)
       if (targets && targets.placedPosition && bot.blockAt) {
         const maybe = bot.blockAt(targets.placedPosition, false);
         if (maybe && maybe.name === 'crafting_table') craftingTable = maybe;
@@ -74,6 +67,19 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       if (!craftingTable && bot.findBlock)
         craftingTable = bot.findBlock({ matching: (block) => block.name === 'crafting_table', maxDistance: 4 });
     }
+    return craftingTable;
+  }
+
+  const craftItemWithTable = async (itemName: string, additionalNeeded: number): Promise<boolean> => {
+    const mcData: MinecraftData = minecraftData(bot.version);
+    const item = mcData.itemsByName[itemName];
+
+    if (!item) {
+      logger.error(`BehaviorCraftWithTable: Item ${itemName} not found`);
+      return false;
+    }
+
+    const craftingTable = findCraftingTableNearby();
 
     if (!craftingTable) {
       logger.error(`BehaviorCraftWithTable: No crafting table within range`);
@@ -149,6 +155,17 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   };
 
   const enter = new BehaviorIdle();
+  const checkForTable = new BehaviorIdle();
+  
+  const mcData: MinecraftData = minecraftData(bot.version);
+  const craftingTableItem = mcData.itemsByName['crafting_table'];
+  const placeTableTargets = { 
+    item: craftingTableItem ? bot.inventory.items().find((i: any) => i && i.name === 'crafting_table') : null,
+    placedPosition: undefined,
+    placedConfirmed: false
+  };
+  const placeTable = createPlaceNearState(bot, placeTableTargets);
+  
   const waitForCraft = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
@@ -168,32 +185,118 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
   });
 
+  const enterToCheckForTable = new StateTransition({
+    parent: enter,
+    child: checkForTable,
+    name: 'BehaviorCraftWithTable: enter -> check for table',
+    shouldTransition: () => targets.itemName != null && targets.amount != null,
+    onTransition: () => {
+      logger.info('BehaviorCraftWithTable: enter -> check for table');
+    }
+  });
+
+  const checkForTableToPlaceTable = new StateTransition({
+    parent: checkForTable,
+    child: placeTable,
+    name: 'BehaviorCraftWithTable: check for table -> place table',
+    shouldTransition: () => {
+      const tableNearby = findCraftingTableNearby();
+      if (tableNearby) return false;
+      
+      const hasTableInInventory = getItemCountInInventory(bot, 'crafting_table') > 0;
+      if (!hasTableInInventory) {
+        logger.error('BehaviorCraftWithTable: No crafting table nearby and none in inventory');
+        return false;
+      }
+      
+      return true;
+    },
+    onTransition: () => {
+      logger.info('BehaviorCraftWithTable: No crafting table nearby, placing one');
+      placeTableTargets.item = bot.inventory.items().find((i: any) => i && i.name === 'crafting_table') || null;
+      placeTableTargets.placedPosition = undefined;
+      placeTableTargets.placedConfirmed = false;
+    }
+  });
+
+  const placeTableToWaitForCraft = new StateTransition({
+    parent: placeTable,
+    child: waitForCraft,
+    name: 'BehaviorCraftWithTable: place table -> wait for craft',
+    shouldTransition: () => {
+      if (typeof placeTable.isFinished !== 'function') return true;
+      return placeTable.isFinished();
+    },
+    onTransition: () => {
+      if (placeTableTargets.placedPosition) {
+        targets.placedPosition = placeTableTargets.placedPosition;
+        logger.info('BehaviorCraftWithTable: Crafting table placed, proceeding to craft');
+      } else {
+        logger.error('BehaviorCraftWithTable: Failed to place crafting table');
+      }
+    }
+  });
+
+  const checkForTableToWaitForCraft = new StateTransition({
+    parent: checkForTable,
+    child: waitForCraft,
+    name: 'BehaviorCraftWithTable: check for table -> wait for craft',
+    shouldTransition: () => {
+      const tableNearby = findCraftingTableNearby();
+      if (tableNearby) return true;
+      
+      const hasTableInInventory = getItemCountInInventory(bot, 'crafting_table') > 0;
+      if (!hasTableInInventory) {
+        logger.error('BehaviorCraftWithTable: No crafting table nearby and none in inventory');
+        return true; // Exit to prevent infinite loop
+      }
+      
+      return false;
+    },
+    onTransition: () => {
+      const tableNearby = findCraftingTableNearby();
+      if (tableNearby) {
+        logger.info('BehaviorCraftWithTable: Found crafting table nearby');
+      } else {
+        logger.error('BehaviorCraftWithTable: No crafting table available, cannot craft');
+      }
+    }
+  });
+
   let waitForCraftStartTime: number;
   let craftingDone = false;
   let craftingOk = false;
-  const enterToWaitForCraft = new StateTransition({
-    parent: enter,
-    child: waitForCraft,
-    name: 'BehaviorCraftWithTable: enter -> wait for craft',
-    shouldTransition: () => targets.itemName != null && targets.amount != null,
-    onTransition: () => {
-      waitForCraftStartTime = Date.now();
-      logger.info('BehaviorCraftWithTable: enter -> wait for craft');
-      craftingDone = false;
-      craftingOk = false;
-      Promise.resolve()
-        .then(() => craftItemWithTable(targets.itemName, targets.amount))
-        .then((ok) => {
-          craftingOk = !!ok;
-          craftingDone = true;
-        })
-        .catch((err) => {
-          logger.error('BehaviorCraftWithTable: craft promise error', err);
-          craftingOk = false;
-          craftingDone = true;
-        });
-    }
-  });
+  const waitForCraftOnEnter = () => {
+    waitForCraftStartTime = Date.now();
+    logger.info('BehaviorCraftWithTable: starting craft');
+    craftingDone = false;
+    craftingOk = false;
+    Promise.resolve()
+      .then(() => craftItemWithTable(targets.itemName, targets.amount))
+      .then((ok) => {
+        craftingOk = !!ok;
+        craftingDone = true;
+      })
+      .catch((err) => {
+        logger.error('BehaviorCraftWithTable: craft promise error', err);
+        craftingOk = false;
+        craftingDone = true;
+      });
+  };
+
+  // Hook into the checkForTableToWaitForCraft transition
+  const originalCheckToWaitTransition = checkForTableToWaitForCraft.onTransition;
+  checkForTableToWaitForCraft.onTransition = () => {
+    if (originalCheckToWaitTransition) originalCheckToWaitTransition();
+    waitForCraftOnEnter();
+  };
+
+  // Hook into the placeTableToWaitForCraft transition
+  const originalPlaceToWaitTransition = placeTableToWaitForCraft.onTransition;
+  placeTableToWaitForCraft.onTransition = () => {
+    if (originalPlaceToWaitTransition) originalPlaceToWaitTransition();
+    waitForCraftOnEnter();
+  };
 
   const waitForCraftToExit = new StateTransition({
     parent: waitForCraft,
@@ -221,7 +324,14 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
   });
 
-  const transitions = [enterToExit, enterToWaitForCraft, waitForCraftToExit];
+  const transitions = [
+    enterToExit,
+    enterToCheckForTable,
+    checkForTableToPlaceTable,
+    checkForTableToWaitForCraft,
+    placeTableToWaitForCraft,
+    waitForCraftToExit
+  ];
 
   return new NestedStateMachine(transitions, enter, exit);
 };

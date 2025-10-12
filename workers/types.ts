@@ -38,6 +38,7 @@ export interface PlanMessage {
   snapshot?: WorldSnapshot;
   perGenerator?: number;
   pruneWithWorld?: boolean;
+  combineSimilarNodes?: boolean;
   telemetry?: boolean;
 }
 

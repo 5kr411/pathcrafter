@@ -83,6 +83,20 @@ export class VariantConstraintManager {
     cloned.constraints = new Map(this.constraints);
     return cloned;
   }
+
+  toJSON(): any {
+    return {
+      constraints: Array.from(this.constraints.entries())
+    };
+  }
+
+  static fromJSON(data: any): VariantConstraintManager {
+    const manager = new VariantConstraintManager();
+    if (data?.constraints) {
+      manager.constraints = new Map(data.constraints);
+    }
+    return manager;
+  }
 }
 
 /**

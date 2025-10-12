@@ -2,7 +2,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflaye
 
 const minecraftData = require('minecraft-data');
 import logger from '../utils/logger';
-import { getLastSnapshotRadius, setCurrentSpeciesContext } from '../utils/context';
+import { getLastSnapshotRadius } from '../utils/context';
 import { getItemCountInInventory } from '../utils/inventory';
 
 import createCollectBlockState from './behaviorCollectBlock';
@@ -64,8 +64,7 @@ function dist2(a: Vec3Like, b: Vec3Like): number {
   return dx * dx + dy * dy + dz * dz;
 }
 
-function createMineOneOfState(bot: Bot, targets: Targets): any {
-  // targets: { candidates: [{ blockName, itemName, amount }], amount? }
+function createMineAnyOfState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const prepare = new BehaviorIdle();
   const exit = new BehaviorIdle();
@@ -94,6 +93,21 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     return total;
   }
 
+  function getCollectionBreakdown(): string {
+    const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
+    const breakdown: string[] = [];
+    for (const c of list) {
+      if (!c || !c.itemName) continue;
+      const current = getItemCountInInventory(bot, c.itemName);
+      const initial = initialInventoryCounts[c.itemName] || 0;
+      const collected = Math.max(0, current - initial);
+      if (collected > 0) {
+        breakdown.push(`${c.itemName}:${collected}`);
+      }
+    }
+    return breakdown.length > 0 ? breakdown.join(', ') : 'none';
+  }
+
   function evaluateCandidate(blockName: string, required: number): EvaluationResult {
     try {
       if (!bot || typeof bot.findBlocks !== 'function')
@@ -106,7 +120,6 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
         return 64;
       })();
       const maxCount = Math.max(required || 1, 32);
-      // Prefer fast ID-based matching when available
       const id =
         mcData && mcData.blocksByName && mcData.blocksByName[blockName]
           ? mcData.blocksByName[blockName].id
@@ -125,7 +138,6 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     }
   }
 
-  // Prepare a dynamic collect behavior whose targets we mutate at runtime
   const dynamicTargets: DynamicTargets = { blockName: null, itemName: null, amount: 0 };
   let collectBehavior: any = null;
   try {
@@ -134,83 +146,43 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     collectBehavior = null;
   }
 
-  const triedCandidates = new Set<string>();
-
   function selectBestCandidate(): { blockName: string; itemName: string; amount: number } | null {
     const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
     if (list.length === 0) return null;
-    
-    // Calculate how much we still need (for one_of, this should always be the full original amount or 0)
-    const totalCollected = getTotalCollected();
-    const stillNeeded = Math.max(0, totalRequiredAmount - totalCollected);
-    
-    // If we've already collected enough, no need to select
-    if (stillNeeded === 0) return null;
 
     let best: any = null;
     let bestNear = Number.POSITIVE_INFINITY;
 
-    // Only consider candidates that have ENOUGH supply for the FULL amount and haven't been tried yet
     for (const c of list) {
       if (!c || !c.blockName) continue;
-      
-      // Skip candidates we've already tried
-      if (triedCandidates.has(c.blockName)) continue;
-      
-      const evalRes = evaluateCandidate(c.blockName, stillNeeded);
-      if (evalRes.count >= stillNeeded) {
-        if (evalRes.nearest < bestNear) {
-          bestNear = evalRes.nearest;
-          best = { ...c, eval: evalRes };
-        } else if (evalRes.nearest === bestNear && best) {
-          // tie-breaker: higher count available
-          if ((evalRes.count || 0) > ((best.eval && best.eval.count) || 0)) {
-            best = { ...c, eval: evalRes };
-          }
-        }
+      const evalRes = evaluateCandidate(c.blockName, 1);
+      if (evalRes.count > 0 && evalRes.nearest < bestNear) {
+        bestNear = evalRes.nearest;
+        best = { ...c, eval: evalRes };
       }
-    }
-
-    // If we found a viable candidate, mark it as tried
-    if (best && best.blockName) {
-      triedCandidates.add(best.blockName);
     }
 
     if (!best) return null;
 
-    // Set wood species context if applicable (e.g., oak_log -> oak)
-    try {
-      const n = String(best.blockName || '');
-      if (n.endsWith('_log')) {
-        const idx = n.lastIndexOf('_');
-        if (idx > 0) {
-          const species = n.slice(0, idx);
-          setCurrentSpeciesContext(species);
-        }
-      }
-    } catch (_) {}
-
-    // Normalize target item name: default to blockName when missing
     const itemName = best.itemName || best.blockName;
-    // Request the full amount still needed
-    const amount = stillNeeded;
+    const remaining = totalRequiredAmount - getTotalCollected();
+    const amount = Math.max(1, Math.min(remaining, 64));
     selection.chosen = { blockName: best.blockName, itemName, amount };
     return selection.chosen;
   }
 
-  // In simple environments (tests), if we could not construct collect behavior, return a trivial behavior
   if (!collectBehavior) {
     const noop = new BehaviorIdle();
     const t0 = new StateTransition({
       parent: enter,
       child: noop,
-      name: 'mine-one-of: enter -> noop',
+      name: 'mine-any-of: enter -> noop',
       shouldTransition: () => true
     });
     const t0b = new StateTransition({
       parent: noop,
       child: exit,
-      name: 'mine-one-of: noop -> exit',
+      name: 'mine-any-of: noop -> exit',
       shouldTransition: () => true
     });
     return new NestedStateMachine([t0, t0b], enter, exit);
@@ -219,13 +191,11 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   const tEnterToPrepare = new StateTransition({
     parent: enter,
     child: prepare,
-    name: 'mine-one-of: enter -> prepare',
+    name: 'mine-any-of: enter -> prepare',
     shouldTransition: () => true,
     onTransition: () => {
-      // Initialize tracking
       initialInventoryCounts = {};
       totalRequiredAmount = Number(targets.amount || 1);
-      triedCandidates.clear();
       const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
       for (const c of list) {
         if (!c || !c.itemName) continue;
@@ -234,7 +204,6 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       try {
         logger.debug('preparing selection...');
       } catch (_) {}
-      // Compute selection now based on current targets
       selection.chosen = null;
       const chosen = selectBestCandidate();
       if (chosen) selection.chosen = chosen;
@@ -244,17 +213,18 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   const tPrepareToCollect = new StateTransition({
     parent: prepare,
     child: collectBehavior,
-    name: 'mine-one-of: prepare -> collect',
+    name: 'mine-any-of: prepare -> collect',
     shouldTransition: () => !!selection.chosen,
     onTransition: () => {
-      // Fill dynamic targets just-in-time prior to collect state run
       if (selection.chosen) {
         dynamicTargets.blockName = selection.chosen.blockName;
         dynamicTargets.itemName = selection.chosen.itemName;
         dynamicTargets.amount = selection.chosen.amount;
+        const total = getTotalCollected();
+        const breakdown = getCollectionBreakdown();
         try {
           logger.info(
-            `selected ${dynamicTargets.blockName} for ${dynamicTargets.itemName} x${dynamicTargets.amount}`
+            `mining ${dynamicTargets.blockName} (progress: ${total}/${totalRequiredAmount} total, collected: ${breakdown})`
           );
         } catch (_) {}
       }
@@ -264,20 +234,18 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   const tPrepareToExit = new StateTransition({
     parent: prepare,
     child: exit,
-    name: 'mine-one-of: prepare -> exit (no selection or done)',
-    shouldTransition: () => {
-      if (getTotalCollected() >= totalRequiredAmount) return true;
-      return !selection || !selection.chosen;
-    },
+    name: 'mine-any-of: prepare -> exit (no selection or done)',
+    shouldTransition: () => !selection || !selection.chosen || getTotalCollected() >= totalRequiredAmount,
     onTransition: () => {
       const collected = getTotalCollected();
+      const breakdown = getCollectionBreakdown();
       if (collected >= totalRequiredAmount) {
         try {
-          logger.info(`BehaviorMineOneOf: goal reached! ${collected}/${totalRequiredAmount}`);
+          logger.info(`BehaviorMineAnyOf: goal reached! ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
       } else {
         try {
-          logger.error(`BehaviorMineOneOf: no viable candidate found; collected ${collected}/${totalRequiredAmount}`);
+          logger.error(`BehaviorMineAnyOf: no viable candidates found; collected ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
       }
     }
@@ -286,15 +254,16 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   const tCollectToPrepare = new StateTransition({
     parent: collectBehavior,
     child: prepare,
-    name: 'mine-one-of: collect -> prepare (re-evaluate)',
+    name: 'mine-any-of: collect -> prepare (re-evaluate)',
     shouldTransition: () => {
       const isFinished = typeof collectBehavior.isFinished === 'function' ? collectBehavior.isFinished() : true;
       return isFinished && getTotalCollected() < totalRequiredAmount;
     },
     onTransition: () => {
       const total = getTotalCollected();
+      const breakdown = getCollectionBreakdown();
       try {
-        logger.info(`BehaviorMineOneOf: progress ${total}/${totalRequiredAmount}, finding next block...`);
+        logger.info(`progress: ${total}/${totalRequiredAmount} (${breakdown}), finding next block...`);
       } catch (_) {}
       selection.chosen = null;
       const chosen = selectBestCandidate();
@@ -305,15 +274,16 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   const tCollectToExit = new StateTransition({
     parent: collectBehavior,
     child: exit,
-    name: 'mine-one-of: collect -> exit (done)',
+    name: 'mine-any-of: collect -> exit (done)',
     shouldTransition: () => {
       const isFinished = typeof collectBehavior.isFinished === 'function' ? collectBehavior.isFinished() : true;
       return isFinished && getTotalCollected() >= totalRequiredAmount;
     },
     onTransition: () => {
       const total = getTotalCollected();
+      const breakdown = getCollectionBreakdown();
       try {
-        logger.info(`BehaviorMineOneOf: goal reached! ${total}/${totalRequiredAmount}`);
+        logger.info(`BehaviorMineAnyOf: goal reached! ${total}/${totalRequiredAmount} (${breakdown})`);
       } catch (_) {}
     }
   });
@@ -321,5 +291,5 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   return new NestedStateMachine([tEnterToPrepare, tPrepareToCollect, tPrepareToExit, tCollectToPrepare, tCollectToExit], enter, exit);
 }
 
-export default createMineOneOfState;
+export default createMineAnyOfState;
 

@@ -15,6 +15,7 @@ interface Targets {
 
 function canHandle(step: ActionStep | null | undefined): boolean {
   if (!step || step.action !== 'mine') return false;
+  if (step.variantMode !== 'one_of') return false;
   
   // Handle steps with variant information (from grouped nodes)
   if (step.what && step.what.variants && step.what.variants.length > 1) {

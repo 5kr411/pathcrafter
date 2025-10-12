@@ -1,4 +1,4 @@
-.PHONY: build clean test test-planner test-analyzer bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-smelt
+.PHONY: build clean test test-planner test-analyzer bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt
 
 # Build TypeScript sources
 build:
@@ -37,6 +37,9 @@ bot-mine: build
 
 bot-mine-oneof: build
 	node dist/bots/mine_one_of.js
+
+bot-mine-anyof: build
+	node dist/bots/mine_any_of.js
 
 bot-smelt: build
 	node dist/bots/smelt_only.js

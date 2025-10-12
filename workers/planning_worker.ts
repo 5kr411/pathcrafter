@@ -9,6 +9,7 @@ import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { WorkerPool } from '../utils/workerPool';
 import plan, { _internals } from '../planner';
 import logger from '../utils/logger';
+import { serializeTree } from '../action_tree/serialize';
 
 /**
  * Worker thread for planning item acquisition
@@ -39,7 +40,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
     return;
   }
 
-  const { id, mcVersion, item, count, inventory, snapshot, perGenerator, pruneWithWorld, telemetry } = msg;
+  const { id, mcVersion, item, count, inventory, snapshot, perGenerator, pruneWithWorld, combineSimilarNodes, telemetry } = msg;
   
   logger.debug(`PlanningWorker: starting plan for ${item} x${count} (id=${id})`);
   logger.debug(`PlanningWorker: mcVersion=${mcVersion}, perGenerator=${perGenerator}, pruneWithWorld=${pruneWithWorld}, telemetry=${telemetry}`);
@@ -63,6 +64,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
       inventory: inventoryMap,
       log: false,
       pruneWithWorld: !!pruneWithWorld,
+      combineSimilarNodes: combineSimilarNodes,
       worldSnapshot: snapshot
     });
     const tBuildMs = Date.now() - tBuildStart;
@@ -130,7 +132,8 @@ parentPort.on('message', async (msg: PlanMessage) => {
           w.once('message', messageHandler);
           w.once('error', errorHandler);
 
-          w.postMessage({ type: 'enumerate', generator: gen, tree, inventory, limit });
+          const serializedTree = serializeTree(tree);
+          w.postMessage({ type: 'enumerate', generator: gen, tree: serializedTree, inventory, limit });
           logger.debug(`PlanningWorker: ${gen} message posted to pooled worker`);
         });
       });
