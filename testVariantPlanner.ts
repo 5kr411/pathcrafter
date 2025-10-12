@@ -183,6 +183,24 @@ function printPathSummary(paths: any[], maxPaths: number) {
         }
       }
 
+      // For smelting, also display input alongside output
+      if (step.action === 'smelt' && step.input) {
+        if (step.input.variants && step.input.variants.length > 1) {
+          const inputVariants = formatVariantStrings(step.input.variants.map((v: any) => {
+            const value = v.value;
+            const quantity = value.perCraftCount || value.perSmelt || value.count || 1;
+            const itemName = value.item || value;
+            return `${quantity} ${itemName}`;
+          }));
+          const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
+          console.log(`       ← [${modeLabel}] ${inputVariants}`);
+        } else {
+          const inputItem = step.input.variants[0].value.item;
+          const inputCount = step.input.variants[0].value.perSmelt || step.input.variants[0].value.perCraftCount || 1;
+          console.log(`       ← ${inputCount} ${inputItem}`);
+        }
+      }
+
       if (step.ingredients) {
         if (step.ingredients.variants && step.ingredients.variants.length > 1) {
           const ingredientVariants = formatVariantStrings(step.ingredients.variants.map((v: any) => {

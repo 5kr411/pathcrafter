@@ -32,7 +32,7 @@ import {
   BuildRecipeTreeFn,
   injectWorkstationDependency
 } from './dependencyInjector';
-import { requiresCraftingTable, getIngredientCounts } from '../utils/recipeUtils';
+import { requiresCraftingTable, getIngredientCounts, hasCircularDependency } from '../utils/recipeUtils';
 import { findIngredientAlternatives } from '../utils/itemSimilarity';
 import { getSuffixTokenFromName } from '../../utils/items';
 
@@ -112,6 +112,28 @@ function createSingleCraftNode(
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
   const recipe = recipeGroup[0].recipe;
+  
+  // Inventory-gated anti-cycle guard:
+  // If any ingredient forms a direct conversion cycle with the result (e.g.,
+  // ingot ↔ nugget or ingot ↔ block), only allow this craft path when the
+  // cyclic ingredient is already present in inventory in sufficient quantity
+  // for the required number of craftings. This prevents the tree from
+  // introducing circular dependencies as acquisition strategies.
+  if (recipe && recipe.result && typeof recipe.result.id === 'number') {
+    const resultId = recipe.result.id;
+    const ingredientCounts = getIngredientCounts(recipe);
+    for (const [ingredientId, perCraftCount] of ingredientCounts.entries()) {
+      if (typeof ingredientId !== 'number') continue;
+      if (hasCircularDependency(mcData, resultId, ingredientId)) {
+        const ingredientName = mcData.items[ingredientId]?.name;
+        const haveInInventory = ingredientName ? (context.inventory?.get(ingredientName) || 0) : 0;
+        const requiredForThisNode = (perCraftCount || 1) * (craftingsNeeded || 1);
+        if (haveInInventory < requiredForThisNode) {
+          return; // Drop this craft node to avoid circular acquisition
+        }
+      }
+    }
+  }
   const constraintManager = context.variantConstraints;
   
   const whatVariants: VariantGroup<'table' | 'inventory'> = createVariantGroup(

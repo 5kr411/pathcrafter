@@ -90,7 +90,7 @@ function isNodeViable(node: any): boolean {
   if (!node) return false;
   
   // Leaf nodes (mine/hunt) are always viable
-  if (node.action === 'mine' || node.action === 'hunt') {
+  if (node.action === 'mine' || node.action === 'hunt' || node.action === 'smelt') {
     return true;
   }
   
@@ -235,6 +235,27 @@ function collectAvailableFamiliesFromNode(
   // Craft nodes: only collect if children found something (craft is viable)
   if (
     node.action === 'craft' &&
+    childFamilies.size > 0 &&
+    node.result &&
+    node.result.variants &&
+    node.result.variants.length > 0
+  ) {
+    for (const variant of node.result.variants) {
+      const itemName = variant.value?.item || variant.value;
+      if (itemName) {
+        const family = getFamilyFromName(itemName);
+        if (family) {
+          families.add(family);
+        } else {
+          families.add(itemName);
+        }
+      }
+    }
+  }
+
+  // Smelt nodes: like craft, consider produced items available when dependencies are viable
+  if (
+    node.action === 'smelt' &&
     childFamilies.size > 0 &&
     node.result &&
     node.result.variants &&

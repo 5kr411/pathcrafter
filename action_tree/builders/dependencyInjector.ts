@@ -66,6 +66,12 @@ export function injectWorkstationDependency(
   ctx: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
+  // If we already have the workstation in inventory, don't inject any subtree
+  const haveInInventory = context?.inventory?.get(workstationName) || 0;
+  if (haveInInventory > 0) {
+    return;
+  }
+
   if (!hasWorkstationDependency(node, workstationName)) {
     const depContext = createDependencyContext(workstationName, context);
     const workstationTree = buildRecipeTreeFn(ctx, [workstationName], 1, depContext);
