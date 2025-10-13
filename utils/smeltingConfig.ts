@@ -8,9 +8,9 @@ import { MinecraftData } from '../action_tree/types';
  * Map output item -> array of valid input items for furnace smelting
  */
 const FURNACE_INPUTS: Record<string, string[]> = {
-  iron_ingot: ['raw_iron', 'iron_ore', 'deepslate_iron_ore'],
-  gold_ingot: ['raw_gold', 'gold_ore', 'deepslate_gold_ore'],
-  copper_ingot: ['raw_copper', 'copper_ore', 'deepslate_copper_ore'],
+  iron_ingot: ['raw_iron'],
+  gold_ingot: ['raw_gold'],
+  copper_ingot: ['raw_copper'],
   stone: ['cobblestone']
 };
 

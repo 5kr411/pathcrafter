@@ -197,6 +197,10 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
   });
 
   let placeTries = 1;
+  let overallStartTime: number | undefined;
+  const overallTimeoutMs = 30000; // hard cap to avoid indefinite state loops
+  const maxAttempts = 10;
+
   const enterToFindPlaceCoords = new StateTransition({
     name: 'BehaviorPlaceNear: enter -> find place coords',
     parent: enter,
@@ -206,6 +210,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       logger.info('BehaviorPlaceNear: enter -> find place coords');
       placeTries = 1;
       targets.placedConfirmed = false;
+      if (!overallStartTime) overallStartTime = Date.now();
 
       const base = bot.entity.position.clone();
       const offsetX = Math.random() < 0.5 ? -1.5 : 1.5;
@@ -248,10 +253,14 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     shouldTransition: () => true,
     onTransition: () => {
       logger.info('BehaviorPlaceNear: find place coords -> move to place coords');
+      // Start/restart movement timer
+      moveStartTime = Date.now();
     }
   });
 
   let placeStartTime: number;
+  let moveStartTime: number;
+  const moveTimeoutMs = 8000; // fallback if MoveTo never finishes
   const moveToPlaceCoordsToPlaceUtilityBlock = new StateTransition({
     name: 'BehaviorPlaceNear: move to place coords -> place block',
     parent: moveToPlaceCoords,
@@ -281,6 +290,80 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       try {
         targets.referenceBlock = bot.blockAt(targets.placePosition, false);
       } catch (_) {}
+    }
+  });
+
+  // Fallback: Move finished but reference base is not solid/loaded -> reposition and retry
+  const moveToPlaceCoordsToRepositionOnRefMissing = new StateTransition({
+    name: 'BehaviorPlaceNear: move to place coords -> reposition (ref missing)',
+    parent: moveToPlaceCoords,
+    child: findPlaceCoords,
+    shouldTransition: () => {
+      if (!moveToPlaceCoords.isFinished()) return false;
+      try {
+        const ref = bot.blockAt(targets.placePosition, false);
+        return !ref || ref.type === 0;
+      } catch (_) {
+        return true;
+      }
+    },
+    onTransition: () => {
+      logger.warn('BehaviorPlaceNear: no solid reference at place base -> reposition');
+      placeTries++;
+    }
+  });
+
+  // Fallback: Move timeout -> reposition and retry
+  const moveToPlaceCoordsTimeoutToFind = new StateTransition({
+    name: 'BehaviorPlaceNear: move to place coords TIMEOUT -> reposition',
+    parent: moveToPlaceCoords,
+    child: findPlaceCoords,
+    shouldTransition: () => {
+      return Date.now() - moveStartTime > moveTimeoutMs;
+    },
+    onTransition: () => {
+      logger.warn('BehaviorPlaceNear: move to place coords timed out -> reposition');
+      placeTries++;
+    }
+  });
+
+  // Hard cap exits: ensure no state can run forever
+  const findPlaceCoordsHardCapToExit = new StateTransition({
+    name: 'BehaviorPlaceNear: find place coords HARD CAP -> exit',
+    parent: findPlaceCoords,
+    child: exit,
+    shouldTransition: () => {
+      const t = overallStartTime || Date.now();
+      return placeTries >= maxAttempts || Date.now() - t > overallTimeoutMs;
+    },
+    onTransition: () => {
+      logger.error('BehaviorPlaceNear: hard cap reached in find place coords -> exit');
+    }
+  });
+
+  const moveToPlaceCoordsHardCapToExit = new StateTransition({
+    name: 'BehaviorPlaceNear: move to place coords HARD CAP -> exit',
+    parent: moveToPlaceCoords,
+    child: exit,
+    shouldTransition: () => {
+      const t = overallStartTime || Date.now();
+      return placeTries >= maxAttempts || Date.now() - t > overallTimeoutMs;
+    },
+    onTransition: () => {
+      logger.error('BehaviorPlaceNear: hard cap reached in move to place coords -> exit');
+    }
+  });
+
+  const clearAreaHardCapToExit = new StateTransition({
+    name: 'BehaviorPlaceNear: clear area HARD CAP -> exit',
+    parent: clearArea,
+    child: exit,
+    shouldTransition: () => {
+      const t = overallStartTime || Date.now();
+      return placeTries >= maxAttempts || Date.now() - t > overallTimeoutMs;
+    },
+    onTransition: () => {
+      logger.error('BehaviorPlaceNear: hard cap reached in clear area -> exit');
     }
   });
 
@@ -421,9 +504,14 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
   const transitions = [
     enterToExit,
     enterToFindPlaceCoords,
+    findPlaceCoordsHardCapToExit,
     findPlaceCoordsToMoveToPlaceCoords,
+    moveToPlaceCoordsHardCapToExit,
+    moveToPlaceCoordsToRepositionOnRefMissing,
+    moveToPlaceCoordsTimeoutToFind,
     moveToPlaceCoordsToClearInit,
     clearInitToClearArea,
+    clearAreaHardCapToExit,
     clearAreaToPlaceGate,
     moveToPlaceCoordsToPlaceUtilityBlock,
     placeUtilityBlockToFindPlaceCoords,

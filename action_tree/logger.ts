@@ -211,7 +211,13 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
   if (node.action === 'smelt') {
     const label = formatVariantList(node.what);
     const fuel = node.fuel ? formatVariantList(node.fuel) : '';
+    const inputStr = node.input ? formatVariantList(node.input) : '';
+    const resultStr = node.result ? formatVariantList(node.result) : '';
     console.log(`${indent}${branch} smelt ${label}${fuel ? ` using ${fuel}` : ''} (${node.count}x)`);
+    if (inputStr || resultStr) {
+      if (inputStr) console.log(`${' '.repeat((depth + 1) * 2)}├─ ${inputStr}`);
+      if (resultStr) console.log(`${' '.repeat((depth + 1) * 2)}└─ ${resultStr}`);
+    }
     (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }

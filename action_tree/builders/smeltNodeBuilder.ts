@@ -33,6 +33,10 @@ export function buildSmeltNodes(
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
   const smeltContext = cloneInventoryForBranch(context);
+
+  // Use inputs as provided by smelting config; acquisition subtree will resolve
+  // how to obtain them (including via block drops or crafts).
+  const effectiveInputs = Array.from(new Set(smeltInputs));
   
   const smeltGroup: SmeltGroupNode = {
     action: 'smelt',
@@ -45,7 +49,7 @@ export function buildSmeltNodes(
     context: smeltContext
   };
 
-  for (const smeltInput of smeltInputs) {
+  for (const smeltInput of effectiveInputs) {
     const smeltNode: SmeltNode = {
       action: 'smelt',
       operator: 'AND',
