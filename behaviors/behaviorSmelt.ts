@@ -316,6 +316,29 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     }
   });
 
+  // Fallback: If we reached run but no furnace is present nearby, and we have a
+  // furnace item in inventory, go equip/place and then resume.
+  const runToEquipFallback = new StateTransition({
+    name: 'Smelt: run -> equip (fallback, no nearby furnace)',
+    parent: smeltRun,
+    child: equipFurnace,
+    shouldTransition: () => {
+      const nearby = findNearbyFurnace(6);
+      if (nearby) return false;
+      try {
+        equipFurnace.targets.item =
+          bot.inventory?.items?.().find((it: any) => it && it.name === 'furnace') || null;
+      } catch (_) {
+        equipFurnace.targets.item = null;
+      }
+      return !!equipFurnace.targets.item;
+    },
+    onTransition: () => {
+      placedByUs = true;
+      logger.warn('Smelt: fallback to equip furnace (no furnace nearby during run)');
+    }
+  });
+
   const breakToExit = new StateTransition({
     name: 'Smelt: break -> exit',
     parent: breakFurnace,
@@ -337,7 +360,17 @@ function createSmeltState(bot: Bot, targets: Targets): any {
   });
 
   return new NestedStateMachine(
-    [initToFind, findToSmelt, findToEquip, equipToPlace, placeToSmelt, runToBreak, breakToExit, runToExit],
+    [
+      initToFind,
+      findToSmelt,
+      findToEquip,
+      equipToPlace,
+      placeToSmelt,
+      runToEquipFallback,
+      runToBreak,
+      breakToExit,
+      runToExit
+    ],
     enter,
     exit
   );
