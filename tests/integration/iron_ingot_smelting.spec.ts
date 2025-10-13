@@ -37,6 +37,33 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
         expect(found).toBe(true);
     });
 
+  test('when furnace not present, path includes acquiring raw_iron before smelt', () => {
+    const inventory = { coal: 2, crafting_table: 1 };
+    const snapshot = {
+      version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2, radius: 32, yMin: 0, yMax: 255,
+      blocks: { 
+        iron_ore: { count: 10, closestDistance: 12, averageDistance: 16 },
+        cobblestone: { count: 50, closestDistance: 4, averageDistance: 8 }
+      },
+      entities: {}
+    };
+    const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+
+    const { enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+    let found = false;
+    let checked = 0;
+    for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
+      const smeltIndex = path.findIndex((s: any) => s.action === 'smelt' && s.result?.variants?.[0]?.value?.item === 'iron_ingot');
+      if (smeltIndex < 0) continue;
+      const rawIronIndex = path.findIndex((s: any) =>
+        (s.action === 'mine' && ((s.targetItem?.variants || []).some((v: any) => v.value === 'raw_iron') || (s.what?.variants || []).some((v: any) => v.value === 'iron_ore' || v.value === 'deepslate_iron_ore')))
+      );
+      if (rawIronIndex >= 0 && rawIronIndex < smeltIndex) { found = true; break; }
+      if (++checked >= 20) break;
+    }
+    expect(found).toBe(true);
+  });
+
     test('each generator yields at least 10 paths with starting materials (bounded)', () => {
         const N = 10;
         // Use less inventory to allow more path variations, but include furnace & raw_iron to focus on iron_ingot

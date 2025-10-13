@@ -162,6 +162,33 @@ describe('Dependency Handling', () => {
       expect(pathCount).toBeGreaterThan(0);
       expect(hasFurnaceDependency).toBe(true);
     });
+
+    test('should inject smelt input dependency (raw_iron) for iron_ingot smelting', () => {
+      const paths = createPathIterator(ironIngotTree, 50);
+
+      let pathCount = 0;
+      let hasInputDependency = false;
+
+      for (const path of paths) {
+        pathCount += 1;
+
+        const smeltIndex = (path as any[]).findIndex(step => step.action === 'smelt' && step.result?.variants?.[0]?.value?.item === 'iron_ingot');
+        if (smeltIndex < 0) continue;
+
+        const rawIronIndex = (path as any[]).findIndex(step =>
+          (step.action === 'mine' && (step.targetItem?.variants?.some((v: any) => v.value === 'raw_iron') || step.what?.variants?.some((v: any) => v.value === 'iron_ore' || v.value === 'deepslate_iron_ore'))) ||
+          (step.action === 'craft' && step.result?.variants?.some((v: any) => v.value.item === 'raw_iron'))
+        );
+
+        if (rawIronIndex >= 0 && rawIronIndex < smeltIndex) {
+          hasInputDependency = true;
+          break;
+        }
+      }
+
+      expect(pathCount).toBeGreaterThan(0);
+      expect(hasInputDependency).toBe(true);
+    });
   });
 
   describe('Complex Dependency Chains', () => {

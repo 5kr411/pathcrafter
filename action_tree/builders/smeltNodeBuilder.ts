@@ -68,6 +68,16 @@ export function buildSmeltNodes(
 
     injectWorkstationDependency(smeltNode, 'furnace', smeltContext, ctx, buildRecipeTreeFn);
 
+    // Inject input item dependency (AND): ensure we can acquire required smelt inputs
+    const inputItemName = smeltInput;
+    const haveInput = smeltContext.inventory?.get(inputItemName) || 0;
+    const needInput = Math.max(0, targetCount - haveInput);
+    if (needInput > 0) {
+      const inputDepContext = createDependencyContext(inputItemName, smeltContext);
+      const inputTree = buildRecipeTreeFn(ctx, [inputItemName], needInput, inputDepContext);
+      smeltNode.children.variants.push({ value: inputTree });
+    }
+
     // Inject fuel dependency (AND) when inventory doesn't already satisfy it
     const fuelName = 'coal';
     const smeltsPerUnit = getSmeltsPerUnitForFuel(fuelName) || 0;
