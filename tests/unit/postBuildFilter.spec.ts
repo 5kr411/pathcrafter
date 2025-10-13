@@ -417,6 +417,115 @@ describe('unit: postBuildFilter', () => {
     });
   });
 
+  describe('smelt viability and availability', () => {
+    test('smelt nodes are considered viable and not pruned', () => {
+      const context: BuildContext = {
+        inventory: new Map(),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'smelt',
+                what: { variants: [{ value: 'furnace' }] },
+                result: { variants: [{ value: { item: 'iron_ingot', perSmelt: 1 } }] },
+                input: { variants: [{ value: { item: 'raw_iron', perSmelt: 1 } }] },
+                fuel: { variants: [{ value: 'coal' }] },
+                children: { variants: [] }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      // Smelt node should remain
+      expect(tree.children.variants.length).toBe(1);
+      expect(tree.children.variants[0].value.action).toBe('smelt');
+    });
+
+    test('smelt results contribute to availability for parent craft nodes', () => {
+      const context: BuildContext = {
+        inventory: new Map(),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'craft',
+                result: { variants: [{ value: { item: 'iron_pickaxe' } }] },
+                ingredients: { variants: [{ value: [ { item: 'iron_ingot', perCraftCount: 3 }, { item: 'stick', perCraftCount: 2 } ] }] },
+                children: {
+                  variants: [
+                    {
+                      value: {
+                        action: 'root',
+                        children: {
+                          variants: [
+                            {
+                              value: {
+                                action: 'smelt',
+                                what: { variants: [{ value: 'furnace' }] },
+                                result: { variants: [{ value: { item: 'iron_ingot', perSmelt: 1 } }] },
+                                input: { variants: [{ value: { item: 'raw_iron', perSmelt: 1 } }] },
+                                fuel: { variants: [{ value: 'coal' }] },
+                                // Include a leaf availability under smelt so collector sees viable children
+                                children: {
+                                  variants: [
+                                    {
+                                      value: {
+                                        action: 'mine',
+                                        what: { variants: [{ value: 'iron_ore' }] },
+                                        targetItem: { variants: [{ value: 'raw_iron' }] }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      const craftNode = tree.children.variants[0].value;
+      // Craft node should remain viable with its result variant because smelt makes iron_ingot available
+      expect(craftNode.result.variants.length).toBeGreaterThan(0);
+      const hasIronIngot = craftNode.ingredients.variants[0].value.some((i: any) => i.item === 'iron_ingot');
+      expect(hasIronIngot).toBe(true);
+    });
+  });
+
   describe('applyPostBuildFiltering', () => {
     test('does not filter when pruneWithWorld is false', () => {
       const context: BuildContext = {

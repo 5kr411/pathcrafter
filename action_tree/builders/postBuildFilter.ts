@@ -126,6 +126,29 @@ function filterSingleCraftNode(
 
   const availableIngredientFamilies = new Set<string>();
 
+  // Consider inventory as a valid source for ingredients
+  try {
+    const inv: Map<string, number> | undefined = craftNode?.context?.inventory;
+    if (inv && craftNode.ingredients && craftNode.ingredients.variants) {
+      for (const variant of craftNode.ingredients.variants) {
+        const ingredients = variant?.value || [];
+        for (const ingredient of ingredients) {
+          const itemName = ingredient?.item;
+          if (!itemName) continue;
+          const have = inv.get(itemName) || 0;
+          if (have > 0) {
+            const family = getFamilyFromName(itemName);
+            if (family) {
+              availableIngredientFamilies.add(family);
+            } else {
+              availableIngredientFamilies.add(itemName);
+            }
+          }
+        }
+      }
+    }
+  } catch { /* ignore inventory inspection errors */ }
+
   for (const child of craftNode.children.variants || []) {
     collectAvailableFamiliesFromNode(child.value, availableIngredientFamilies);
   }

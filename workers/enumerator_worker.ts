@@ -68,7 +68,8 @@ parentPort.on('message', (msg: EnumerateMessage) => {
 
     logger.debug(`EnumeratorWorker: ${generator} enumeration complete (${out.length} paths, iterated ${i} times)`);
     if (out.length === 0) {
-      logger.info(`EnumeratorWorker: ${generator} produced 0 paths - tree action=${tree.action}, operator=${tree.operator}`);
+      // Use debug (trace) verbosity so this does not surface in SILENT/INFO test output
+      logger.debug(`EnumeratorWorker: ${generator} produced 0 paths - tree action=${tree.action}, operator=${tree.operator}`);
     }
     parentPort!.postMessage({ type: 'result', ok: true, paths: out });
   } catch (err) {

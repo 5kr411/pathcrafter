@@ -11,12 +11,14 @@ import {
 } from '../types';
 import {
   createVariantGroup,
-  cloneInventoryForBranch
+  cloneInventoryForBranch,
+  createDependencyContext
 } from './nodeBuilderHelpers';
 import {
   BuildRecipeTreeFn,
   injectWorkstationDependency
 } from './dependencyInjector';
+import { getSmeltsPerUnitForFuel } from '../../utils/smeltingConfig';
 
 /**
  * Builds smelting nodes for an item and adds them to the root node
@@ -65,6 +67,18 @@ export function buildSmeltNodes(
     };
 
     injectWorkstationDependency(smeltNode, 'furnace', smeltContext, ctx, buildRecipeTreeFn);
+
+    // Inject fuel dependency (AND) when inventory doesn't already satisfy it
+    const fuelName = 'coal';
+    const smeltsPerUnit = getSmeltsPerUnitForFuel(fuelName) || 0;
+    const requiredUnits = smeltsPerUnit > 0 ? Math.ceil(targetCount / smeltsPerUnit) : targetCount;
+    const haveFuel = smeltContext.inventory?.get(fuelName) || 0;
+    const needFuel = Math.max(0, requiredUnits - haveFuel);
+    if (needFuel > 0) {
+      const fuelDepContext = createDependencyContext(fuelName, smeltContext);
+      const fuelTree = buildRecipeTreeFn(ctx, [fuelName], needFuel, fuelDepContext);
+      smeltNode.children.variants.push({ value: fuelTree });
+    }
 
     smeltGroup.children.variants.push({ value: smeltNode });
   }

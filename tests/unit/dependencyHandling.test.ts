@@ -40,6 +40,7 @@ describe('Dependency Handling', () => {
   let stonePickaxeTree: any;
   let oakLogTree: any;
   let stickTree: any;
+  let rawIronTree: any;
 
   beforeAll(() => {
     mcData = getCachedMcData('1.20.1');
@@ -62,6 +63,7 @@ describe('Dependency Handling', () => {
     stonePickaxeTree = buildRecipeTree(mcData, 'stone_pickaxe', 1, baseContext);
     oakLogTree = buildRecipeTree(mcData, 'oak_log', 1, baseContext);
     stickTree = buildRecipeTree(mcData, 'stick', 1, baseContext);
+    rawIronTree = buildRecipeTree(mcData, 'raw_iron', 1, baseContext);
   });
 
   describe('Tool Dependencies', () => {
@@ -89,8 +91,8 @@ describe('Dependency Handling', () => {
       expect(validatedPath).toBe(true);
     });
 
-    test('should inject stone_pickaxe dependency for iron_block mining', () => {
-      const paths = createPathIterator(ironIngotTree, 30);
+    test('should inject stone_pickaxe dependency for raw_iron mining', () => {
+      const paths = createPathIterator(rawIronTree, 50);
 
       let pathCount = 0;
       let hasStonePickaxeDependency = false;

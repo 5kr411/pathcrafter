@@ -31,10 +31,23 @@ export function groupRecipesByCanonicalKey(
 ): Map<string, RecipeEntry[]> {
   const recipeGroups = new Map<string, RecipeEntry[]>();
   
+  function getRecipeIdentityKey(recipe: MinecraftRecipe): string {
+    if (recipe.inShape) {
+      // Preserve exact shape and ids for non-combined mode
+      return `shaped:${JSON.stringify(recipe.inShape)}`;
+    }
+    if (recipe.ingredients) {
+      // Preserve exact ids; sort to stabilise grouping of identical shapeless recipes
+      const sorted = [...recipe.ingredients].filter((v): v is number => v !== null && v !== undefined).sort((a, b) => a - b);
+      return `shapeless:${JSON.stringify(sorted)}`;
+    }
+    return `other:${recipe.result?.count || 1}`;
+  }
+
   for (const entry of recipes) {
     const key = combineSimilarNodes 
       ? getRecipeCanonicalKey(entry.recipe) 
-      : entry.itemName;
+      : `${entry.itemName}|${getRecipeIdentityKey(entry.recipe)}`;
     
     if (!recipeGroups.has(key)) {
       recipeGroups.set(key, []);
