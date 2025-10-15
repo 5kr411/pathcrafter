@@ -24,6 +24,7 @@ interface Bot {
   findBlock?: (options: { matching: (block: Block) => boolean; maxDistance: number }) => Block | null;
   blockAt?: (pos: Vec3Like, extraInfos: boolean) => Block | null;
   recipesFor: (itemId: number, metadata: any, minResultCount: number, craftingTable: Block | null) => any[];
+  recipesAll: (itemId: number, metadata: any, craftingTable: Block | null) => any[];
   craft: (recipe: any, count: number, craftingTable: Block) => Promise<void>;
   [key: string]: any;
 }
@@ -87,8 +88,9 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
 
     logger.info(`BehaviorCraftWithTable: Searching for recipes for ${itemName} (id: ${item.id})`);
+    // Use recipesFor with minResultCount=1 to find recipes where bot has ingredients for at least 1 craft
     const recipes = bot.recipesFor(item.id, null, 1, craftingTable);
-    logger.info(`BehaviorCraftWithTable: Found ${recipes.length} recipes`);
+    logger.info(`BehaviorCraftWithTable: Found ${recipes.length} craftable recipes`);
 
     const recipe = recipes[0];
 

@@ -228,7 +228,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity: Entity) => {
     const botPos = bot.entity?.position;
     if (!botPos || !entity.position.distanceTo) return false;
-    return entity.displayName === 'Item' && entity.position.distanceTo(botPos) < 8;
+    const isItem = entity.displayName === 'Item' || entity.name === 'item' || entity.type === 'object';
+    const inRange = entity.position.distanceTo(botPos) < 8;
+    if (isItem && inRange) {
+      logger.debug(`Found drop entity: displayName=${entity.displayName}, name=${entity.name}, type=${entity.type}`);
+    }
+    return isItem && inRange;
   });
 
   // Add logging to GetClosestEntity
@@ -383,7 +388,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       try {
         const t = targets.blockPosition;
         const type = t ? bot.world?.getBlockType(t) : undefined;
-        logger.debug('mine block -> find drop (post-mine blockType=', type, ')');
+        const nearbyEntities = Object.values(bot.entities || {})
+          .filter((e: any) => {
+            const pos = e?.position;
+            const botPos = bot.entity?.position;
+            if (!pos || !botPos || !pos.distanceTo) return false;
+            return pos.distanceTo(botPos) < 10;
+          })
+          .map((e: any) => `${e.displayName || e.name || e.type} @${e.position?.x?.toFixed(0)},${e.position?.y?.toFixed(0)},${e.position?.z?.toFixed(0)}`);
+        logger.debug(`mine block -> find drop (post-mine blockType=${type}). Nearby entities (${nearbyEntities.length}): ${nearbyEntities.slice(0, 5).join(', ')}`);
       } catch (_) {
         logger.debug('mine block -> find drop');
       }

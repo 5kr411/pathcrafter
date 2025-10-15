@@ -9,8 +9,10 @@ interface Bot {
   inventory: {
     slots: any[];
     firstEmptyInventorySlot: () => number;
+    items?: () => any[];
   };
   recipesFor: (itemId: number, metadata: any, minResultCount: number, craftingTable: any) => any[];
+  recipesAll: (itemId: number, metadata: any, craftingTable: any) => any[];
   craft: (recipe: any, count: number, craftingTable: any) => Promise<void>;
   moveSlotItem: (sourceSlot: number, destSlot: number) => Promise<void>;
   [key: string]: any;
@@ -70,11 +72,26 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       return false;
     }
 
-    const recipe = bot.recipesFor(item.id, null, 1, null).find((r: any) => !r.requiresTable);
+    // Log current inventory
+    const invItems = bot.inventory?.items?.() || [];
+    const invSummary = invItems
+      .map((it: any) => `${it.name}:${it.count}`)
+      .join(', ');
+    logger.info(`BehaviorCraftNoTable: Current inventory: ${invSummary || 'empty'}`);
+    
+    logger.info(`BehaviorCraftNoTable: Looking for recipes for ${itemName} (id: ${item.id})`);
+    
+    // Use recipesFor with minResultCount=1 to find recipes where bot has ingredients for at least 1 craft
+    const allRecipes = bot.recipesFor(item.id, null, 1, null);
+    logger.info(`BehaviorCraftNoTable: Found ${allRecipes.length} craftable recipes for ${itemName}`);
+    
+    const recipe = allRecipes.find((r: any) => !r.requiresTable);
     if (!recipe) {
-      logger.error(`BehaviorCraftNoTable: No recipe found for ${itemName} that doesn't require a crafting table`);
+      logger.error(`BehaviorCraftNoTable: No craftable recipe found for ${itemName} that doesn't require a crafting table (had ${allRecipes.length} craftable recipes total)`);
       return false;
     }
+    
+    logger.info(`BehaviorCraftNoTable: Selected recipe with ${recipe.delta?.length || 0} delta items`);
 
     const startingCount = getItemCountInInventory(bot, itemName);
     const targetCount = startingCount + additionalNeeded;
