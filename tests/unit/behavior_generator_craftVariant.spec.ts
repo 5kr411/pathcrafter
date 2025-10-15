@@ -203,5 +203,117 @@ describe('BehaviorGenerator craftVariant', () => {
         amount: 1
       });
     });
+
+    it('should select variant based on inventory ingredients (most reliable)', () => {
+      const mockBot: any = {
+        inventory: {
+          items: () => [
+            { name: 'jungle_log', count: 5 }
+          ]
+        }
+      };
+
+      const step: ActionStep = createTestActionStep({
+        action: 'craft',
+        what: createTestStringGroup('inventory'),
+        count: 1,
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'spruce_planks', perCraftCount: 4 },
+          { item: 'jungle_planks', perCraftCount: 4 },
+          { item: 'birch_planks', perCraftCount: 4 }
+        ]),
+        ingredients: {
+          mode: 'one_of',
+          variants: [
+            { value: [{ item: 'oak_log', perCraftCount: 1 }] },
+            { value: [{ item: 'spruce_log', perCraftCount: 1 }] },
+            { value: [{ item: 'jungle_log', perCraftCount: 1 }] },
+            { value: [{ item: 'birch_log', perCraftCount: 1 }] }
+          ]
+        }
+      });
+
+      const result = computeTargetsForCraftVariant(step, mockBot);
+
+      expect(result).toEqual({
+        itemName: 'jungle_planks',
+        amount: 4
+      });
+    });
+
+    it('should prefer inventory match over species context', () => {
+      setCurrentSpeciesContext('oak'); // Context says oak
+
+      const mockBot: any = {
+        inventory: {
+          items: () => [
+            { name: 'birch_log', count: 3 } // But we have birch
+          ]
+        }
+      };
+
+      const step: ActionStep = createTestActionStep({
+        action: 'craft',
+        what: createTestStringGroup('inventory'),
+        count: 1,
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'birch_planks', perCraftCount: 4 }
+        ]),
+        ingredients: {
+          mode: 'one_of',
+          variants: [
+            { value: [{ item: 'oak_log', perCraftCount: 1 }] },
+            { value: [{ item: 'birch_log', perCraftCount: 1 }] }
+          ]
+        }
+      });
+
+      const result = computeTargetsForCraftVariant(step, mockBot);
+
+      // Should pick birch (inventory match) not oak (species context)
+      expect(result).toEqual({
+        itemName: 'birch_planks',
+        amount: 4
+      });
+    });
+
+    it('should fallback to species context when inventory has no matching ingredients', () => {
+      setCurrentSpeciesContext('spruce');
+
+      const mockBot: any = {
+        inventory: {
+          items: () => [
+            { name: 'dirt', count: 10 } // Unrelated item
+          ]
+        }
+      };
+
+      const step: ActionStep = createTestActionStep({
+        action: 'craft',
+        what: createTestStringGroup('inventory'),
+        count: 1,
+        result: createTestItemReferenceGroupFromArray('one_of', [
+          { item: 'oak_planks', perCraftCount: 4 },
+          { item: 'spruce_planks', perCraftCount: 4 }
+        ]),
+        ingredients: {
+          mode: 'one_of',
+          variants: [
+            { value: [{ item: 'oak_log', perCraftCount: 1 }] },
+            { value: [{ item: 'spruce_log', perCraftCount: 1 }] }
+          ]
+        }
+      });
+
+      const result = computeTargetsForCraftVariant(step, mockBot);
+
+      // Should use species context since inventory doesn't match
+      expect(result).toEqual({
+        itemName: 'spruce_planks',
+        amount: 4
+      });
+    });
   });
 });

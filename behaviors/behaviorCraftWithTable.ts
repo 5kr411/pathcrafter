@@ -30,9 +30,10 @@ interface Bot {
 }
 
 interface Targets {
-  itemName: string;
+  itemName?: string;
   amount: number;
   placedPosition?: Vec3Like;
+  variantStep?: any;
   [key: string]: any;
 }
 
@@ -273,8 +274,16 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     logger.info('BehaviorCraftWithTable: starting craft');
     craftingDone = false;
     craftingOk = false;
+    
+    if (!targets.itemName) {
+      logger.error('BehaviorCraftWithTable: no itemName set');
+      craftingOk = false;
+      craftingDone = true;
+      return;
+    }
+    
     Promise.resolve()
-      .then(() => craftItemWithTable(targets.itemName, targets.amount))
+      .then(() => craftItemWithTable(targets.itemName!, targets.amount))
       .then((ok) => {
         craftingOk = !!ok;
         craftingDone = true;
@@ -305,6 +314,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     child: exit,
     name: 'BehaviorCraftWithTable: wait for craft -> exit',
     shouldTransition: () => {
+      if (!targets.itemName) return craftingDone;
       const have = getItemCountInInventory(bot, targets.itemName);
       if (have >= targets.amount) return true;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
@@ -312,6 +322,10 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       return craftingDone;
     },
     onTransition: () => {
+      if (!targets.itemName) {
+        logger.info('BehaviorCraftWithTable: wait for craft -> exit (no itemName)');
+        return;
+      }
       const have = getItemCountInInventory(bot, targets.itemName);
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
       if (have >= targets.amount) {

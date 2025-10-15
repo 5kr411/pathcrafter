@@ -19,8 +19,9 @@ interface Bot {
 }
 
 interface Targets {
-  itemName: string;
+  itemName?: string;
   amount: number;
+  variantStep?: any;
   [key: string]: any;
 }
 
@@ -62,6 +63,38 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       });
     });
   }
+
+  const selectVariantFromInventory = (step: any): string | undefined => {
+    if (!step || !step.result || !step.ingredients) return undefined;
+    
+    const invItems = bot.inventory?.items?.() || [];
+    const inventory: Record<string, number> = {};
+    invItems.forEach((item: any) => {
+      inventory[item.name] = (inventory[item.name] || 0) + item.count;
+    });
+
+    const resultVariants = step.result.variants || [];
+    const ingredientVariants = step.ingredients.variants || [];
+
+    for (let i = 0; i < resultVariants.length; i++) {
+      const resultVariant = resultVariants[i];
+      const ingredientVariant = ingredientVariants[i];
+      if (!resultVariant || !ingredientVariant) continue;
+
+      const ingredients = Array.isArray(ingredientVariant.value) ? ingredientVariant.value : [];
+      const hasAllIngredients = ingredients.every((ing: any) => {
+        return ing && ing.item && (inventory[ing.item] || 0) >= (ing.perCraftCount || 1);
+      });
+
+      if (hasAllIngredients) {
+        const itemName = resultVariant.value?.item || resultVariant.value;
+        logger.info(`BehaviorCraftNoTable: Selected variant ${itemName} based on inventory`);
+        return itemName;
+      }
+    }
+
+    return undefined;
+  };
 
   const craftItemNoTable = async (itemName: string, additionalNeeded: number): Promise<boolean> => {
     const mcData: MinecraftData = minecraftData(bot.version);
@@ -157,9 +190,15 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     parent: enter,
     child: exit,
     name: 'BehaviorCraftNoTable: enter -> exit',
-    shouldTransition: () => targets.itemName == null || targets.amount == null,
+    shouldTransition: () => {
+      // Allow crafting if variantStep is set, even if itemName is null
+      if (targets.variantStep && targets.amount != null) {
+        return false;
+      }
+      return targets.itemName == null || targets.amount == null;
+    },
     onTransition: () => {
-      if (targets.itemName == null) {
+      if (targets.itemName == null && !targets.variantStep) {
         logger.error('BehaviorCraftNoTable: Error: No item name');
       }
       if (targets.amount == null) {
@@ -176,14 +215,31 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     parent: enter,
     child: waitForCraft,
     name: 'BehaviorCraftNoTable: enter -> wait for craft',
-    shouldTransition: () => targets.itemName != null && targets.amount != null,
+    shouldTransition: () => (targets.itemName != null || targets.variantStep != null) && targets.amount != null,
     onTransition: () => {
       waitForCraftStartTime = Date.now();
       logger.info('BehaviorCraftNoTable: enter -> wait for craft');
       craftingDone = false;
       craftingOk = false;
+      
+      let actualItemName = targets.itemName;
+      
+      if (!actualItemName && targets.variantStep) {
+        actualItemName = selectVariantFromInventory(targets.variantStep);
+        if (!actualItemName) {
+          const variants = targets.variantStep?.result?.variants || [];
+          const variantNames = variants.map((v: any) => v.value?.item || v.value).slice(0, 5).join(', ');
+          logger.error(`BehaviorCraftNoTable: Could not select variant from inventory. Available variants: ${variantNames}`);
+          craftingOk = false;
+          craftingDone = true;
+          return;
+        }
+        // Persist the selected variant back to targets
+        targets.itemName = actualItemName;
+      }
+      
       Promise.resolve()
-        .then(() => craftItemNoTable(targets.itemName, targets.amount))
+        .then(() => craftItemNoTable(actualItemName!, targets.amount))
         .then((ok) => {
           craftingOk = !!ok;
           craftingDone = true;
@@ -201,6 +257,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     child: exit,
     name: 'BehaviorCraftNoTable: wait for craft -> exit',
     shouldTransition: () => {
+      if (!targets.itemName) return craftingDone;
       const have = getItemCountInInventory(bot, targets.itemName);
       if (have >= targets.amount) return true;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
@@ -208,6 +265,10 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       return craftingDone;
     },
     onTransition: () => {
+      if (!targets.itemName) {
+        logger.info('BehaviorCraftNoTable: wait for craft -> exit (no itemName)');
+        return;
+      }
       const have = getItemCountInInventory(bot, targets.itemName);
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
       if (have >= targets.amount) {
