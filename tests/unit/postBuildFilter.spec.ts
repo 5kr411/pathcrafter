@@ -526,6 +526,264 @@ describe('unit: postBuildFilter', () => {
     });
   });
 
+  describe('exact item matching vs family matching', () => {
+    test('stone types do not match by family - filters craft with unavailable ingredient', () => {
+      const context: BuildContext = {
+        inventory: new Map(),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'craft',
+                result: {
+                  variants: [{ value: { item: 'stone_pickaxe' } }]
+                },
+                ingredients: {
+                  variants: [{ value: [{ item: 'cobbled_deepslate', perCraftCount: 3 }] }]
+                },
+                children: {
+                  variants: [
+                    {
+                      value: {
+                        action: 'root',
+                        what: { variants: [{ value: 'cobblestone' }] },
+                        children: {
+                          variants: [
+                            {
+                              value: {
+                                action: 'mine',
+                                what: { variants: [{ value: 'stone' }] },
+                                targetItem: { variants: [{ value: 'cobblestone' }] }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      expect(tree.children.variants.length).toBe(0);
+    });
+
+    test('wood types match by family - oak_planks can use oak family', () => {
+      const context: BuildContext = {
+        inventory: new Map(),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'craft',
+                result: {
+                  variants: [
+                    { value: { item: 'stick' } }
+                  ]
+                },
+                ingredients: {
+                  variants: [
+                    { value: [{ item: 'oak_planks', perCraftCount: 2 }] }
+                  ]
+                },
+                children: {
+                  variants: [
+                    {
+                      value: {
+                        action: 'root',
+                        children: {
+                          variants: [
+                            {
+                              value: {
+                                action: 'craft',
+                                result: {
+                                  variants: [{ value: { item: 'oak_planks' } }]
+                                },
+                                ingredients: {
+                                  variants: [{ value: [{ item: 'oak_log', perCraftCount: 1 }] }]
+                                },
+                                children: {
+                                  variants: [
+                                    {
+                                      value: {
+                                        action: 'root',
+                                        children: {
+                                          variants: [
+                                            {
+                                              value: {
+                                                action: 'mine',
+                                                what: { variants: [{ value: 'oak_log' }] },
+                                                targetItem: { variants: [{ value: 'oak_log' }] }
+                                              }
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      const stickCraft = tree.children.variants[0].value;
+      expect(stickCraft.result.variants.length).toBe(1);
+      expect(stickCraft.result.variants[0].value.item).toBe('stick');
+    });
+
+    test('inventory items count as exact matches', () => {
+      const context: BuildContext = {
+        inventory: new Map([['cobbled_deepslate', 5]]),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'craft',
+                context: context,
+                result: {
+                  variants: [
+                    { value: { item: 'stone_pickaxe' } },
+                    { value: { item: 'deepslate_pickaxe' } }
+                  ]
+                },
+                ingredients: {
+                  variants: [
+                    { value: [{ item: 'cobblestone', perCraftCount: 3 }] },
+                    { value: [{ item: 'cobbled_deepslate', perCraftCount: 3 }] }
+                  ]
+                },
+                children: {
+                  variants: []
+                }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      const craftNode = tree.children.variants[0].value;
+
+      expect(craftNode.result.variants.length).toBe(1);
+      expect(craftNode.result.variants[0].value.item).toBe('deepslate_pickaxe');
+      
+      expect(craftNode.ingredients.variants.length).toBe(1);
+      expect(craftNode.ingredients.variants[0].value[0].item).toBe('cobbled_deepslate');
+    });
+
+    test('exact item match takes priority over family match', () => {
+      const context: BuildContext = {
+        inventory: new Map(),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'craft',
+                result: {
+                  variants: [
+                    { value: { item: 'stick' } }
+                  ]
+                },
+                ingredients: {
+                  variants: [
+                    { value: [{ item: 'birch_planks', perCraftCount: 2 }] }
+                  ]
+                },
+                children: {
+                  variants: [
+                    {
+                      value: {
+                        action: 'root',
+                        children: {
+                          variants: [
+                            {
+                              value: {
+                                action: 'mine',
+                                what: { variants: [{ value: 'oak_log' }] },
+                                targetItem: { variants: [{ value: 'oak_log' }] }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      const craftNode = tree.children.variants[0].value;
+      expect(craftNode.result.variants.length).toBe(0);
+    });
+  });
+
   describe('applyPostBuildFiltering', () => {
     test('does not filter when pruneWithWorld is false', () => {
       const context: BuildContext = {
