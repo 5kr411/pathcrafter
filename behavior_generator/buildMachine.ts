@@ -152,7 +152,14 @@ export function buildStateMachineForPath(
       name: `step:${stepIndex}:${step.action}:${step.what}`,
       shouldTransition: should,
       onTransition: () => {
-        logger.info(`PathBuilder: step ${stepIndex} -> ${step.action}:${step.what}`);
+        // Format step.what for logging
+        let whatStr: string = String(step.what);
+        if (typeof step.what === 'object' && step.what !== null) {
+          if ((step.what as any).item) whatStr = (step.what as any).item;
+          else if ((step.what as any).name) whatStr = (step.what as any).name;
+          else whatStr = JSON.stringify(step.what);
+        }
+        logger.info(`PathBuilder: step ${stepIndex} -> ${step.action}: ${whatStr}${step.count ? ` x${step.count}` : ''}`);
       }
     }));
 

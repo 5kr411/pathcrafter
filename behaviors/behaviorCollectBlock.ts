@@ -95,7 +95,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     );
   } catch (_) {}
 
-  let currentBlockCount = getItemCountInInventory(bot, targets.itemName);
+  let currentBlockCount = 0; // Will be set by resetBaseline on first entry
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -103,6 +103,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   function resetBaseline(): void {
     currentBlockCount = getItemCountInInventory(bot, targets.itemName);
+    logger.debug(`resetBaseline: currentBlockCount set to ${currentBlockCount} for ${targets.itemName}`);
   }
 
   const enter = new BehaviorIdle();
@@ -271,13 +272,23 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const exit = new BehaviorIdle();
 
+  let baselineInitialized = false;
+
   const enterToFindBlock = new StateTransition({
     parent: enter,
     child: findBlock,
     name: 'BehaviorCollectBlock: enter -> find block',
-    shouldTransition: () => collectedCount() < targets.amount,
+    shouldTransition: () => {
+      if (!baselineInitialized && targets.itemName) {
+        resetBaseline();
+        baselineInitialized = true;
+      }
+      const collected = collectedCount();
+      const shouldGo = collected < targets.amount;
+      logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
+      return shouldGo;
+    },
     onTransition: () => {
-      resetBaseline();
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -286,9 +297,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
           const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
           if (Number.isFinite(r) && r > 0) findBlock.maxDistance = r;
         } catch (_) {}
-        logger.debug(`enter -> find block (target=${targets.blockName}#${currentId})`);
+        logger.info(`enter -> find block (target=${targets.blockName}#${currentId}, maxDistance=${findBlock.maxDistance})`);
       } catch (_) {
-        logger.debug('enter -> find block');
+        logger.info('enter -> find block');
       }
     }
   });
@@ -297,7 +308,16 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: findBlock,
     child: exit,
     name: 'BehaviorCollectBlock: find block -> exit',
-    shouldTransition: () => targets.position === undefined,
+    shouldTransition: () => {
+      const isFinished = typeof findBlock.isFinished === 'function' ? findBlock.isFinished() : false;
+      const noPosition = targets.position === undefined;
+      logger.debug(`findBlockToExit check: isFinished=${isFinished}, targets.position=${targets.position ? 'set' : 'undefined'}, blockName=${targets.blockName}`);
+      if (isFinished && noPosition) {
+        logger.warn(`findBlockToExit: findBlock finished but targets.position is undefined, exiting (blockName=${targets.blockName})`);
+        return true;
+      }
+      return false;
+    },
     onTransition: () => {
       logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
     }
@@ -307,10 +327,18 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: findBlock,
     child: findInteractPosition,
     name: 'BehaviorCollectBlock: find block -> find interact position',
-    shouldTransition: () => targets.position !== undefined,
+    shouldTransition: () => {
+      const hasPosition = targets.position !== undefined;
+      logger.debug(`findBlockToFindInteractPosition: targets.position=${targets.position ? `(${targets.position.x},${targets.position.y},${targets.position.z})` : 'undefined'}, shouldTransition=${hasPosition}`);
+      return hasPosition;
+    },
     onTransition: () => {
       targets.blockPosition = targets.position;
-      logger.debug('find block -> find interact position');
+      if (targets.position) {
+        logger.info(`find block -> find interact position at (${targets.position.x}, ${targets.position.y}, ${targets.position.z})`);
+      } else {
+        logger.warn('find block -> find interact position but position is undefined!');
+      }
     }
   });
 
@@ -338,6 +366,26 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         if (!targets.position) {
           targets.position = targets.blockPosition;
         }
+        
+        // Adjust distance based on target position relative to bot
+        if (bot.entity && bot.entity.position && targets.blockPosition) {
+          const botPos = bot.entity.position;
+          const targetPos = targets.blockPosition;
+          const dx = Math.abs(targetPos.x - botPos.x);
+          const dz = Math.abs(targetPos.z - botPos.z);
+          const dy = targetPos.y - botPos.y;
+          
+          // If target is directly above or below (small horizontal distance)
+          if (dx < 1.5 && dz < 1.5) {
+            // Use smaller distance for vertical mining
+            goToBlock.distance = Math.max(0.5, Math.abs(dy) - 1);
+            logger.debug(`Target is vertical (dx=${dx.toFixed(1)}, dz=${dz.toFixed(1)}, dy=${dy.toFixed(1)}), using distance ${goToBlock.distance.toFixed(1)}`);
+          } else {
+            // Use standard distance for horizontal mining
+            goToBlock.distance = 3.5;
+          }
+        }
+        
         try {
           logger.debug('moving towards position', targets.position);
         } catch (_) {}
@@ -356,10 +404,23 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     child: equipBestTool,
     name: 'BehaviorCollectBlock: go to block -> equip best tool',
     shouldTransition: () => {
-      if (!goToBlock.isFinished() || goToBlock.distanceToTarget() >= 6) return false;
+      const finished = goToBlock.isFinished();
+      const distance = goToBlock.distanceToTarget();
+      
+      if (!finished) {
+        return false;
+      }
+      
+      if (distance >= 6) {
+        logger.debug(`BehaviorCollectBlock: too far from target (${distance.toFixed(2)} blocks), staying in goToBlock`);
+        return false;
+      }
       
       // Check if we can see the target
-      if (canSeeTargetBlock(bot, targets)) {
+      const canSee = canSeeTargetBlock(bot, targets);
+      logger.debug(`BehaviorCollectBlock: goToBlock finished, distance=${distance.toFixed(2)}, canSee=${canSee}`);
+      
+      if (canSee) {
         // Clear path, proceed to mine
         if (originalTargetBlock) {
           // We were mining obstructions, but now have clear path - restore original target
@@ -371,6 +432,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       }
       
       // Can't see target - check for obstructions
+      logger.debug(`BehaviorCollectBlock: Cannot see target, checking for obstructions (attempt ${obstructionCheckAttempts + 1}/${MAX_OBSTRUCTION_CHECK_ATTEMPTS})`);
       if (obstructionCheckAttempts >= MAX_OBSTRUCTION_CHECK_ATTEMPTS) {
         logger.warn(`BehaviorCollectBlock: Tried ${obstructionCheckAttempts} times to clear path, giving up`);
         obstructionCheckAttempts = 0;

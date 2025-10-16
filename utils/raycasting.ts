@@ -128,7 +128,6 @@ export function findObstructingBlock(bot: MinecraftBot, targets: CollectTargets)
         
         // Skip blocks at bot's position to avoid detecting ourselves
         // Bot occupies 2 blocks vertically: feet at Y and body/head at Y+1 (eyes are at Y+1.5)
-        // Only skip the bot's actual body, NOT the block under feet - that's a valid obstruction
         const botBlockX = Math.floor(botPos.x);
         const botBlockY = Math.floor(botPos.y);
         const botBlockZ = Math.floor(botPos.z);
