@@ -9,6 +9,7 @@ import * as treeBuild from './action_tree/build';
 import * as treeLogger from './action_tree/logger';
 import * as treeEnumerate from './action_tree/enumerate';
 import * as treeMetrics from './action_tree/metrics';
+import logger from './utils/logger';
 
 const actionPathsGenerator = require('./path_generators/actionPathsGenerator');
 const shortestPathsGenerator = require('./path_generators/shortestPathsGenerator');
@@ -75,6 +76,8 @@ function buildWorldBudgetFromSnapshot(snap: WorldSnapshot): WorldBudget {
     ? snap.radius!
     : Infinity;
 
+  logger.debug(`WorldBudget: building from snapshot with radius=${snap.radius}, distanceThreshold=${distanceThreshold}`);
+
   const allowedBlocksWithinThreshold = new Set<string>();
 
   // Process blocks
@@ -85,8 +88,18 @@ function buildWorldBudgetFromSnapshot(snap: WorldSnapshot): WorldBudget {
       const d = rec && rec.closestDistance !== null && rec.closestDistance !== undefined && Number.isFinite(rec.closestDistance) ? rec.closestDistance : Infinity;
       blocksInfo[name] = { closestDistance: d };
       if (c > 0) blocks[name] = c;
-      if (d <= distanceThreshold) allowedBlocksWithinThreshold.add(name);
+      if (d <= distanceThreshold) {
+        allowedBlocksWithinThreshold.add(name);
+      }
+      if (name.includes('diamond')) {
+        logger.debug(`WorldBudget: ${name} - count=${c}, closestDist=${d}, withinThreshold=${d <= distanceThreshold}`);
+      }
     }
+  }
+
+  logger.debug(`WorldBudget: processed ${Object.keys(blocks).length} block types, ${allowedBlocksWithinThreshold.size} within threshold`);
+  if (!allowedBlocksWithinThreshold.has('diamond_ore') && blocks['diamond_ore']) {
+    logger.info(`WorldBudget: WARNING - diamond_ore exists (count=${blocks['diamond_ore']}) but NOT within threshold!`);
   }
 
   const allowedEntitiesWithinThreshold = new Set<string>();
@@ -219,7 +232,8 @@ const _internals = {
   logActionPath: treeLogger.logActionPath,
   logActionPaths: treeLogger.logActionPaths,
   computePathWeight,
-  enumerateLowestWeightPathsGenerator: lowestWeightPathsGenerator.enumerateLowestWeightPathsGenerator
+  enumerateLowestWeightPathsGenerator: lowestWeightPathsGenerator.enumerateLowestWeightPathsGenerator,
+  buildWorldBudgetFromSnapshot
 };
 
 // Attach _internals to the plan function for backward compatibility

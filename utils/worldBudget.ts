@@ -48,15 +48,33 @@ export function canConsumeWorld(
     : worldBudget.allowedEntitiesWithinThreshold;
 
   if (allowSet && allowSet.has && have > 0) {
-    if (!allowSet.has(name)) return false;
+    const isAllowed = allowSet.has(name);
+    if (!isAllowed) {
+      const info = worldBudget[`${kind}Info`]?.[name];
+      const closest = info && Number.isFinite(info.closestDistance) ? info.closestDistance : Infinity;
+      const thresh = worldBudget.distanceThreshold;
+      if (name === 'diamond_ore' || name.includes('diamond')) {
+        require('./logger').default.debug(`WorldBudget: canConsume(${kind}, ${name}, ${amount}) - NOT in allowSet, have=${have}, closest=${closest}, thresh=${thresh}`);
+      }
+      return false;
+    }
   } else if (have > 0 && worldBudget && worldBudget[`${kind}Info`]) {
     const info = worldBudget[`${kind}Info`][name];
     const closest = info && Number.isFinite(info.closestDistance) ? info.closestDistance : Infinity;
     const thresh = Number.isFinite(worldBudget.distanceThreshold) ? worldBudget.distanceThreshold : Infinity;
-    if (!(closest <= thresh)) return false;
+    if (!(closest <= thresh)) {
+      if (name === 'diamond_ore' || name.includes('diamond')) {
+        require('./logger').default.debug(`WorldBudget: canConsume(${kind}, ${name}, ${amount}) - distance check failed, closest=${closest}, thresh=${thresh}`);
+      }
+      return false;
+    }
   }
 
-  return have >= amount;
+  const result = have >= amount;
+  if ((name === 'diamond_ore' || name.includes('diamond')) && have > 0) {
+    require('./logger').default.debug(`WorldBudget: canConsume(${kind}, ${name}, ${amount}) - result=${result}, have=${have}`);
+  }
+  return result;
 }
 
 /**

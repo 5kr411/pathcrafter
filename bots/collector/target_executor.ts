@@ -112,6 +112,10 @@ export class TargetExecutor {
       const version = this.bot.version || '1.20.1';
       const id = `${Date.now()}_${Math.random()}`;
       logDebug(`Collector: creating planning job with id ${id}`);
+      logDebug(`Collector: snapshot has radius=${snapshot.radius}, block types=${Object.keys(snapshot.blocks || {}).length}`);
+      if (!snapshot.radius || !Number.isFinite(snapshot.radius)) {
+        logger.info(`Collector: WARNING - snapshot radius is ${snapshot.radius}, distance filtering may not work correctly!`);
+      }
 
       this.running = true;
       this.workerManager.postPlanningRequest(

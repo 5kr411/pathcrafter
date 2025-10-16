@@ -6,10 +6,16 @@
     "y": 70,
     "z": -97
   },
+  "radius": 96,
   "chunkRadius": 3,
   "yMin": 0,
   "yMax": 255,
   "blocks": {
+    "diamond_ore": {
+      "count": 3,
+      "closestDistance": 10,
+      "averageDistance": 40
+    },
     "podzol": {
       "count": 5237,
       "closestDistance": 1,

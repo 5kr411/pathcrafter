@@ -44,6 +44,8 @@ parentPort.on('message', async (msg: PlanMessage) => {
   
   logger.debug(`PlanningWorker: starting plan for ${item} x${count} (id=${id})`);
   logger.debug(`PlanningWorker: mcVersion=${mcVersion}, perGenerator=${perGenerator}, pruneWithWorld=${pruneWithWorld}, telemetry=${telemetry}`);
+  logger.debug(`PlanningWorker: snapshot radius=${snapshot?.radius}, has blocks=${!!snapshot?.blocks}`);
+  logger.debug(`PlanningWorker: inventory items count=${Object.keys(inventory || {}).length}`);
 
   try {
     if (typeof telemetry !== 'undefined') {
@@ -76,7 +78,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
       throw new Error('Failed to build recipe tree');
     }
     
-    logger.debug(`PlanningWorker: tree action=${tree.action}, operator=${tree.operator}`);
+    logger.debug(`PlanningWorker: tree action=${tree.action}, operator=${tree.operator}, children=${tree.children.variants.length}`);
 
     // Initialize pool on first use
     if (!poolInitialized) {
@@ -160,6 +162,12 @@ parentPort.on('message', async (msg: PlanMessage) => {
 
     const ranked = hoistMiningInPaths(merged);
     const tFilterMs = Date.now() - tFilterStart;
+    
+    if (ranked.length > 0) {
+      const firstPath = ranked[0];
+      const hasMining = firstPath.some((step: any) => step.action === 'mine');
+      logger.debug(`PlanningWorker: ranked[0] has ${firstPath.length} steps, hasMining=${hasMining}`);
+    }
 
     if (getPlanningTelemetryEnabled()) {
       logger.debug(`PlanningWorker: filtered candidates in ${tFilterMs} ms; ${merged.length} total candidates`);
