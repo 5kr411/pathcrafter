@@ -58,26 +58,29 @@ export function buildCraftNodes(
     const recipe = recipeGroup[0].recipe;
     const craftingsNeeded = Math.ceil(targetCount / recipe.result.count);
     
-    const recipeBySuffix = groupRecipesBySuffix(recipeGroup, mcData);
-    
-    if (recipeBySuffix.size > 1 && context.combineSimilarNodes) {
-      for (const [_suffix, subGroup] of recipeBySuffix.entries()) {
-        const branchContext = cloneInventoryForBranch(context);
-        createSingleCraftNode(
-          subGroup,
-          variantMode,
-          primaryItem,
-          variantsToUse,
-          craftingsNeeded,
-          root,
-          branchContext,
-          ctx,
-          mcData,
-          nextVisited,
-          buildRecipeTreeFn
-        );
+    let hasVaryingIngredients = false;
+    if (context.combineSimilarNodes && recipeGroup.length > 1) {
+      const ingredientsByRecipe = recipeGroup.map(entry => {
+        const counts = getIngredientCounts(entry.recipe);
+        return new Set(Array.from(counts.keys()).map(id => mcData.items[id]?.name).filter(Boolean));
+      });
+      
+      const allIngsFirstRecipe = ingredientsByRecipe[0];
+      for (let i = 1; i < ingredientsByRecipe.length; i++) {
+        const currentIngs = ingredientsByRecipe[i];
+        const allIngs = new Set([...allIngsFirstRecipe, ...currentIngs]);
+        
+        for (const ing of allIngs) {
+          if (!allIngsFirstRecipe.has(ing) || !currentIngs.has(ing)) {
+            hasVaryingIngredients = true;
+            break;
+          }
+        }
+        if (hasVaryingIngredients) break;
       }
-    } else {
+    }
+    
+    if (hasVaryingIngredients) {
       createSingleCraftNode(
         recipeGroup,
         variantMode,
@@ -91,6 +94,41 @@ export function buildCraftNodes(
         nextVisited,
         buildRecipeTreeFn
       );
+    } else {
+      const recipeBySuffix = groupRecipesBySuffix(recipeGroup, mcData);
+      
+      if (recipeBySuffix.size > 1 && context.combineSimilarNodes) {
+        for (const [_suffix, subGroup] of recipeBySuffix.entries()) {
+          const branchContext = cloneInventoryForBranch(context);
+          createSingleCraftNode(
+            subGroup,
+            variantMode,
+            primaryItem,
+            variantsToUse,
+            craftingsNeeded,
+            root,
+            branchContext,
+            ctx,
+            mcData,
+            nextVisited,
+            buildRecipeTreeFn
+          );
+        }
+      } else {
+        createSingleCraftNode(
+          recipeGroup,
+          variantMode,
+          primaryItem,
+          variantsToUse,
+          craftingsNeeded,
+          root,
+          context,
+          ctx,
+          mcData,
+          nextVisited,
+          buildRecipeTreeFn
+        );
+      }
     }
   }
 }
@@ -167,6 +205,8 @@ function createSingleCraftNode(
     craftNode,
     ingredientVariants,
     craftingsNeeded,
+    recipeGroup,
+    primaryItem,
     context,
     ctx,
     mcData,
@@ -268,6 +308,8 @@ function processIngredientDependencies(
   craftNode: CraftNode,
   ingredientVariants: VariantGroup<ItemReference[]>,
   craftingsNeeded: number,
+  recipeGroup: RecipeEntry[],
+  _resultItemName: string,
   context: BuildContext,
   ctx: any,
   mcData: any,
@@ -287,6 +329,33 @@ function processIngredientDependencies(
     }
   }
 
+  const recipeBasedAlternativesCache = new Map<string, string[]>();
+  if (context.combineSimilarNodes && recipeGroup.length > 1) {
+    const ingredientsByRecipe = recipeGroup.map(entry => {
+      const counts = getIngredientCounts(entry.recipe);
+      return new Set(Array.from(counts.keys()).map(id => mcData.items[id]?.name).filter(Boolean));
+    });
+    
+    const varyingIngredients = new Set<string>();
+    const constantIngredients = new Set<string>(ingredientsByRecipe[0]);
+    
+    for (let i = 1; i < ingredientsByRecipe.length; i++) {
+      const currentSet = ingredientsByRecipe[i];
+      const allIngs = new Set([...constantIngredients, ...currentSet]);
+      
+      for (const ing of allIngs) {
+        if (!constantIngredients.has(ing) || !currentSet.has(ing)) {
+          varyingIngredients.add(ing);
+          constantIngredients.delete(ing);
+        }
+      }
+    }
+    
+    for (const varyingIng of varyingIngredients) {
+      recipeBasedAlternativesCache.set(varyingIng, Array.from(varyingIngredients));
+    }
+  }
+
   for (const ingredientItem of allIngredientItems) {
     let actualCount = 1;
     for (const variant of ingredientVariantsList) {
@@ -299,9 +368,17 @@ function processIngredientDependencies(
     }
     
     const requiredCount = actualCount * craftingsNeeded;
-    const similarItems = context.combineSimilarNodes
-      ? Array.from(new Set(findIngredientAlternatives(mcData, ingredientItem)))
-      : [ingredientItem];
+    let similarItems: string[];
+    if (context.combineSimilarNodes) {
+      const cachedAlternatives = recipeBasedAlternativesCache.get(ingredientItem);
+      if (cachedAlternatives && cachedAlternatives.length > 1) {
+        similarItems = cachedAlternatives;
+      } else {
+        similarItems = Array.from(new Set(findIngredientAlternatives(mcData, ingredientItem)));
+      }
+    } else {
+      similarItems = [ingredientItem];
+    }
     if (similarItems.length === 0) continue;
     
     const suffix = getSuffixTokenFromName(ingredientItem) || ingredientItem;

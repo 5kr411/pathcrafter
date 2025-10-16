@@ -7,32 +7,22 @@ describe('unit: variant consistency', () => {
     mcData = require('minecraft-data')('1.20.1');
   });
 
-  describe('stone-type material consistency', () => {
-    test('mining stone produces cobblestone - should not allow cobbled_deepslate craft variants', () => {
+  describe('stone-type material grouping', () => {
+    test('stone tools should have multi-variant craft nodes with all stone types', () => {
       const tree = plan(mcData, 'stone_pickaxe', 1, {
         log: false,
         inventory: new Map(),
-        pruneWithWorld: true,
-        combineSimilarNodes: true,
-        worldSnapshot: {
-          version: '1.20.1',
-          dimension: 'overworld',
-          center: { x: 0, y: 64, z: 0 },
-          radius: 128,
-          yMin: 0,
-          yMax: 255,
-          blocks: {
-            stone: { count: 100, closestDistance: 10, averageDistance: 20 }
-          },
-          entities: {}
-        }
+        combineSimilarNodes: true
       });
 
       function findCraftNodes(node: any, results: any[] = []): any[] {
         if (!node) return results;
         
-        if (node.action === 'craft') {
-          results.push(node);
+        if (node.action === 'craft' && node.result?.variants) {
+          const resultItems = node.result.variants.map((v: any) => v.value?.item);
+          if (resultItems.includes('stone_pickaxe')) {
+            results.push(node);
+          }
         }
         
         if (node.children && node.children.variants) {
@@ -44,52 +34,48 @@ describe('unit: variant consistency', () => {
         return results;
       }
 
-      const allCrafts = findCraftNodes(tree);
+      const stonePickaxeCrafts = findCraftNodes(tree);
+      expect(stonePickaxeCrafts.length).toBeGreaterThan(0);
 
-      for (const craftNode of allCrafts) {
-        if (craftNode.result && craftNode.result.variants) {
-          for (const variant of craftNode.result.variants) {
-            const item = variant.value?.item || variant.value;
-            expect(item).not.toBe('deepslate_pickaxe');
-          }
-        }
-        
-        if (craftNode.ingredients && craftNode.ingredients.variants) {
-          for (const ingredientVariant of craftNode.ingredients.variants) {
-            for (const ingredient of ingredientVariant.value || []) {
-              expect(ingredient.item).not.toBe('cobbled_deepslate');
-              expect(ingredient.item).not.toBe('polished_deepslate');
+      const craftNode = stonePickaxeCrafts[0];
+      expect(craftNode.ingredients.variants.length).toBeGreaterThanOrEqual(3);
+
+      const ingredientVariants = craftNode.ingredients.variants;
+      const stoneTypes = new Set<string>();
+      
+      for (const variant of ingredientVariants) {
+        const ingredients = variant.value;
+        if (Array.isArray(ingredients)) {
+          for (const ingredient of ingredients) {
+            if (ingredient.item === 'cobblestone' || 
+                ingredient.item === 'cobbled_deepslate' || 
+                ingredient.item === 'blackstone') {
+              stoneTypes.add(ingredient.item);
             }
           }
         }
       }
+
+      expect(stoneTypes.has('cobblestone')).toBe(true);
+      expect(stoneTypes.has('cobbled_deepslate')).toBe(true);
+      expect(stoneTypes.has('blackstone')).toBe(true);
     });
 
-    test('mining deepslate produces cobbled_deepslate - should not allow cobblestone craft variants', () => {
-      const tree = plan(mcData, 'stone_pickaxe', 1, {
+    test('stone_axe should also have multi-variant craft nodes', () => {
+      const tree = plan(mcData, 'stone_axe', 1, {
         log: false,
         inventory: new Map(),
-        pruneWithWorld: true,
-        combineSimilarNodes: true,
-        worldSnapshot: {
-          version: '1.20.1',
-          dimension: 'overworld',
-          center: { x: 0, y: 64, z: 0 },
-          radius: 128,
-          yMin: 0,
-          yMax: 255,
-          blocks: {
-            deepslate: { count: 100, closestDistance: 10, averageDistance: 20 }
-          },
-          entities: {}
-        }
+        combineSimilarNodes: true
       });
 
       function findCraftNodes(node: any, results: any[] = []): any[] {
         if (!node) return results;
         
-        if (node.action === 'craft') {
-          results.push(node);
+        if (node.action === 'craft' && node.result?.variants) {
+          const resultItems = node.result.variants.map((v: any) => v.value?.item);
+          if (resultItems.includes('stone_axe')) {
+            results.push(node);
+          }
         }
         
         if (node.children && node.children.variants) {
@@ -101,20 +87,11 @@ describe('unit: variant consistency', () => {
         return results;
       }
 
-      const allCrafts = findCraftNodes(tree);
+      const stoneAxeCrafts = findCraftNodes(tree);
+      expect(stoneAxeCrafts.length).toBeGreaterThan(0);
 
-      for (const craftNode of allCrafts) {
-        if (craftNode.ingredients && craftNode.ingredients.variants) {
-          for (const ingredientVariant of craftNode.ingredients.variants) {
-            for (const ingredient of ingredientVariant.value || []) {
-              if (ingredient.item?.includes('stone') || ingredient.item?.includes('deepslate')) {
-                expect(ingredient.item).not.toBe('cobblestone');
-                expect(ingredient.item).not.toBe('stone');
-              }
-            }
-          }
-        }
-      }
+      const craftNode = stoneAxeCrafts[0];
+      expect(craftNode.ingredients.variants.length).toBeGreaterThanOrEqual(3);
     });
   });
 

@@ -5,8 +5,9 @@
  * in recipes (e.g., different wood types like oak_planks, spruce_planks).
  */
 
-import { MinecraftData, MinecraftItem } from '../types';
+import { MinecraftData, MinecraftItem, MinecraftRecipe } from '../types';
 import { getSuffixTokenFromName } from '../../utils/items';
+import { getRecipeCanonicalKey, getIngredientCounts } from './recipeUtils';
 
 /**
  * Known combinable suffixes that represent item families
@@ -276,6 +277,91 @@ export function findSameFamilyItems(mcData: MinecraftData, itemName: string): st
   }
   
   return sameFamily.length > 0 ? sameFamily : [itemName];
+}
+
+/**
+ * Finds ingredient alternatives by analyzing recipe groups
+ * 
+ * When multiple recipes for the same result item have identical canonical structure
+ * but different specific ingredients, those ingredients are alternatives and should
+ * be grouped. This works for stone tools (cobblestone/cobbled_deepslate/blackstone)
+ * and automatically handles any future similar cases.
+ * 
+ * @param mcData - Minecraft data object
+ * @param resultItemName - Name of the item being crafted (e.g., 'stone_pickaxe')
+ * @param ingredientItemName - Name of the ingredient to find alternatives for
+ * @returns Array of alternative ingredient names that can be used in the same recipe position
+ * 
+ * @example
+ * ```typescript
+ * const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_pickaxe', 'cobblestone');
+ * // Returns: ['cobblestone', 'cobbled_deepslate', 'blackstone']
+ * 
+ * const alternatives = findIngredientAlternativesFromRecipes(mcData, 'iron_pickaxe', 'iron_ingot');
+ * // Returns: ['iron_ingot'] (no alternatives)
+ * ```
+ */
+export function findIngredientAlternativesFromRecipes(
+  mcData: MinecraftData,
+  resultItemName: string,
+  ingredientItemName: string
+): string[] {
+  const resultItem = mcData.itemsByName[resultItemName];
+  if (!resultItem) return [ingredientItemName];
+  
+  const recipes = mcData.recipes[resultItem.id] || [];
+  if (recipes.length <= 1) return [ingredientItemName];
+  
+  const canonicalGroups = new Map<string, MinecraftRecipe[]>();
+  for (const recipe of recipes) {
+    const key = getRecipeCanonicalKey(recipe);
+    if (!canonicalGroups.has(key)) {
+      canonicalGroups.set(key, []);
+    }
+    canonicalGroups.get(key)!.push(recipe);
+  }
+  
+  const ingredientId = mcData.itemsByName[ingredientItemName]?.id;
+  if (!ingredientId) return [ingredientItemName];
+  
+  for (const group of canonicalGroups.values()) {
+    if (group.length <= 1) continue;
+    
+    const usesIngredient = group.some(recipe => {
+      const counts = getIngredientCounts(recipe);
+      return counts.has(ingredientId);
+    });
+    
+    if (usesIngredient) {
+      const ingredientsByRecipe = group.map(recipe => {
+        const counts = getIngredientCounts(recipe);
+        return new Set(Array.from(counts.keys()).map(id => mcData.items[id]?.name).filter(Boolean));
+      });
+      
+      const varyingIngredients = new Set<string>();
+      const constantIngredients = new Set<string>(ingredientsByRecipe[0]);
+      
+      for (let i = 1; i < ingredientsByRecipe.length; i++) {
+        const currentSet = ingredientsByRecipe[i];
+        const allIngredients = new Set([...constantIngredients, ...currentSet]);
+        
+        for (const ing of allIngredients) {
+          if (!constantIngredients.has(ing) || !currentSet.has(ing)) {
+            varyingIngredients.add(ing);
+            constantIngredients.delete(ing);
+          }
+        }
+      }
+      
+      if (varyingIngredients.has(ingredientItemName)) {
+        return Array.from(varyingIngredients);
+      }
+      
+      return [ingredientItemName];
+    }
+  }
+  
+  return [ingredientItemName];
 }
 
 /**

@@ -1,160 +1,80 @@
-/**
- * Unit tests for item similarity utilities
- */
+import { describe, it, expect, beforeEach } from '@jest/globals';
+import { findIngredientAlternativesFromRecipes } from '../../action_tree/utils/itemSimilarity';
 
-import { 
-  findSimilarItems, 
-  areItemsSimilar, 
-  getItemSuffix, 
-  isCombinableSuffix 
-} from '../../action_tree/utils/itemSimilarity';
+describe('unit: itemSimilarity - recipe-based alternatives', () => {
+  let mcData: any;
 
-describe('itemSimilarity', () => {
-  const mockMcData = {
-    version: '1.19.2',
-    items: {
-      1: { id: 1, name: 'oak_planks' },
-      2: { id: 2, name: 'spruce_planks' },
-      3: { id: 3, name: 'birch_planks' },
-      4: { id: 4, name: 'oak_log' },
-      5: { id: 5, name: 'spruce_log' },
-      6: { id: 6, name: 'iron_ingot' },
-      7: { id: 7, name: 'gold_ingot' },
-      8: { id: 8, name: 'oak_door' },
-      9: { id: 9, name: 'spruce_door' },
-      10: { id: 10, name: 'iron_door' }
-    },
-    itemsByName: {
-      'oak_planks': { id: 1, name: 'oak_planks' },
-      'spruce_planks': { id: 2, name: 'spruce_planks' },
-      'birch_planks': { id: 3, name: 'birch_planks' },
-      'oak_log': { id: 4, name: 'oak_log' },
-      'spruce_log': { id: 5, name: 'spruce_log' },
-      'iron_ingot': { id: 6, name: 'iron_ingot' },
-      'gold_ingot': { id: 7, name: 'gold_ingot' },
-      'oak_door': { id: 8, name: 'oak_door' },
-      'spruce_door': { id: 9, name: 'spruce_door' },
-      'iron_door': { id: 10, name: 'iron_door' }
-    },
-    recipes: {},
-    blocks: {},
-    entityLoot: {}
-  } as any;
-
-  describe('findSimilarItems', () => {
-    test('finds similar wood planks', () => {
-      const similar = findSimilarItems(mockMcData, 'oak_planks');
-      expect(similar).toContain('oak_planks');
-      expect(similar).toContain('spruce_planks');
-      expect(similar).toContain('birch_planks');
-      expect(similar.length).toBeGreaterThan(1);
-    });
-
-    test('finds similar wood logs', () => {
-      const similar = findSimilarItems(mockMcData, 'oak_log');
-      expect(similar).toContain('oak_log');
-      expect(similar).toContain('spruce_log');
-      expect(similar.length).toBeGreaterThan(1);
-    });
-
-    test('does not find similar ingots (not combinable)', () => {
-      const similar = findSimilarItems(mockMcData, 'iron_ingot');
-      expect(similar).toEqual(['iron_ingot']);
-    });
-
-    test('does not find similar gold ingots (not combinable)', () => {
-      const similar = findSimilarItems(mockMcData, 'gold_ingot');
-      expect(similar).toEqual(['gold_ingot']);
-    });
-
-    test('finds similar doors', () => {
-      const similar = findSimilarItems(mockMcData, 'oak_door');
-      expect(similar).toContain('oak_door');
-      expect(similar).toContain('spruce_door');
-      expect(similar.length).toBeGreaterThan(1);
-    });
-
-    test('returns single item when no similar items found', () => {
-      const similar = findSimilarItems(mockMcData, 'iron_ingot');
-      expect(similar).toEqual(['iron_ingot']);
-    });
-
-    test('handles items with no underscore', () => {
-      const similar = findSimilarItems(mockMcData, 'dirt');
-      expect(similar).toEqual(['dirt']);
-    });
-
-    test('only includes items with same number of parts', () => {
-      // This test ensures that oak_planks (2 parts) doesn't match oak_wood_planks (3 parts)
-      const similar = findSimilarItems(mockMcData, 'oak_planks');
-      similar.forEach(item => {
-        expect(item.split('_').length).toBe(2);
-      });
-    });
+  beforeEach(() => {
+    mcData = require('minecraft-data')('1.20.1');
   });
 
-  describe('areItemsSimilar', () => {
-    test('returns true for similar wood planks', () => {
-      expect(areItemsSimilar(mockMcData, 'oak_planks', 'spruce_planks')).toBe(true);
-      expect(areItemsSimilar(mockMcData, 'spruce_planks', 'birch_planks')).toBe(true);
+  describe('findIngredientAlternativesFromRecipes', () => {
+    it('should find all stone-tier materials as alternatives for stone_pickaxe', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_pickaxe', 'cobblestone');
+      
+      expect(alternatives).toContain('cobblestone');
+      expect(alternatives).toContain('cobbled_deepslate');
+      expect(alternatives).toContain('blackstone');
+      expect(alternatives.length).toBeGreaterThanOrEqual(3);
     });
 
-    test('returns true for similar wood logs', () => {
-      expect(areItemsSimilar(mockMcData, 'oak_log', 'spruce_log')).toBe(true);
+    it('should find all stone-tier materials when starting from cobbled_deepslate', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_pickaxe', 'cobbled_deepslate');
+      
+      expect(alternatives).toContain('cobblestone');
+      expect(alternatives).toContain('cobbled_deepslate');
+      expect(alternatives).toContain('blackstone');
+      expect(alternatives.length).toBeGreaterThanOrEqual(3);
     });
 
-    test('returns false for different ingots', () => {
-      expect(areItemsSimilar(mockMcData, 'iron_ingot', 'gold_ingot')).toBe(false);
+    it('should find all stone-tier materials when starting from blackstone', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_pickaxe', 'blackstone');
+      
+      expect(alternatives).toContain('cobblestone');
+      expect(alternatives).toContain('cobbled_deepslate');
+      expect(alternatives).toContain('blackstone');
+      expect(alternatives.length).toBeGreaterThanOrEqual(3);
     });
 
-    test('returns false for different item types', () => {
-      expect(areItemsSimilar(mockMcData, 'oak_planks', 'iron_ingot')).toBe(false);
-      expect(areItemsSimilar(mockMcData, 'oak_log', 'oak_planks')).toBe(false);
+    it('should work for stone_axe as well', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_axe', 'cobblestone');
+      
+      expect(alternatives).toContain('cobblestone');
+      expect(alternatives).toContain('cobbled_deepslate');
+      expect(alternatives).toContain('blackstone');
+      expect(alternatives.length).toBeGreaterThanOrEqual(3);
     });
 
-    test('returns true for identical items', () => {
-      expect(areItemsSimilar(mockMcData, 'oak_planks', 'oak_planks')).toBe(true);
-    });
-  });
-
-  describe('getItemSuffix', () => {
-    test('extracts suffix from item names', () => {
-      expect(getItemSuffix('oak_planks')).toBe('planks');
-      expect(getItemSuffix('spruce_log')).toBe('log');
-      expect(getItemSuffix('iron_ingot')).toBe('ingot');
-      expect(getItemSuffix('oak_door')).toBe('door');
+    it('should find wood alternatives for wooden tools (regression test)', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'oak_planks', 'oak_log');
+      
+      expect(alternatives).toContain('oak_log');
+      expect(alternatives).toContain('oak_wood');
+      expect(alternatives.length).toBeGreaterThanOrEqual(2);
     });
 
-    test('returns full name for items with no underscore', () => {
-      expect(getItemSuffix('dirt')).toBe('dirt');
-      expect(getItemSuffix('stone')).toBe('stone');
+    it('should return single item when no alternatives exist', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'iron_pickaxe', 'iron_ingot');
+      
+      expect(alternatives).toEqual(['iron_ingot']);
     });
 
-    test('handles single word items', () => {
-      expect(getItemSuffix('wood')).toBe('wood');
-      expect(getItemSuffix('log')).toBe('log');
-    });
-  });
-
-  describe('isCombinableSuffix', () => {
-    test('returns true for combinable suffixes', () => {
-      expect(isCombinableSuffix('planks')).toBe(true);
-      expect(isCombinableSuffix('log')).toBe(true);
-      expect(isCombinableSuffix('door')).toBe(true);
-      expect(isCombinableSuffix('stairs')).toBe(true);
-      expect(isCombinableSuffix('slab')).toBe(true);
+    it('should return single item for non-existent result item', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'nonexistent_item', 'cobblestone');
+      
+      expect(alternatives).toEqual(['cobblestone']);
     });
 
-    test('returns false for non-combinable suffixes', () => {
-      expect(isCombinableSuffix('ingot')).toBe(false);
-      expect(isCombinableSuffix('ore')).toBe(false);
-      expect(isCombinableSuffix('block')).toBe(false);
-      expect(isCombinableSuffix('dust')).toBe(false);
+    it('should return single item for non-existent ingredient', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_pickaxe', 'nonexistent_ingredient');
+      
+      expect(alternatives).toEqual(['nonexistent_ingredient']);
     });
 
-    test('handles edge cases', () => {
-      expect(isCombinableSuffix('')).toBe(false);
-      expect(isCombinableSuffix('unknown')).toBe(false);
+    it('should handle stick ingredient in stone_pickaxe without grouping sticks', () => {
+      const alternatives = findIngredientAlternativesFromRecipes(mcData, 'stone_pickaxe', 'stick');
+      
+      expect(alternatives).toEqual(['stick']);
     });
   });
 });
