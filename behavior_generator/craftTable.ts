@@ -351,7 +351,9 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
 
   let breakFinishTime: number | undefined;
   let collectStartTime: number | undefined;
-  const COLLECT_TIMEOUT_MS = 1000;
+  let collectRetryCount = 0;
+  const COLLECT_TIMEOUT_MS = 7000;
+  const MAX_COLLECT_RETRIES = 2;
   const t4 = new StateTransition({
     name: 'craft-table: break -> get-drop',
     parent: breakTable,
@@ -364,6 +366,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     },
     onTransition: () => {
       collectStartTime = Date.now();
+      collectRetryCount = 0;
       logger.info('BehaviorGenerator(craft-table): break -> get-drop');
     }
   });
@@ -391,8 +394,27 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     },
     onTransition: () => {
       followStartTime = Date.now();
+      followRetryCount = 0;
       const pos = collectTargets.entity && collectTargets.entity.position;
       logger.info(`BehaviorGenerator(craft-table): get-drop -> follow-drop (x=${pos?.x}, y=${pos?.y}, z=${pos?.z})`);
+    }
+  });
+
+  // Retry drop collection if timed out and retries remain
+  const t5retry = new StateTransition({
+    name: 'craft-table: get-drop -> get-drop (retry)',
+    parent: getDrop,
+    child: getDrop,
+    shouldTransition: () => {
+      const haveNow = getItemCountInInventory(bot, 'crafting_table') > startCount;
+      if (haveNow) return false;
+      const timedOut = collectStartTime ? (Date.now() - collectStartTime > COLLECT_TIMEOUT_MS) : false;
+      return timedOut && collectRetryCount < MAX_COLLECT_RETRIES;
+    },
+    onTransition: () => {
+      collectRetryCount++;
+      collectStartTime = Date.now();
+      logger.info(`BehaviorGenerator(craft-table): get-drop -> get-drop (retry ${collectRetryCount}/${MAX_COLLECT_RETRIES})`);
     }
   });
 
@@ -404,7 +426,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
     shouldTransition: () => {
       const haveNow = getItemCountInInventory(bot, 'crafting_table') > startCount;
       const timedOut = collectStartTime ? (Date.now() - collectStartTime > COLLECT_TIMEOUT_MS) : false;
-      return haveNow || timedOut;
+      return haveNow || (timedOut && collectRetryCount >= MAX_COLLECT_RETRIES);
     },
     onTransition: () => {
       const have = getItemCountInInventory(bot, 'crafting_table');
@@ -412,7 +434,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
       if (have > startCount) {
         logger.info(`BehaviorGenerator(craft-table): get-drop -> exit (already have ${have - startCount})`);
       } else if (timedOut) {
-        logger.info('BehaviorGenerator(craft-table): get-drop -> exit (timeout)');
+        logger.info(`BehaviorGenerator(craft-table): get-drop -> exit (timeout after ${collectRetryCount} retries)`);
       }
     }
   });
@@ -429,29 +451,52 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   });
 
   let followStartTime: number | undefined;
-  const FOLLOW_TIMEOUT_MS = 3000;
+  let followRetryCount = 0;
+  const FOLLOW_TIMEOUT_MS = 7000;
+  const MAX_FOLLOW_RETRIES = 2;
+  
+  // Retry following drop if timed out and retries remain
+  const t6retry = new StateTransition({
+    name: 'craft-table: follow-drop -> get-drop (retry)',
+    parent: followDrop,
+    child: getDrop,
+    shouldTransition: () => {
+      const haveNow = getItemCountInInventory(bot, 'crafting_table') > startCount;
+      if (haveNow) return false;
+      const timedOut = followStartTime ? (Date.now() - followStartTime > FOLLOW_TIMEOUT_MS) : false;
+      return timedOut && followRetryCount < MAX_FOLLOW_RETRIES;
+    },
+    onTransition: () => {
+      followRetryCount++;
+      collectStartTime = Date.now();
+      logger.info(`BehaviorGenerator(craft-table): follow-drop -> get-drop (retry ${followRetryCount}/${MAX_FOLLOW_RETRIES})`);
+    }
+  });
+
   const t6b = new StateTransition({
     name: 'craft-table: follow-drop -> exit (timeout/lost)',
     parent: followDrop,
     child: exit,
     shouldTransition: () => {
+      const haveNow = getItemCountInInventory(bot, 'crafting_table') > startCount;
+      if (haveNow) return false;
       const timedOut = followStartTime ? (Date.now() - followStartTime > FOLLOW_TIMEOUT_MS) : false;
       const e = collectTargets.entity;
       const invalid = !e || !e.position || !Number.isFinite(e.position.x) || !Number.isFinite(e.position.y) || !Number.isFinite(e.position.z);
-      return timedOut || invalid;
+      return (timedOut && followRetryCount >= MAX_FOLLOW_RETRIES) || invalid;
     },
     onTransition: () => {
       const timedOut = followStartTime ? (Date.now() - followStartTime > FOLLOW_TIMEOUT_MS) : false;
       const e = collectTargets.entity;
       const invalid = !e || !e.position || !Number.isFinite(e.position.x) || !Number.isFinite(e.position.y) || !Number.isFinite(e.position.z);
       if (timedOut) {
-        logger.error('BehaviorGenerator(craft-table): follow-drop -> exit (timeout)');
+        logger.error(`BehaviorGenerator(craft-table): follow-drop -> exit (timeout after ${followRetryCount} retries)`);
       } else if (invalid) {
         logger.error('BehaviorGenerator(craft-table): follow-drop -> exit (lost/invalid entity)');
       }
     }
   });
 
-  return new NestedStateMachine([t1, tEquipToPlace, tEquipToCraft, t2, tPlaceToExit, t3, tBreakDirectExit, t4, t5b, t5, t6, t6b], enter, exit);
+  return new NestedStateMachine([t1, tEquipToPlace, tEquipToCraft, t2, tPlaceToExit, t3, tBreakDirectExit, t4, t5retry, t5b, t5, t6, t6retry, t6b], enter, exit);
 }
 

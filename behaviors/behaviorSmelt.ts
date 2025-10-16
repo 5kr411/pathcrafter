@@ -151,6 +151,26 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     }
   });
 
+  const findToExit = new StateTransition({
+    name: 'Smelt: find -> exit (no furnace available)',
+    parent: findFurnace,
+    child: exit,
+    shouldTransition: () => {
+      foundFurnace = findNearbyFurnace(6);
+      if (foundFurnace) return false;
+      
+      try {
+        const hasFurnaceInInventory = bot.inventory?.items?.().some((it: any) => it && it.name === 'furnace');
+        return !hasFurnaceInInventory;
+      } catch (_) {
+        return true;
+      }
+    },
+    onTransition: () => {
+      logger.error('find -> exit (no furnace available - cannot smelt without furnace)');
+    }
+  });
+
   const equipToPlace = new StateTransition({
     name: 'Smelt: equip -> place',
     parent: equipFurnace,
@@ -168,7 +188,12 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: place -> run',
     parent: placeFurnace,
     child: smeltRun,
-    shouldTransition: () => (typeof placeFurnace.isFinished === 'function' ? placeFurnace.isFinished() : true),
+    shouldTransition: () => {
+      if (typeof placeFurnace.isFinished !== 'function') return true;
+      if (!placeFurnace.isFinished()) return false;
+      // Only transition to run if placement was confirmed successful
+      return !!placeFurnaceTargets.placedConfirmed;
+    },
     onTransition: () => {
       try {
         if (placeFurnaceTargets && placeFurnaceTargets.placedPosition) {
@@ -177,6 +202,22 @@ function createSmeltState(bot: Bot, targets: Targets): any {
           logger.debug('place -> run (placed furnace at)', breakTargets.position);
         }
       } catch (_) {}
+    }
+  });
+  
+  // Exit if placement failed
+  const placeToExit = new StateTransition({
+    name: 'Smelt: place -> exit',
+    parent: placeFurnace,
+    child: exit,
+    shouldTransition: () => {
+      if (typeof placeFurnace.isFinished !== 'function') return false;
+      if (!placeFurnace.isFinished()) return false;
+      // Exit if placement finished but was not confirmed
+      return !placeFurnaceTargets.placedConfirmed;
+    },
+    onTransition: () => {
+      logger.error('Smelt: place -> exit (placement failed or timed out)');
     }
   });
 
@@ -364,8 +405,10 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       initToFind,
       findToSmelt,
       findToEquip,
+      findToExit,
       equipToPlace,
       placeToSmelt,
+      placeToExit,
       runToEquipFallback,
       runToBreak,
       breakToExit,

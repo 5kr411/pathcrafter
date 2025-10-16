@@ -10,7 +10,7 @@ describe('integration: stone tool recipe variants', () => {
   });
 
   describe('tree building with multi-variant stone craft nodes', () => {
-    it('should create stone_pickaxe craft node with 3 ingredient variants', () => {
+    it('should create stone_pickaxe craft node with stone variants in children', () => {
       const tree = plan(mcData, 'stone_pickaxe', 1, {
         log: false,
         inventory: new Map(),
@@ -41,26 +41,33 @@ describe('integration: stone tool recipe variants', () => {
 
       const craftNode = stonePickaxeCrafts[0];
       expect(craftNode.ingredients).toBeDefined();
-      expect(craftNode.ingredients.variants).toBeDefined();
-      expect(craftNode.ingredients.variants.length).toBeGreaterThanOrEqual(3);
+      expect(craftNode.children).toBeDefined();
+      expect(craftNode.children.variants).toBeDefined();
 
-      const ingredientVariants = craftNode.ingredients.variants;
-      const stoneIngredients = ingredientVariants
-        .map((v: any) => v.value)
-        .flat()
-        .map((ing: any) => ing.item)
-        .filter((item: string) => 
+      const stoneBranch = craftNode.children.variants.find((child: any) => {
+        const rootNode = child.value;
+        if (rootNode.action !== 'root') return false;
+        const whatItems = rootNode.what?.variants?.map((v: any) => v.value) || [];
+        return whatItems.some((item: string) => 
           item === 'cobblestone' || 
           item === 'cobbled_deepslate' || 
           item === 'blackstone'
         );
+      });
 
-      expect(stoneIngredients).toContain('cobblestone');
-      expect(stoneIngredients).toContain('cobbled_deepslate');
-      expect(stoneIngredients).toContain('blackstone');
+      expect(stoneBranch).toBeDefined();
+      
+      if (stoneBranch) {
+        const stoneBranchRoot = stoneBranch.value;
+        const stoneVariants = stoneBranchRoot.what?.variants?.map((v: any) => v.value) || [];
+        
+        expect(stoneVariants).toContain('cobblestone');
+        expect(stoneVariants).toContain('cobbled_deepslate');
+        expect(stoneVariants).toContain('blackstone');
+      }
     });
 
-    it('should create stone_axe craft node with 3 ingredient variants', () => {
+    it('should create stone_axe craft node with stone variants in children', () => {
       const tree = plan(mcData, 'stone_axe', 1, {
         log: false,
         inventory: new Map(),
@@ -90,22 +97,28 @@ describe('integration: stone tool recipe variants', () => {
       expect(stoneAxeCrafts.length).toBeGreaterThan(0);
 
       const craftNode = stoneAxeCrafts[0];
-      expect(craftNode.ingredients.variants.length).toBeGreaterThanOrEqual(3);
-
-      const ingredientVariants = craftNode.ingredients.variants;
-      const stoneIngredients = ingredientVariants
-        .map((v: any) => v.value)
-        .flat()
-        .map((ing: any) => ing.item)
-        .filter((item: string) => 
+      
+      const stoneBranch = craftNode.children.variants.find((child: any) => {
+        const rootNode = child.value;
+        if (rootNode.action !== 'root') return false;
+        const whatItems = rootNode.what?.variants?.map((v: any) => v.value) || [];
+        return whatItems.some((item: string) => 
           item === 'cobblestone' || 
           item === 'cobbled_deepslate' || 
           item === 'blackstone'
         );
+      });
 
-      expect(stoneIngredients).toContain('cobblestone');
-      expect(stoneIngredients).toContain('cobbled_deepslate');
-      expect(stoneIngredients).toContain('blackstone');
+      expect(stoneBranch).toBeDefined();
+      
+      if (stoneBranch) {
+        const stoneBranchRoot = stoneBranch.value;
+        const stoneVariants = stoneBranchRoot.what?.variants?.map((v: any) => v.value) || [];
+        
+        expect(stoneVariants).toContain('cobblestone');
+        expect(stoneVariants).toContain('cobbled_deepslate');
+        expect(stoneVariants).toContain('blackstone');
+      }
     });
   });
 
@@ -140,26 +153,29 @@ describe('integration: stone tool recipe variants', () => {
       expect(stonePickaxeCrafts.length).toBeGreaterThan(0);
 
       const craftNode = stonePickaxeCrafts[0];
-      const ingredientVariants = craftNode.ingredients.variants;
-      const stoneTypes = new Set<string>();
       
-      for (const variant of ingredientVariants) {
-        const ingredients = variant.value;
-        if (Array.isArray(ingredients)) {
-          for (const ingredient of ingredients) {
-            if (ingredient.item === 'cobblestone' || 
-                ingredient.item === 'cobbled_deepslate' || 
-                ingredient.item === 'blackstone') {
-              stoneTypes.add(ingredient.item);
-            }
-          }
-        }
-      }
+      const stoneBranch = craftNode.children.variants.find((child: any) => {
+        const rootNode = child.value;
+        if (rootNode.action !== 'root') return false;
+        const whatItems = rootNode.what?.variants?.map((v: any) => v.value) || [];
+        return whatItems.some((item: string) => 
+          item === 'cobblestone' || 
+          item === 'cobbled_deepslate' || 
+          item === 'blackstone'
+        );
+      });
 
-      expect(stoneTypes.size).toBe(3);
-      expect(stoneTypes.has('cobblestone')).toBe(true);
-      expect(stoneTypes.has('cobbled_deepslate')).toBe(true);
-      expect(stoneTypes.has('blackstone')).toBe(true);
+      expect(stoneBranch).toBeDefined();
+
+      if (stoneBranch) {
+        const stoneBranchRoot = stoneBranch.value;
+        const stoneVariants = stoneBranchRoot.what?.variants?.map((v: any) => v.value) || [];
+        
+        expect(stoneVariants.length).toBe(3);
+        expect(stoneVariants).toContain('cobblestone');
+        expect(stoneVariants).toContain('cobbled_deepslate');
+        expect(stoneVariants).toContain('blackstone');
+      }
     });
   });
 
@@ -236,21 +252,35 @@ describe('integration: stone tool recipe variants', () => {
 
       const craftNode = tree.children.variants[0].value as any;
       expect(craftNode.action).toBe('craft');
-      expect(craftNode.ingredients.variants.length).toBeGreaterThanOrEqual(3);
-
-      const stoneIngredients = craftNode.ingredients.variants
-        .map((v: any) => v.value)
-        .flat()
-        .map((ing: any) => ing.item)
-        .filter((item: string) => 
+      
+      // When grouping is enabled, we have 3 ingredient variants (one per stone type)
+      // to maintain alignment with the 3 result variants for stone_pickaxe.
+      // The grouping happens at the children branch level, not the ingredient variant level.
+      expect(craftNode.ingredients.variants.length).toBe(3);
+      
+      // Verify all ingredient variants include both sticks and a stone type
+      const stoneTypes = new Set<string>();
+      craftNode.ingredients.variants.forEach((variant: any) => {
+        const ingredients = variant.value;
+        const ingredientItems = ingredients.map((ing: any) => ing.item);
+        expect(ingredientItems).toContain('stick');
+        
+        // Extract stone type from this variant
+        const stoneType = ingredientItems.find((item: string) => 
           item === 'cobblestone' || 
           item === 'cobbled_deepslate' || 
           item === 'blackstone'
         );
-
-      expect(stoneIngredients).toContain('cobblestone');
-      expect(stoneIngredients).toContain('cobbled_deepslate');
-      expect(stoneIngredients).toContain('blackstone');
+        if (stoneType) {
+          stoneTypes.add(stoneType);
+        }
+      });
+      
+      // All 3 stone types should be represented across the ingredient variants
+      expect(stoneTypes.size).toBe(3);
+      expect(stoneTypes.has('cobblestone')).toBe(true);
+      expect(stoneTypes.has('cobbled_deepslate')).toBe(true);
+      expect(stoneTypes.has('blackstone')).toBe(true);
 
       // Key assertion: craft node should have exactly 2 children (stick + stone materials)
       // NOT 3 separate branches for each stone type

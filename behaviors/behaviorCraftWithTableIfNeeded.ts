@@ -16,7 +16,10 @@ interface Targets {
 
 function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
   const selectVariantFromInventory = (step: any): string | null => {
-    if (!step || !step.result || !step.ingredients) return null;
+    if (!step || !step.result || !step.ingredients) {
+      logger.warn('BehaviorCraftWithTableIfNeeded: no step/result/ingredients for variant selection');
+      return null;
+    }
     
     const invItems = bot.inventory?.items?.() || [];
     const inventory: Record<string, number> = {};
@@ -44,6 +47,7 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
       }
     }
 
+    logger.warn(`BehaviorCraftWithTableIfNeeded: No craftable variant found among ${resultVariants.length} variants. Inventory: ${Object.keys(inventory).join(', ')}`);
     return null;
   };
 
@@ -60,11 +64,25 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
   };
 
   const enter = new BehaviorIdle();
+  
   const craftWithTableState = createCraftWithTable(bot, targets);
   const exit = new BehaviorIdle();
 
+  const enterToExitFailed = new StateTransition({
+    name: 'BehaviorCraftWithTableIfNeeded: enter -> exit (variant selection failed)',
+    parent: enter,
+    child: exit,
+    shouldTransition: () => {
+      const itemName = resolveItemName();
+      return itemName === null;
+    },
+    onTransition: () => {
+      logger.error('BehaviorCraftWithTableIfNeeded: enter -> exit: variant selection failed, cannot craft');
+    }
+  });
+
   const enterToExit = new StateTransition({
-    name: 'BehaviorCraftWithTableIfNeeded: enter -> exit',
+    name: 'BehaviorCraftWithTableIfNeeded: enter -> exit (already satisfied)',
     parent: enter,
     child: exit,
     shouldTransition: () => {
@@ -108,7 +126,7 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
     }
   });
 
-  const transitions = [enterToExit, enterToCraftWithTable, craftWithTableToExit];
+  const transitions = [enterToExitFailed, enterToExit, enterToCraftWithTable, craftWithTableToExit];
 
   return new NestedStateMachine(transitions, enter, exit);
 }

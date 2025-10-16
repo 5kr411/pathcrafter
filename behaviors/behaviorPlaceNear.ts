@@ -94,6 +94,8 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       return existingPlaceLogging.call(this);
     };
   }
+
+  let lastPlaceError: any = null;
   const clearInit = new BehaviorIdle();
   const clearTargets: Targets = { placePosition: undefined, clearRadiusHorizontal: 1, clearRadiusVertical: 2 };
   const clearArea = createClearAreaState(bot, clearTargets as any);
@@ -108,7 +110,26 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
         await bot.equip(need, 'hand');
       }
     } catch (_) {}
-    if (originalOnStateEntered) return originalOnStateEntered();
+    
+    if (originalOnStateEntered) {
+      try {
+        const backoffMs = Math.min(2000, 500 * Math.pow(2, placeTries - 1));
+        if (placeTries > 1 && backoffMs > 0) {
+          logger.info(`BehaviorPlaceNear: waiting ${backoffMs}ms before placement attempt ${placeTries}`);
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+        }
+        lastPlaceError = null;
+        return await originalOnStateEntered();
+      } catch (err: any) {
+        lastPlaceError = err;
+        if (err.message && err.message.includes('blockUpdate') && err.message.includes('timeout')) {
+          logger.warn(`BehaviorPlaceNear: caught mineflayer blockUpdate timeout on attempt ${placeTries}`);
+        } else {
+          logger.warn(`BehaviorPlaceNear: placement error on attempt ${placeTries}: ${err.message || err}`);
+        }
+        throw err;
+      }
+    }
   };
 
   const exit = new BehaviorIdle();
@@ -432,6 +453,12 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     parent: placeBlock,
     child: findPlaceCoords,
     shouldTransition: () => {
+      // Check for mineflayer timeout error immediately
+      if (lastPlaceError && lastPlaceError.message && lastPlaceError.message.includes('blockUpdate') && lastPlaceError.message.includes('timeout')) {
+        logger.info(`BehaviorPlaceNear: detected blockUpdate timeout, will retry at different position`);
+        return true;
+      }
+
       // Wait a bit after placement attempt
       if (Date.now() - placeStartTime < 1000) return false;
 
@@ -446,10 +473,14 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       return true;
     },
     onTransition: () => {
+      const reason = lastPlaceError && lastPlaceError.message && lastPlaceError.message.includes('blockUpdate') 
+        ? 'mineflayer timeout' 
+        : 'block placement failed';
       logger.info(
-        `BehaviorPlaceNear: place block -> find place coords (retry ${placeTries}, block placement failed)`
+        `BehaviorPlaceNear: place block -> find place coords (retry ${placeTries}, ${reason})`
       );
       placeTries++;
+      lastPlaceError = null;
     }
   });
 

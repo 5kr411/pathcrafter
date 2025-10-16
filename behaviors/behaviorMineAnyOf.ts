@@ -220,6 +220,11 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         dynamicTargets.blockName = selection.chosen.blockName;
         dynamicTargets.itemName = selection.chosen.itemName;
         dynamicTargets.amount = selection.chosen.amount;
+        
+        if (typeof (collectBehavior as any).resetBaseline === 'function') {
+          (collectBehavior as any).resetBaseline();
+        }
+        
         const total = getTotalCollected();
         const breakdown = getCollectionBreakdown();
         try {

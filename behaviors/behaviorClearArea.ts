@@ -1,6 +1,7 @@
 const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflayer-statemachine');
 
 import createBreakAtPositionState from './behaviorBreakAtPosition';
+import logger from '../utils/logger';
 
 interface Vec3Like {
   x: number;
@@ -81,6 +82,12 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
         typeof bot.canDigBlock === 'function' ? bot.canDigBlock(b) : true
       );
       if (diggable.length > 0) return diggable.map((b) => b.position);
+      // Log why we can't clear
+      if (blocks.length > 0) {
+        const sampleBlock = blocks[0];
+        const blockName = sampleBlock.name || `type${bot.world.getBlockType(sampleBlock.position)}`;
+        logger.warn(`ClearArea: ${blocks.length} obstructions are not diggable (e.g., ${blockName})`);
+      }
     } catch (_) {}
     // If none are diggable, return empty to avoid futile attempts
     return [];
@@ -93,6 +100,13 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
   let plannedTargetsCount = 0;
   let mineOps = 0;
   let maxMineOps = 0;
+  let consecutiveFailures = 0;
+  let overallStartTime = 0;
+  let overallTimeoutMs = 0; // Calculated dynamically based on blocks to clear
+  const MAX_CONSECUTIVE_FAILURES = 3; // Give up after 3 blocks fail to break
+  const PER_BLOCK_TIMEOUT_MS = 5000; // 5 seconds per individual block attempt
+  const TIMEOUT_PER_PLANNED_BLOCK_MS = 10000; // 10 seconds per block in the plan
+  const MIN_OVERALL_TIMEOUT_MS = 15000; // Minimum 15 seconds even for small clears
 
   const enterToExit = new StateTransition({
     name: 'ClearArea: enter -> exit (no placePosition)',
@@ -112,8 +126,17 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
       plannedTargetsCount = initial.length;
       maxMineOps = Math.max(1, Math.ceil(plannedTargetsCount * 1.5));
       mineOps = 0;
+      consecutiveFailures = 0;
+      overallStartTime = Date.now();
+      
+      // Calculate timeout: 10s per block, minimum 15s
+      overallTimeoutMs = Math.max(MIN_OVERALL_TIMEOUT_MS, plannedTargetsCount * TIMEOUT_PER_PLANNED_BLOCK_MS);
+      
       queue = sortedObstructions().slice(0, 48);
       idx = 0;
+      if (plannedTargetsCount > 0) {
+        logger.info(`ClearArea: need to clear ${plannedTargetsCount} obstructions (maxOps=${maxMineOps}, timeout=${(overallTimeoutMs/1000).toFixed(0)}s)`);
+      }
     }
   });
 
@@ -121,7 +144,30 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
     name: 'ClearArea: init -> exit (clear or cap)',
     parent: init,
     child: exit,
-    shouldTransition: () => queue.length === 0 || isAreaClear() || mineOps >= maxMineOps,
+    shouldTransition: () => {
+      if (isAreaClear()) {
+        logger.info('ClearArea: area is clear');
+        return true;
+      }
+      if (queue.length === 0) {
+        logger.warn('ClearArea: no diggable obstructions remaining');
+        return true;
+      }
+      if (mineOps >= maxMineOps) {
+        logger.warn(`ClearArea: hit operation cap (${mineOps}/${maxMineOps})`);
+        return true;
+      }
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        logger.error(`ClearArea: ${consecutiveFailures} consecutive blocks failed to break, giving up`);
+        return true;
+      }
+      const elapsed = Date.now() - overallStartTime;
+      if (elapsed > overallTimeoutMs) {
+        logger.error(`ClearArea: overall timeout after ${(elapsed/1000).toFixed(1)}s (limit was ${(overallTimeoutMs/1000).toFixed(0)}s)`);
+        return true;
+      }
+      return false;
+    },
     onTransition: () => {}
   });
 
@@ -129,7 +175,10 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
     name: 'ClearArea: init -> break',
     parent: init,
     child: breaker,
-    shouldTransition: () => idx < queue.length && mineOps < maxMineOps,
+    shouldTransition: () => {
+      const elapsed = Date.now() - overallStartTime;
+      return idx < queue.length && mineOps < maxMineOps && elapsed < overallTimeoutMs && consecutiveFailures < MAX_CONSECUTIVE_FAILURES;
+    },
     onTransition: () => {
       while (idx < queue.length && bot.world.getBlockType(queue[idx]) === 0) idx++;
       if (idx < queue.length) {
@@ -137,6 +186,13 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
         breakTargets.position = current;
         startTime = Date.now();
         mineOps++;
+        const blockType = bot.world.getBlockType(current);
+        let blockName = 'unknown';
+        try {
+          const block = bot.blockAt(current, false);
+          blockName = block?.name || `type${blockType}`;
+        } catch (_) {}
+        logger.debug(`ClearArea: breaking obstruction ${mineOps}/${maxMineOps} at (${current.x},${current.y},${current.z}) [${blockName}]`);
       }
     }
   });
@@ -155,15 +211,35 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
     child: init,
     shouldTransition: () => {
       const removed = current && bot.world.getBlockType(current) === 0;
-      const timed = Date.now() - startTime > 2500;
-      return (removed || timed) && mineOps < maxMineOps && !isAreaClear();
+      const elapsed = Date.now() - startTime;
+      const timedOut = elapsed > PER_BLOCK_TIMEOUT_MS;
+      const overallElapsed = Date.now() - overallStartTime;
+      return (removed || timedOut) && 
+             mineOps < maxMineOps && 
+             !isAreaClear() && 
+             overallElapsed < overallTimeoutMs &&
+             consecutiveFailures < MAX_CONSECUTIVE_FAILURES;
     },
     onTransition: () => {
+      const removed = current && bot.world.getBlockType(current) === 0;
+      const elapsed = Date.now() - startTime;
+      
+      if (removed) {
+        consecutiveFailures = 0;
+        logger.debug(`ClearArea: block removed successfully (took ${elapsed}ms)`);
+      } else {
+        consecutiveFailures++;
+        logger.warn(`ClearArea: block failed to break after ${elapsed}ms (consecutive failures: ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES})`);
+      }
+      
       idx++;
       current = null;
       if (idx >= queue.length && !isAreaClear()) {
         queue = sortedObstructions().slice(0, 48);
         idx = 0;
+        if (queue.length === 0) {
+          logger.warn('ClearArea: no more diggable obstructions, but area not clear');
+        }
       }
     }
   });
@@ -172,7 +248,14 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
     name: 'ClearArea: await -> exit (clear or cap)',
     parent: awaitConfirm,
     child: exit,
-    shouldTransition: () => isAreaClear() || mineOps >= maxMineOps,
+    shouldTransition: () => {
+      if (isAreaClear()) return true;
+      if (mineOps >= maxMineOps) return true;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return true;
+      const overallElapsed = Date.now() - overallStartTime;
+      if (overallElapsed > overallTimeoutMs) return true;
+      return false;
+    },
     onTransition: () => {}
   });
 

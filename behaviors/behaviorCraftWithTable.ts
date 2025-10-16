@@ -1,10 +1,12 @@
-const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflayer-statemachine');
+const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEntity, BehaviorFollowEntity } = require('mineflayer-statemachine');
 
 const minecraftData = require('minecraft-data');
 
 import { getItemCountInInventory } from '../utils/inventory';
 import createPlaceNearState from './behaviorPlaceNear';
+import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
+import { addStateLogging } from '../utils/stateLogging';
 
 interface Vec3Like {
   x: number;
@@ -170,6 +172,43 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   const placeTable = createPlaceNearState(bot, placeTableTargets);
   
   const waitForCraft = new BehaviorIdle();
+  
+  // Track whether we placed the table (need to clean up)
+  let wePlacedTable = false;
+  
+  // Break table after crafting (if we placed it)
+  const breakTargets: { position: any } = { position: null };
+  const breakTable = createBreakAtPositionState(bot as any, breakTargets);
+  
+  // Collect dropped table
+  const COLLECT_TIMEOUT_MS = 7000;
+  const MAX_COLLECT_RETRIES = 2;
+  const FOLLOW_TIMEOUT_MS = 7000;
+  const MAX_FOLLOW_RETRIES = 2;
+  
+  const dropTargets: { entity: any } = { entity: null };
+  const getDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) => 
+    e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'crafting_table'
+  );
+  addStateLogging(getDrop, 'GetClosestEntity', { logEnter: true, getExtraInfo: () => 'looking for dropped crafting_table' });
+  
+  const followDrop = new BehaviorFollowEntity(bot, dropTargets);
+  addStateLogging(followDrop, 'FollowEntity', {
+    logEnter: true,
+    getExtraInfo: () => {
+      if (dropTargets.entity) {
+        const pos = dropTargets.entity.position;
+        return `following dropped table at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}), distance: ${bot.entity?.position?.distanceTo?.(pos)?.toFixed(2) || 'n/a'}m`;
+      }
+      return 'no entity';
+    }
+  });
+  
+  let collectStartTime: number = 0;
+  let followStartTime: number = 0;
+  let collectRetryCount = 0;
+  let followRetryCount = 0;
+  
   const exit = new BehaviorIdle();
 
   const enterToExit = new StateTransition({
@@ -233,6 +272,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     onTransition: () => {
       if (placeTableTargets.placedPosition) {
         targets.placedPosition = placeTableTargets.placedPosition;
+        wePlacedTable = true; // We placed it, so we need to break it later
         logger.info('BehaviorCraftWithTable: Crafting table placed, proceeding to craft');
       } else {
         logger.error('BehaviorCraftWithTable: Failed to place crafting table');
@@ -309,18 +349,42 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     waitForCraftOnEnter();
   };
 
+  const craftDone = () => {
+    if (!targets.itemName) return craftingDone;
+    const have = getItemCountInInventory(bot, targets.itemName);
+    if (have >= targets.amount) return true;
+    const timedOut = Date.now() - waitForCraftStartTime > 20000;
+    if (timedOut) return true;
+    return craftingDone;
+  };
+  
+  // If we placed the table, break it after crafting
+  const waitForCraftToBreakTable = new StateTransition({
+    parent: waitForCraft,
+    child: breakTable,
+    name: 'BehaviorCraftWithTable: wait for craft -> break table',
+    shouldTransition: () => wePlacedTable && craftDone(),
+    onTransition: () => {
+      if (!targets.itemName) {
+        logger.info('BehaviorCraftWithTable: wait for craft -> break table (no itemName)');
+      } else {
+        const have = getItemCountInInventory(bot, targets.itemName);
+        logger.info(`BehaviorCraftWithTable: wait for craft -> break table (${have}/${targets.amount})`);
+      }
+      
+      // Set break position to the placed table position
+      if (placeTableTargets.placedPosition) {
+        breakTargets.position = placeTableTargets.placedPosition;
+      }
+    }
+  });
+  
+  // If we found an existing table, just exit
   const waitForCraftToExit = new StateTransition({
     parent: waitForCraft,
     child: exit,
     name: 'BehaviorCraftWithTable: wait for craft -> exit',
-    shouldTransition: () => {
-      if (!targets.itemName) return craftingDone;
-      const have = getItemCountInInventory(bot, targets.itemName);
-      if (have >= targets.amount) return true;
-      const timedOut = Date.now() - waitForCraftStartTime > 20000;
-      if (timedOut) return true;
-      return craftingDone;
-    },
+    shouldTransition: () => !wePlacedTable && craftDone(),
     onTransition: () => {
       if (!targets.itemName) {
         logger.info('BehaviorCraftWithTable: wait for craft -> exit (no itemName)');
@@ -339,6 +403,125 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       }
     }
   });
+  
+  // After breaking, collect the drop
+  const breakTableToGetDrop = new StateTransition({
+    parent: breakTable,
+    child: getDrop,
+    name: 'BehaviorCraftWithTable: break table -> get drop',
+    shouldTransition: () => breakTable.isFinished(),
+    onTransition: () => {
+      logger.info('BehaviorCraftWithTable: break table -> get drop');
+      collectStartTime = Date.now();
+      collectRetryCount = 0;
+    }
+  });
+  
+  // Follow the drop entity
+  const getDropToFollowDrop = new StateTransition({
+    parent: getDrop,
+    child: followDrop,
+    name: 'BehaviorCraftWithTable: get drop -> follow drop',
+    shouldTransition: () => {
+      const elapsed = Date.now() - collectStartTime;
+      if (elapsed > COLLECT_TIMEOUT_MS) return false;
+      return !!dropTargets.entity;
+    },
+    onTransition: () => {
+      const entity = dropTargets.entity;
+      if (entity && entity.position) {
+        logger.info(
+          `BehaviorCraftWithTable: get drop -> follow drop (x=${entity.position.x}, y=${entity.position.y}, z=${entity.position.z})`
+        );
+        followStartTime = Date.now();
+        followRetryCount = 0;
+      }
+    }
+  });
+  
+  // Retry getDrop if timed out
+  const getDropRetry = new StateTransition({
+    parent: getDrop,
+    child: getDrop,
+    name: 'BehaviorCraftWithTable: get drop -> get drop (retry)',
+    shouldTransition: () => {
+      const elapsed = Date.now() - collectStartTime;
+      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
+      return timedOut && !dropTargets.entity && collectRetryCount < MAX_COLLECT_RETRIES;
+    },
+    onTransition: () => {
+      collectRetryCount++;
+      logger.info(`BehaviorCraftWithTable: get drop -> get drop (retry ${collectRetryCount}/${MAX_COLLECT_RETRIES})`);
+      collectStartTime = Date.now();
+    }
+  });
+  
+  // Exit if getDrop timed out after retries
+  const getDropToExit = new StateTransition({
+    parent: getDrop,
+    child: exit,
+    name: 'BehaviorCraftWithTable: get drop -> exit',
+    shouldTransition: () => {
+      const elapsed = Date.now() - collectStartTime;
+      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
+      return timedOut && collectRetryCount >= MAX_COLLECT_RETRIES;
+    },
+    onTransition: () => {
+      logger.info(`BehaviorCraftWithTable: get drop -> exit (timeout after ${MAX_COLLECT_RETRIES} retries)`);
+    }
+  });
+  
+  // Retry followDrop if timed out
+  const followDropRetry = new StateTransition({
+    parent: followDrop,
+    child: getDrop,
+    name: 'BehaviorCraftWithTable: follow drop -> get drop (retry)',
+    shouldTransition: () => {
+      const elapsed = Date.now() - followStartTime;
+      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
+      return timedOut && followRetryCount < MAX_FOLLOW_RETRIES;
+    },
+    onTransition: () => {
+      followRetryCount++;
+      logger.info(`BehaviorCraftWithTable: follow drop -> get drop (retry ${followRetryCount}/${MAX_FOLLOW_RETRIES})`);
+      collectStartTime = Date.now();
+    }
+  });
+  
+  // Exit if followDrop timed out after retries
+  const followDropToExit = new StateTransition({
+    parent: followDrop,
+    child: exit,
+    name: 'BehaviorCraftWithTable: follow drop -> exit',
+    shouldTransition: () => {
+      const elapsed = Date.now() - followStartTime;
+      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
+      return timedOut && followRetryCount >= MAX_FOLLOW_RETRIES;
+    },
+    onTransition: () => {
+      logger.info(`BehaviorCraftWithTable: follow drop -> exit (timeout after ${MAX_FOLLOW_RETRIES} retries)`);
+    }
+  });
+  
+  // Success: collected the drop
+  const followDropToExit2 = new StateTransition({
+    parent: followDrop,
+    child: exit,
+    name: 'BehaviorCraftWithTable: follow drop -> exit',
+    shouldTransition: () => {
+      if (!dropTargets.entity) return true;
+      const elapsed = Date.now() - followStartTime;
+      if (elapsed > FOLLOW_TIMEOUT_MS) return false;
+      const entity = dropTargets.entity;
+      if (!entity || !entity.position) return true;
+      const dist = bot.entity?.position?.distanceTo?.(entity.position);
+      if (dist == null) return false;
+      return dist < 2;
+    },
+    onTransition: () => {
+      logger.info('BehaviorCraftWithTable: follow drop -> exit (collected)');
+    }
+  });
 
   const transitions = [
     enterToExit,
@@ -346,7 +529,15 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     checkForTableToPlaceTable,
     checkForTableToWaitForCraft,
     placeTableToWaitForCraft,
-    waitForCraftToExit
+    waitForCraftToBreakTable,
+    waitForCraftToExit,
+    breakTableToGetDrop,
+    getDropToFollowDrop,
+    getDropRetry,
+    getDropToExit,
+    followDropRetry,
+    followDropToExit,
+    followDropToExit2
   ];
 
   return new NestedStateMachine(transitions, enter, exit);

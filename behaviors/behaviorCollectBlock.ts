@@ -94,10 +94,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     );
   } catch (_) {}
 
-  const currentBlockCount = getItemCountInInventory(bot, targets.itemName);
+  let currentBlockCount = getItemCountInInventory(bot, targets.itemName);
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
+  }
+
+  function resetBaseline(): void {
+    currentBlockCount = getItemCountInInventory(bot, targets.itemName);
   }
 
   const enter = new BehaviorIdle();
@@ -267,6 +271,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     name: 'BehaviorCollectBlock: enter -> find block',
     shouldTransition: () => collectedCount() < targets.amount,
     onTransition: () => {
+      resetBaseline();
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -482,7 +487,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     goToDropToExit
   ];
 
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  (stateMachine as any).resetBaseline = resetBaseline;
+  (stateMachine as any).collectedCount = collectedCount;
+  return stateMachine;
 }
 
 export default createCollectBlockState;

@@ -103,31 +103,42 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
  * 
  * @param bot - Mineflayer bot instance
  * @param pathSteps - Array of action steps to execute
- * @param onFinished - Callback to invoke when path execution completes
+ * @param onFinished - Callback to invoke when path execution completes (receives success status)
  * @returns NestedStateMachine that executes the entire path
  * 
  * @example
- * const machine = buildStateMachineForPath(bot, path, () => {
- *   console.log('Path execution complete!');
+ * const machine = buildStateMachineForPath(bot, path, (success) => {
+ *   console.log('Path execution complete!', success);
  * });
  */
 export function buildStateMachineForPath(
   bot: Bot,
   pathSteps: ActionPath,
-  onFinished?: () => void
+  onFinished?: (success: boolean) => void
 ): any {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
   const transitions: any[] = [];
 
   let prev: any = enter;
-  const shared: SharedState = {};
+  const shared: SharedState = { failed: false };
   let isFirst = true;
   let index = 0;
 
   for (const step of pathSteps) {
-    const st = createStateForStep(bot, step, shared);
-    if (!st) continue;
+    let st: any;
+    try {
+      st = createStateForStep(bot, step, shared);
+      if (!st) {
+        logger.error(`PathBuilder: Failed to create state for step ${index}`);
+        shared.failed = true;
+        continue;
+      }
+    } catch (err: any) {
+      logger.error(`PathBuilder: Error creating state for step ${index}: ${err.message || err}`);
+      shared.failed = true;
+      continue;
+    }
 
     const parent = prev;
     const should = isFirst 
@@ -157,10 +168,11 @@ export function buildStateMachineForPath(
     shouldTransition: () => (prev && typeof prev.isFinished === 'function' ? prev.isFinished() : true),
     onTransition: () => {
       logger.info('PathBuilder: final-exit');
+      const success = !shared.failed;
       try {
-        if (typeof onFinished === 'function') onFinished();
-      } catch (_) {
-        // Ignore callback errors
+        if (typeof onFinished === 'function') onFinished(success);
+      } catch (err: any) {
+        logger.error(`PathBuilder: Error in completion callback: ${err.message || err}`);
       }
     }
   }));
