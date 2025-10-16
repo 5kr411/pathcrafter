@@ -176,6 +176,9 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   // Track whether we placed the table (need to clean up)
   let wePlacedTable = false;
   
+  // Track crafting table count before breaking
+  let craftingTableCountBeforeBreak = 0;
+  
   // Break table after crafting (if we placed it)
   const breakTargets: { position: any } = { position: null };
   const breakTable = createBreakAtPositionState(bot as any, breakTargets);
@@ -365,11 +368,13 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'BehaviorCraftWithTable: wait for craft -> break table',
     shouldTransition: () => wePlacedTable && craftDone(),
     onTransition: () => {
+      craftingTableCountBeforeBreak = getItemCountInInventory(bot, 'crafting_table');
+      
       if (!targets.itemName) {
-        logger.info('BehaviorCraftWithTable: wait for craft -> break table (no itemName)');
+        logger.info(`BehaviorCraftWithTable: wait for craft -> break table (no itemName), have ${craftingTableCountBeforeBreak} tables`);
       } else {
         const have = getItemCountInInventory(bot, targets.itemName);
-        logger.info(`BehaviorCraftWithTable: wait for craft -> break table (${have}/${targets.amount})`);
+        logger.info(`BehaviorCraftWithTable: wait for craft -> break table (${have}/${targets.amount}), have ${craftingTableCountBeforeBreak} tables`);
       }
       
       // Set break position to the placed table position
@@ -404,6 +409,22 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
   });
   
+  // Exit immediately if table was already picked up after breaking
+  const breakTableToExitIfPickedUp = new StateTransition({
+    parent: breakTable,
+    child: exit,
+    name: 'BehaviorCraftWithTable: break table -> exit (already picked up)',
+    shouldTransition: () => {
+      if (!breakTable.isFinished()) return false;
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      return currentCount > craftingTableCountBeforeBreak;
+    },
+    onTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      logger.info(`BehaviorCraftWithTable: break table -> exit (already picked up: ${craftingTableCountBeforeBreak} -> ${currentCount})`);
+    }
+  });
+  
   // After breaking, collect the drop
   const breakTableToGetDrop = new StateTransition({
     parent: breakTable,
@@ -411,9 +432,25 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'BehaviorCraftWithTable: break table -> get drop',
     shouldTransition: () => breakTable.isFinished(),
     onTransition: () => {
-      logger.info('BehaviorCraftWithTable: break table -> get drop');
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      logger.info(`BehaviorCraftWithTable: break table -> get drop (had ${craftingTableCountBeforeBreak} tables before break, now have ${currentCount})`);
       collectStartTime = Date.now();
       collectRetryCount = 0;
+    }
+  });
+  
+  // Exit early if we picked up the table
+  const getDropToExitIfPickedUp = new StateTransition({
+    parent: getDrop,
+    child: exit,
+    name: 'BehaviorCraftWithTable: get drop -> exit (picked up)',
+    shouldTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      return currentCount > craftingTableCountBeforeBreak;
+    },
+    onTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      logger.info(`BehaviorCraftWithTable: get drop -> exit (picked up: ${craftingTableCountBeforeBreak} -> ${currentCount})`);
     }
   });
   
@@ -468,6 +505,21 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     },
     onTransition: () => {
       logger.info(`BehaviorCraftWithTable: get drop -> exit (timeout after ${MAX_COLLECT_RETRIES} retries)`);
+    }
+  });
+  
+  // Exit early if we picked up the table while following
+  const followDropToExitIfPickedUp = new StateTransition({
+    parent: followDrop,
+    child: exit,
+    name: 'BehaviorCraftWithTable: follow drop -> exit (picked up)',
+    shouldTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      return currentCount > craftingTableCountBeforeBreak;
+    },
+    onTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'crafting_table');
+      logger.info(`BehaviorCraftWithTable: follow drop -> exit (picked up: ${craftingTableCountBeforeBreak} -> ${currentCount})`);
     }
   });
   
@@ -531,10 +583,13 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     placeTableToWaitForCraft,
     waitForCraftToBreakTable,
     waitForCraftToExit,
+    breakTableToExitIfPickedUp,
     breakTableToGetDrop,
+    getDropToExitIfPickedUp,
     getDropToFollowDrop,
     getDropRetry,
     getDropToExit,
+    followDropToExitIfPickedUp,
     followDropRetry,
     followDropToExit,
     followDropToExit2
