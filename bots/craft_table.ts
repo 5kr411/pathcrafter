@@ -5,6 +5,7 @@ const { BehaviorEquipItem } = require('mineflayer-statemachine');
 import createPlaceNearState from '../behaviors/behaviorPlaceNear';
 import createCraftWithTableState from '../behaviors/behaviorCraftWithTable';
 import createBreakAtPositionState from '../behaviors/behaviorBreakAtPosition';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -24,6 +25,8 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 import logger from '../utils/logger';
 
 bot.once('spawn', () => {
+  configurePrecisePathfinder(bot);
+  
   const enter = new BehaviorIdle();
   const placeTargets: any = { item: { name: 'crafting_table' } };
   const place = createPlaceNearState(bot, placeTargets);

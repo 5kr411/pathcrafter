@@ -2,6 +2,7 @@ const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
 import createMineOneOfState from '../behaviors/behaviorMineOneOf';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -69,13 +70,7 @@ bot.once('spawn', () => {
     setTimeout(() => start.trigger(), 0);
   });
 
-  // Encourage movement defaults
-  try {
-    bot.pathfinder.searchRadius = 64;
-    bot.pathfinder.setMovements(
-      new (require('mineflayer-pathfinder').Movements)(bot, require('minecraft-data')(bot.version))
-    );
-  } catch (_) {}
+  configurePrecisePathfinder(bot);
 
   new BotStateMachine(bot, root);
 });

@@ -1,6 +1,7 @@
 const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = { host: 'localhost', port: 25565, username: 'path_runner' };
 if (process.argv.length >= 4) {
@@ -15,6 +16,8 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 import logger from '../utils/logger';
 
 bot.once('spawn', () => {
+  configurePrecisePathfinder(bot);
+  
   const hardcodedPath = [
     { action: 'mine', what: 'spruce_log', targetItem: 'spruce_log', count: 3 },
     { action: 'craft', what: 'inventory', count: 1, result: { item: 'spruce_planks', perCraftCount: 4 } },

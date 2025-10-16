@@ -101,12 +101,8 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
   let mineOps = 0;
   let maxMineOps = 0;
   let consecutiveFailures = 0;
-  let overallStartTime = 0;
-  let overallTimeoutMs = 0; // Calculated dynamically based on blocks to clear
   const MAX_CONSECUTIVE_FAILURES = 3; // Give up after 3 blocks fail to break
-  const PER_BLOCK_TIMEOUT_MS = 5000; // 5 seconds per individual block attempt
-  const TIMEOUT_PER_PLANNED_BLOCK_MS = 10000; // 10 seconds per block in the plan
-  const MIN_OVERALL_TIMEOUT_MS = 15000; // Minimum 15 seconds even for small clears
+  const PER_BLOCK_TIMEOUT_MS = 10000; // 10 seconds per individual block attempt (increased for precise movements)
 
   const enterToExit = new StateTransition({
     name: 'ClearArea: enter -> exit (no placePosition)',
@@ -127,15 +123,11 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
       maxMineOps = Math.max(1, Math.ceil(plannedTargetsCount * 1.5));
       mineOps = 0;
       consecutiveFailures = 0;
-      overallStartTime = Date.now();
-      
-      // Calculate timeout: 10s per block, minimum 15s
-      overallTimeoutMs = Math.max(MIN_OVERALL_TIMEOUT_MS, plannedTargetsCount * TIMEOUT_PER_PLANNED_BLOCK_MS);
       
       queue = sortedObstructions().slice(0, 48);
       idx = 0;
       if (plannedTargetsCount > 0) {
-        logger.info(`ClearArea: need to clear ${plannedTargetsCount} obstructions (maxOps=${maxMineOps}, timeout=${(overallTimeoutMs/1000).toFixed(0)}s)`);
+        logger.info(`ClearArea: need to clear ${plannedTargetsCount} obstructions (maxOps=${maxMineOps})`);
       }
     }
   });
@@ -161,11 +153,6 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
         logger.error(`ClearArea: ${consecutiveFailures} consecutive blocks failed to break, giving up`);
         return true;
       }
-      const elapsed = Date.now() - overallStartTime;
-      if (elapsed > overallTimeoutMs) {
-        logger.error(`ClearArea: overall timeout after ${(elapsed/1000).toFixed(1)}s (limit was ${(overallTimeoutMs/1000).toFixed(0)}s)`);
-        return true;
-      }
       return false;
     },
     onTransition: () => {}
@@ -176,8 +163,7 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
     parent: init,
     child: breaker,
     shouldTransition: () => {
-      const elapsed = Date.now() - overallStartTime;
-      return idx < queue.length && mineOps < maxMineOps && elapsed < overallTimeoutMs && consecutiveFailures < MAX_CONSECUTIVE_FAILURES;
+      return idx < queue.length && mineOps < maxMineOps && consecutiveFailures < MAX_CONSECUTIVE_FAILURES;
     },
     onTransition: () => {
       while (idx < queue.length && bot.world.getBlockType(queue[idx]) === 0) idx++;
@@ -213,11 +199,9 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
       const removed = current && bot.world.getBlockType(current) === 0;
       const elapsed = Date.now() - startTime;
       const timedOut = elapsed > PER_BLOCK_TIMEOUT_MS;
-      const overallElapsed = Date.now() - overallStartTime;
       return (removed || timedOut) && 
              mineOps < maxMineOps && 
              !isAreaClear() && 
-             overallElapsed < overallTimeoutMs &&
              consecutiveFailures < MAX_CONSECUTIVE_FAILURES;
     },
     onTransition: () => {
@@ -252,8 +236,6 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
       if (isAreaClear()) return true;
       if (mineOps >= maxMineOps) return true;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) return true;
-      const overallElapsed = Date.now() - overallStartTime;
-      if (overallElapsed > overallTimeoutMs) return true;
       return false;
     },
     onTransition: () => {}

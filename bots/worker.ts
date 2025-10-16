@@ -4,6 +4,7 @@ const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
 import createCollectItemState from '../behaviors/behaviorCollectBlock';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -34,6 +35,8 @@ import logger from '../utils/logger';
 
 async function main(): Promise<void> {
   bot.once('spawn', () => {
+    configurePrecisePathfinder(bot);
+    
     if (!isMainThread && parentPort) {
       parentPort.on('message', (_message: any) => {
         // logger.info('received message: ', _message)

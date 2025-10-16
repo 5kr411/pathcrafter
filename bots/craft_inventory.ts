@@ -2,6 +2,7 @@ const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
 import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -20,6 +21,8 @@ const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 
 bot.once('spawn', () => {
+  configurePrecisePathfinder(bot);
+  
   const targets: any = {};
 
   const enter = new BehaviorIdle();

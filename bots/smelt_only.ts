@@ -3,6 +3,7 @@ const { BotStateMachine } = require('mineflayer-statemachine');
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 const minecraftData = require('minecraft-data');
 import analyzeRecipes from '../recipeAnalyzer';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = { host: 'localhost', port: 25565, username: 'smelt_only' };
 if (process.argv.length >= 4) {
@@ -16,6 +17,8 @@ const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 
 bot.once('spawn', () => {
+  configurePrecisePathfinder(bot);
+  
   bot.chat('smelt_only ready');
   bot.on('chat', (username: string, message: string) => {
     if (username === bot.username) return;

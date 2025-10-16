@@ -150,6 +150,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   goToBlock.movements.canOpenDoors = true;
   goToBlock.movements.allowSprinting = true;
   goToBlock.movements.canDig = true;
+  goToBlock.movements.allowFreeMotion = false;
+  goToBlock.movements.allowParkour = false;
+  goToBlock.movements.dontCreateFlow = true;
+  goToBlock.movements.dontMineUnderFallingBlock = true;
+  goToBlock.movements.maxDropDown = 4;
 
   // Add logging to MoveTo
   addStateLogging(goToBlock, 'MoveTo', {

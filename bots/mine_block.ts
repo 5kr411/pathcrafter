@@ -2,6 +2,7 @@ const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
 
 import createCollectBlockState from '../behaviors/behaviorCollectBlock';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -28,14 +29,7 @@ bot.once('spawn', () => {
   if (!targets.itemName) targets.itemName = 'cobblestone';
   if (!targets.amount) targets.amount = 1;
   const collect = createCollectBlockState(bot, targets);
-  // Encourage movement: reduce pathfinder search radius a bit for responsiveness
-  try {
-    bot.pathfinder.searchRadius = 64;
-    // Encourage basic movement options
-    bot.pathfinder.setMovements(
-      new (require('mineflayer-pathfinder').Movements)(bot, require('minecraft-data')(bot.version))
-    );
-  } catch (_) {}
+  configurePrecisePathfinder(bot);
   const exit = new BehaviorIdle();
 
   const startTransition = new StateTransition({

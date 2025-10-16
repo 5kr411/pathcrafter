@@ -5,6 +5,7 @@ import { parseTargetsFromMessage } from './collector/chat_handler';
 import { WorkerManager } from './collector/worker_manager';
 import { TargetExecutor } from './collector/target_executor';
 import { setSafeFindRepeatThreshold } from '../utils/config';
+import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import logger from '../utils/logger';
 
 const config = getConfig();
@@ -25,6 +26,8 @@ const bot: any = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 
 bot.once('spawn', () => {
+  configurePrecisePathfinder(bot);
+  
   if (Number.isFinite(config.safeFindRepeatThreshold)) {
     setSafeFindRepeatThreshold(Math.max(1, Math.floor(config.safeFindRepeatThreshold)));
   }
