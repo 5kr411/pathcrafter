@@ -83,7 +83,7 @@ interface EquipTargets {
 
 interface MinecraftData {
   blocksByName: Record<string, { id?: number; harvestTools?: Record<string, any> }>;
-  itemsById: Record<number, { maxDurability?: number }>;
+  items: Array<{ id?: number; name?: string; maxDurability?: number }>;
 }
 
 function createCollectBlockState(bot: Bot, targets: Targets): any {
@@ -223,13 +223,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       for (const it of items) {
         if (!it || typeof it.type !== 'number') continue;
         if (!allowed.has(it.type)) continue;
-        const meta = mcData.itemsById[it.type];
+        const meta = mcData.items[it.type];
         const score = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability! : 0;
         if (score > bestScore) {
           best = it;
           bestScore = score;
         }
       }
+      logger.debug(`pickBestToolItemForBlock(${blockName}): selected ${best?.name || 'none'} with durability ${bestScore}`);
       return best;
     } catch (_) {
       return null;
