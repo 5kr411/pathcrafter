@@ -95,6 +95,12 @@ export class WorkerManager {
 
     logDebug(`Collector: posting planning message to worker`);
     logDebug(`Collector: inventory contains ${Object.keys(inventory).length} item types`);
+    if (Object.keys(inventory).length > 0 && Object.keys(inventory).length <= 20) {
+      const invSummary = Object.entries(inventory)
+        .map(([item, count]) => `${item}:${count}`)
+        .join(', ');
+      logDebug(`Collector: inventory contents: ${invSummary}`);
+    }
     this.worker!.postMessage(planMessage);
   }
 
