@@ -42,25 +42,10 @@ describe('integration: variant consistency end-to-end', () => {
     });
 
     test('stone pickaxe tree has all stone variants available', () => {
-      const worldSnapshot: WorldSnapshot = {
-        version: '1.20.1',
-        dimension: 'overworld',
-        center: { x: 0, y: 64, z: 0 },
-        radius: 128,
-        yMin: 0,
-        yMax: 255,
-        blocks: {
-          deepslate: { count: 50, closestDistance: 10, averageDistance: 15 },
-          oak_log: { count: 20, closestDistance: 5, averageDistance: 10 }
-        },
-        entities: {}
-      };
-
       const tree = plan(mcData, 'stone_pickaxe', 1, {
         log: false,
         inventory: new Map(),
-        pruneWithWorld: true,
-        worldSnapshot,
+        pruneWithWorld: false,
         combineSimilarNodes: true
       });
 

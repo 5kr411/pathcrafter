@@ -175,12 +175,6 @@ function filterSingleCraftNode(
     return originalCount > 0;
   }
 
-  // Build a map of which ingredient items are actually available from children
-  const availableIngredientsFromChildren = new Set<string>();
-  for (const child of craftNode.children.variants || []) {
-    collectIngredientItemsFromNode(child.value, availableIngredientsFromChildren);
-  }
-
   const filteredResultVariants = craftNode.result.variants.filter(
     (_resultVariant: any, index: number) => {
       const ingredientVariant = craftNode.ingredients.variants[index];
@@ -188,16 +182,11 @@ function filterSingleCraftNode(
 
       const ingredients = ingredientVariant.value || [];
 
-      return ingredients.every((ingredient: any) => {
+      const result = ingredients.every((ingredient: any) => {
         if (!ingredient?.item) return true;
         
-        // First check if exact ingredient is available from children or inventory
+        // Check if exact ingredient is available
         if (available.exactItems.has(ingredient.item)) {
-          return true;
-        }
-        
-        // Check if this specific ingredient has a child source
-        if (availableIngredientsFromChildren.has(ingredient.item)) {
           return true;
         }
         
@@ -211,6 +200,8 @@ function filterSingleCraftNode(
         
         return false;
       });
+      
+      return result;
     }
   );
 
@@ -228,27 +219,6 @@ function filterSingleCraftNode(
   }
 
   return false;
-}
-
-/**
- * Collects the target items that a node is meant to provide (what ingredient it satisfies)
- * This looks at the "what" field which indicates what the parent is requesting
- */
-function collectIngredientItemsFromNode(
-  node: any,
-  items: Set<string>
-): void {
-  if (!node) return;
-  
-  // Root nodes represent requests for specific items
-  if (node.action === 'root' && node.what && node.what.variants) {
-    for (const variant of node.what.variants) {
-      const itemName = typeof variant.value === 'string' ? variant.value : variant.value?.item;
-      if (itemName) {
-        items.add(itemName);
-      }
-    }
-  }
 }
 
 /**
@@ -290,8 +260,9 @@ function collectAvailableItems(
 
   // Leaf nodes (mine/hunt): these are the base sources - always collect
   // For mine nodes, use targetItem which contains the actual drops (e.g., cobblestone from stone)
+  // Fall back to 'what' for test fixtures or simplified structures
   if (node.action === 'mine') {
-    const targetItems = node.targetItem?.variants || [];
+    const targetItems = (node.targetItem?.variants || node.what?.variants || []);
     for (const variant of targetItems) {
       const itemName =
         typeof variant.value === 'string' ? variant.value : variant.value?.item;
@@ -325,44 +296,86 @@ function collectAvailableItems(
     }
   }
 
-  // Craft nodes: only collect if children found something (craft is viable)
+  // Craft nodes: only collect result variants whose ingredients are actually available
   if (
     node.action === 'craft' &&
-    (childAvailable.exactItems.size > 0 || childAvailable.families.size > 0) &&
     node.result &&
     node.result.variants &&
-    node.result.variants.length > 0
+    node.result.variants.length > 0 &&
+    node.ingredients &&
+    node.ingredients.variants
   ) {
-    for (const variant of node.result.variants) {
-      const itemName = variant.value?.item || variant.value;
-      if (itemName) {
-        available.exactItems.add(itemName);
-        if (isCombinableFamily(itemName)) {
-          const family = getFamilyFromName(itemName);
-          if (family) {
-            available.families.add(family);
+    for (let i = 0; i < node.result.variants.length; i++) {
+      const resultVariant = node.result.variants[i];
+      const ingredientVariant = node.ingredients.variants[i];
+      
+      if (!ingredientVariant) continue;
+      
+      const ingredients = ingredientVariant.value || [];
+      const allIngredientsAvailable = ingredients.every((ingredient: any) => {
+        if (!ingredient?.item) return true;
+        
+        // Check if ingredient is in child-available items
+        if (childAvailable.exactItems.has(ingredient.item)) {
+          return true;
+        }
+        
+        // For combinable items, check family match
+        if (isCombinableFamily(ingredient.item)) {
+          const family = getFamilyFromName(ingredient.item);
+          if (family && childAvailable.families.has(family)) {
+            return true;
+          }
+        }
+        
+        return false;
+      });
+      
+      if (allIngredientsAvailable) {
+        const itemName = resultVariant.value?.item || resultVariant.value;
+        if (itemName) {
+          available.exactItems.add(itemName);
+          if (isCombinableFamily(itemName)) {
+            const family = getFamilyFromName(itemName);
+            if (family) {
+              available.families.add(family);
+            }
           }
         }
       }
     }
   }
 
-  // Smelt nodes: like craft, consider produced items available when dependencies are viable
+  // Smelt nodes: only collect result variants whose inputs are actually available
   if (
     node.action === 'smelt' &&
-    (childAvailable.exactItems.size > 0 || childAvailable.families.size > 0) &&
     node.result &&
     node.result.variants &&
-    node.result.variants.length > 0
+    node.result.variants.length > 0 &&
+    node.input &&
+    node.input.variants
   ) {
-    for (const variant of node.result.variants) {
-      const itemName = variant.value?.item || variant.value;
-      if (itemName) {
-        available.exactItems.add(itemName);
-        if (isCombinableFamily(itemName)) {
-          const family = getFamilyFromName(itemName);
-          if (family) {
-            available.families.add(family);
+    for (let i = 0; i < node.result.variants.length; i++) {
+      const resultVariant = node.result.variants[i];
+      const inputVariant = node.input.variants[i];
+      
+      if (!inputVariant) continue;
+      
+      const inputItem = inputVariant.value?.item || inputVariant.value;
+      if (!inputItem) continue;
+      
+      const inputAvailable = childAvailable.exactItems.has(inputItem) ||
+        (isCombinableFamily(inputItem) && getFamilyFromName(inputItem) && childAvailable.families.has(getFamilyFromName(inputItem)!));
+      
+      if (inputAvailable) {
+        const itemName = resultVariant.value?.item || resultVariant.value;
+        if (itemName) {
+          available.exactItems.add(itemName);
+          if (isCombinableFamily(itemName)) {
+            const family = getFamilyFromName(itemName);
+            if (family) {
+              available.families.add(family);
+            }
           }
         }
       }

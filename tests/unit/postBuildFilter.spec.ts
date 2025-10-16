@@ -124,7 +124,7 @@ describe('unit: postBuildFilter', () => {
   });
 
   describe('filterSingleCraftNode', () => {
-    test.skip('filters craft variants when ingredients are unavailable - postBuildFilter needs update for stone grouping', () => {
+    test('filters craft variants when ingredients are unavailable', () => {
       const context: BuildContext = {
         inventory: new Map(),
         pruneWithWorld: true,
@@ -244,7 +244,7 @@ describe('unit: postBuildFilter', () => {
   });
 
   describe('collectAvailableFamiliesFromNode', () => {
-    test.skip('collects families from mine leaf nodes - postBuildFilter needs update for stone grouping', () => {
+    test('collects families from mine leaf nodes', () => {
       const context: BuildContext = {
         inventory: new Map(),
         pruneWithWorld: true,
@@ -887,7 +887,7 @@ describe('unit: postBuildFilter', () => {
       expect(tree.children.variants.length).toBe(1);
     });
 
-    test.skip('handles convergence over multiple passes - postBuildFilter needs update for stone grouping', () => {
+    test('handles convergence over multiple passes', () => {
       const context: BuildContext = {
         inventory: new Map(),
         pruneWithWorld: true,

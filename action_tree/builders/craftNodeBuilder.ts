@@ -369,27 +369,32 @@ function processIngredientDependencies(
     
     const requiredCount = actualCount * craftingsNeeded;
     let similarItems: string[];
+    let groupKey: string;
+    
     if (context.combineSimilarNodes) {
       const cachedAlternatives = recipeBasedAlternativesCache.get(ingredientItem);
       if (cachedAlternatives && cachedAlternatives.length > 1) {
         similarItems = cachedAlternatives;
+        // Use the sorted list of alternatives as the group key to ensure all variants group together
+        groupKey = [...cachedAlternatives].sort().join('|');
       } else {
         similarItems = Array.from(new Set(findIngredientAlternatives(mcData, ingredientItem)));
+        groupKey = getSuffixTokenFromName(ingredientItem) || ingredientItem;
       }
     } else {
       similarItems = [ingredientItem];
+      groupKey = getSuffixTokenFromName(ingredientItem) || ingredientItem;
     }
     if (similarItems.length === 0) continue;
     
-    const suffix = getSuffixTokenFromName(ingredientItem) || ingredientItem;
-    if (!ingredientGroupsBySuffix.has(suffix)) {
-      ingredientGroupsBySuffix.set(suffix, {
+    if (!ingredientGroupsBySuffix.has(groupKey)) {
+      ingredientGroupsBySuffix.set(groupKey, {
         items: similarItems,
         primary: ingredientItem,
         count: requiredCount
       });
     } else {
-      const existing = ingredientGroupsBySuffix.get(suffix)!;
+      const existing = ingredientGroupsBySuffix.get(groupKey)!;
       existing.items = Array.from(new Set([...existing.items, ...similarItems]));
     }
   }

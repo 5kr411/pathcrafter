@@ -33,7 +33,7 @@ describe('integration: post-build filtering and pruning', () => {
       expect(tree.children.variants.length).toBe(0);
     });
 
-    test.skip('filters ingredients based on world availability - needs update for stone grouping', () => {
+    test('filters ingredients based on world availability', () => {
       const worldSnapshot: WorldSnapshot = {
         version: '1.20.1',
         dimension: 'overworld',
@@ -81,7 +81,7 @@ describe('integration: post-build filtering and pruning', () => {
       }
     });
 
-    test.skip('keeps only viable wood variants based on world - needs update for stone grouping', () => {
+    test('keeps only viable wood variants based on world', () => {
       const worldSnapshot: WorldSnapshot = {
         version: '1.20.1',
         dimension: 'overworld',
@@ -131,7 +131,7 @@ describe('integration: post-build filtering and pruning', () => {
       }
     });
 
-    test.skip('prunes crimson and warped plank variants when not in world - needs update for stone grouping', () => {
+    test('prunes crimson and warped plank variants when not in world', () => {
       const worldSnapshot: WorldSnapshot = {
         version: '1.20.1',
         dimension: 'overworld',
@@ -195,7 +195,7 @@ describe('integration: post-build filtering and pruning', () => {
   });
 
   describe('convergence behavior', () => {
-    test.skip('filters through multiple levels of crafting - needs update for stone grouping', () => {
+    test('filters through multiple levels of crafting', () => {
       const worldSnapshot: WorldSnapshot = {
         version: '1.20.1',
         dimension: 'overworld',
@@ -242,7 +242,7 @@ describe('integration: post-build filtering and pruning', () => {
       }
     });
 
-    test.skip('handles stick crafting with multiple plank sources - needs update for stone grouping', () => {
+    test('handles stick crafting with multiple plank sources', () => {
       const worldSnapshot: WorldSnapshot = {
         version: '1.20.1',
         dimension: 'overworld',
@@ -296,7 +296,7 @@ describe('integration: post-build filtering and pruning', () => {
   });
 
   describe('integration with path enumeration', () => {
-    test.skip('enumerated paths only use filtered variants - needs update for stone grouping', () => {
+    test('enumerated paths only use filtered variants', () => {
       const worldSnapshot: WorldSnapshot = {
         version: '1.20.1',
         dimension: 'overworld',

@@ -314,7 +314,7 @@ describe('integration: variant filtering with combined nodes', () => {
     }
   });
 
-  test.skip('preserves path consistency across multiple steps - needs update for stone grouping', async () => {
+  test('preserves path consistency across multiple steps', async () => {
     const snapshot = {
       version: '1.20.1',
       dimension: 'overworld',
@@ -363,7 +363,7 @@ describe('integration: variant filtering with combined nodes', () => {
     }
   });
 
-  test.skip('filters table craft variants based on ingredient availability - needs update for stone grouping', async () => {
+  test('filters table craft variants based on ingredient availability', async () => {
     const snapshot = {
       version: '1.20.1',
       dimension: 'overworld',

@@ -35,30 +35,28 @@ describe('integration: combine wood families reduces branching', () => {
         expect(hasVariants(treeWithout)).toBe(false);
     });
 
-    test.skip('wooden_pickaxe tree merges alternative ingredient chains - causes OOM with stone grouping', () => {
-        const { enumerateActionPaths } = (analyzeRecipes as any)._internals;
-
-        const separateTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
-            log: false, 
-            inventory: new Map(), 
-            combineSimilarNodes: false 
-        });
-        // Keep original separate enumeration (unused now but left for context)
-        enumerateActionPaths(separateTree);
+    test('wooden_pickaxe tree merges alternative ingredient chains', () => {
+        const { enumerateActionPathsGenerator } = (analyzeRecipes as any)._internals;
 
         const combinedTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 
         });
-        const combinedPaths = enumerateActionPaths(combinedTree);
+        
+        const combinedPaths: any[] = [];
+        const gen = enumerateActionPathsGenerator(combinedTree, { inventory: new Map() });
+        let count = 0;
+        const MAX_PATHS = 100;
+        
+        for (const path of gen) {
+            combinedPaths.push(path);
+            count++;
+            if (count >= MAX_PATHS) break;
+        }
 
-        // With variant merging enabled for combined trees, the total number of paths
-        // may be lower than the fully separate enumeration. Ensure we still produce
-        // a substantial non-zero set of paths and that variants are exposed below.
         expect(combinedPaths.length).toBeGreaterThan(0);
 
-        // Ensure merged craft steps still expose variant options
         const pickCraftStep = combinedPaths
             .flatMap((path: any[]) => path)
             .find((step: any) => step.action === 'craft' && step.result?.variants?.some((v: any) => v.value.item === 'wooden_pickaxe'));
@@ -145,26 +143,13 @@ describe('integration: combine wood families reduces branching', () => {
         expect(tree.children.variants.length).toBeGreaterThan(0);
     });
 
-    test.skip('combining propagates deep into subtrees - may cause OOM with stone grouping', () => {
+    test('combining propagates deep into subtrees', () => {
         const tree = analyzeRecipes(mcData, 'stick', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 
         });
 
-        // Find all mine leaf nodes
-        const mineLeaves: any[] = [];
-        const findMineLeaves = (node: any) => {
-            if (node.action === 'mine' && (!node.operator)) {
-                mineLeaves.push(node);
-            }
-            if (node.children && node.children.variants) {
-                node.children.variants.forEach((c: any) => findMineLeaves(c.value));
-            }
-        };
-        findMineLeaves(tree);
-
-        // Count how many have variants (combined nodes) - check craft nodes instead of mine nodes
         const craftNodes: any[] = [];
         const findCraftNodes = (node: any) => {
             if (node.action === 'craft') {
@@ -181,26 +166,20 @@ describe('integration: combine wood families reduces branching', () => {
             (n.ingredients && n.ingredients.variants && n.ingredients.variants.length > 1)
         );
 
-        // Should have multiple combined craft nodes
         expect(withVariants.length).toBeGreaterThan(0);
         
-        // Verify the variants contain different wood families
         const allVariantNames = withVariants.flatMap(n => [
             ...(n.result?.variants || []),
             ...(n.ingredients?.variants || [])
         ]);
         const uniqueFamilies = new Set(allVariantNames.flatMap((variant: any) => {
-            // Handle different variant structures
             if (typeof variant.value === 'string') {
-                // Simple string variant
                 const parts = variant.value.split('_');
                 return [parts[0]];
             } else if (variant.value && typeof variant.value === 'object' && variant.value.item) {
-                // Single item variant
                 const parts = variant.value.item.split('_');
                 return [parts[0]];
             } else if (Array.isArray(variant.value)) {
-                // Array of items variant (ingredients)
                 return variant.value.map((item: any) => {
                     const parts = item.item.split('_');
                     return parts[0];
@@ -209,7 +188,6 @@ describe('integration: combine wood families reduces branching', () => {
             return [];
         }));
         
-        // Should have multiple wood families represented
         expect(uniqueFamilies.size).toBeGreaterThan(3);
     });
 });
