@@ -229,5 +229,149 @@ describe('Snapshot Validator Consistency', () => {
       expect(snapshotWithoutRadius.blocks.diamond_ore.closestDistance).toBeLessThan(20);
     });
   });
+
+  describe('Tree Viability with Distance Constraints', () => {
+    it('should reject tree when required ore is outside radius', () => {
+      // Simulate the bug scenario: diamond_ore exists but is too far away
+      const snapshot: WorldSnapshot = {
+        version: '1.20.1',
+        dimension: 'overworld',
+        center: { x: 0, y: 64, z: 0 },
+        radius: 16,
+        yMin: 0,
+        yMax: 255,
+        blocks: {
+          // Resources within radius for basic tools
+          birch_log: {
+            count: 10,
+            closestDistance: 5,
+            averageDistance: 8
+          },
+          stone: {
+            count: 100,
+            closestDistance: 3,
+            averageDistance: 10
+          },
+          // Diamond ore exists but is OUTSIDE the radius threshold
+          diamond_ore: {
+            count: 5,
+            closestDistance: 25,  // > 16 (radius)
+            averageDistance: 30
+          }
+        },
+        entities: {}
+      };
+
+      const inventory = new Map<string, number>();
+      // Empty inventory - no diamonds
+
+      const tree = plan(mcData, 'diamond_pickaxe', 1, {
+        inventory,
+        pruneWithWorld: true,
+        worldSnapshot: snapshot,
+        combineSimilarNodes: true,
+        log: false
+      });
+
+      // With the post-build filter fix, the diamond_pickaxe craft node is correctly removed
+      // because diamond (a required ingredient) has no source (diamond_ore is outside radius
+      // and diamond is not in inventory).
+      // 
+      // The fix checks inventory keys: if an ingredient is not available from children AND
+      // its key doesn't exist in inventory, the craft variant is removed.
+      
+      // Tree should have NO children (craft node was removed)
+      expect(tree.children.variants.length).toBe(0);
+      
+      // No paths should be generated
+      const iter = _internals.enumerateActionPathsGenerator(tree, { inventory: {} });
+      const paths = [];
+      for (const p of iter) {
+        paths.push(p);
+        if (paths.length >= 5) break;
+      }
+      
+      expect(paths.length).toBe(0);
+    });
+
+    it('should accept tree when required ore is within radius', () => {
+      const snapshot: WorldSnapshot = {
+        version: '1.20.1',
+        dimension: 'overworld',
+        center: { x: 0, y: 64, z: 0 },
+        radius: 64,
+        yMin: 0,
+        yMax: 255,
+        blocks: {
+          birch_log: {
+            count: 10,
+            closestDistance: 5,
+            averageDistance: 8
+          },
+          stone: {
+            count: 100,
+            closestDistance: 3,
+            averageDistance: 10
+          },
+          iron_ore: {
+            count: 20,
+            closestDistance: 15,
+            averageDistance: 25
+          },
+          coal_ore: {
+            count: 30,
+            closestDistance: 10,
+            averageDistance: 20
+          },
+          // Diamond ore is WITHIN radius this time
+          diamond_ore: {
+            count: 5,
+            closestDistance: 50,  // < 64 (radius)
+            averageDistance: 55
+          }
+        },
+        entities: {}
+      };
+
+      const inventory = new Map<string, number>();
+
+      const tree = plan(mcData, 'diamond_pickaxe', 1, {
+        inventory,
+        pruneWithWorld: true,
+        worldSnapshot: snapshot,
+        combineSimilarNodes: true,
+        log: false
+      });
+
+      // Tree SHOULD have viable children - full tool progression is available
+      expect(tree.children.variants.length).toBeGreaterThan(0);
+
+      // Verify paths can be generated and are complete (long enough)
+      const iter = _internals.enumerateActionPathsGenerator(tree, { inventory: {} });
+      const paths = [];
+      for (const p of iter) {
+        paths.push(p);
+        if (paths.length >= 3) break;
+      }
+      
+      expect(paths.length).toBeGreaterThan(0);
+      
+      const path = paths[0];
+      // Path should be long (complete) because all resources are available
+      // A complete diamond_pickaxe path from scratch needs 40+ steps
+      expect(path.length).toBeGreaterThanOrEqual(40);
+      
+      // Verify the path includes mining diamonds
+      const hasDiamondMining = path.some((step: any) => 
+        step.action === 'mine' && 
+        (step.targetItem?.variants?.[0]?.value === 'diamond' ||
+         step.what?.variants?.[0]?.value?.includes('diamond'))
+      );
+      
+      expect(hasDiamondMining).toBe(true);
+      
+      // The validator will accept this because path.length >= minExpectedSteps (20 for diamond items)
+    });
+  });
 });
 

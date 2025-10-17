@@ -459,7 +459,7 @@ describe('unit: postBuildFilter', () => {
 
     test('smelt results contribute to availability for parent craft nodes', () => {
       const context: BuildContext = {
-        inventory: new Map(),
+        inventory: new Map([['stick', 10]]), // Add stick to inventory since no stick child
         pruneWithWorld: true,
         visited: new Set(),
         depth: 0,
@@ -730,7 +730,7 @@ describe('unit: postBuildFilter', () => {
 
     test('wood family matching allows oak for birch planks', () => {
       const context: BuildContext = {
-        inventory: new Map(),
+        inventory: new Map([['birch_planks', 10]]), // Add birch_planks since no plank craft node
         pruneWithWorld: true,
         visited: new Set(),
         depth: 0,

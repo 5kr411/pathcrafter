@@ -43,6 +43,13 @@ export function applyPostBuildFiltering(
     changed = filterCraftVariantsInTree(tree, context, mcData);
     passes++;
   }
+
+  // Final pass: remove craft nodes that have required ingredients with no sources
+  // This runs after convergence to ensure craft-derived items have propagated
+  pruneCraftNodesWithMissingIngredients(tree, context);
+
+  // Final pruning: remove nodes that became non-viable after the ingredient check
+  pruneDeadBranches(tree);
 }
 
 /**
@@ -388,6 +395,97 @@ function collectAvailableItems(
   }
   for (const family of childAvailable.families) {
     available.families.add(family);
+  }
+}
+
+/**
+ * Final pruning pass that removes craft nodes missing required ingredients
+ * Uses inventory KEYS (not counts) to detect if ingredient was ever available
+ */
+function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext): void {
+  if (!node) return;
+
+  // Process children first (post-order)
+  if (node.children && node.children.variants) {
+    for (const child of node.children.variants) {
+      pruneCraftNodesWithMissingIngredients(child.value, context);
+    }
+  }
+
+  // Only check craft nodes
+  if (node.action !== 'craft') return;
+  if (!node.ingredients || !node.result) return;
+  if (node.result.variants.length === 0) return;
+
+  // Collect what's actually available from children
+  const available: AvailableItems = {
+    exactItems: new Set<string>(),
+    families: new Set<string>()
+  };
+
+  for (const child of node.children?.variants || []) {
+    collectAvailableItems(child.value, available);
+  }
+
+  // Check each craft variant
+  const validVariantIndices: Set<number> = new Set();
+
+  for (let i = 0; i < node.ingredients.variants.length; i++) {
+    const ingredientVariant = node.ingredients.variants[i];
+    const ingredients = ingredientVariant?.value || [];
+
+    const allIngredientsAvailable = ingredients.every((ingredient: any) => {
+      if (!ingredient?.item) return true;
+
+      // Check if available from children
+      const isAvailableExact = available.exactItems.has(ingredient.item);
+      const isAvailableFamily = isCombinableFamily(ingredient.item) &&
+                                getFamilyFromName(ingredient.item) &&
+                                available.families.has(getFamilyFromName(ingredient.item)!);
+
+      if (isAvailableExact || isAvailableFamily) {
+        return true;
+      }
+
+      // Not available from children - check if it was in inventory
+      // Key insight: inventory keys persist even when count is 0 (from decrementing during build)
+      // If key exists → ingredient was from inventory (valid)
+      // If key doesn't exist → ingredient was never available (invalid - e.g., diamond_ore outside radius)
+      const wasInInventory = context.inventory?.has(ingredient.item) || false;
+      
+      return wasInInventory;
+    });
+
+    if (allIngredientsAvailable) {
+      validVariantIndices.add(i);
+    }
+  }
+
+  // Remove variants where ingredients are missing
+  if (validVariantIndices.size < node.result.variants.length) {
+    node.result.variants = node.result.variants.filter((_: any, i: number) => 
+      validVariantIndices.has(i)
+    );
+    node.ingredients.variants = node.ingredients.variants.filter((_: any, i: number) => 
+      validVariantIndices.has(i)
+    );
+  }
+}
+
+/**
+ * Recursively prunes non-viable child nodes
+ */
+function pruneDeadBranches(node: any): void {
+  if (!node || !node.children || !node.children.variants) return;
+
+  // Prune non-viable children
+  node.children.variants = node.children.variants.filter((child: any) => 
+    isNodeViable(child.value)
+  );
+
+  // Recurse into remaining viable children
+  for (const child of node.children.variants) {
+    pruneDeadBranches(child.value);
   }
 }
 
