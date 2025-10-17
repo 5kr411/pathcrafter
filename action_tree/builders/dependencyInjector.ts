@@ -8,6 +8,7 @@
 
 import { BuildContext, RootNode } from '../types';
 import { createDependencyContext } from './nodeBuilderHelpers';
+import { hasEqualOrBetterTool } from '../../utils/items';
 
 /**
  * Checks if a workstation dependency is already satisfied in the tree
@@ -81,6 +82,12 @@ export function injectWorkstationDependency(
 
 /**
  * Injects tool dependency into a node if not already present
+ * 
+ * Checks inventory first - if an equal or better tool is already available,
+ * no dependency subtree is created. This prevents redundant tool crafting.
+ * 
+ * For example, if wooden_pickaxe is required but the bot already has
+ * diamond_pickaxe, no wooden_pickaxe dependency will be injected.
  */
 export function injectToolDependency(
   node: any,
@@ -89,6 +96,11 @@ export function injectToolDependency(
   ctx: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
+  // Check if we have the exact tool OR a better tool of the same type
+  if (hasEqualOrBetterTool(context?.inventory, toolName)) {
+    return;
+  }
+
   if (!hasToolDependency(node, toolName)) {
     const depContext = createDependencyContext(toolName, context);
     const toolTree = buildRecipeTreeFn(ctx, [toolName], 1, depContext);
