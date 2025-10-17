@@ -555,22 +555,67 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
   });
   
-  // Success: collected the drop
+  // Track when we first got close to the drop for pickup delay
+  let closeToDropSince: number = 0;
+  const PICKUP_WAIT_MS = 1000; // Wait 1s after getting close to allow auto-pickup
+  const PICKUP_RANGE = 1.5; // Minecraft pickup range is ~1 block, use 1.5 for safety
+  
+  // Success: collected the drop (only exits after being close long enough)
   const followDropToExit2 = new StateTransition({
     parent: followDrop,
     child: exit,
     name: 'BehaviorCraftWithTable: follow drop -> exit',
     shouldTransition: () => {
-      if (!dropTargets.entity) return true;
+      // If entity disappeared, check if we picked it up (inventory increased)
+      if (!dropTargets.entity) {
+        const currentCount = getItemCountInInventory(bot, 'crafting_table');
+        const pickedUp = currentCount > craftingTableCountBeforeBreak;
+        if (pickedUp) {
+          logger.info(`BehaviorCraftWithTable: entity disappeared but we picked it up (${craftingTableCountBeforeBreak} -> ${currentCount})`);
+          return true;
+        }
+        // Entity disappeared but we didn't pick it up - let retry/timeout handle it
+        logger.warn('BehaviorCraftWithTable: entity disappeared but inventory did not increase');
+        return false;
+      }
+      
       const elapsed = Date.now() - followStartTime;
-      if (elapsed > FOLLOW_TIMEOUT_MS) return false;
+      if (elapsed > FOLLOW_TIMEOUT_MS) return false; // Let timeout transition handle this
+      
       const entity = dropTargets.entity;
-      if (!entity || !entity.position) return true;
+      if (!entity || !entity.position) return false;
+      
       const dist = bot.entity?.position?.distanceTo?.(entity.position);
       if (dist == null) return false;
-      return dist < 2;
+      
+      // Check if we're within pickup range
+      if (dist < PICKUP_RANGE) {
+        if (closeToDropSince === 0) {
+          closeToDropSince = Date.now();
+          logger.debug(`BehaviorCraftWithTable: within pickup range (${dist.toFixed(2)}m), waiting for auto-pickup`);
+        }
+        
+        // Wait for pickup delay before exiting
+        const waitedEnough = Date.now() - closeToDropSince >= PICKUP_WAIT_MS;
+        if (waitedEnough) {
+          const currentCount = getItemCountInInventory(bot, 'crafting_table');
+          const pickedUp = currentCount > craftingTableCountBeforeBreak;
+          if (pickedUp) {
+            logger.info(`BehaviorCraftWithTable: picked up table after waiting (${craftingTableCountBeforeBreak} -> ${currentCount})`);
+            return true;
+          }
+          // Waited long enough but didn't pick up - something's wrong
+          logger.warn(`BehaviorCraftWithTable: within range for ${PICKUP_WAIT_MS}ms but inventory did not increase`);
+        }
+      } else {
+        // Reset the timer if we move away
+        closeToDropSince = 0;
+      }
+      
+      return false; // Keep following
     },
     onTransition: () => {
+      closeToDropSince = 0; // Reset for next time
       logger.info('BehaviorCraftWithTable: follow drop -> exit (collected)');
     }
   });
