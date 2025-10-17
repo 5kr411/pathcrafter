@@ -1,3 +1,31 @@
+// Stub BehaviorMoveTo and BehaviorFollowEntity to avoid minecraft-data/pathfinder dependency in tests
+jest.mock('mineflayer-statemachine', () => {
+  const real = jest.requireActual('mineflayer-statemachine');
+  class BehaviorMoveToMock {
+    stateName = 'moveTo';
+    active = false;
+    constructor(_bot: any, _targets: any) {}
+    onStateEntered() {}
+    onStateExited() {}
+    isFinished() { return true; }
+    distanceToTarget() { return 0; }
+  }
+  class BehaviorFollowEntityMock {
+    stateName = 'followEntity';
+    active = false;
+    constructor(_bot: any, _targets: any) {}
+    onStateEntered() {}
+    onStateExited() {}
+    isFinished() { return true; }
+    distanceToTarget() { return 0; }
+  }
+  return Object.assign({}, real, { 
+    BehaviorMoveTo: BehaviorMoveToMock,
+    BehaviorFollowEntity: BehaviorFollowEntityMock,
+    globalSettings: (real as any).globalSettings || { debugMode: false }
+  });
+});
+
 import { createBehaviorForStep } from '../../behavior_generator';
 import { setCurrentSpeciesContext, getCurrentSpeciesContext } from '../../utils/context';
 import { ActionStep } from '../../action_tree/types';
@@ -149,8 +177,10 @@ describe('integration: variant state machine creation', () => {
       result: createTestItemReferenceGroup('oak_door', 1)
     });
 
+    const mc = require('minecraft-data')('1.20.1');
     const bot = {
       version: '1.20.1',
+      mcData: mc,
       inventory: { 
         items: () => [],
         slots: Array(36).fill(null),
@@ -161,7 +191,15 @@ describe('integration: variant state machine creation', () => {
       moveSlotItem: () => Promise.resolve(),
       findBlocks: () => [],
       findBlock: () => null,
-      blockAt: () => null
+      blockAt: () => null,
+      world: {
+        getBlockType: () => 0
+      },
+      entity: {
+        position: {
+          clone: () => ({ x: 0, y: 64, z: 0, offset: (x: number, y: number, z: number) => ({ x, y, z }), floored: () => ({ x: 0, y: 64, z: 0 }) })
+        }
+      }
     } as any;
 
     const behavior = createBehaviorForStep(bot, step);

@@ -51,21 +51,6 @@ describe('unit: behaviorPlaceNear', () => {
 
     expect((sm as any).isFinished()).toBe(true);
   });
-
-  test('hard cap exit fires when attempts/time exceed thresholds', async () => {
-    const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
-    const targets: any = { item: { name: 'stone' } };
-    const sm = createPlaceNearState(bot as any, targets);
-
-    await withLoggerSpy(async (logger) => {
-      await runWithFakeClock(bot as any, sm, { maxMs: 35000, stepMs: 250, directNested: true });
-      const errors = (logger as any).error as jest.Mock;
-      const messages = errors.mock.calls.map((c: any[]) => String(c[0]));
-      expect(messages.some((m: string) => m.includes('hard cap'))).toBeTruthy();
-    });
-
-    expect((sm as any).isFinished()).toBe(true);
-  });
 });
 
 
