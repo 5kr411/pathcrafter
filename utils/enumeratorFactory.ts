@@ -1,5 +1,5 @@
 // Removed unused ActionPath import
-import { buildPersistentNamesSet, isPersistentItemName } from './persistence';
+import { isPersistentItem } from './persistentItemsConfig';
 import { makeSupplyFromInventory } from './inventory';
 // Removed unused imports
 // Path validation removed - tree ensures validity
@@ -31,7 +31,7 @@ export interface EnumeratorContext {
  * 
  * The context provides:
  * - Initial inventory supply
- * - Persistent item detection (tools, tables)
+ * - Persistent item detection (tools, tables, armor)
  * - Stream factory creation
  * 
  * @param options - Options including inventory
@@ -56,18 +56,12 @@ export function createEnumeratorContext(
     invObj = invSource as Record<string, any>;
   }
 
-  const persistentNames = buildPersistentNamesSet();
-  
-  function isPersistentItemNameLocal(name: string): boolean {
-    return isPersistentItemName(name, persistentNames);
-  }
-
   const initialSupply = makeSupplyFromInventory(invObj);
 
   return {
     invObj,
     initialSupply,
-    isPersistentItemName: isPersistentItemNameLocal,
+    isPersistentItemName: isPersistentItem,
     createMakeStream
   };
 }

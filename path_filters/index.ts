@@ -9,6 +9,7 @@ export {
 } from './worldResources';
 
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
+import { dedupePersistentItemsInPaths } from '../path_optimizations/dedupePersistentItems';
 import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
 import { getPruneWithWorldEnabled, getDefaultPerGeneratorPaths } from '../utils/config';
 import { plan, _internals as plannerInternals } from '../planner';
@@ -20,7 +21,7 @@ import { plan, _internals as plannerInternals } from '../planner';
  * 1. Builds a recipe tree for the target item
  * 2. Generates paths from multiple strategies (action, shortest, lowest weight)
  * 3. Deduplicates and sorts by weight/distance
- * 4. Applies hoist mining optimization
+ * 4. Applies path optimizations (hoist mining, dedupe persistent items)
  * 
  * @param ctx - Minecraft data context or version string
  * @param itemName - Name of the item to acquire
@@ -73,7 +74,10 @@ export async function generateTopNAndFilter(
   // Tree is already valid - no additional filtering needed
   const filtered = candidates;
 
-  // Apply mining optimization
-  return hoistMiningInPaths(filtered);
+  // Apply path optimizations
+  let optimized = hoistMiningInPaths(filtered);
+  optimized = dedupePersistentItemsInPaths(optimized);
+  
+  return optimized;
 }
 

@@ -15,6 +15,7 @@ import { generateTopNPathsFromGenerators } from './path_generators/generateTopN'
 import { GeneratorOptions } from './path_generators/types';
 import type { WorldSnapshot } from './utils/worldSnapshotTypes';
 import { loadSnapshotFromFile } from './utils/worldSnapshot';
+import { hoistMiningInPaths, dedupePersistentItemsInPaths } from './path_optimizations';
 
 // Import minecraft-data
 const mcData = require('minecraft-data')('1.20.1');
@@ -300,7 +301,12 @@ async function testVariantPlanner(config: TestConfig, runOptions: PlannerRunOpti
         worldSnapshot: runOptions.worldSnapshot
       };
 
-      const paths = await generateTopNPathsFromGenerators(tree, generatorOptions, perGenerator);
+      let paths = await generateTopNPathsFromGenerators(tree, generatorOptions, perGenerator);
+      
+      // Apply path optimizations
+      paths = hoistMiningInPaths(paths);
+      paths = dedupePersistentItemsInPaths(paths);
+      
       const limitedPaths = typeof config.maxPaths === 'number' ? paths.slice(0, config.maxPaths) : paths;
       printPathSummary(limitedPaths, limitedPaths.length);
     }
