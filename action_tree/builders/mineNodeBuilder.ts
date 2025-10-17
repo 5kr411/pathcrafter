@@ -81,15 +81,19 @@ export function buildMineNodes(
     variantsToUse
   );
 
+  // Use 'one_of' mode when multiple target items are available (e.g., cobblestone OR cobbled_deepslate)
+  // since they represent different items that satisfy the same requirement
+  const groupVariantMode = availableMineTargets.length > 1 ? 'one_of' : 'any_of';
+
   const mineGroup: MineGroupNode = {
     action: 'mine',
     operator: 'OR',
-    variantMode: 'any_of',
-    what: createVariantGroup('any_of', availableMineTargets),
-    targetItem: createVariantGroup('any_of', availableMineTargets),
+    variantMode: groupVariantMode,
+    what: createVariantGroup(groupVariantMode, availableMineTargets),
+    targetItem: createVariantGroup(groupVariantMode, availableMineTargets),
     count: targetCount,
-    variants: { mode: 'any_of', variants: [] },
-    children: { mode: 'any_of', variants: [] },
+    variants: { mode: groupVariantMode, variants: [] },
+    children: { mode: groupVariantMode, variants: [] },
     context: mineContext
   };
 
@@ -227,7 +231,31 @@ function buildMineLeafNodes(
     injectToolDependency(baseLeaf, minimalTool, context, ctx, buildRecipeTreeFn);
   }
 
-  if (context.combineSimilarNodes) {
+  // When multiple target items are acceptable (e.g., cobblestone OR cobbled_deepslate for furnace),
+  // create a single mine node with all blocks as 'one_of' variants, rather than splitting by canonical
+  const shouldCombineAllBlocks = availableMineTargets.length > 1;
+
+  if (shouldCombineAllBlocks) {
+    // Use one mine node with all blocks that can provide any of the acceptable target items
+    // Update the variant mode to 'one_of' since we have multiple different target items
+    const combinedLeaf: MineLeafNode = {
+      ...baseLeaf,
+      variantMode: 'one_of',
+      what: createVariantGroup('one_of', filteredBlocks),
+      targetItem: createVariantGroup('one_of', leafTargetItems),
+      variants: { mode: 'one_of', variants: [] },
+      children: {
+        mode: 'one_of',
+        variants: baseLeaf.children.variants.map(child => ({ value: child.value }))
+      }
+    };
+    
+    const canonKey = 'combined_' + availableMineTargets.join('_');
+    if (!mineLeafByCanon.has(canonKey)) {
+      mineLeafByCanon.set(canonKey, combinedLeaf);
+    }
+  } else if (context.combineSimilarNodes) {
+    // Original logic: split by canonical block when only one target item
     const seenCanonical = new Set<string>();
     for (const blockName of filteredBlocks) {
       const canonicalBlock = canonicalBlockByItem.get(blockName) || blockName;

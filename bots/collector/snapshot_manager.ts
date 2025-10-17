@@ -121,7 +121,29 @@ export async function captureSnapshotForTarget(
 
   if (snapshot && snapshot.blocks) {
     const blockTypes = Object.keys(snapshot.blocks).length;
-    logDebug(`Collector: snapshot contains ${blockTypes} block types`);
+    logInfo(`Collector: snapshot contains ${blockTypes} block types`);
+    
+    // Log top 20 blocks by count
+    const sortedBlocks = Object.entries(snapshot.blocks)
+      .sort(([, a], [, b]) => (b.count || 0) - (a.count || 0))
+      .slice(0, 20);
+    
+    logInfo('Collector: Top 20 blocks in snapshot:');
+    sortedBlocks.forEach(([name, data]) => {
+      logInfo(`  ${name}: count=${data.count}, closestDist=${data.closestDistance?.toFixed(1) || 'N/A'}`);
+    });
+    
+    // Specifically check for stone and deepslate
+    if (snapshot.blocks.stone) {
+      logInfo(`Collector: STONE present - count=${snapshot.blocks.stone.count}, closest=${snapshot.blocks.stone.closestDistance?.toFixed(1)}`);
+    } else {
+      logInfo('Collector: STONE not in snapshot');
+    }
+    if (snapshot.blocks.deepslate) {
+      logInfo(`Collector: DEEPSLATE present - count=${snapshot.blocks.deepslate.count}, closest=${snapshot.blocks.deepslate.closestDistance?.toFixed(1)}`);
+    } else {
+      logInfo('Collector: DEEPSLATE not in snapshot');
+    }
   }
   if (snapshot && snapshot.entities) {
     const entityTypes = Object.keys(snapshot.entities).length;
