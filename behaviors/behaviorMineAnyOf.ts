@@ -80,6 +80,8 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
   const selection: Selection = { chosen: null };
   let initialInventoryCounts: Record<string, number> = {};
   let totalRequiredAmount = 0;
+  let consecutiveFailures = 0;
+  const MAX_CONSECUTIVE_FAILURES = 10;
 
   function getTotalCollected(): number {
     let total = 0;
@@ -196,6 +198,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       initialInventoryCounts = {};
       totalRequiredAmount = Number(targets.amount || 1);
+      consecutiveFailures = 0;
       const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
       for (const c of list) {
         if (!c || !c.itemName) continue;
@@ -214,7 +217,16 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     parent: prepare,
     child: collectBehavior,
     name: 'mine-any-of: prepare -> collect',
-    shouldTransition: () => !!selection.chosen,
+    shouldTransition: () => {
+      if (!selection.chosen) return false;
+      if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        try {
+          logger.error(`BehaviorMineAnyOf: giving up after ${consecutiveFailures} consecutive failures`);
+        } catch (_) {}
+        return false;
+      }
+      return true;
+    },
     onTransition: () => {
       if (selection.chosen) {
         dynamicTargets.blockName = selection.chosen.blockName;
@@ -240,13 +252,22 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     parent: prepare,
     child: exit,
     name: 'mine-any-of: prepare -> exit (no selection or done)',
-    shouldTransition: () => !selection || !selection.chosen || getTotalCollected() >= totalRequiredAmount,
+    shouldTransition: () => {
+      const noSelection = !selection || !selection.chosen;
+      const goalReached = getTotalCollected() >= totalRequiredAmount;
+      const tooManyFailures = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
+      return noSelection || goalReached || tooManyFailures;
+    },
     onTransition: () => {
       const collected = getTotalCollected();
       const breakdown = getCollectionBreakdown();
       if (collected >= totalRequiredAmount) {
         try {
           logger.info(`BehaviorMineAnyOf: goal reached! ${collected}/${totalRequiredAmount} (${breakdown})`);
+        } catch (_) {}
+      } else if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        try {
+          logger.error(`BehaviorMineAnyOf: giving up after ${consecutiveFailures} consecutive failures; collected ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
       } else {
         try {
@@ -267,9 +288,23 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       const total = getTotalCollected();
       const breakdown = getCollectionBreakdown();
-      try {
-        logger.info(`progress: ${total}/${totalRequiredAmount} (${breakdown}), finding next block...`);
-      } catch (_) {}
+      
+      const collectedCount = typeof (collectBehavior as any).collectedCount === 'function' 
+        ? (collectBehavior as any).collectedCount() 
+        : 0;
+      
+      if (collectedCount > 0) {
+        consecutiveFailures = 0;
+        try {
+          logger.info(`progress: ${total}/${totalRequiredAmount} (${breakdown}), finding next block...`);
+        } catch (_) {}
+      } else {
+        consecutiveFailures++;
+        try {
+          logger.warn(`progress: ${total}/${totalRequiredAmount} (${breakdown}), failed to collect (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}), finding next block...`);
+        } catch (_) {}
+      }
+      
       selection.chosen = null;
       const chosen = selectBestCandidate();
       if (chosen) selection.chosen = chosen;

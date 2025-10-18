@@ -413,7 +413,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       }
       
       if (distance >= 6) {
-        logger.debug(`BehaviorCollectBlock: too far from target (${distance.toFixed(2)} blocks), staying in goToBlock`);
         return false;
       }
       
@@ -566,7 +565,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: goToBlock,
     child: findBlock,
     name: 'BehaviorCollectBlock: go to block -> find block',
-    shouldTransition: () => goToBlock.isFinished() && goToBlock.distanceToTarget() >= 6,
+    shouldTransition: () => {
+      const finished = goToBlock.isFinished();
+      const distance = goToBlock.distanceToTarget();
+      if (finished && distance >= 6) {
+        logger.warn(`BehaviorCollectBlock: pathfinding failed (still ${distance.toFixed(2)} blocks away), searching for closer block`);
+        return true;
+      }
+      return false;
+    },
     onTransition: () => {
       logger.debug('go to block -> find block');
     }
