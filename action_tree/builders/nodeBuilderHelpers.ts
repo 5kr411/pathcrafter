@@ -54,13 +54,21 @@ export function cloneInventoryForBranch(context: BuildContext): BuildContext {
 
 /**
  * Creates a new build context for a dependency subtree
+ * 
+ * IMPORTANT: Clones the inventory to prevent mutations from affecting
+ * the parent context. This is critical for workstation/tool dependencies
+ * where the dependency tree shouldn't consume resources from the parent.
  */
 export function createDependencyContext(
   itemName: string,
   context: BuildContext
 ): BuildContext {
+  // Clone inventory to prevent mutations
+  const clonedInventory = context.inventory ? new Map(context.inventory) : context.inventory;
+  
   return {
     ...context,
+    inventory: clonedInventory,
     depth: context.depth + 1,
     parentPath: [...context.parentPath, itemName]
   };
