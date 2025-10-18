@@ -162,7 +162,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
     merged.sort((x, y) => computePathWeight(x) - computePathWeight(y));
 
     let ranked = hoistMiningInPaths(merged);
-    ranked = dedupePersistentItemsInPaths(ranked);
+    ranked = dedupePersistentItemsInPaths(ranked, item);
     const tFilterMs = Date.now() - tFilterStart;
     
     if (ranked.length > 0) {

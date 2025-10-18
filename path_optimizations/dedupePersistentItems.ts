@@ -33,13 +33,19 @@ function getCraftResult(step: ActionStep): string | null {
  * reused throughout the path execution.
  * 
  * @param path - The action path to optimize
+ * @param targetItem - Optional target item name to preserve count for (not dedupe)
  * @returns Optimized path with redundant persistent item crafts removed
  * 
  * @example
  * // Input: [craft crafting_table, use table, craft crafting_table, use table]
  * // Output: [craft crafting_table x1, use table, use table]
+ * 
+ * @example
+ * // With target preservation: collecting 5 crafting tables
+ * // Input: [mine logs, craft 5 crafting_table], targetItem='crafting_table'
+ * // Output: [mine logs, craft 5 crafting_table] - count preserved!
  */
-export function dedupePersistentItemsInPath(path: ActionPath): ActionPath {
+export function dedupePersistentItemsInPath(path: ActionPath, targetItem?: string): ActionPath {
   if (!Array.isArray(path) || path.length === 0) return path;
   
   const craftedPersistent = new Set<string>();
@@ -80,11 +86,13 @@ export function dedupePersistentItemsInPath(path: ActionPath): ActionPath {
     const step = path[i];
     
     // For the first craft of a persistent item, ensure count is 1
+    // UNLESS it's the target item we're collecting
     if (step && step.action === 'craft') {
       const resultItem = getCraftResult(step);
       if (resultItem && isPersistentItem(resultItem)) {
+        const isTargetItem = targetItem && resultItem === targetItem;
         const count = Number(step.count) || 1;
-        if (count > 1) {
+        if (count > 1 && !isTargetItem) {
           optimized.push({ ...step, count: 1 });
           continue;
         }
@@ -101,10 +109,11 @@ export function dedupePersistentItemsInPath(path: ActionPath): ActionPath {
  * Optimizes multiple paths by removing redundant persistent item crafts
  * 
  * @param paths - Array of action paths to optimize
+ * @param targetItem - Optional target item name to preserve count for (not dedupe)
  * @returns Array of optimized paths
  */
-export function dedupePersistentItemsInPaths(paths: ActionPath[]): ActionPath[] {
+export function dedupePersistentItemsInPaths(paths: ActionPath[], targetItem?: string): ActionPath[] {
   if (!Array.isArray(paths)) return paths;
-  return paths.map(p => dedupePersistentItemsInPath(p));
+  return paths.map(p => dedupePersistentItemsInPath(p, targetItem));
 }
 

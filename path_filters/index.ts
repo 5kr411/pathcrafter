@@ -76,7 +76,7 @@ export async function generateTopNAndFilter(
 
   // Apply path optimizations
   let optimized = hoistMiningInPaths(filtered);
-  optimized = dedupePersistentItemsInPaths(optimized);
+  optimized = dedupePersistentItemsInPaths(optimized, itemName);
   
   return optimized;
 }

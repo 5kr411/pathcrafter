@@ -305,7 +305,7 @@ async function testVariantPlanner(config: TestConfig, runOptions: PlannerRunOpti
       
       // Apply path optimizations
       paths = hoistMiningInPaths(paths);
-      paths = dedupePersistentItemsInPaths(paths);
+      paths = dedupePersistentItemsInPaths(paths, config.targetItem);
       
       const limitedPaths = typeof config.maxPaths === 'number' ? paths.slice(0, config.maxPaths) : paths;
       printPathSummary(limitedPaths, limitedPaths.length);

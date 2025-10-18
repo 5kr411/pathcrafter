@@ -397,6 +397,104 @@ describe('unit: dedupe persistent items optimizer', () => {
     });
   });
 
+  describe('target item preservation', () => {
+    test('preserves count when collecting 5 crafting tables as final target', () => {
+      const path: ActionStep[] = [
+        createTestActionStep({ 
+          action: 'mine', 
+          what: createTestStringGroup('oak_log'), 
+          count: 2 
+        }),
+        createTestActionStep({ 
+          action: 'craft', 
+          what: createTestStringGroup('inventory'), 
+          count: 5, 
+          ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 4 }]), 
+          result: createTestItemReferenceGroup('crafting_table', 1) 
+        })
+      ];
+
+      const optimized = dedupePersistentItemsInPath(path, 'crafting_table');
+      
+      expect(optimized.length).toBe(2);
+      const tableCraft = optimized.find(s => 
+        s.action === 'craft' && 
+        s.result?.variants[0]?.value?.item === 'crafting_table'
+      );
+      expect(tableCraft).toBeDefined();
+      expect(tableCraft!.count).toBe(5);
+    });
+
+    test('preserves 2 stone pickaxes but dedupes crafting table dependency', () => {
+      const path: ActionStep[] = [
+        createTestActionStep({ 
+          action: 'mine', 
+          what: createTestStringGroup('oak_log'), 
+          count: 1 
+        }),
+        createTestActionStep({ 
+          action: 'craft', 
+          what: createTestStringGroup('inventory'), 
+          count: 1, 
+          ingredients: createTestIngredientGroup([{ item: 'oak_planks', perCraftCount: 4 }]), 
+          result: createTestItemReferenceGroup('crafting_table', 1) 
+        }),
+        createTestActionStep({ 
+          action: 'mine', 
+          what: createTestStringGroup('cobblestone'), 
+          count: 6 
+        }),
+        createTestActionStep({ 
+          action: 'craft', 
+          what: createTestStringGroup('table'), 
+          count: 2, 
+          ingredients: createTestIngredientGroup([{ item: 'cobblestone', perCraftCount: 3 }]), 
+          result: createTestItemReferenceGroup('stone_pickaxe', 1) 
+        })
+      ];
+
+      const optimized = dedupePersistentItemsInPath(path, 'stone_pickaxe');
+      
+      expect(optimized.length).toBe(4);
+      
+      const tableCraft = optimized.find(s => 
+        s.action === 'craft' && 
+        s.result?.variants[0]?.value?.item === 'crafting_table'
+      );
+      expect(tableCraft).toBeDefined();
+      expect(tableCraft!.count).toBe(1);
+      
+      const pickaxeCraft = optimized.find(s => 
+        s.action === 'craft' && 
+        s.result?.variants[0]?.value?.item === 'stone_pickaxe'
+      );
+      expect(pickaxeCraft).toBeDefined();
+      expect(pickaxeCraft!.count).toBe(2);
+    });
+
+    test('still dedupes when no target item specified (backward compatibility)', () => {
+      const path: ActionStep[] = [
+        createTestActionStep({ 
+          action: 'craft', 
+          what: createTestStringGroup('inventory'), 
+          count: 1, 
+          result: createTestItemReferenceGroup('crafting_table', 1) 
+        }),
+        createTestActionStep({ 
+          action: 'craft', 
+          what: createTestStringGroup('inventory'), 
+          count: 1, 
+          result: createTestItemReferenceGroup('crafting_table', 1) 
+        })
+      ];
+
+      const optimized = dedupePersistentItemsInPath(path);
+      
+      expect(optimized.length).toBe(1);
+      expect(optimized[0].count).toBe(1);
+    });
+  });
+
   describe('edge cases', () => {
     test('handles craft step with string result instead of ItemReference', () => {
       const path: ActionStep[] = [
