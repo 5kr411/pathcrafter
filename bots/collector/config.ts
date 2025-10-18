@@ -57,7 +57,7 @@ export type Bot = any;
 const RUNTIME: RuntimeConfig = {
   pruneWithWorld: true,
   perGenerator: 1000,
-  snapshotRadii: [16, 32, 64, 96],
+  snapshotRadii: [32, 64, 96, 128],
   snapshotYHalf: null,
   logLevel: 'DEBUG',
   progressLogIntervalMs: 250,
