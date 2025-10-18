@@ -558,7 +558,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   // Track when we first got close to the drop for pickup delay
   let closeToDropSince: number = 0;
   const PICKUP_WAIT_MS = 1000; // Wait 1s after getting close to allow auto-pickup
-  const PICKUP_RANGE = 1.5; // Minecraft pickup range is ~1 block, use 1.5 for safety
+  const PICKUP_RANGE = 0.5; // Minecraft pickup range is ~1 block, use 0.5 for safety
   
   // Success: collected the drop (only exits after being close long enough)
   const followDropToExit2 = new StateTransition({

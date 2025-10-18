@@ -1,4 +1,4 @@
-const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorEquipItem } = require('mineflayer-statemachine');
+const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorEquipItem, BehaviorGetClosestEntity, BehaviorFollowEntity } = require('mineflayer-statemachine');
 
 const minecraftData = require('minecraft-data');
 import logger from '../utils/logger';
@@ -55,6 +55,35 @@ function createSmeltState(bot: Bot, targets: Targets): any {
   const smeltRun = new BehaviorIdle();
   const breakTargets: { position: Vec3Like | null } = { position: null };
   const breakFurnace = createBreakAtPositionState(bot, breakTargets as any);
+  
+  const COLLECT_TIMEOUT_MS = 7000;
+  const MAX_COLLECT_RETRIES = 2;
+  const FOLLOW_TIMEOUT_MS = 7000;
+  const MAX_FOLLOW_RETRIES = 2;
+  
+  const dropTargets: { entity: any } = { entity: null };
+  const getDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) => 
+    e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'furnace'
+  );
+  addStateLogging(getDrop, 'GetClosestEntity', { logEnter: true, getExtraInfo: () => 'looking for dropped furnace' });
+  
+  const followDrop = new BehaviorFollowEntity(bot, dropTargets);
+  addStateLogging(followDrop, 'FollowEntity', {
+    logEnter: true,
+    getExtraInfo: () => {
+      if (dropTargets.entity) {
+        const pos = dropTargets.entity.position;
+        return `following dropped furnace at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}), distance: ${bot.entity?.position?.distanceTo?.(pos)?.toFixed(2) || 'n/a'}m`;
+      }
+      return 'no entity';
+    }
+  });
+  
+  let collectStartTime: number = 0;
+  let followStartTime: number = 0;
+  let collectRetryCount = 0;
+  let followRetryCount = 0;
+  
   const exit = new BehaviorIdle();
 
   function getMc(): any {
@@ -102,6 +131,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
   let wantCount: number;
   let inputItem: string;
   let fuelItem: string;
+  let furnaceCountBeforeBreak = 0;
   const initToFind = new StateTransition({
     name: 'Smelt: enter -> find',
     parent: enter,
@@ -353,7 +383,8 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     child: breakFurnace,
     shouldTransition: () => smeltDone && breakRecommended,
     onTransition: () => {
-      logger.debug('run -> break (we placed furnace)');
+      furnaceCountBeforeBreak = getItemCountInInventory(bot, 'furnace');
+      logger.debug(`run -> break (we placed furnace), have ${furnaceCountBeforeBreak} furnaces before break`);
     }
   });
 
@@ -380,13 +411,197 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const breakToExit = new StateTransition({
-    name: 'Smelt: break -> exit',
+  const breakToExitIfPickedUp = new StateTransition({
+    name: 'Smelt: break -> exit (already picked up)',
     parent: breakFurnace,
     child: exit,
-    shouldTransition: () => (typeof breakFurnace.isFinished === 'function' ? breakFurnace.isFinished() : true),
+    shouldTransition: () => {
+      if (!breakFurnace.isFinished()) return false;
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      return currentCount > furnaceCountBeforeBreak;
+    },
     onTransition: () => {
-      logger.debug('break -> exit');
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      logger.info(`Smelt: break -> exit (already picked up: ${furnaceCountBeforeBreak} -> ${currentCount})`);
+    }
+  });
+  
+  const breakToGetDrop = new StateTransition({
+    name: 'Smelt: break -> get drop',
+    parent: breakFurnace,
+    child: getDrop,
+    shouldTransition: () => breakFurnace.isFinished(),
+    onTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      logger.info(`Smelt: break -> get drop (had ${furnaceCountBeforeBreak} furnaces before break, now have ${currentCount})`);
+      collectStartTime = Date.now();
+      collectRetryCount = 0;
+    }
+  });
+  
+  const getDropToExitIfPickedUp = new StateTransition({
+    name: 'Smelt: get drop -> exit (picked up)',
+    parent: getDrop,
+    child: exit,
+    shouldTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      return currentCount > furnaceCountBeforeBreak;
+    },
+    onTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      logger.info(`Smelt: get drop -> exit (picked up: ${furnaceCountBeforeBreak} -> ${currentCount})`);
+    }
+  });
+  
+  const getDropToFollowDrop = new StateTransition({
+    name: 'Smelt: get drop -> follow drop',
+    parent: getDrop,
+    child: followDrop,
+    shouldTransition: () => {
+      const elapsed = Date.now() - collectStartTime;
+      if (elapsed > COLLECT_TIMEOUT_MS) return false;
+      return !!dropTargets.entity;
+    },
+    onTransition: () => {
+      const entity = dropTargets.entity;
+      if (entity && entity.position) {
+        logger.info(
+          `Smelt: get drop -> follow drop (x=${entity.position.x}, y=${entity.position.y}, z=${entity.position.z})`
+        );
+        followStartTime = Date.now();
+        followRetryCount = 0;
+      }
+    }
+  });
+  
+  const getDropRetry = new StateTransition({
+    name: 'Smelt: get drop -> get drop (retry)',
+    parent: getDrop,
+    child: getDrop,
+    shouldTransition: () => {
+      const elapsed = Date.now() - collectStartTime;
+      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
+      return timedOut && !dropTargets.entity && collectRetryCount < MAX_COLLECT_RETRIES;
+    },
+    onTransition: () => {
+      collectRetryCount++;
+      logger.info(`Smelt: get drop -> get drop (retry ${collectRetryCount}/${MAX_COLLECT_RETRIES})`);
+      collectStartTime = Date.now();
+    }
+  });
+  
+  const getDropToExit = new StateTransition({
+    name: 'Smelt: get drop -> exit (timeout)',
+    parent: getDrop,
+    child: exit,
+    shouldTransition: () => {
+      const elapsed = Date.now() - collectStartTime;
+      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
+      return timedOut && collectRetryCount >= MAX_COLLECT_RETRIES;
+    },
+    onTransition: () => {
+      logger.info(`Smelt: get drop -> exit (timeout after ${MAX_COLLECT_RETRIES} retries)`);
+    }
+  });
+  
+  const followDropToExitIfPickedUp = new StateTransition({
+    name: 'Smelt: follow drop -> exit (picked up)',
+    parent: followDrop,
+    child: exit,
+    shouldTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      return currentCount > furnaceCountBeforeBreak;
+    },
+    onTransition: () => {
+      const currentCount = getItemCountInInventory(bot, 'furnace');
+      logger.info(`Smelt: follow drop -> exit (picked up: ${furnaceCountBeforeBreak} -> ${currentCount})`);
+    }
+  });
+  
+  const followDropRetry = new StateTransition({
+    name: 'Smelt: follow drop -> get drop (retry)',
+    parent: followDrop,
+    child: getDrop,
+    shouldTransition: () => {
+      const elapsed = Date.now() - followStartTime;
+      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
+      return timedOut && followRetryCount < MAX_FOLLOW_RETRIES;
+    },
+    onTransition: () => {
+      followRetryCount++;
+      logger.info(`Smelt: follow drop -> get drop (retry ${followRetryCount}/${MAX_FOLLOW_RETRIES})`);
+      collectStartTime = Date.now();
+    }
+  });
+  
+  const followDropToExit = new StateTransition({
+    name: 'Smelt: follow drop -> exit (timeout)',
+    parent: followDrop,
+    child: exit,
+    shouldTransition: () => {
+      const elapsed = Date.now() - followStartTime;
+      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
+      return timedOut && followRetryCount >= MAX_FOLLOW_RETRIES;
+    },
+    onTransition: () => {
+      logger.info(`Smelt: follow drop -> exit (timeout after ${MAX_FOLLOW_RETRIES} retries)`);
+    }
+  });
+  
+  let closeToDropSince: number = 0;
+  const PICKUP_WAIT_MS = 1000;
+  const PICKUP_RANGE = 0.5;
+  
+  const followDropToExit2 = new StateTransition({
+    name: 'Smelt: follow drop -> exit (collected)',
+    parent: followDrop,
+    child: exit,
+    shouldTransition: () => {
+      if (!dropTargets.entity) {
+        const currentCount = getItemCountInInventory(bot, 'furnace');
+        const pickedUp = currentCount > furnaceCountBeforeBreak;
+        if (pickedUp) {
+          logger.info(`Smelt: entity disappeared but we picked it up (${furnaceCountBeforeBreak} -> ${currentCount})`);
+          return true;
+        }
+        logger.warn('Smelt: entity disappeared but inventory did not increase');
+        return false;
+      }
+      
+      const elapsed = Date.now() - followStartTime;
+      if (elapsed > FOLLOW_TIMEOUT_MS) return false;
+      
+      const entity = dropTargets.entity;
+      if (!entity || !entity.position) return false;
+      
+      const dist = bot.entity?.position?.distanceTo?.(entity.position);
+      if (dist == null) return false;
+      
+      if (dist < PICKUP_RANGE) {
+        if (closeToDropSince === 0) {
+          closeToDropSince = Date.now();
+          logger.debug(`Smelt: within pickup range (${dist.toFixed(2)}m), waiting for auto-pickup`);
+        }
+        
+        const waitedEnough = Date.now() - closeToDropSince >= PICKUP_WAIT_MS;
+        if (waitedEnough) {
+          const currentCount = getItemCountInInventory(bot, 'furnace');
+          const pickedUp = currentCount > furnaceCountBeforeBreak;
+          if (pickedUp) {
+            logger.info(`Smelt: picked up furnace after waiting (${furnaceCountBeforeBreak} -> ${currentCount})`);
+            return true;
+          }
+          logger.warn(`Smelt: within range for ${PICKUP_WAIT_MS}ms but inventory did not increase`);
+        }
+      } else {
+        closeToDropSince = 0;
+      }
+      
+      return false;
+    },
+    onTransition: () => {
+      closeToDropSince = 0;
+      logger.info('Smelt: follow drop -> exit (collected)');
     }
   });
 
@@ -411,7 +626,16 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       placeToExit,
       runToEquipFallback,
       runToBreak,
-      breakToExit,
+      breakToExitIfPickedUp,
+      breakToGetDrop,
+      getDropToExitIfPickedUp,
+      getDropToFollowDrop,
+      getDropRetry,
+      getDropToExit,
+      followDropToExitIfPickedUp,
+      followDropRetry,
+      followDropToExit,
+      followDropToExit2,
       runToExit
     ],
     enter,
