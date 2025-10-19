@@ -526,6 +526,73 @@ describe('unit: postBuildFilter', () => {
       const hasIronIngot = craftNode.ingredients.variants[0].value.some((i: any) => i.item === 'iron_ingot');
       expect(hasIronIngot).toBe(true);
     });
+
+    test('smelt inputs from inventory make smelted results available (regression test)', () => {
+      const context: BuildContext = {
+        inventory: new Map([
+          ['raw_iron', 3],
+          ['stick', 12],
+          ['furnace', 1],
+          ['crafting_table', 1]
+        ]),
+        pruneWithWorld: true,
+        visited: new Set(),
+        depth: 0,
+        parentPath: [],
+        config: { preferMinimalTools: true, maxDepth: 10 },
+        variantConstraints: { getConstraint: () => undefined, addConstraint: () => {} } as any,
+        combineSimilarNodes: true
+      };
+
+      const tree = {
+        action: 'root',
+        children: {
+          variants: [
+            {
+              value: {
+                action: 'craft',
+                context: context,
+                result: { variants: [{ value: { item: 'iron_pickaxe' } }] },
+                ingredients: { variants: [{ value: [ { item: 'iron_ingot', perCraftCount: 3 }, { item: 'stick', perCraftCount: 2 } ] }] },
+                children: {
+                  variants: [
+                    {
+                      value: {
+                        action: 'root',
+                        children: {
+                          variants: [
+                            {
+                              value: {
+                                action: 'smelt',
+                                context: context,
+                                what: { variants: [{ value: 'furnace' }] },
+                                result: { variants: [{ value: { item: 'iron_ingot', perSmelt: 1 } }] },
+                                input: { variants: [{ value: { item: 'raw_iron', perSmelt: 1 } }] },
+                                fuel: { variants: [{ value: 'coal' }] },
+                                children: { variants: [] }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      };
+
+      postBuildFilter.applyPostBuildFiltering(tree, context, mcData);
+
+      expect(tree.children.variants.length).toBe(1);
+      const craftNode = tree.children.variants[0].value;
+      expect(craftNode.result.variants.length).toBe(1);
+      expect(craftNode.result.variants[0].value.item).toBe('iron_pickaxe');
+      const hasIronIngot = craftNode.ingredients.variants[0].value.some((i: any) => i.item === 'iron_ingot');
+      expect(hasIronIngot).toBe(true);
+    });
   });
 
   describe('exact item matching vs family matching', () => {

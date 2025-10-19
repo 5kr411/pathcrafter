@@ -362,6 +362,8 @@ function collectAvailableItems(
     node.input &&
     node.input.variants
   ) {
+    const inv: Map<string, number> | undefined = node?.context?.inventory;
+    
     for (let i = 0; i < node.result.variants.length; i++) {
       const resultVariant = node.result.variants[i];
       const inputVariant = node.input.variants[i];
@@ -371,7 +373,9 @@ function collectAvailableItems(
       const inputItem = inputVariant.value?.item || inputVariant.value;
       if (!inputItem) continue;
       
-      const inputAvailable = childAvailable.exactItems.has(inputItem) ||
+      const inputInInventory = inv ? (inv.get(inputItem) || 0) > 0 : false;
+      const inputAvailable = inputInInventory ||
+        childAvailable.exactItems.has(inputItem) ||
         (isCombinableFamily(inputItem) && getFamilyFromName(inputItem) && childAvailable.families.has(getFamilyFromName(inputItem)!));
       
       if (inputAvailable) {
