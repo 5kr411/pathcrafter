@@ -427,6 +427,22 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     families: new Set<string>()
   };
 
+  // Add inventory items as available sources
+  // These can be used directly or crafted into other items
+  if (context.inventory) {
+    for (const [itemName, count] of context.inventory.entries()) {
+      if (count > 0) {
+        available.exactItems.add(itemName);
+        if (isCombinableFamily(itemName)) {
+          const family = getFamilyFromName(itemName);
+          if (family) {
+            available.families.add(family);
+          }
+        }
+      }
+    }
+  }
+
   for (const child of node.children?.variants || []) {
     collectAvailableItems(child.value, available);
   }
