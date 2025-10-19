@@ -45,8 +45,11 @@ export async function captureSnapshotForTarget(
       logDebug(`Collector: validator - starting validation for radius=${snapshot.radius}, pruneWithWorld=${pruneWithWorld}`);
       logDebug(`Collector: validator - inventory: ${JSON.stringify(invObj)}`);
 
+      // Clone inventory to prevent mutation by planner
+      const inventoryCopy = new Map(inventory);
+
       const tree = planner(mcData, target.item, target.count, {
-        inventory,
+        inventory: inventoryCopy,
         log: false,
         pruneWithWorld,
         combineSimilarNodes,
@@ -64,9 +67,6 @@ export async function captureSnapshotForTarget(
       
       logDebug(`Collector: validator - using inventory format: Map with ${inventory.size} items for path generation`);
       
-      const hasDiamond = invObj['diamond'] || 0;
-      logDebug(`Collector: validator - inventory has ${hasDiamond} diamonds`);
-      
       const iter = enumerateActionPathsGenerator(tree, { inventory: invObj });
       let pathCount = 0;
       for (const _path of iter) {
@@ -75,17 +75,10 @@ export async function captureSnapshotForTarget(
         const hasMining = _path.some((step: any) => step.action === 'mine');
         logDebug(`Collector: validator - path #${pathCount}: ${pathStr} (length=${_path.length}, hasMining=${hasMining})`);
         
-        if (hasDiamond >= 3) {
-          logDebug(`Collector: validator - accepting craft-only path because inventory has diamonds`);
-          return true;
-        }
-        
-        if (hasMining) {
-          logDebug(`Collector: validator - found valid path with mining at radius ${snapshot.radius}`);
-          return true;
-        }
-        
-        logDebug(`Collector: validator - rejecting craft-only path because inventory lacks diamonds`);
+        // If we found any valid path, the snapshot is sufficient
+        // The planner only generates paths that are actually viable given the inventory
+        logDebug(`Collector: validator - found valid path at radius ${snapshot.radius}`);
+        return true;
       }
 
       logDebug(`Collector: validator - no paths generated for radius ${snapshot.radius} (checked ${pathCount} paths)`);

@@ -46,8 +46,11 @@ export function buildRecipeTree(
   
   const itemGroup = context.combineSimilarNodes ? findSameFamilyItems(mcData, itemName) : [itemName];
   
+  // Clone inventory to prevent mutation of caller's inventory
+  const inventoryCopy = context.inventory ? new Map(context.inventory) : new Map();
+  
   const variantContext: BuildContext = {
-    inventory: context.inventory || new Map(),
+    inventory: inventoryCopy,
     worldBudget: context.worldBudget,
     pruneWithWorld: context.pruneWithWorld,
     visited: context.visited || new Set(),
