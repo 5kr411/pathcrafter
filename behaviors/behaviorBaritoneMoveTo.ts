@@ -35,7 +35,7 @@ class BehaviorBaritoneMoveTo {
     this.active = false;
     this.finished = false;
     this.startTime = null;
-    this.timeout = targets.baritoneTimeout || 10000;
+    this.timeout = targets.baritoneTimeout || 60000; // 60 seconds - Baritone has its own internal timeout
     this.goalReached = false;
     this.pathFailed = false;
     this._distance = 0;
