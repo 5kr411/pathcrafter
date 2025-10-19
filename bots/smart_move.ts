@@ -1,14 +1,15 @@
 const mineflayer = require('mineflayer');
 const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = require('mineflayer-statemachine');
+const { Vec3 } = require('vec3');
 
-import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
+import createSmartMoveToState from '../behaviors/behaviorSmartMoveTo';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
-  username: 'craft_inventory_bot'
+  username: 'smart_move_bot'
 };
 
 if (process.argv.length >= 4) {
@@ -29,61 +30,64 @@ bot.once('spawn', () => {
   const targets: any = {};
 
   const enter = new BehaviorIdle();
-  const craftNoTable = createCraftNoTableState(bot, targets);
+  const moveToPosition = createSmartMoveToState(bot, targets);
   const exit = new BehaviorIdle();
 
   const startTransition = new StateTransition({
-    name: 'craft-inventory: enter -> craft',
+    name: 'smart-move: enter -> move',
     parent: enter,
-    child: craftNoTable,
+    child: moveToPosition,
     shouldTransition: () => false,
     onTransition: () => {
-      if (!targets.itemName) targets.itemName = 'stick';
-      if (!targets.amount) targets.amount = 4;
-      bot.chat(`Starting craft in inventory: ${targets.amount} ${targets.itemName}`);
+      if (targets.position) {
+        bot.chat(`Starting smart move to (${targets.position.x}, ${targets.position.y}, ${targets.position.z})`);
+      }
     }
   });
 
-  const craftToExit = new StateTransition({
-    name: 'craft-inventory: craft -> exit',
-    parent: craftNoTable,
+  const moveToExit = new StateTransition({
+    name: 'smart-move: move -> exit',
+    parent: moveToPosition,
     child: exit,
-    shouldTransition: () => craftNoTable.isFinished && craftNoTable.isFinished(),
+    shouldTransition: () => moveToPosition.isFinished && moveToPosition.isFinished(),
     onTransition: () => {
-      bot.chat('Craft in inventory complete (or timed out)');
+      bot.chat(`Smart move complete!`);
     }
   });
 
   const exitToEnter = new StateTransition({
-    name: 'craft-inventory: exit -> enter',
+    name: 'smart-move: exit -> enter',
     parent: exit,
     child: enter,
-    shouldTransition: () => true,
-    onTransition: () => {
-      // reset/keep targets as-is; next startTransition will (re)use them
-    }
+    shouldTransition: () => true
   });
 
-  const transitions = [startTransition, craftToExit, exitToEnter];
+  const transitions = [startTransition, moveToExit, exitToEnter];
   const root = new NestedStateMachine(transitions, enter);
-  root.name = 'craft_inventory_root';
+  root.name = 'smart_move_root';
 
-  // Wire chat control: wait for "go"
   bot.on('chat', (username: string, message: string) => {
     if (username === bot.username) return;
     const parts = message.trim().split(/\s+/);
-    if (parts[0] === 'craft') {
-      if (parts[1]) targets.itemName = parts[1];
-      if (parts[2]) {
-        const n = parseInt(parts[2]);
-        if (!Number.isNaN(n)) targets.amount = n;
+    if (parts[0] === 'move') {
+      if (parts.length >= 4) {
+        const x = parseFloat(parts[1]);
+        const y = parseFloat(parts[2]);
+        const z = parseFloat(parts[3]);
+        if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+          targets.position = new Vec3(x, y, z);
+          setTimeout(() => startTransition.trigger(), 0);
+        } else {
+          bot.chat('Invalid coordinates');
+        }
+      } else {
+        bot.chat('Usage: move <x> <y> <z>');
       }
-      setTimeout(() => startTransition.trigger(), 0);
     }
   });
 
   new BotStateMachine(bot, root);
 });
 
-
 export {};
+

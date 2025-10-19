@@ -31,6 +31,7 @@ export interface FakeBot extends EventEmitter {
   world: FakeWorld;
   inventory: { slots: any[]; items: () => any[] };
   pathfinder: { setMovements: (_: any) => void; setGoal: (_: any) => void; isMoving: () => boolean };
+  ashfinder?: any;
   blockAt(pos: Vec3Like, _extra?: boolean): FakeBlock | null;
   canDigBlock?: (block: FakeBlock) => boolean;
   canSeeBlock?: (block: FakeBlock) => boolean;
@@ -102,12 +103,24 @@ export function createFakeBot(options?: {
   position?: { x: number; y: number; z: number };
   worldInit?: Record<string, number>;
   canDig?: boolean;
+  mockBaritone?: boolean;
+  baritoneSuccess?: boolean;
 }): FakeBot {
   const bot = new EventEmitter() as FakeBot;
   bot.version = '1.20.1';
   bot.entity = { position: vec3(options?.position?.x ?? 0, options?.position?.y ?? 0, options?.position?.z ?? 0) };
   bot.world = createFakeWorld(options?.worldInit);
   bot.inventory = { slots: [], items: () => [] };
+  
+  try {
+    const minecraftData = require('minecraft-data');
+    const mcDataObj = minecraftData(bot.version);
+    bot.mcData = mcDataObj;
+    
+    (global as any).mcData = () => mcDataObj;
+  } catch (_err) {
+    // minecraft-data not available in test
+  }
 
   let moving = false;
   bot.pathfinder = {
@@ -121,6 +134,64 @@ export function createFakeBot(options?: {
     },
     isMoving: () => moving
   };
+
+  if (options?.mockBaritone !== false) {
+    const baritoneSuccess = options?.baritoneSuccess !== false;
+    bot.ashfinder = new EventEmitter();
+    bot.ashfinder.config = {
+      parkour: false,
+      breakBlocks: true,
+      placeBlocks: true,
+      swimming: true,
+      maxFallDist: 3,
+      maxWaterDist: 256,
+      disposableBlocks: [],
+      blocksToAvoid: [],
+      thinkTimeout: 30000,
+      goalReachedDistance: 3.5,
+      blockReach: 4.5,
+      entityReach: 3
+    };
+    bot.ashfinder.debug = false;
+    bot.ashfinder.goto = async (goal: any) => {
+      setTimeout(() => {
+        if (baritoneSuccess) {
+          if (goal) {
+            let targetPos = null;
+            if (goal.pos && goal.pos.x !== undefined) {
+              targetPos = goal.pos;
+            } else if (goal.x !== undefined && goal.y !== undefined && goal.z !== undefined) {
+              targetPos = goal;
+            }
+            
+            if (targetPos) {
+              bot.entity.position.x = targetPos.x + 0.5;
+              bot.entity.position.y = targetPos.y;
+              bot.entity.position.z = targetPos.z + 0.5;
+            }
+          }
+          bot.ashfinder.emit('goal-reach');
+        } else {
+          bot.ashfinder.emit('stopped');
+        }
+      }, 10);
+    };
+    bot.ashfinder.stop = () => {
+      bot.ashfinder.emit('stopped');
+    };
+    bot.ashfinder.enableBreaking = () => {
+      bot.ashfinder.config.breakBlocks = true;
+    };
+    bot.ashfinder.disableBreaking = () => {
+      bot.ashfinder.config.breakBlocks = false;
+    };
+    bot.ashfinder.enablePlacing = () => {
+      bot.ashfinder.config.placeBlocks = true;
+    };
+    bot.ashfinder.disablePlacing = () => {
+      bot.ashfinder.config.placeBlocks = false;
+    };
+  }
 
   bot.blockAt = (_pos: Vec3Like): FakeBlock | null => {
     const pos = vec3(_pos.x, _pos.y, _pos.z);

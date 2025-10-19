@@ -5,6 +5,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 
 import createCollectItemState from '../behaviors/behaviorCollectBlock';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
+import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -31,11 +32,13 @@ if (isMainThread) {
 const bot = mineflayer.createBot(botOptions);
 
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
+bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 import logger from '../utils/logger';
 
 async function main(): Promise<void> {
   bot.once('spawn', () => {
     configurePrecisePathfinder(bot);
+    configureBaritone(bot);
     
     if (!isMainThread && parentPort) {
       parentPort.on('message', (_message: any) => {

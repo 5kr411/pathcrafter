@@ -3,6 +3,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 
 import createMineOneOfState from '../behaviors/behaviorMineOneOf';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
+import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -19,8 +20,12 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
+bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 
 bot.once('spawn', () => {
+  configurePrecisePathfinder(bot);
+  configureBaritone(bot);
+  
   const targets: any = { candidates: [], amount: 1 };
 
   const enter = new BehaviorIdle();

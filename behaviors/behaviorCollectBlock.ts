@@ -8,7 +8,6 @@ const {
   NestedStateMachine,
   BehaviorFindBlock,
   BehaviorFindInteractPosition,
-  BehaviorMoveTo,
   BehaviorMineBlock,
   BehaviorEquipItem
 } = require('mineflayer-statemachine');
@@ -19,6 +18,7 @@ import { addStateLogging } from '../utils/stateLogging';
 import { getLastSnapshotRadius } from '../utils/context';
 import createSafeFindBlockState from './behaviorSafeFindBlock';
 import { canSeeTargetBlock, findObstructingBlock } from '../utils/raycasting';
+import createSmartMoveToState from './behaviorSmartMoveTo';
 
 const minecraftData = require('minecraft-data');
 
@@ -146,30 +146,27 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const goToBlock = new BehaviorMoveTo(bot, targets);
-  goToBlock.distance = 3.5; // Stay 3.5 blocks away for reliable raycasting and mining
-  goToBlock.movements.allow1by1towers = true;
-  goToBlock.movements.canOpenDoors = true;
-  goToBlock.movements.allowSprinting = true;
-  goToBlock.movements.canDig = true;
-  goToBlock.movements.allowFreeMotion = false;
-  goToBlock.movements.allowParkour = false;
-  goToBlock.movements.dontCreateFlow = true;
-  goToBlock.movements.dontMineUnderFallingBlock = true;
-  goToBlock.movements.maxDropDown = 4;
-
-  // Add logging to MoveTo
-  addStateLogging(goToBlock, 'MoveTo', {
-    logEnter: true,
-    getExtraInfo: () => {
-      const pos = targets.position;
-      if (!pos) return 'no position';
-      const botPos = bot.entity?.position;
-      if (!botPos || !botPos.distanceTo) return `to (${pos.x}, ${pos.y}, ${pos.z})`;
-      const dist = botPos.distanceTo(pos).toFixed(2);
-      return `to (${pos.x}, ${pos.y}, ${pos.z}), distance: ${dist}m`;
+  const goToBlock = createSmartMoveToState(bot, targets);
+  if (goToBlock.transitions && goToBlock.transitions.length > 0) {
+    const mineflayerMove = goToBlock.transitions.find((t: any) => 
+      t.child && t.child.stateName === 'BehaviorMineflayerMoveTo'
+    )?.child;
+    
+    if (mineflayerMove) {
+      mineflayerMove.distance = 3.5;
+      if (mineflayerMove.movements) {
+        mineflayerMove.movements.allow1by1towers = true;
+        mineflayerMove.movements.canOpenDoors = true;
+        mineflayerMove.movements.allowSprinting = true;
+        mineflayerMove.movements.canDig = true;
+        mineflayerMove.movements.allowFreeMotion = false;
+        mineflayerMove.movements.allowParkour = false;
+        mineflayerMove.movements.dontCreateFlow = true;
+        mineflayerMove.movements.dontMineUnderFallingBlock = true;
+        mineflayerMove.movements.maxDropDown = 4;
+      }
     }
-  });
+  }
 
   const equipTargets: EquipTargets = { item: null };
   const equipBestTool = new BehaviorEquipItem(bot, equipTargets);

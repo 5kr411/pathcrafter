@@ -64,7 +64,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
   const moveToPlaceCoords = new BehaviorMoveTo(bot, targets);
   moveToPlaceCoords.distance = 0.05;
 
-  // Add logging to MoveTo
   addStateLogging(moveToPlaceCoords, 'MoveTo', {
     logEnter: true,
     getExtraInfo: () => {

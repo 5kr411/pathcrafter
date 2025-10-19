@@ -60,7 +60,6 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
 
   const moveTo = new BehaviorMoveTo(bot, targets);
 
-  // Add logging to MoveTo
   addStateLogging(moveTo, 'MoveTo', {
     logEnter: true,
     getExtraInfo: () => {
