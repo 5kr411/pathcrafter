@@ -395,7 +395,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   // Track the original target block so we can restore it after clearing obstructions
   let originalTargetBlock: any = null;
   let obstructionCheckAttempts = 0;
-  const MAX_OBSTRUCTION_CHECK_ATTEMPTS = 3;
+  const MAX_OBSTRUCTION_CHECK_ATTEMPTS = 10;
 
   const goToBlockToEquip = new StateTransition({
     parent: goToBlock,
@@ -456,7 +456,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
           obstructionCheckAttempts++;
           return false;
         }
-        logger.info(`BehaviorCollectBlock: Redirecting to mine obstruction ${obstruction.name} at (${obstruction.position.x}, ${obstruction.position.y}, ${obstruction.position.z}) [attempt ${obstructionCheckAttempts}/${MAX_OBSTRUCTION_CHECK_ATTEMPTS}]`);
+        logger.info(`BehaviorCollectBlock: Clearing obstruction ${obstructionCheckAttempts}/${MAX_OBSTRUCTION_CHECK_ATTEMPTS}: ${obstruction.name} at (${obstruction.position.x}, ${obstruction.position.y}, ${obstruction.position.z})`);
         targets.position = obstruction.position;
         targets.blockPosition = obstruction.position;
         targets.blockName = obstruction.name;
@@ -578,16 +578,16 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   let mineBlockFinishTime: number | undefined;
   
-  const mineBlockToEquip = new StateTransition({
+  const mineBlockToGoToBlock = new StateTransition({
     parent: mineBlock,
-    child: equipBestTool,
-    name: 'BehaviorCollectBlock: mine block -> equip (check for more obstructions)',
+    child: goToBlock,
+    name: 'BehaviorCollectBlock: mine block -> go to block (check for more obstructions)',
     shouldTransition: () => {
       if (mineBlock.isFinished && !mineBlockFinishTime) {
         mineBlockFinishTime = Date.now();
       }
       const finished = mineBlockFinishTime ? Date.now() - mineBlockFinishTime > 500 : false;
-      // If we were mining an obstruction, loop back to equip to check for more obstructions
+      // If we were mining an obstruction, loop back to goToBlock to re-check line of sight
       return finished && !!originalTargetBlock;
     },
     onTransition: () => {
@@ -706,7 +706,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     equipToFindBlock, // Check if target is under feet before mining
     equipToMineBlock,
     goToBlockToFindBlock,
-    mineBlockToEquip,
+    mineBlockToGoToBlock,
     mineBlockToFindDrop,
     findDropToGoToDrop,
     findDropToFindBlock,

@@ -37,28 +37,22 @@ export interface CollectTargets {
 export function canSeeTargetBlock(bot: MinecraftBot, targets: CollectTargets): boolean {
   if (!targets.blockPosition) return false;
   try {
-    // First try using the bot's built-in canSeeBlock if available (more accurate)
+    // Always use our own obstruction detection to check for solid blocks in the way
+    const obstruction = findObstructingBlock(bot, targets);
+    if (obstruction) {
+      return false;
+    }
+    
+    // If no obstructions found, double-check with bot's built-in canSeeBlock if available
     if (typeof bot.canSeeBlock === 'function' && bot.blockAt) {
       const targetBlock = bot.blockAt(targets.blockPosition, false);
       if (targetBlock) {
-        const canSee = bot.canSeeBlock(targetBlock);
-        if (!canSee) {
-          // Double-check with our own raycast to see if there are obstructions
-          const obstruction = findObstructingBlock(bot, targets);
-          if (obstruction) {
-            return false; // Confirmed obstruction
-          }
-          // Bot says can't see but we found no obstructions - trust the bot
-          return false;
-        }
-        return true;
+        return bot.canSeeBlock(targetBlock);
       }
     }
     
-    // Fallback: use our own obstruction detection
-    // If we find ANY obstructions, we can't see the target
-    const obstruction = findObstructingBlock(bot, targets);
-    return obstruction === null;
+    // No obstructions found and no bot check available
+    return true;
   } catch (err) {
     return true; // Assume visible if check fails
   }
@@ -145,15 +139,27 @@ export function findObstructingBlock(bot: MinecraftBot, targets: CollectTargets)
             if (block) {
               const canDig = typeof bot.canDigBlock === 'function' ? bot.canDigBlock(block) : true;
               if (canDig) {
-                // Ensure block has position property
-                if (!block.position) {
-                  block.position = { x: checkPos.x, y: checkPos.y, z: checkPos.z };
+                let isSolid = true;
+                
+                if (block.boundingBox !== undefined) {
+                  isSolid = block.boundingBox === 'block';
+                } else {
+                  const isWater = blockType === 8 || blockType === 9;
+                  const isLava = blockType === 10 || blockType === 11;
+                  isSolid = !isWater && !isLava;
                 }
-                const dist = typeof eyePos.distanceTo === 'function' ? eyePos.distanceTo(checkPos) : 
-                            Math.sqrt(Math.pow(eyePos.x - checkPos.x, 2) + 
-                                     Math.pow(eyePos.y - checkPos.y, 2) + 
-                                     Math.pow(eyePos.z - checkPos.z, 2));
-                obstructions.push({ block, distance: dist });
+                
+                if (isSolid) {
+                  // Ensure block has position property
+                  if (!block.position) {
+                    block.position = { x: checkPos.x, y: checkPos.y, z: checkPos.z };
+                  }
+                  const dist = typeof eyePos.distanceTo === 'function' ? eyePos.distanceTo(checkPos) : 
+                              Math.sqrt(Math.pow(eyePos.x - checkPos.x, 2) + 
+                                       Math.pow(eyePos.y - checkPos.y, 2) + 
+                                       Math.pow(eyePos.z - checkPos.z, 2));
+                  obstructions.push({ block, distance: dist });
+                }
               }
             }
           }
@@ -180,26 +186,8 @@ export function findObstructingBlock(bot: MinecraftBot, targets: CollectTargets)
       }
     }
     
-    // Filter by which obstructions the bot can actually see
+    // Return the closest obstruction found along the ray
     if (obstructions.length > 0) {
-      const visibleObstructions = obstructions.filter(obs => {
-        if (typeof bot.canSeeBlock === 'function') {
-          try {
-            return bot.canSeeBlock(obs.block);
-          } catch (_) {
-            return true; // Assume visible if check fails
-          }
-        }
-        return true;
-      });
-      
-      if (visibleObstructions.length > 0) {
-        // Return the closest visible obstruction
-        visibleObstructions.sort((a, b) => a.distance - b.distance);
-        return visibleObstructions[0].block;
-      }
-      
-      // If no visible obstructions, return the closest one anyway
       obstructions.sort((a, b) => a.distance - b.distance);
       return obstructions[0].block;
     }
