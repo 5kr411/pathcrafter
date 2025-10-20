@@ -1,9 +1,9 @@
 const mineflayer = require('mineflayer');
 
 import { getConfig } from './collector/config';
-import { parseTargetsFromMessage } from './collector/chat_handler';
 import { WorkerManager } from './collector/worker_manager';
 import { TargetExecutor } from './collector/target_executor';
+import { CommandHandler } from './collector/command_handler';
 import { setSafeFindRepeatThreshold } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { configureBaritone } from '../utils/baritoneConfig';
@@ -56,8 +56,6 @@ bot.once('spawn', () => {
 
   safeChat('collector ready');
 
-  let lastSequence: any[] | null = null;
-
   const workerManager = new WorkerManager(
     (entry, ranked, ok, error) => {
       if (!connected) return;
@@ -78,37 +76,9 @@ bot.once('spawn', () => {
     workerManager.terminate();
   });
 
+  const commandHandler = new CommandHandler(bot, executor, safeChat);
+
   bot.on('chat', (username: string, message: string) => {
-    if (username === bot.username) return;
-    const m = message.trim();
-    const parts = m.split(/\s+/);
-    if (parts[0] !== 'collect' && parts[0] !== 'go') return;
-
-    if (parts[0] === 'go') {
-      if (!Array.isArray(lastSequence) || lastSequence.length === 0) {
-        safeChat('no previous collect request');
-        return;
-      }
-      executor.setTargets(lastSequence.slice());
-      if (executor.isRunning()) {
-        safeChat('already running, please wait');
-        return;
-      }
-      executor.startNextTarget().catch(() => {});
-      return;
-    }
-
-    const parsed = parseTargetsFromMessage(message);
-    if (!parsed || parsed.length === 0) {
-      safeChat('usage: collect <item> <count>[, <item> <count> ...]');
-      return;
-    }
-    lastSequence = parsed.slice();
-    executor.setTargets(parsed.slice());
-    if (executor.isRunning()) {
-      safeChat('already running, please wait');
-      return;
-    }
-    executor.startNextTarget().catch(() => {});
+    commandHandler.handleChatMessage(username, message);
   });
 });

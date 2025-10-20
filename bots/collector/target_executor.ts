@@ -33,6 +33,8 @@ export class TargetExecutor {
   private running = false;
   private currentTargetStartInventory: InventoryObject = {};
   private readonly MAX_RETRIES = 3;
+  private activeStateMachine: any = null;
+  private activeBotStateMachine: any = null;
 
   constructor(
     private bot: Bot,
@@ -59,6 +61,57 @@ export class TargetExecutor {
 
   getTargets(): Target[] {
     return this.sequenceTargets;
+  }
+
+  stop(): void {
+    logInfo('Collector: stopping execution');
+    this.running = false;
+    
+    if (this.activeBotStateMachine) {
+      try {
+        if (typeof this.activeBotStateMachine.stop === 'function') {
+          logDebug('Collector: calling stop on BotStateMachine');
+          this.activeBotStateMachine.stop();
+        }
+      } catch (err: any) {
+        logDebug(`Collector: error stopping BotStateMachine: ${err.message || err}`);
+      }
+      this.activeBotStateMachine = null;
+    }
+    
+    if (this.activeStateMachine) {
+      try {
+        if (typeof this.activeStateMachine.onStateExited === 'function') {
+          logDebug('Collector: calling onStateExited on nested state machine');
+          this.activeStateMachine.onStateExited();
+        }
+      } catch (err: any) {
+        logDebug(`Collector: error calling onStateExited: ${err.message || err}`);
+      }
+      this.activeStateMachine = null;
+    }
+    
+    if (this.bot.ashfinder) {
+      try {
+        this.bot.ashfinder.stop();
+        logDebug('Collector: stopped baritone pathfinding');
+      } catch (err: any) {
+        logDebug(`Collector: error stopping baritone: ${err.message || err}`);
+      }
+    }
+    
+    try {
+      this.bot.clearControlStates();
+      logDebug('Collector: cleared bot control states');
+    } catch (err: any) {
+      logDebug(`Collector: error clearing control states: ${err.message || err}`);
+    }
+    
+    this.workerManager.clearPending();
+    this.sequenceTargets = [];
+    this.sequenceIndex = 0;
+    this.targetRetryCount.clear();
+    this.safeChat('stopped');
   }
 
   async startNextTarget(): Promise<void> {
@@ -234,6 +287,8 @@ export class TargetExecutor {
       best,
       (success: boolean) => {
         this.running = false;
+        this.activeStateMachine = null;
+        this.activeBotStateMachine = null;
         if (success) {
           this.safeChat('plan complete');
           this.handleTargetSuccess();
@@ -243,7 +298,8 @@ export class TargetExecutor {
         }
       }
     );
-    new BotStateMachine(this.bot, sm);
+    this.activeStateMachine = sm;
+    this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
   }
 
   private validateTargetSuccess(): boolean {
