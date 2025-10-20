@@ -194,6 +194,42 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   };
 
+  stateMachine.onStateExited = function() {
+    logger.debug('SmartMoveTo: cleaning up on state exit');
+    
+    if (baritoneMove && typeof baritoneMove.onStateExited === 'function') {
+      try {
+        baritoneMove.onStateExited();
+      } catch (err: any) {
+        logger.warn(`SmartMoveTo: error cleaning up baritone: ${err.message}`);
+      }
+    }
+    
+    if (mineflayerMove && typeof mineflayerMove.onStateExited === 'function') {
+      try {
+        mineflayerMove.onStateExited();
+      } catch (err: any) {
+        logger.warn(`SmartMoveTo: error cleaning up mineflayer: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('SmartMoveTo: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`SmartMoveTo: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('SmartMoveTo: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`SmartMoveTo: error clearing control states: ${err.message}`);
+    }
+  };
+
   return stateMachine;
 }
 

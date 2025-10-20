@@ -717,6 +717,54 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
   (stateMachine as any).resetBaseline = resetBaseline;
   (stateMachine as any).collectedCount = collectedCount;
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('CollectBlock: cleaning up on state exit');
+    
+    if (goToBlock && typeof goToBlock.onStateExited === 'function') {
+      try {
+        goToBlock.onStateExited();
+        logger.debug('CollectBlock: cleaned up goToBlock');
+      } catch (err: any) {
+        logger.warn(`CollectBlock: error cleaning up goToBlock: ${err.message}`);
+      }
+    }
+    
+    if (mineBlock && typeof mineBlock.onStateExited === 'function') {
+      try {
+        mineBlock.onStateExited();
+        logger.debug('CollectBlock: cleaned up mineBlock');
+      } catch (err: any) {
+        logger.warn(`CollectBlock: error cleaning up mineBlock: ${err.message}`);
+      }
+    }
+    
+    if (goToDrop && typeof goToDrop.onStateExited === 'function') {
+      try {
+        goToDrop.onStateExited();
+        logger.debug('CollectBlock: cleaned up goToDrop');
+      } catch (err: any) {
+        logger.warn(`CollectBlock: error cleaning up goToDrop: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('CollectBlock: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`CollectBlock: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('CollectBlock: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`CollectBlock: error clearing control states: ${err.message}`);
+    }
+  };
+  
   return stateMachine;
 }
 

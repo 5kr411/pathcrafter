@@ -328,7 +328,38 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     }
   });
 
-  return new NestedStateMachine([tEnterToPrepare, tPrepareToCollect, tPrepareToExit, tCollectToPrepare, tCollectToExit], enter, exit);
+  const stateMachine = new NestedStateMachine([tEnterToPrepare, tPrepareToCollect, tPrepareToExit, tCollectToPrepare, tCollectToExit], enter, exit);
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('MineAnyOf: cleaning up on state exit');
+    
+    if (collectBehavior && typeof collectBehavior.onStateExited === 'function') {
+      try {
+        collectBehavior.onStateExited();
+        logger.debug('MineAnyOf: cleaned up collectBehavior');
+      } catch (err: any) {
+        logger.warn(`MineAnyOf: error cleaning up collectBehavior: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('MineAnyOf: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`MineAnyOf: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('MineAnyOf: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`MineAnyOf: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 }
 
 export default createMineAnyOfState;

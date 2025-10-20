@@ -301,7 +301,47 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
   };
 
   const transitions = [enterToExit, enterToFind, findToMove, moveToMine, moveToExit, mineToExit, mineToRetry];
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('BreakAtPosition: cleaning up on state exit');
+    
+    if (moveTo && typeof moveTo.onStateExited === 'function') {
+      try {
+        moveTo.onStateExited();
+        logger.debug('BreakAtPosition: cleaned up moveTo');
+      } catch (err: any) {
+        logger.warn(`BreakAtPosition: error cleaning up moveTo: ${err.message}`);
+      }
+    }
+    
+    if (mine && typeof mine.onStateExited === 'function') {
+      try {
+        mine.onStateExited();
+        logger.debug('BreakAtPosition: cleaned up mine');
+      } catch (err: any) {
+        logger.warn(`BreakAtPosition: error cleaning up mine: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('BreakAtPosition: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`BreakAtPosition: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('BreakAtPosition: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`BreakAtPosition: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 }
 
 export default createBreakAtPositionState;

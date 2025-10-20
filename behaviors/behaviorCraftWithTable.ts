@@ -640,7 +640,56 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     followDropToExit2
   ];
 
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('CraftWithTable: cleaning up on state exit');
+    
+    if (placeTable && typeof placeTable.onStateExited === 'function') {
+      try {
+        placeTable.onStateExited();
+        logger.debug('CraftWithTable: cleaned up placeTable');
+      } catch (err: any) {
+        logger.warn(`CraftWithTable: error cleaning up placeTable: ${err.message}`);
+      }
+    }
+    
+    if (breakTable && typeof breakTable.onStateExited === 'function') {
+      try {
+        breakTable.onStateExited();
+        logger.debug('CraftWithTable: cleaned up breakTable');
+      } catch (err: any) {
+        logger.warn(`CraftWithTable: error cleaning up breakTable: ${err.message}`);
+      }
+    }
+    
+    if (followDrop && typeof followDrop.onStateExited === 'function') {
+      try {
+        followDrop.onStateExited();
+        logger.debug('CraftWithTable: cleaned up followDrop');
+      } catch (err: any) {
+        logger.warn(`CraftWithTable: error cleaning up followDrop: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('CraftWithTable: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`CraftWithTable: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('CraftWithTable: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`CraftWithTable: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 };
 
 export default createCraftWithTableState;

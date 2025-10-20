@@ -615,7 +615,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     }
   });
 
-  return new NestedStateMachine(
+  const stateMachine = new NestedStateMachine(
     [
       initToFind,
       findToSmelt,
@@ -641,6 +641,55 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     enter,
     exit
   );
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('Smelt: cleaning up on state exit');
+    
+    if (breakFurnace && typeof breakFurnace.onStateExited === 'function') {
+      try {
+        breakFurnace.onStateExited();
+        logger.debug('Smelt: cleaned up breakFurnace');
+      } catch (err: any) {
+        logger.warn(`Smelt: error cleaning up breakFurnace: ${err.message}`);
+      }
+    }
+    
+    if (placeFurnace && typeof placeFurnace.onStateExited === 'function') {
+      try {
+        placeFurnace.onStateExited();
+        logger.debug('Smelt: cleaned up placeFurnace');
+      } catch (err: any) {
+        logger.warn(`Smelt: error cleaning up placeFurnace: ${err.message}`);
+      }
+    }
+    
+    if (followDrop && typeof followDrop.onStateExited === 'function') {
+      try {
+        followDrop.onStateExited();
+        logger.debug('Smelt: cleaned up followDrop');
+      } catch (err: any) {
+        logger.warn(`Smelt: error cleaning up followDrop: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('Smelt: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`Smelt: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('Smelt: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`Smelt: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 }
 
 export default createSmeltState;

@@ -243,7 +243,38 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
 
   const transitions = [enterToExit, enterToInit, initToExit, initToBreak, breakToAwait, awaitToInit, awaitToExit];
 
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('ClearArea: cleaning up on state exit');
+    
+    if (breaker && typeof breaker.onStateExited === 'function') {
+      try {
+        breaker.onStateExited();
+        logger.debug('ClearArea: cleaned up breaker');
+      } catch (err: any) {
+        logger.warn(`ClearArea: error cleaning up breaker: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('ClearArea: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`ClearArea: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('ClearArea: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`ClearArea: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 }
 
 export default createClearAreaState;

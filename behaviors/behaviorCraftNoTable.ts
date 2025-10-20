@@ -283,7 +283,29 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
 
   const transitions = [enterToExit, enterToWaitForCraft, waitForCraftToExit];
 
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('CraftNoTable: cleaning up on state exit');
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('CraftNoTable: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`CraftNoTable: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('CraftNoTable: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`CraftNoTable: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 }
 
 export default createCraftNoTableState;

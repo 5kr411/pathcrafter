@@ -526,7 +526,47 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     clearAreaToReposition
   ];
 
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  
+  stateMachine.onStateExited = function() {
+    logger.debug('PlaceNear: cleaning up on state exit');
+    
+    if (moveToPlaceCoords && typeof moveToPlaceCoords.onStateExited === 'function') {
+      try {
+        moveToPlaceCoords.onStateExited();
+        logger.debug('PlaceNear: cleaned up moveToPlaceCoords');
+      } catch (err: any) {
+        logger.warn(`PlaceNear: error cleaning up moveToPlaceCoords: ${err.message}`);
+      }
+    }
+    
+    if (clearArea && typeof clearArea.onStateExited === 'function') {
+      try {
+        clearArea.onStateExited();
+        logger.debug('PlaceNear: cleaned up clearArea');
+      } catch (err: any) {
+        logger.warn(`PlaceNear: error cleaning up clearArea: ${err.message}`);
+      }
+    }
+    
+    if (bot.ashfinder) {
+      try {
+        bot.ashfinder.stop();
+        logger.debug('PlaceNear: stopped baritone pathfinding');
+      } catch (err: any) {
+        logger.debug(`PlaceNear: error stopping baritone: ${err.message}`);
+      }
+    }
+    
+    try {
+      bot.clearControlStates();
+      logger.debug('PlaceNear: cleared bot control states');
+    } catch (err: any) {
+      logger.debug(`PlaceNear: error clearing control states: ${err.message}`);
+    }
+  };
+  
+  return stateMachine;
 }
 
 export default createPlaceNearState;
