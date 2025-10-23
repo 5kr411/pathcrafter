@@ -55,6 +55,34 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
   // Distance threshold at which we allow switching to baritone fallback
   const baritoneFallbackMinDistance = typeof targets.baritoneFallbackMinDistance === 'number' ? targets.baritoneFallbackMinDistance : 6;
   let mineflayerStartTime: number | null = null;
+  // Progress gating: as long as bot is moving significantly, don't fall back
+  const progressWindowMs = typeof targets.progressWindowMs === 'number' ? targets.progressWindowMs : 10000;
+  const minProgressDelta = typeof targets.minProgressDelta === 'number' ? targets.minProgressDelta : 2;
+  let lastProgressCheckTime: number | null = null;
+  let lastProgressPosition: any = null;
+
+  const recordProgressSnapshot = () => {
+    lastProgressCheckTime = Date.now();
+    if (bot.entity?.position) {
+      const p = bot.entity.position;
+      lastProgressPosition = { x: p.x, y: p.y, z: p.z };
+    } else {
+      lastProgressPosition = null;
+    }
+  };
+
+  const hasSignificantProgress = (): boolean => {
+    if (!lastProgressCheckTime || !lastProgressPosition || !bot.entity?.position) return false;
+    const now = Date.now();
+    if (now - lastProgressCheckTime < progressWindowMs) return false;
+    const p = bot.entity.position;
+    const dx = p.x - lastProgressPosition.x;
+    const dy = p.y - lastProgressPosition.y;
+    const dz = p.z - lastProgressPosition.z;
+    const moved = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    recordProgressSnapshot();
+    return moved >= minProgressDelta;
+  };
   
   const getDistance = (): number => {
     if (!targets.position || !bot.entity?.position) return Infinity;
@@ -71,6 +99,7 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     shouldTransition: () => true,
     onTransition: () => {
       mineflayerStartTime = Date.now();
+      recordProgressSnapshot();
       logger.info('SmartMoveTo: attempting mineflayer pathfinding');
     }
   });
@@ -95,15 +124,15 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
       
       // Check if mineflayer failed (stuck or didn't reach goal)
       const didFail = typeof mineflayerMove.didFail === 'function' ? mineflayerMove.didFail() : false;
-      const distanceToTarget = mineflayerMove.distanceToTarget();
-      const reachedGoal = distanceToTarget < (mineflayerMove.distance || 1);
-      
-      // Don't fallback if we succeeded
-      if (reachedGoal && !didFail) {
-        return false;
-      }
+      // Only allow baritone fallback when mineflayer explicitly reports stuck
+      if (!didFail) return false;
       // Guard: don't mark as failed immediately; ensure minimum active time elapsed
       if (mineflayerStartTime && (Date.now() - mineflayerStartTime) < minMineflayerActiveMs) {
+        return false;
+      }
+      // New guard: if we've made significant progress recently, keep using mineflayer
+      if (hasSignificantProgress()) {
+        logger.debug('SmartMoveTo: continuing mineflayer (recent progress detected)');
         return false;
       }
       
@@ -117,12 +146,7 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       const distance = getDistance();
-      const didFail = typeof mineflayerMove.didFail === 'function' ? mineflayerMove.didFail() : false;
-      if (didFail) {
-        logger.info(`SmartMoveTo: mineflayer got stuck, trying baritone fallback (distance: ${distance.toFixed(2)}m)`);
-      } else {
-        logger.info(`SmartMoveTo: mineflayer failed to reach goal, trying baritone fallback (distance: ${distance.toFixed(2)}m)`);
-      }
+      logger.info(`SmartMoveTo: mineflayer stuck, using baritone fallback (distance: ${distance.toFixed(2)}m)`);
     }
   });
 
@@ -141,20 +165,28 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
       if (reachedGoal && !didFail) {
         return false;
       }
-      
-      // Don't exit if baritone fallback is available
-      if (useBaritoneAsFallback && hasBaritone && getDistance() >= 10) {
+      // If not stuck, do not exit; allow mineflayer to continue attempts
+      if (!didFail) {
+        // If we're making progress, keep going; otherwise, allow re-evaluation next tick
+        if (hasSignificantProgress()) {
+          logger.debug('SmartMoveTo: mineflayer not stuck and making progress; not exiting');
+          return false;
+        }
         return false;
       }
-      
-      return true;
+      // If stuck but baritone fallback disabled/unavailable, exit
+      if (!useBaritoneAsFallback || !hasBaritone) {
+        return true;
+      }
+      // If stuck and fallback available, let the other transition handle it
+      return false;
     },
     onTransition: () => {
       const didFail = typeof mineflayerMove.didFail === 'function' ? mineflayerMove.didFail() : false;
-      if (didFail) {
-        logger.warn('SmartMoveTo: mineflayer got stuck and no baritone fallback available');
-      } else {
-        logger.warn('SmartMoveTo: mineflayer failed and no baritone fallback available');
+      if (didFail && (!useBaritoneAsFallback || !hasBaritone)) {
+        logger.warn('SmartMoveTo: mineflayer stuck and no baritone fallback available');
+      } else if (!didFail) {
+        logger.warn('SmartMoveTo: mineflayer finished without success; not using baritone fallback');
       }
     }
   });
