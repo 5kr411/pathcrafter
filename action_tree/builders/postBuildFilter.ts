@@ -276,19 +276,53 @@ function collectAvailableItems(
   }
 
   // Recurse into children FIRST to collect what's actually available deeper in the tree
-  const childAvailable: AvailableItems = {
-    exactItems: new Set<string>(),
-    families: new Set<string>()
-  };
   if (node.children && node.children.variants) {
     for (const child of node.children.variants) {
-      collectAvailableItems(child.value, childAvailable);
+      collectAvailableItems(child.value, available);
     }
   }
 
-  // Leaf nodes (mine/hunt): these are the base sources - always collect
+  // Root nodes with children that produce items: mark the root's item as available
+  // This is ONLY for dependency injection cases (e.g., stick dep for diamond_pickaxe)
+  // where the root node represents an intermediate crafting step.
+  //
+  // CRITICAL: Only add the root item if children actually produce it.
+  // When combineSimilarNodes is enabled, root nodes exist for all variants (e.g., all wood types)
+  // but we should only mark a variant as available if it's actually produced by children.
+  if (
+    node.action === 'root' &&
+    node.children &&
+    node.children.variants &&
+    node.children.variants.length > 0 &&
+    node.what &&
+    node.what.variants
+  ) {
+    // Check if children actually produced this root's item
+    const rootItem = typeof node.what.variants[0].value === 'string' 
+      ? node.what.variants[0].value 
+      : node.what.variants[0].value?.item;
+    
+    // Only add if children actually produced this exact item
+    if (rootItem && available.exactItems.has(rootItem)) {
+      // Item already added by children - this is the correct case
+      // Children mined/crafted this item, so it's truly available
+    } else if (rootItem) {
+      // Root item NOT in available means children didn't produce it
+      // This happens with combineSimilarNodes when oak_log root exists but only birch_log is mined
+      // Don't add it - it's not actually available
+    }
+  }
+
+  // Leaf nodes (mine/hunt): these are the base sources
   // For mine nodes, use targetItem which contains the actual drops (e.g., cobblestone from stone)
   // Fall back to 'what' for test fixtures or simplified structures
+  // 
+  // Note: Mine nodes that exist in the tree should correspond to blocks in the world,
+  // as buildMineNodes filters based on worldBudget before creating them.
+  // 
+  // We only add exact items, NOT families, because world-specific resources should not make
+  // all family members available. If birch_log is in the world, only birch_planks should be
+  // craftable, not oak_planks or other wood variants.
   if (node.action === 'mine') {
     const targetItems = (node.targetItem?.variants || node.what?.variants || []);
     for (const variant of targetItems) {
@@ -296,30 +330,17 @@ function collectAvailableItems(
         typeof variant.value === 'string' ? variant.value : variant.value?.item;
       if (itemName) {
         available.exactItems.add(itemName);
-        // Add family only for combinable items (wood types)
-        if (isCombinableFamily(itemName)) {
-          const family = getFamilyFromName(itemName);
-          if (family) {
-            available.families.add(family);
-          }
-        }
       }
     }
   }
 
-  // Hunt nodes: collect drops
+  // Hunt nodes: collect drops (exact items only, not families)
   if (node.action === 'hunt' && node.what && node.what.variants) {
     for (const variant of node.what.variants) {
       const itemName =
         typeof variant.value === 'string' ? variant.value : variant.value?.item;
       if (itemName) {
         available.exactItems.add(itemName);
-        if (isCombinableFamily(itemName)) {
-          const family = getFamilyFromName(itemName);
-          if (family) {
-            available.families.add(family);
-          }
-        }
       }
     }
   }
@@ -341,10 +362,10 @@ function collectAvailableItems(
       const ingredients = ingredientVariant?.value || [];
       return ingredients.every((ingredient: any) => {
         if (!ingredient?.item) return true;
-        if (childAvailable.exactItems.has(ingredient.item)) return true;
+        if (available.exactItems.has(ingredient.item)) return true;
         if (isCombinableFamily(ingredient.item)) {
           const family = getFamilyFromName(ingredient.item);
-          if (family && childAvailable.families.has(family)) return true;
+          if (family && available.families.has(family)) return true;
         }
         return false;
       });
@@ -409,8 +430,8 @@ function collectAvailableItems(
       
       const inputInInventory = inv ? (inv.get(inputItem) || 0) > 0 : false;
       const inputAvailable = inputInInventory ||
-        childAvailable.exactItems.has(inputItem) ||
-        (isCombinableFamily(inputItem) && getFamilyFromName(inputItem) && childAvailable.families.has(getFamilyFromName(inputItem)!));
+        available.exactItems.has(inputItem) ||
+        (isCombinableFamily(inputItem) && getFamilyFromName(inputItem) && available.families.has(getFamilyFromName(inputItem)!));
       
       if (inputAvailable) {
         const itemName = resultVariant.value?.item || resultVariant.value;
@@ -425,14 +446,6 @@ function collectAvailableItems(
         }
       }
     }
-  }
-
-  // Merge child availability
-  for (const item of childAvailable.exactItems) {
-    available.exactItems.add(item);
-  }
-  for (const family of childAvailable.families) {
-    available.families.add(family);
   }
 }
 
