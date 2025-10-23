@@ -8,10 +8,11 @@ const {
   NestedStateMachine,
   BehaviorFindBlock,
   BehaviorFindInteractPosition,
-  BehaviorMineBlock,
   BehaviorEquipItem,
   BehaviorMoveTo
 } = require('mineflayer-statemachine');
+
+import { BehaviorMineBlock } from './behaviorMineBlock';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import logger from '../utils/logger';

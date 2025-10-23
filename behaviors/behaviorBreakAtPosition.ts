@@ -3,10 +3,10 @@ const {
   BehaviorIdle,
   NestedStateMachine,
   BehaviorFindInteractPosition,
-  BehaviorMoveTo,
-  BehaviorMineBlock
+  BehaviorMoveTo
 } = require('mineflayer-statemachine');
 
+import { BehaviorMineBlock } from './behaviorMineBlock';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 
