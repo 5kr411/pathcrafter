@@ -1,5 +1,6 @@
 import { MovementGoal, goalToBaritoneGoal, positionToGoal } from './movementTypes';
 import logger from '../utils/logger';
+import { forceStopAllMovement } from '../utils/movement';
 
 interface Bot {
   entity?: any;
@@ -57,6 +58,9 @@ class BehaviorBaritoneMoveTo {
     this.goalReached = false;
     this.pathFailed = false;
     this.startTime = Date.now();
+
+    // Ensure mineflayer isn't issuing any movement goals when baritone starts
+    try { forceStopAllMovement(this.bot, 'baritone enter'); } catch {}
 
     if (!this.bot.ashfinder) {
       logger.error('BehaviorBaritoneMoveTo: ashfinder not available on bot');
@@ -142,13 +146,7 @@ class BehaviorBaritoneMoveTo {
   onStateExited(): void {
     this.active = false;
     
-    if (this.bot.ashfinder) {
-      try {
-        this.bot.ashfinder.stop();
-      } catch (err: any) {
-        logger.warn(`BehaviorBaritoneMoveTo: error stopping pathfinding: ${err.message}`);
-      }
-    }
+    try { forceStopAllMovement(this.bot, 'baritone exit'); } catch {}
     
     this.cleanup();
   }

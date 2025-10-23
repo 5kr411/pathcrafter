@@ -1,4 +1,5 @@
 const { BehaviorMoveTo } = require('mineflayer-statemachine');
+import { forceStopAllMovement } from '../utils/movement';
 import { MovementGoal, goalToMineflayerPosition } from './movementTypes';
 import logger from '../utils/logger';
 
@@ -20,6 +21,8 @@ class BehaviorMineflayerMoveTo {
   private lastProgressCheckPosition: any;
   private lastProgressCheckTime: number;
   private stuckDetected: boolean;
+  private noPathStartTime: number | null;
+  private noPathTimeoutMs: number;
   public stateName: string;
   public active: boolean;
 
@@ -31,6 +34,8 @@ class BehaviorMineflayerMoveTo {
     this.lastProgressCheckPosition = null;
     this.lastProgressCheckTime = 0;
     this.stuckDetected = false;
+    this.noPathStartTime = null;
+    this.noPathTimeoutMs = 3000; // 3s without moving after a goal implies no viable path
     
     this.moveTo = null;
   }
@@ -56,6 +61,8 @@ class BehaviorMineflayerMoveTo {
   }
 
   onStateEntered(): void {
+    // Ensure baritone isn't issuing commands before starting mineflayer move
+    try { forceStopAllMovement(this.bot, 'mineflayer enter'); } catch {}
     if (this.targets.goal && !this.targets.position) {
       const position = goalToMineflayerPosition(this.targets.goal);
       if (position) {
@@ -80,22 +87,8 @@ class BehaviorMineflayerMoveTo {
   }
 
   onStateExited(): void {
-    // Ensure mineflayer's internal BehaviorMoveTo is cancelled cleanly
-    if (this.moveTo?.onStateExited) {
-      try {
-        this.moveTo.onStateExited();
-      } catch (err: any) {
-        logger.warn(`BehaviorMineflayerMoveTo: error during onStateExited: ${err.message}`);
-      }
-    }
-    // Best-effort to cancel any ongoing pathfinder goals
-    try {
-      if (this.bot.pathfinder?.isMoving()) {
-        this.bot.pathfinder.stop();
-      }
-    } catch (err: any) {
-      // Ignore if pathfinder plugin isn't present or throws
-    }
+    // Ensure all movement is fully stopped and listeners cleared
+    try { forceStopAllMovement(this.bot, 'mineflayer exit'); } catch {}
     this.active = false;
   }
 
@@ -125,6 +118,24 @@ class BehaviorMineflayerMoveTo {
       this.lastProgressCheckPosition = currentPos.clone();
       this.lastProgressCheckTime = now;
     }
+    
+    // Treat sustained "no path" / not-moving as stuck to avoid hangs
+    try {
+      const isMoving = typeof this.bot.pathfinder?.isMoving === 'function' ? this.bot.pathfinder.isMoving() : true;
+      if (!isMoving) {
+        if (this.noPathStartTime === null) this.noPathStartTime = now;
+      } else {
+        this.noPathStartTime = null;
+      }
+      if (this.noPathStartTime !== null && (now - this.noPathStartTime) >= this.noPathTimeoutMs) {
+        const targetDistance = this.distanceToTarget();
+        if (targetDistance > Math.max(1, this.distance || 1)) {
+          logger.warn(`BehaviorMineflayerMoveTo: no-path timeout (${((now - this.noPathStartTime)/1000).toFixed(1)}s without movement, ${targetDistance.toFixed(2)}m from target)`);
+          this.stuckDetected = true;
+          return true;
+        }
+      }
+    } catch {}
     
     if (this.moveTo?.isFinished) {
       return this.moveTo.isFinished();

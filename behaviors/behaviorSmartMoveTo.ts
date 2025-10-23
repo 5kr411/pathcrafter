@@ -3,6 +3,7 @@ import createBaritoneMoveToState from './behaviorBaritoneMoveTo';
 import createMineflayerMoveToState from './behaviorMineflayerMoveTo';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
+import { forceStopAllMovement } from '../utils/movement';
 
 interface Bot {
   entity?: any;
@@ -60,6 +61,17 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
   const minProgressDelta = typeof targets.minProgressDelta === 'number' ? targets.minProgressDelta : 2;
   let lastProgressCheckTime: number | null = null;
   let lastProgressPosition: any = null;
+  // Cross-behavior mutual exclusion lock persisted on bot
+  const switchCooldownMs = typeof (targets as any).switchCooldownMs === 'number' ? (targets as any).switchCooldownMs : 1500;
+  const getActiveMover = (): 'mineflayer' | 'baritone' | null => bot.__activeMover || null;
+  const setActiveMover = (m: 'mineflayer' | 'baritone' | null) => {
+    bot.__activeMover = m;
+    bot.__lastMoveSwitch = Date.now();
+  };
+  const timeSinceLastSwitch = (): number => {
+    const t = bot.__lastMoveSwitch || 0;
+    return Date.now() - t;
+  };
 
   const recordProgressSnapshot = () => {
     lastProgressCheckTime = Date.now();
@@ -80,8 +92,20 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     const dy = p.y - lastProgressPosition.y;
     const dz = p.z - lastProgressPosition.z;
     const moved = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    // Only refresh snapshot when we actually evaluate the full window
     recordProgressSnapshot();
     return moved >= minProgressDelta;
+  };
+
+  const getProgressInfo = (): { moved: number; elapsedMs: number } => {
+    if (!lastProgressCheckTime || !lastProgressPosition || !bot.entity?.position) return { moved: 0, elapsedMs: 0 };
+    const now = Date.now();
+    const p = bot.entity.position;
+    const dx = p.x - lastProgressPosition.x;
+    const dy = p.y - lastProgressPosition.y;
+    const dz = p.z - lastProgressPosition.z;
+    const moved = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    return { moved, elapsedMs: now - lastProgressCheckTime };
   };
   
   const getDistance = (): number => {
@@ -98,8 +122,10 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     child: mineflayerMove,
     shouldTransition: () => true,
     onTransition: () => {
+      try { forceStopAllMovement(bot, 'entering mineflayer'); } catch {}
       mineflayerStartTime = Date.now();
       recordProgressSnapshot();
+      setActiveMover('mineflayer');
       logger.info('SmartMoveTo: attempting mineflayer pathfinding');
     }
   });
@@ -122,17 +148,32 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
       if (!mineflayerMove.isFinished()) return false;
       if (!useBaritoneAsFallback || !hasBaritone) return false;
       
-      // Check if mineflayer failed (stuck or didn't reach goal)
+      // Check if mineflayer failed (stuck) or simply finished without reaching goal (no path)
       const didFail = typeof mineflayerMove.didFail === 'function' ? mineflayerMove.didFail() : false;
-      // Only allow baritone fallback when mineflayer explicitly reports stuck
+      const distanceToTarget = mineflayerMove.distanceToTarget();
+      const reachedGoal = distanceToTarget < (mineflayerMove.distance || 1);
+      
+      // If mineflayer finished but did not reach goal (e.g., no path), allow baritone to take over (with cooldown and distance checks)
+      if (!didFail && !reachedGoal) {
+        if (getActiveMover() === 'baritone') return false;
+        if (timeSinceLastSwitch() < switchCooldownMs) return false;
+        const distance = getDistance();
+        if (distance < baritoneFallbackMinDistance) return false;
+        return true;
+      }
+      // Otherwise, only allow baritone fallback when mineflayer explicitly reports stuck
       if (!didFail) return false;
+      // Enforce mutual exclusion and cooldown to avoid thrash
+      if (getActiveMover() === 'baritone') return false;
+      if (timeSinceLastSwitch() < switchCooldownMs) return false;
       // Guard: don't mark as failed immediately; ensure minimum active time elapsed
       if (mineflayerStartTime && (Date.now() - mineflayerStartTime) < minMineflayerActiveMs) {
         return false;
       }
       // New guard: if we've made significant progress recently, keep using mineflayer
       if (hasSignificantProgress()) {
-        logger.debug('SmartMoveTo: continuing mineflayer (recent progress detected)');
+        const pi = getProgressInfo();
+        logger.debug(`SmartMoveTo: continuing mineflayer (recent progress detected: moved ${pi.moved.toFixed(2)}m / ${(pi.elapsedMs/1000).toFixed(1)}s)`);
         return false;
       }
       
@@ -146,7 +187,10 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       const distance = getDistance();
-      logger.info(`SmartMoveTo: mineflayer stuck, using baritone fallback (distance: ${distance.toFixed(2)}m)`);
+      setActiveMover('baritone');
+      try { forceStopAllMovement(bot, 'switching to baritone'); } catch {}
+      const pi = getProgressInfo();
+      logger.info(`SmartMoveTo: mineflayer stuck, using baritone fallback (distance: ${distance.toFixed(2)}m, progress ${pi.moved.toFixed(2)}m / ${(pi.elapsedMs/1000).toFixed(1)}s)`);
     }
   });
 
@@ -169,7 +213,8 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
       if (!didFail) {
         // If we're making progress, keep going; otherwise, allow re-evaluation next tick
         if (hasSignificantProgress()) {
-          logger.debug('SmartMoveTo: mineflayer not stuck and making progress; not exiting');
+          const pi = getProgressInfo();
+          logger.debug(`SmartMoveTo: mineflayer not stuck and making progress; not exiting (progress ${pi.moved.toFixed(2)}m / ${(pi.elapsedMs/1000).toFixed(1)}s)`);
           return false;
         }
         return false;
@@ -202,6 +247,7 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
       } else {
         logger.error('SmartMoveTo: both mineflayer and baritone failed');
       }
+      setActiveMover(null);
     }
   });
 
@@ -238,6 +284,8 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
 
   stateMachine.onStateExited = function() {
     logger.debug('SmartMoveTo: cleaning up on state exit');
+    setActiveMover(null);
+    try { forceStopAllMovement(bot, 'smart move state exit'); } catch {}
     
     if (baritoneMove && typeof baritoneMove.onStateExited === 'function') {
       try {
