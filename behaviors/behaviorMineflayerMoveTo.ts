@@ -80,8 +80,21 @@ class BehaviorMineflayerMoveTo {
   }
 
   onStateExited(): void {
+    // Ensure mineflayer's internal BehaviorMoveTo is cancelled cleanly
     if (this.moveTo?.onStateExited) {
-      this.moveTo.onStateExited();
+      try {
+        this.moveTo.onStateExited();
+      } catch (err: any) {
+        logger.warn(`BehaviorMineflayerMoveTo: error during onStateExited: ${err.message}`);
+      }
+    }
+    // Best-effort to cancel any ongoing pathfinder goals
+    try {
+      if (this.bot.pathfinder?.isMoving()) {
+        this.bot.pathfinder.stop();
+      }
+    } catch (err: any) {
+      // Ignore if pathfinder plugin isn't present or throws
     }
     this.active = false;
   }

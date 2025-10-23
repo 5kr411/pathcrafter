@@ -142,7 +142,7 @@ class BehaviorBaritoneMoveTo {
   onStateExited(): void {
     this.active = false;
     
-    if (this.bot.ashfinder && !this.finished) {
+    if (this.bot.ashfinder) {
       try {
         this.bot.ashfinder.stop();
       } catch (err: any) {

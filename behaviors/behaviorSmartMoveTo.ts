@@ -50,6 +50,11 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
 
   const useBaritoneAsFallback = targets.useBaritoneAsFallback !== false;
   const hasBaritone = !!bot.ashfinder;
+  // Require mineflayer to be active for at least this long before treating it as failed
+  const minMineflayerActiveMs = typeof targets.minMineflayerActiveMs === 'number' ? targets.minMineflayerActiveMs : 3000;
+  // Distance threshold at which we allow switching to baritone fallback
+  const baritoneFallbackMinDistance = typeof targets.baritoneFallbackMinDistance === 'number' ? targets.baritoneFallbackMinDistance : 6;
+  let mineflayerStartTime: number | null = null;
   
   const getDistance = (): number => {
     if (!targets.position || !bot.entity?.position) return Infinity;
@@ -65,6 +70,7 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
     child: mineflayerMove,
     shouldTransition: () => true,
     onTransition: () => {
+      mineflayerStartTime = Date.now();
       logger.info('SmartMoveTo: attempting mineflayer pathfinding');
     }
   });
@@ -96,10 +102,14 @@ function createSmartMoveToState(bot: Bot, targets: Targets): any {
       if (reachedGoal && !didFail) {
         return false;
       }
+      // Guard: don't mark as failed immediately; ensure minimum active time elapsed
+      if (mineflayerStartTime && (Date.now() - mineflayerStartTime) < minMineflayerActiveMs) {
+        return false;
+      }
       
       const distance = getDistance();
-      if (distance < 10) {
-        logger.debug(`SmartMoveTo: skipping baritone fallback for short distance (${distance.toFixed(2)}m < 10m)`);
+      if (distance < baritoneFallbackMinDistance) {
+        logger.debug(`SmartMoveTo: skipping baritone fallback for short distance (${distance.toFixed(2)}m < ${baritoneFallbackMinDistance}m)`);
         return false;
       }
       
