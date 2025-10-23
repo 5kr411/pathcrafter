@@ -182,50 +182,71 @@ function filterSingleCraftNode(
     return originalCount > 0;
   }
 
-  const filteredResultVariants = craftNode.result.variants.filter(
-    (_resultVariant: any, index: number) => {
-      const ingredientVariant = craftNode.ingredients.variants[index];
-      if (!ingredientVariant) return true;
+  const resultCount = (craftNode.result.variants || []).length;
+  const ingCount = (craftNode.ingredients.variants || []).length;
+  const sameLength = resultCount === ingCount;
 
-      const ingredients = ingredientVariant.value || [];
+  // Helper to check if an ingredient variant is fully available
+  const isIngredientVariantAvailable = (ingredientVariant: any): boolean => {
+    const ingredients = ingredientVariant?.value || [];
+    return ingredients.every((ingredient: any) => {
+      if (!ingredient?.item) return true;
 
-      const result = ingredients.every((ingredient: any) => {
-        if (!ingredient?.item) return true;
-        
-        // Check if exact ingredient is available
-        if (available.exactItems.has(ingredient.item)) {
+      if (available.exactItems.has(ingredient.item)) {
+        return true;
+      }
+
+      if (isCombinableFamily(ingredient.item)) {
+        const family = getFamilyFromName(ingredient.item);
+        if (family && available.families.has(family)) {
           return true;
         }
-        
-        // For combinable items, check family match
-        if (isCombinableFamily(ingredient.item)) {
-          const family = getFamilyFromName(ingredient.item);
-          if (family && available.families.has(family)) {
-            return true;
-          }
-        }
-        
-        return false;
-      });
-      
-      return result;
-    }
-  );
+      }
 
-  const filteredIngredientVariants = craftNode.ingredients.variants.filter(
-    (_variant: any, index: number) => {
-      const resultVariant = craftNode.result.variants[index];
-      return filteredResultVariants.includes(resultVariant);
-    }
-  );
+      return false;
+    });
+  };
 
-  if (filteredResultVariants.length > 0) {
-    craftNode.result.variants = filteredResultVariants;
-    craftNode.ingredients.variants = filteredIngredientVariants;
-    return filteredResultVariants.length !== originalCount;
+  if (sameLength) {
+    // Preserve original 1:1 mapping semantics when counts match
+    const filteredResultVariants = craftNode.result.variants.filter(
+      (_resultVariant: any, index: number) => {
+        const ingredientVariant = craftNode.ingredients.variants[index];
+        if (!ingredientVariant) return true;
+        return isIngredientVariantAvailable(ingredientVariant);
+      }
+    );
+
+    const filteredIngredientVariants = craftNode.ingredients.variants.filter(
+      (_variant: any, index: number) => {
+        const resultVariant = craftNode.result.variants[index];
+        return filteredResultVariants.includes(resultVariant);
+      }
+    );
+
+    if (filteredResultVariants.length > 0) {
+      craftNode.result.variants = filteredResultVariants;
+      craftNode.ingredients.variants = filteredIngredientVariants;
+      return filteredResultVariants.length !== originalCount;
+    }
+
+    return false;
   }
 
-  return false;
+  // Mismatch in counts (e.g., single result with many ingredient alternatives):
+  // Keep the result if ANY ingredient variant is available. Prune unavailable ingredient variants.
+  const availableIngredientVariants = (craftNode.ingredients.variants || []).filter(isIngredientVariantAvailable);
+  if (availableIngredientVariants.length > 0) {
+    const ingredientChanged = availableIngredientVariants.length !== ingCount;
+    craftNode.ingredients.variants = availableIngredientVariants;
+    // Keep all result variants (they do not map 1:1 to ingredient variants here)
+    return ingredientChanged;
+  }
+
+  // No viable ingredient alternatives -> prune entirely
+  craftNode.result.variants = [];
+  craftNode.ingredients.variants = [];
+  return originalCount > 0;
 }
 
 /**
@@ -312,33 +333,29 @@ function collectAvailableItems(
     node.ingredients &&
     node.ingredients.variants
   ) {
-    for (let i = 0; i < node.result.variants.length; i++) {
-      const resultVariant = node.result.variants[i];
-      const ingredientVariant = node.ingredients.variants[i];
-      
-      if (!ingredientVariant) continue;
-      
-      const ingredients = ingredientVariant.value || [];
-      const allIngredientsAvailable = ingredients.every((ingredient: any) => {
+    const resultCount = node.result.variants.length;
+    const ingCount = node.ingredients.variants.length;
+    const sameLength = resultCount === ingCount;
+
+    const isIngredientVariantAvailable = (ingredientVariant: any): boolean => {
+      const ingredients = ingredientVariant?.value || [];
+      return ingredients.every((ingredient: any) => {
         if (!ingredient?.item) return true;
-        
-        // Check if ingredient is in child-available items
-        if (childAvailable.exactItems.has(ingredient.item)) {
-          return true;
-        }
-        
-        // For combinable items, check family match
+        if (childAvailable.exactItems.has(ingredient.item)) return true;
         if (isCombinableFamily(ingredient.item)) {
           const family = getFamilyFromName(ingredient.item);
-          if (family && childAvailable.families.has(family)) {
-            return true;
-          }
+          if (family && childAvailable.families.has(family)) return true;
         }
-        
         return false;
       });
-      
-      if (allIngredientsAvailable) {
+    };
+
+    if (sameLength) {
+      for (let i = 0; i < node.result.variants.length; i++) {
+        const resultVariant = node.result.variants[i];
+        const ingredientVariant = node.ingredients.variants[i];
+        if (!ingredientVariant) continue;
+        if (!isIngredientVariantAvailable(ingredientVariant)) continue;
         const itemName = resultVariant.value?.item || resultVariant.value;
         if (itemName) {
           available.exactItems.add(itemName);
@@ -346,6 +363,23 @@ function collectAvailableItems(
             const family = getFamilyFromName(itemName);
             if (family) {
               available.families.add(family);
+            }
+          }
+        }
+      }
+    } else {
+      // When counts differ, if ANY ingredient alternative is available, mark ALL results obtainable
+      const anyAvailable = node.ingredients.variants.some(isIngredientVariantAvailable);
+      if (anyAvailable) {
+        for (const resultVariant of node.result.variants) {
+          const itemName = resultVariant.value?.item || resultVariant.value;
+          if (itemName) {
+            available.exactItems.add(itemName);
+            if (isCombinableFamily(itemName)) {
+              const family = getFamilyFromName(itemName);
+              if (family) {
+                available.families.add(family);
+              }
             }
           }
         }
@@ -447,48 +481,53 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     collectAvailableItems(child.value, available);
   }
 
-  // Check each craft variant
-  const validVariantIndices: Set<number> = new Set();
+  const resultCount = (node.result.variants || []).length;
+  const ingCount = (node.ingredients.variants || []).length;
+  const sameLength = resultCount === ingCount;
 
-  for (let i = 0; i < node.ingredients.variants.length; i++) {
-    const ingredientVariant = node.ingredients.variants[i];
+  const isIngredientVariantAvailable = (ingredientVariant: any): boolean => {
     const ingredients = ingredientVariant?.value || [];
-
-    const allIngredientsAvailable = ingredients.every((ingredient: any) => {
+    return ingredients.every((ingredient: any) => {
       if (!ingredient?.item) return true;
 
-      // Check if available from children
       const isAvailableExact = available.exactItems.has(ingredient.item);
       const isAvailableFamily = isCombinableFamily(ingredient.item) &&
                                 getFamilyFromName(ingredient.item) &&
                                 available.families.has(getFamilyFromName(ingredient.item)!);
 
-      if (isAvailableExact || isAvailableFamily) {
-        return true;
-      }
+      if (isAvailableExact || isAvailableFamily) return true;
 
-      // Not available from children - check if it was in inventory
-      // Key insight: inventory keys persist even when count is 0 (from decrementing during build)
-      // If key exists → ingredient was from inventory (valid)
-      // If key doesn't exist → ingredient was never available (invalid - e.g., diamond_ore outside radius)
       const wasInInventory = context.inventory?.has(ingredient.item) || false;
-      
       return wasInInventory;
     });
+  };
 
-    if (allIngredientsAvailable) {
-      validVariantIndices.add(i);
+  if (sameLength) {
+    const validVariantIndices: Set<number> = new Set();
+    for (let i = 0; i < node.ingredients.variants.length; i++) {
+      const ingredientVariant = node.ingredients.variants[i];
+      if (isIngredientVariantAvailable(ingredientVariant)) {
+        validVariantIndices.add(i);
+      }
     }
-  }
 
-  // Remove variants where ingredients are missing
-  if (validVariantIndices.size < node.result.variants.length) {
-    node.result.variants = node.result.variants.filter((_: any, i: number) => 
-      validVariantIndices.has(i)
-    );
-    node.ingredients.variants = node.ingredients.variants.filter((_: any, i: number) => 
-      validVariantIndices.has(i)
-    );
+    if (validVariantIndices.size < node.result.variants.length) {
+      node.result.variants = node.result.variants.filter((_: any, i: number) => 
+        validVariantIndices.has(i)
+      );
+      node.ingredients.variants = node.ingredients.variants.filter((_: any, i: number) => 
+        validVariantIndices.has(i)
+      );
+    }
+  } else {
+    // Length mismatch: keep results if any ingredient alternative is available; prune ingredient variants to available ones
+    const availableIngredientVariants = (node.ingredients.variants || []).filter(isIngredientVariantAvailable);
+    if (availableIngredientVariants.length === 0) {
+      node.result.variants = [];
+      node.ingredients.variants = [];
+    } else {
+      node.ingredients.variants = availableIngredientVariants;
+    }
   }
 }
 
