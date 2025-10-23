@@ -12,8 +12,8 @@
     "test:unit": "jest --runInBand tests/unit",
     "test:integration": "jest --runInBand tests/integration"
   },
-  "author": "",
-  "license": "ISC",
+  "author": "5kr411",
+  "license": "MIT",
   "dependencies": {
     "@miner-org/mineflayer-baritone": "^4.1.0",
     "minecraft-data": "^3.98.0",
