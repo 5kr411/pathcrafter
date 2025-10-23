@@ -1,17 +1,17 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 
 describe('integration: combine wood families reduces branching', () => {
-    const { resolveMcData } = (analyzeRecipes as any)._internals;
+    const { resolveMcData } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('stick tree has fewer nodes with combineSimilarNodes=true', () => {
-        const treeWithout = analyzeRecipes(mcData, 'stick', 1, { 
+        const treeWithout = plan(mcData, 'stick', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: false 
         });
         
-        const treeWith = analyzeRecipes(mcData, 'stick', 1, { 
+        const treeWith = plan(mcData, 'stick', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 
@@ -36,9 +36,9 @@ describe('integration: combine wood families reduces branching', () => {
     });
 
     test('wooden_pickaxe tree merges alternative ingredient chains', () => {
-        const { enumerateActionPathsGenerator } = (analyzeRecipes as any)._internals;
+        const { enumerateActionPathsGenerator } = (plan as any)._internals;
 
-        const combinedTree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { 
+        const combinedTree = plan(mcData, 'wooden_pickaxe', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 
@@ -65,13 +65,13 @@ describe('integration: combine wood families reduces branching', () => {
     });
 
     test('crafting_table tree has fewer nodes with combineSimilarNodes=true', () => {
-        const treeWithout = analyzeRecipes(mcData, 'crafting_table', 1, { 
+        const treeWithout = plan(mcData, 'crafting_table', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: false 
         });
         
-        const treeWith = analyzeRecipes(mcData, 'crafting_table', 1, { 
+        const treeWith = plan(mcData, 'crafting_table', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 
@@ -97,10 +97,10 @@ describe('integration: combine wood families reduces branching', () => {
     });
 
     test('combining preserves at least one valid path', () => {
-        const { enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
-        const inventory = {};
+        const { enumerateShortestPathsGenerator } = (plan as any)._internals;
+        const inventory = new Map();
         
-        const tree = analyzeRecipes(mcData, 'stick', 1, { 
+        const tree = plan(mcData, 'stick', 1, { 
             log: false, 
             inventory, 
             combineSimilarNodes: true 
@@ -119,7 +119,7 @@ describe('integration: combine wood families reduces branching', () => {
     });
 
     test('combined tree maintains correct counts', () => {
-        const tree = analyzeRecipes(mcData, 'stick', 4, { 
+        const tree = plan(mcData, 'stick', 4, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 
@@ -131,9 +131,9 @@ describe('integration: combine wood families reduces branching', () => {
     });
 
     test('combining works with inventory', () => {
-        const inventory = { oak_log: 2 };
+        const inventory = new Map([['oak_log', 2]]);
         
-        const tree = analyzeRecipes(mcData, 'stick', 2, { 
+        const tree = plan(mcData, 'stick', 2, { 
             log: false, 
             inventory, 
             combineSimilarNodes: true 
@@ -144,7 +144,7 @@ describe('integration: combine wood families reduces branching', () => {
     });
 
     test('combining propagates deep into subtrees', () => {
-        const tree = analyzeRecipes(mcData, 'stick', 1, { 
+        const tree = plan(mcData, 'stick', 1, { 
             log: false, 
             inventory: new Map(), 
             combineSimilarNodes: true 

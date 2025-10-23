@@ -1,4 +1,4 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { ActionStep } from '../../action_tree/types';
 
 function normalizePath(path: ActionStep[]): string {
@@ -16,17 +16,12 @@ function normalizePath(path: ActionStep[]): string {
 }
 
 describe('integration: wooden_pickaxe with inventory', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, computePathWeight } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, computePathWeight } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
-    const inventory = { crafting_table: 1, oak_planks: 3 };
-    const snapshot = {
-        version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2, radius: 32, yMin: 0, yMax: 255,
-        blocks: { oak_log: { count: 50, closestDistance: 5, averageDistance: 10 } }, 
-        entities: {}
-    };
+    const inventory = new Map([['crafting_table', 1], ['oak_planks', 3]]);
 
     test('shortest paths generator maintains length ordering', () => {
-        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const shortest = (Array.from(enumerateShortestPathsGenerator(tree, { inventory })) as ActionStep[][]).map((p: ActionStep[]) => ({ s: normalizePath(p), l: p.length }));
         
         // ordering: shortest non-decreasing lengths
@@ -36,7 +31,7 @@ describe('integration: wooden_pickaxe with inventory', () => {
     });
 
     test('lowest weight generator maintains weight ordering', () => {
-        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const lowest = (Array.from(enumerateLowestWeightPathsGenerator(tree, { inventory })) as ActionStep[][]).map((p: ActionStep[]) => ({ s: normalizePath(p), w: computePathWeight(p) }));
         
         // ordering: lowest non-decreasing weights
@@ -46,7 +41,7 @@ describe('integration: wooden_pickaxe with inventory', () => {
     });
 
     test('shortest paths includes expected optimal path', () => {
-        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const shortest = (Array.from(enumerateShortestPathsGenerator(tree, { inventory })) as ActionStep[][]).map(normalizePath);
         
         const missingKey = 'mine oak_planks 2 | craft inventory 1 2 oak_planks->4 stick | craft table 1 3 oak_planks+2 stick->1 wooden_pickaxe';

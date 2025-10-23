@@ -1,4 +1,4 @@
-.PHONY: build clean test test-planner test-analyzer bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt
+.PHONY: build clean test bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt
 
 # Build TypeScript sources
 build:
@@ -11,13 +11,6 @@ clean:
 # Run test suite
 tests: build
 	npm test
-
-# Test scripts
-test-planner: build
-	node dist/testPlanner.js
-
-test-analyzer: build
-	node dist/testRecipeAnalyzer.js
 
 # E2E Bots
 bot-collect: build

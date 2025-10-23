@@ -1,4 +1,4 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { generateTopNAndFilter } from '../../path_filters';
 import { ActionStep } from '../../action_tree/types';
 
@@ -22,7 +22,7 @@ function hasToolCraft(path: ActionStep[], toolName: string): boolean {
 }
 
 describe('integration: tool inventory check', () => {
-  const { resolveMcData } = (analyzeRecipes as any)._internals;
+  const { resolveMcData } = (plan as any)._internals;
   resolveMcData('1.20.1');
 
   const baseSnapshot = {

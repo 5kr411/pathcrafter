@@ -24,10 +24,6 @@
   },
   "include": [
     "planner.ts",
-    "recipeAnalyzer.ts",
-    "dumpWorld.ts",
-    "testPlanner.ts",
-    "testRecipeAnalyzer.ts",
     "action_tree/**/*.ts",
     "path_generators/**/*.ts",
     "path_optimizations/**/*.ts",
@@ -35,6 +31,7 @@
     "behavior_generator/**/*.ts",
     "behaviors/**/*.ts",
     "bots/**/*.ts",
+    "scripts/**/*.ts",
     "workers/**/*.ts",
     "utils/**/*.ts",
     "tests/**/*.ts"

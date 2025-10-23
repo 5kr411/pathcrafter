@@ -1,13 +1,13 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { ActionStep } from '../../action_tree/types';
 
 describe('integration: smelting stone with inventory items present', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('with furnace+coal+cobblestone in inventory, shortest path is a single smelt', () => {
-        const inventory = { furnace: 1, coal: 1, cobblestone: 1 };
-        const tree = analyzeRecipes(mcData, 'stone', 1, { log: false, inventory });
+        const inventory = new Map([['furnace', 1], ['coal', 1], ['cobblestone', 1]]);
+        const tree = plan(mcData, 'stone', 1, { log: false, inventory });
         const [path] = Array.from(enumerateShortestPathsGenerator(tree, { inventory })) as ActionStep[][];
         expect(path).toBeDefined();
         expect(path.length).toBe(1);

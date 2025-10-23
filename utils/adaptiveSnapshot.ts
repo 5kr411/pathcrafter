@@ -173,17 +173,17 @@ export function createPathValidator(
   plannerFn: any,
   pathGeneratorFn: any
 ): (snapshot: WorldSnapshot) => Promise<boolean> {
-  return async (snapshot: WorldSnapshot): Promise<boolean> => {
+  return async (_snapshot: WorldSnapshot): Promise<boolean> => {
     try {
       logger.info(`AdaptiveSnapshot: validating with path generation for ${item} x${count}`);
       
-      // Build tree with this snapshot
+      // Build tree without world pruning - we just want to validate that paths
+      // CAN be generated with the given inventory, not prune based on world
       const mcData = plannerFn._internals.resolveMcData(mcVersion);
+      const inventoryMap = new Map(Object.entries(inventory));
       const tree = plannerFn(mcData, item, count, {
-        inventory,
-        log: false,
-        pruneWithWorld: true,
-        worldSnapshot: snapshot
+        inventory: inventoryMap,
+        log: false
       });
 
       if (!tree) {

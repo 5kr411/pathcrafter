@@ -1,13 +1,13 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { ActionStep } from '../../action_tree/types';
 
 describe('integration: minimal tool pruning for mining', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('prefers wooden_pickaxe (lowest viable tier) for cobblestone', () => {
-        const inventory = { crafting_table: 1, oak_planks: 5 };
-        const tree = analyzeRecipes(mcData, 'cobblestone', 1, { log: false, inventory });
+        const inventory = new Map([['crafting_table', 1], ['oak_planks', 5]]);
+        const tree = plan(mcData, 'cobblestone', 1, { log: false, inventory });
         const [path] = Array.from(enumerateShortestPathsGenerator(tree, { inventory })) as ActionStep[][];
         expect(path).toBeDefined();
         const mineStep = path.find((s: any) => s.action === 'mine' && (s.targetItem === 'cobblestone' || s.what === 'cobblestone'));

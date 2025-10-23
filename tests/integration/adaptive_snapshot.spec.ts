@@ -1,10 +1,10 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { loadSnapshotFromFile } from '../../utils/worldSnapshot';
 import { captureAdaptiveSnapshot, createPathValidator } from '../../utils/adaptiveSnapshot';
 import * as path from 'path';
 
 describe('integration: adaptive snapshot with progressive radii', () => {
-  const { resolveMcData, enumerateActionPathsGenerator } = (analyzeRecipes as any)._internals;
+  const { resolveMcData, enumerateActionPathsGenerator } = (plan as any)._internals;
   resolveMcData('1.20.1');
 
   // Load real world snapshot data
@@ -114,11 +114,11 @@ describe('integration: adaptive snapshot with progressive radii', () => {
     const bot = createMockBot(realSnapshot);
     
     // Start with inventory that already has materials
-    const inventory = { 
-      crafting_table: 1,
-      oak_planks: 3,
-      stick: 2
-    };
+    const inventory = new Map([
+      ['crafting_table', 1],
+      ['oak_planks', 3],
+      ['stick', 2]
+    ]);
     const item = 'wooden_pickaxe';
     const count = 1;
 
@@ -129,8 +129,8 @@ describe('integration: adaptive snapshot with progressive radii', () => {
       '1.20.1',
       item,
       count,
-      inventory,
-      analyzeRecipes,
+      Object.fromEntries(inventory),
+      plan,
       enumerateActionPathsGenerator
     );
 

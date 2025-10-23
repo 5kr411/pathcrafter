@@ -1,11 +1,11 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 
 describe('integration: smelting injects fuel dependency', () => {
-  const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+  const { resolveMcData, enumerateShortestPathsGenerator } = (plan as any)._internals;
   const mcData = resolveMcData('1.20.1');
 
   test('acquires coal when inventory has none for smelting iron_ingot', () => {
-    const inventory = { furnace: 1, raw_iron: 3, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
+    const inventory = new Map([['furnace', 1], ['raw_iron', 3], ['crafting_table', 1], ['oak_planks', 10], ['stone_pickaxe', 1]]);
     const snapshot = {
       version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2, radius: 32, yMin: 0, yMax: 255,
       blocks: { 
@@ -14,7 +14,7 @@ describe('integration: smelting injects fuel dependency', () => {
       },
       entities: {}
     };
-    const tree = analyzeRecipes(mcData, 'iron_ingot', 3, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+    const tree = plan(mcData, 'iron_ingot', 3, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
 
     let foundFuelAcquisition = false;
     let checked = 0;

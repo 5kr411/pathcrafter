@@ -1,10 +1,10 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { CraftNode, TreeNode } from '../../action_tree/types';
 import { normalizeWoodSuffix } from '../../action_tree/utils/recipeUtils';
 import { getIngredientSuffixKey } from '../../action_tree/builders/recipeGrouper';
 
 describe('unit: aggressive wood grouping', () => {
-  const { resolveMcData, buildRecipeTree } = (analyzeRecipes as any)._internals;
+  const { resolveMcData, buildRecipeTree } = (plan as any)._internals;
   const mcData = resolveMcData('1.20.1');
 
   describe('normalizeWoodSuffix', () => {

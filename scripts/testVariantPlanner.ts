@@ -9,17 +9,17 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import plan from './planner';
-import { logActionTree } from './action_tree/logger';
-import { generateTopNPathsFromGenerators } from './path_generators/generateTopN';
-import { GeneratorOptions } from './path_generators/types';
-import type { WorldSnapshot } from './utils/worldSnapshotTypes';
-import { loadSnapshotFromFile } from './utils/worldSnapshot';
-import { hoistMiningInPaths, dedupePersistentItemsInPaths } from './path_optimizations';
+import plan from '../planner';
+import { logActionTree } from '../action_tree/logger';
+import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
+import { GeneratorOptions } from '../path_generators/types';
+import type { WorldSnapshot } from '../utils/worldSnapshotTypes';
+import { loadSnapshotFromFile } from '../utils/worldSnapshot';
+import { hoistMiningInPaths, dedupePersistentItemsInPaths } from '../path_optimizations';
 
 // Import minecraft-data
 const mcData = require('minecraft-data')('1.20.1');
-const WORLD_SNAPSHOT_DIR = path.resolve(__dirname, 'world_snapshots');
+const WORLD_SNAPSHOT_DIR = path.resolve(__dirname, '../world_snapshots');
 const DEFAULT_PER_GENERATOR = 25;
 
 interface TestConfig {

@@ -24,7 +24,7 @@ const tree = plan('1.20.1', 'wooden_pickaxe', 1, {
 ### Running the Test Planner
 
 ```bash
-npx ts-node testVariantPlanner.ts --item wooden_pickaxe --count 1 --tree --paths
+npx ts-node scripts/testVariantPlanner.ts --item wooden_pickaxe --count 1 --tree --paths
 ```
 
 ## Key Concepts
@@ -390,7 +390,8 @@ pathcrafter/
 │   └── smelt.ts          # Smelting behaviors
 ├── behaviors/            # Reusable behavior implementations
 ├── bots/                 # Bot implementations and executors
-│   └── collector/        # Collection bot with planning
+│   ├── collector/        # Collection bot with planning
+│   └── dumpWorld.ts      # World snapshot capture utility
 ├── path_generators/      # Path generation strategies
 │   ├── actionPathsGenerator.ts
 │   ├── shortestPathsGenerator.ts
@@ -404,11 +405,12 @@ pathcrafter/
 │   ├── worldBudget.ts    # Resource tracking
 │   └── items.ts          # Item utilities
 ├── workers/              # Worker pool for parallel processing
+├── scripts/              # Utility scripts
+│   └── testVariantPlanner.ts # CLI test tool
 ├── tests/                # Test suite
 │   ├── unit/             # Unit tests
 │   └── integration/      # Integration tests
-├── planner.ts            # Main entry point
-└── testVariantPlanner.ts # CLI test tool
+└── planner.ts            # Main entry point
 ```
 
 ### Tree Structure Example

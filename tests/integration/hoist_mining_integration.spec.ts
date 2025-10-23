@@ -1,4 +1,4 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { generateTopNAndFilter } from '../../path_filters';
 import { ActionStep } from '../../action_tree/types';
 
@@ -16,7 +16,7 @@ function firstMineCounts(path: ActionStep[]) {
 }
 
 describe('integration: mining hoist applied post generation/filtering', () => {
-    const { resolveMcData } = (analyzeRecipes as any)._internals;
+    const { resolveMcData } = (plan as any)._internals;
     resolveMcData('1.20.1');
 
     test('wooden_pickaxe: repeated log mining is hoisted into first occurrence', async () => {

@@ -1,8 +1,8 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { TreeNode, CraftNode, MineLeafNode } from '../../action_tree/types';
 
 describe('unit: combine similar nodes', () => {
-    const { resolveMcData, buildRecipeTree } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, buildRecipeTree } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('combineSimilarNodes=false creates separate oak and spruce craft nodes', () => {

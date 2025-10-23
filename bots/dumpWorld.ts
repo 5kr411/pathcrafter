@@ -1,7 +1,7 @@
 import mineflayer from 'mineflayer';
-import { captureRawWorldSnapshot, saveSnapshotToFile } from './utils/worldSnapshot';
-import { getDefaultSnapshotChunkRadius } from './utils/config';
-import logger from './utils/logger';
+import { captureRawWorldSnapshot, saveSnapshotToFile } from '../utils/worldSnapshot';
+import { getDefaultSnapshotChunkRadius } from '../utils/config';
+import logger from '../utils/logger';
 
 const host = process.argv[2] || 'localhost';
 const port = parseInt(process.argv[3] || '25565', 10);

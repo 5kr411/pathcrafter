@@ -2,7 +2,7 @@ const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 const minecraftData = require('minecraft-data');
-import analyzeRecipes from '../recipeAnalyzer';
+import plan from '../planner';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { configureBaritone } from '../utils/baritoneConfig';
 
@@ -30,15 +30,16 @@ bot.once('spawn', () => {
     const item = m[1] || 'iron_ingot';
     const count = Number.parseInt(m[2] || '1');
     const mc = minecraftData(bot.version || '1.20.1');
-    const inventory: Record<string, number> = {};
+    const inventoryRecord: Record<string, number> = {};
     try {
       (bot.inventory?.items() || []).forEach((it: any) => {
-        inventory[it.name] = (inventory[it.name] || 0) + it.count;
+        inventoryRecord[it.name] = (inventoryRecord[it.name] || 0) + it.count;
       });
     } catch (_) {}
-    const tree = analyzeRecipes(mc, item, count, { log: false, inventory });
+    const inventory = new Map(Object.entries(inventoryRecord));
+    const tree = plan(mc, item, count, { log: false, inventory });
     // choose first action path containing a smelt step to requested item
-    const { enumerateActionPathsGenerator } = analyzeRecipes._internals;
+    const { enumerateActionPathsGenerator } = (plan as any)._internals;
     let chosen: any = null;
     for (const p of enumerateActionPathsGenerator(tree, { inventory })) {
       if (p.some((s: any) => s.action === 'smelt' && s.result?.item === item)) {

@@ -1,8 +1,8 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { ActionStep } from '../../action_tree/types';
 
 describe('unit: helpers', () => {
-    const { chooseMinimalToolName, renderName } = (analyzeRecipes as any)._internals;
+    const { chooseMinimalToolName, renderName } = (plan as any)._internals;
 
     test('chooseMinimalToolName prefers lower tier', () => {
         expect(chooseMinimalToolName(['iron_pickaxe', 'wooden_pickaxe', 'stone_pickaxe'])).toBe('wooden_pickaxe');
@@ -14,8 +14,8 @@ describe('unit: helpers', () => {
 });
 
 describe('unit: crafting table dependency', () => {
-    const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (analyzeRecipes as any)._internals;
-    const mcData = (analyzeRecipes as any)._internals.resolveMcData('1.20.1');
+    const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (plan as any)._internals;
+    const mcData = (plan as any)._internals.resolveMcData('1.20.1');
 
     function usesTable(step: ActionStep): boolean { 
         return step && step.action === 'craft' && step.what.variants[0].value === 'table'; 
@@ -39,8 +39,8 @@ describe('unit: crafting table dependency', () => {
     }
 
     test('shortest paths never use table before acquiring one (empty inventory)', () => {
-        const inventory = {};
-        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
+        const inventory = new Map();
+        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         let checked = 0;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
             expect(hasTableBeforeUse(path)).toBe(true);
@@ -49,8 +49,8 @@ describe('unit: crafting table dependency', () => {
     });
 
     test('lowest-weight paths never use table before acquiring one (empty inventory)', () => {
-        const inventory = {};
-        const tree = analyzeRecipes(mcData, 'stone_pickaxe', 1, { log: false, inventory });
+        const inventory = new Map();
+        const tree = plan(mcData, 'stone_pickaxe', 1, { log: false, inventory });
         let checked = 0;
         for (const path of enumerateLowestWeightPathsGenerator(tree, { inventory })) {
             expect(hasTableBeforeUse(path)).toBe(true);

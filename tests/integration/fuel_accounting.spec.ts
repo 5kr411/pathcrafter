@@ -1,17 +1,17 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 
 describe('integration: fuel accounting for multiple smelts', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('smelting 9 stone consumes >=2 coal units in a valid path', () => {
-        const inventory = { furnace: 1, cobblestone: 9, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
+        const inventory = new Map([['furnace', 1], ['cobblestone', 9], ['crafting_table', 1], ['oak_planks', 10], ['stone_pickaxe', 1]]);
         const snapshot = {
             version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
             blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 10 }, coal_ore: { count: 10, closestDistance: 8, averageDistance: 12 } },
             entities: {}
         };
-        const tree = analyzeRecipes(mcData, 'stone', 9, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const tree = plan(mcData, 'stone', 9, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
         // Use shortest paths generator for speed, just check first few paths
         let foundFuelOk = false;
         let checked = 0;

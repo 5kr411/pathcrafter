@@ -1,7 +1,7 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 
 describe('integration: prevent crafting iron_ingot from nuggets without obtaining them', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
     
     const snapshot = {
@@ -15,8 +15,8 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
     };
 
     test('without nuggets, shortest paths do not include nugget->ingot craft', () => {
-        const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const inventory = new Map([['furnace', 1], ['coal', 5], ['raw_iron', 1], ['crafting_table', 1], ['oak_planks', 10], ['stone_pickaxe', 1]]);
+        const tree = plan(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
         // Only check first 10 paths - enough to verify behavior
         let checked = 0;
         let hasInvalid = false;
@@ -31,8 +31,8 @@ describe('integration: prevent crafting iron_ingot from nuggets without obtainin
     });
 
     test('without nuggets, lowest weight paths do not include nugget->ingot craft', () => {
-        const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const inventory = new Map([['furnace', 1], ['coal', 5], ['raw_iron', 1], ['crafting_table', 1], ['oak_planks', 10], ['stone_pickaxe', 1]]);
+        const tree = plan(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
         // Only check first 10 paths
         let checked = 0;
         let hasInvalid = false;

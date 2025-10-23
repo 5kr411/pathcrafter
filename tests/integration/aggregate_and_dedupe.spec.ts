@@ -1,4 +1,4 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { dedupePaths, generateTopNPathsFromGenerators } from '../../path_generators/generateTopN';
 import { ActionStep } from '../../action_tree/types';
 
@@ -15,13 +15,13 @@ function countDuplicates(arr: ActionStep[][]): number {
 }
 
 describe('integration: aggregate top-N and dedupe across generators', () => {
-    const { resolveMcData } = (analyzeRecipes as any)._internals;
+    const { resolveMcData } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('wooden_pickaxe scenario produces duplicates across generators and dedupe removes them', () => {
-        const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (analyzeRecipes as any)._internals;
-        const inventory = { crafting_table: 1, oak_planks: 3 };
-        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
+        const { enumerateActionPathsGenerator, enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (plan as any)._internals;
+        const inventory = new Map([['crafting_table', 1], ['oak_planks', 3]]);
+        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
 
         const perGenerator = 20;
         function takeN(iter: Iterable<ActionStep[]>, n: number): ActionStep[][] { 
@@ -49,9 +49,9 @@ describe('integration: aggregate top-N and dedupe across generators', () => {
     });
 
     test('aggregated paths are returned sorted by non-decreasing weight', async () => {
-        const { computePathWeight } = (analyzeRecipes as any)._internals;
+        const { computePathWeight } = (plan as any)._internals;
         const inventory = new Map([['crafting_table', 1], ['oak_planks', 3]]);
-        const tree = analyzeRecipes(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
+        const tree = plan(mcData, 'wooden_pickaxe', 1, { log: false, inventory });
         const perGenerator = 20;
         const combinedSorted = await generateTopNPathsFromGenerators(tree, { inventory }, perGenerator);
         expect(combinedSorted.length).toBeGreaterThan(0);

@@ -1,4 +1,4 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { generateTopNAndFilter } from '../../path_filters';
 import { ActionStep } from '../../action_tree/types';
 
@@ -32,7 +32,7 @@ function hasAnyPickaxeCraft(path: ActionStep[]): boolean {
 }
 
 describe('integration: better tool in inventory', () => {
-  const { resolveMcData } = (analyzeRecipes as any)._internals;
+  const { resolveMcData } = (plan as any)._internals;
   resolveMcData('1.20.1');
 
   const baseSnapshot = {

@@ -1,8 +1,8 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { TreeNode } from '../../action_tree/types';
 
 describe('integration: world filtering with combined nodes', () => {
-    const { resolveMcData, enumerateShortestPathsGenerator, countActionPaths } = (analyzeRecipes as any)._internals;
+    const { resolveMcData, enumerateShortestPathsGenerator, countActionPaths } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('generates valid paths after filtering combined nodes', () => {
@@ -22,7 +22,7 @@ describe('integration: world filtering with combined nodes', () => {
             entities: {}
         };
 
-        const tree = analyzeRecipes(mcData, 'stick', 1, {
+        const tree = plan(mcData, 'stick', 1, {
             log: false,
             inventory: new Map(),
             combineSimilarNodes: true,
@@ -63,7 +63,7 @@ describe('integration: world filtering with combined nodes', () => {
             entities: {}
         };
 
-        const tree = analyzeRecipes(mcData, 'stick', 1, {
+        const tree = plan(mcData, 'stick', 1, {
             log: false,
             inventory: new Map(),
             combineSimilarNodes: true,
@@ -75,7 +75,7 @@ describe('integration: world filtering with combined nodes', () => {
         expect(tree.children.variants.length).toBeGreaterThan(0);
 
         // Should have valid paths
-        const { countActionPaths } = analyzeRecipes._internals;
+        const { countActionPaths } = (plan as any)._internals;
         const paths = countActionPaths(tree);
         expect(paths).toBeGreaterThan(0);
 
@@ -112,7 +112,7 @@ describe('integration: world filtering with combined nodes', () => {
             entities: {}
         };
 
-        const tree = analyzeRecipes(mcData, 'stick', 1, {
+        const tree = plan(mcData, 'stick', 1, {
             log: false,
             inventory: new Map(),
             combineSimilarNodes: true,
@@ -161,7 +161,7 @@ describe('integration: world filtering with combined nodes', () => {
             entities: {}
         };
 
-        const tree = analyzeRecipes(mcData, 'raw_iron', 1, {
+        const tree = plan(mcData, 'raw_iron', 1, {
             log: false,
             inventory: new Map(),
             combineSimilarNodes: true,
@@ -216,7 +216,7 @@ describe('integration: world filtering with combined nodes', () => {
             entities: {}
         };
 
-        const tree = analyzeRecipes(mcData, 'raw_gold', 1, {
+        const tree = plan(mcData, 'raw_gold', 1, {
             log: false,
             inventory: new Map(),
             combineSimilarNodes: true,
@@ -287,7 +287,7 @@ describe('integration: world filtering with combined nodes', () => {
             entities: {}
         };
 
-        const tree = analyzeRecipes(mcData, 'diamond', 1, {
+        const tree = plan(mcData, 'diamond', 1, {
             log: false,
             inventory: new Map(),
             combineSimilarNodes: true,

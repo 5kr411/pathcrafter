@@ -1,19 +1,14 @@
-import analyzeRecipes from '../../recipeAnalyzer';
+import plan from '../../planner';
 import { collectFirstN } from '../utils/helpers';
 import { ActionStep } from '../../action_tree/types';
 
 describe('integration: smelting iron_ingot with furnace in inventory', () => {
-    const { resolveMcData } = (analyzeRecipes as any)._internals;
+    const { resolveMcData } = (plan as any)._internals;
     const mcData = resolveMcData('1.20.1');
 
     test('tree contains smelt route and some path smelts iron_ingot with coal when furnace present', () => {
-        const inventory = { furnace: 1, coal: 5, raw_iron: 1, crafting_table: 1, oak_planks: 10, stone_pickaxe: 1 };
-        const snapshot = {
-            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
-            blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 10 } },
-            entities: {}
-        };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+        const inventory = new Map([['furnace', 1], ['coal', 5], ['raw_iron', 1], ['crafting_table', 1], ['oak_planks', 10], ['stone_pickaxe', 1]]);
+        const tree = plan(mcData, 'iron_ingot', 1, { log: false, inventory });
 
         // Ensure the tree includes a smelt node to iron_ingot
         let foundSmeltNode = false;
@@ -26,7 +21,7 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
         expect(foundSmeltNode).toBe(true);
 
         // Use shortest paths generator for speed, just check first 5 paths
-        const { enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+        const { enumerateShortestPathsGenerator } = (plan as any)._internals;
         let found = false;
         let checked = 0;
         for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
@@ -38,18 +33,10 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
     });
 
   test('when furnace not present, path includes acquiring raw_iron before smelt', () => {
-    const inventory = { coal: 2, crafting_table: 1 };
-    const snapshot = {
-      version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2, radius: 32, yMin: 0, yMax: 255,
-      blocks: { 
-        iron_ore: { count: 10, closestDistance: 12, averageDistance: 16 },
-        cobblestone: { count: 50, closestDistance: 4, averageDistance: 8 }
-      },
-      entities: {}
-    };
-    const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
+    const inventory = new Map([['coal', 2], ['crafting_table', 1]]);
+    const tree = plan(mcData, 'iron_ingot', 1, { log: false, inventory });
 
-    const { enumerateShortestPathsGenerator } = (analyzeRecipes as any)._internals;
+    const { enumerateShortestPathsGenerator } = (plan as any)._internals;
     let found = false;
     let checked = 0;
     for (const path of enumerateShortestPathsGenerator(tree, { inventory })) {
@@ -67,18 +54,9 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
     test('each generator yields at least 10 paths with starting materials (bounded)', () => {
         const N = 10;
         // Use less inventory to allow more path variations, but include furnace & raw_iron to focus on iron_ingot
-        const inventory = { crafting_table: 1, oak_planks: 5, furnace: 1, raw_iron: 1 };
-        const snapshot = {
-            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 2, radius: 32, yMin: 0, yMax: 255,
-            blocks: { 
-                oak_log: { count: 20, closestDistance: 5, averageDistance: 10 },
-                coal_ore: { count: 10, closestDistance: 8, averageDistance: 12 },
-                oak_planks: { count: 10, closestDistance: 2, averageDistance: 5 }
-            },
-            entities: {}
-        };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
-        const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, enumerateActionPathsGenerator } = (analyzeRecipes as any)._internals;
+        const inventory = new Map([['crafting_table', 1], ['oak_planks', 5], ['furnace', 1], ['raw_iron', 1]]);
+        const tree = plan(mcData, 'iron_ingot', 1, { log: false, inventory });
+        const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator, enumerateActionPathsGenerator } = (plan as any)._internals;
 
         const firstGen = collectFirstN(enumerateActionPathsGenerator(tree, { inventory }), N);
         const firstShortest = collectFirstN(enumerateShortestPathsGenerator(tree, { inventory }), N);
@@ -92,14 +70,9 @@ describe('integration: smelting iron_ingot with furnace in inventory', () => {
 
     test('top N paths in each generator do not duplicate persistent deps (crafting_table/furnace)', () => {
         const N = 20; // Further reduced for speed
-        const inventory = { crafting_table: 1, oak_planks: 10, furnace: 1, coal: 5, raw_iron: 1, stone_pickaxe: 1 };
-        const snapshot = {
-            version: '1.20.1', dimension: 'overworld', center: { x: 0, y: 64, z: 0 }, chunkRadius: 1, radius: 16, yMin: 0, yMax: 255,
-            blocks: { oak_log: { count: 10, closestDistance: 5, averageDistance: 10 } },
-            entities: {}
-        };
-        const tree = analyzeRecipes(mcData, 'iron_ingot', 1, { log: false, inventory, worldSnapshot: snapshot, pruneWithWorld: true });
-        const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (analyzeRecipes as any)._internals;
+        const inventory = new Map([['crafting_table', 1], ['oak_planks', 10], ['furnace', 1], ['coal', 5], ['raw_iron', 1], ['stone_pickaxe', 1]]);
+        const tree = plan(mcData, 'iron_ingot', 1, { log: false, inventory });
+        const { enumerateShortestPathsGenerator, enumerateLowestWeightPathsGenerator } = (plan as any)._internals;
 
         function produced(step: ActionStep): string | null {
             if (!step) return null;
