@@ -239,10 +239,11 @@ export class TargetExecutor {
     }
 
     const best = ranked[0];
-    logInfo(`Collector: executing plan with ${best.length} steps`);
+    const target = entry && entry.target ? entry.target : null;
+    const targetDesc = target ? `${target.item} x${target.count}` : 'unknown target';
+    logInfo(`Collector: executing plan with ${best.length} steps for ${targetDesc}`);
     
     if (best.length === 0) {
-      const target = entry && entry.target ? entry.target : null;
       const invNow = getInventoryObject(this.bot);
       let have = 0;
       if (target && target.item) {
@@ -261,7 +262,7 @@ export class TargetExecutor {
       }
     }
     
-    this.safeChat(`executing plan with ${best.length} steps`);
+    this.safeChat(`executing plan with ${best.length} steps for ${targetDesc}`);
     
     try {
       const resolved = best.map((s: any) => s);
@@ -290,7 +291,9 @@ export class TargetExecutor {
         this.activeStateMachine = null;
         this.activeBotStateMachine = null;
         if (success) {
-          this.safeChat('plan complete');
+          const currentTarget = this.sequenceTargets[this.sequenceIndex];
+          const completedDesc = currentTarget ? `${currentTarget.item} x${currentTarget.count}` : 'target';
+          this.safeChat(`plan complete: ${completedDesc}`);
           this.handleTargetSuccess();
         } else {
           this.safeChat('plan failed');
