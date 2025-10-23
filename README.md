@@ -348,6 +348,59 @@ async function acquireItem(bot: any, itemName: string, count: number) {
 }
 ```
 
+## Running the Collection Bot
+
+The collection bot is an end-to-end mineflayer bot that can acquire items in a live Minecraft world.
+
+### Starting the Bot
+
+```bash
+make bot-collect
+```
+
+The bot connects to `localhost:25565` by default. You can customize connection settings:
+
+```bash
+node dist/bots/collect_paths.js <host> <port> [username] [password]
+```
+
+### In-Game Commands
+
+Once the bot spawns, use these commands in chat:
+
+#### Collect Items
+
+```
+collect <item> <count>[, <item> <count>, ...]
+```
+
+Example:
+```
+collect crafting_table 5, stick 16, wooden_pickaxe 1, stone_pickaxe 1, iron_pickaxe 1, diamond_pickaxe 1, diamond_shovel 1, diamond_helmet 1, diamond_chestplate 1, diamond_leggings 1, diamond_boots 1, diamond_sword 1, diamond_axe 1
+```
+
+The bot will:
+1. Capture a snapshot of the world
+2. Generate optimal paths for each item
+3. Execute the paths in sequence
+4. Report progress in chat
+
+#### Repeat Last Collection
+
+```
+go
+```
+
+Repeats the last `collect` command.
+
+#### Stop Execution
+
+```
+stop
+```
+
+Stops the current collection sequence.
+
 ## Development
 
 ### Running Tests
