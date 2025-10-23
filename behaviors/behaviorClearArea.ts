@@ -257,15 +257,6 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
       }
     }
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('ClearArea: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`ClearArea: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('ClearArea: cleared bot control states');

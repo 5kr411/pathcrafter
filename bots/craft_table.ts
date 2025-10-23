@@ -6,7 +6,6 @@ import createPlaceNearState from '../behaviors/behaviorPlaceNear';
 import createCraftWithTableState from '../behaviors/behaviorCraftWithTable';
 import createBreakAtPositionState from '../behaviors/behaviorBreakAtPosition';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
-import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -23,12 +22,10 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 import logger from '../utils/logger';
 
 bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
-  configureBaritone(bot);
   
   const enter = new BehaviorIdle();
   const placeTargets: any = { item: { name: 'crafting_table' } };

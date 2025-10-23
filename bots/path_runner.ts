@@ -2,7 +2,6 @@ const mineflayer = require('mineflayer');
 const { BotStateMachine } = require('mineflayer-statemachine');
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
-import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = { host: 'localhost', port: 25565, username: 'path_runner' };
 if (process.argv.length >= 4) {
@@ -14,12 +13,10 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 import logger from '../utils/logger';
 
 bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
-  configureBaritone(bot);
   
   const hardcodedPath = [
     { action: 'mine', what: 'spruce_log', targetItem: 'spruce_log', count: 3 },

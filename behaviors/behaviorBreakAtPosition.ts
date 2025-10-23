@@ -324,15 +324,6 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
       }
     }
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('BreakAtPosition: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`BreakAtPosition: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('BreakAtPosition: cleared bot control states');

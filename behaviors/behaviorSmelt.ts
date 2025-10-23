@@ -672,15 +672,6 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       }
     }
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('Smelt: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`Smelt: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('Smelt: cleared bot control states');

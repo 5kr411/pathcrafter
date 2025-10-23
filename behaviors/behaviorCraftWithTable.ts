@@ -672,15 +672,6 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       }
     }
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('CraftWithTable: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`CraftWithTable: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('CraftWithTable: cleared bot control states');

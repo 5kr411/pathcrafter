@@ -6,7 +6,6 @@ import { TargetExecutor } from './collector/target_executor';
 import { CommandHandler } from './collector/command_handler';
 import { setSafeFindRepeatThreshold } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
-import { configureBaritone } from '../utils/baritoneConfig';
 import logger from '../utils/logger';
 
 const config = getConfig();
@@ -25,11 +24,9 @@ if (process.argv.length >= 4) {
 
 const bot: any = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 
 bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
-  configureBaritone(bot);
   
   if (Number.isFinite(config.safeFindRepeatThreshold)) {
     setSafeFindRepeatThreshold(Math.max(1, Math.floor(config.safeFindRepeatThreshold)));

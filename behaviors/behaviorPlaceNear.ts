@@ -549,15 +549,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       }
     }
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('PlaceNear: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`PlaceNear: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('PlaceNear: cleared bot control states');

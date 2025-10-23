@@ -91,15 +91,6 @@ export class TargetExecutor {
       this.activeStateMachine = null;
     }
     
-    if (this.bot.ashfinder) {
-      try {
-        this.bot.ashfinder.stop();
-        logDebug('Collector: stopped baritone pathfinding');
-      } catch (err: any) {
-        logDebug(`Collector: error stopping baritone: ${err.message || err}`);
-      }
-    }
-    
     try {
       this.bot.clearControlStates();
       logDebug('Collector: cleared bot control states');
@@ -126,15 +117,6 @@ export class TargetExecutor {
     if (this.sequenceIndex >= this.sequenceTargets.length) {
       logInfo('Collector: all targets complete');
       this.safeChat('all targets complete');
-      
-      if (this.bot.ashfinder) {
-        try {
-          this.bot.ashfinder.stop();
-          logDebug('Collector: stopped baritone pathfinding');
-        } catch (err: any) {
-          logDebug(`Collector: error stopping baritone: ${err.message || err}`);
-        }
-      }
       
       try {
         this.bot.clearControlStates();
@@ -273,15 +255,6 @@ export class TargetExecutor {
         logger.info(JSON.stringify(resolved));
       }
     } catch (_) {}
-
-    if (this.bot.ashfinder) {
-      try {
-        this.bot.ashfinder.stop();
-        logDebug('Collector: stopped any previous baritone pathfinding before starting new plan');
-      } catch (err: any) {
-        logDebug(`Collector: error stopping baritone: ${err.message || err}`);
-      }
-    }
     
     const sm = buildStateMachineForPath(
       this.bot,

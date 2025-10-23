@@ -3,7 +3,6 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 
 import createCollectBlockState from '../behaviors/behaviorCollectBlock';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
-import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = {
   host: 'localhost',
@@ -20,7 +19,6 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 
 bot.once('spawn', () => {
   const targets: any = {};
@@ -32,7 +30,6 @@ bot.once('spawn', () => {
   if (!targets.amount) targets.amount = 1;
   const collect = createCollectBlockState(bot, targets);
   configurePrecisePathfinder(bot);
-  configureBaritone(bot);
   const exit = new BehaviorIdle();
 
   const startTransition = new StateTransition({

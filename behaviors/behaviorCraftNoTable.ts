@@ -288,15 +288,6 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
   stateMachine.onStateExited = function() {
     logger.debug('CraftNoTable: cleaning up on state exit');
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('CraftNoTable: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`CraftNoTable: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('CraftNoTable: cleared bot control states');

@@ -332,15 +332,6 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       }
     }
     
-    if (bot.ashfinder) {
-      try {
-        bot.ashfinder.stop();
-        logger.debug('MineOneOf: stopped baritone pathfinding');
-      } catch (err: any) {
-        logger.debug(`MineOneOf: error stopping baritone: ${err.message}`);
-      }
-    }
-    
     try {
       bot.clearControlStates();
       logger.debug('MineOneOf: cleared bot control states');

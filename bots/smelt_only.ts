@@ -4,7 +4,6 @@ import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 const minecraftData = require('minecraft-data');
 import plan from '../planner';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
-import { configureBaritone } from '../utils/baritoneConfig';
 
 let botOptions: any = { host: 'localhost', port: 25565, username: 'smelt_only' };
 if (process.argv.length >= 4) {
@@ -16,11 +15,9 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
-bot.loadPlugin(require('@miner-org/mineflayer-baritone').loader);
 
 bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
-  configureBaritone(bot);
   
   bot.chat('smelt_only ready');
   bot.on('chat', (username: string, message: string) => {
