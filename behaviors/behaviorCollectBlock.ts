@@ -655,7 +655,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     child: findBlock,
     name: 'BehaviorCollectBlock: go to drop -> find block',
     shouldTransition: () =>
-      (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 5000) &&
+      (goToDrop.distanceToTarget() <= 0.75 || Date.now() - goToBlockStartTime > 10000) &&
       collectedCount() < targets.amount,
     onTransition: () => {
       logger.debug('go to drop -> find block:', Date.now() - goToBlockStartTime);
