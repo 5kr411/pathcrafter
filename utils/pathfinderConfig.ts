@@ -1,4 +1,5 @@
 const minecraftData = require('minecraft-data');
+import { getLiquidAvoidanceDistance } from './config';
 
 interface Bot {
   version: string;
@@ -83,7 +84,9 @@ export const PRECISE_MOVEMENTS_CONFIG: PathfinderPrecisionConfig = {
   infiniteLiquidDropdownDistance: false,
   avoidWater: true,
   avoidLava: true,
-  dontBreakDripstone: true
+  dontBreakDripstone: true,
+  placeCost: 1,
+  breakCost: 1
 };
 
 export function configurePrecisePathfinder(
@@ -174,9 +177,21 @@ export function configurePrecisePathfinder(
         ].filter((id) => id !== undefined);
         lavaIds.forEach((id) => movements.blocksToAvoid.add(id));
       }
+      
+      if (!movements.exclusionAreasStep) {
+        movements.exclusionAreasStep = [];
+      }
+      const avoidanceRadius = getLiquidAvoidanceDistance();
+      const liquidAvoidance = createLiquidAvoidanceExclusion(bot, avoidanceRadius);
+      movements.exclusionAreasStep.push(liquidAvoidance);
+      
+      if (!movements.exclusionAreasBreak) {
+        movements.exclusionAreasBreak = [];
+      }
+      movements.exclusionAreasBreak.push(liquidAvoidance);
     }
     
-    if (config.exclusionAreasStep) {
+    if (config.exclusionAreasStep && config.exclusionAreasStep.length > 0) {
       if (!movements.exclusionAreasStep) {
         movements.exclusionAreasStep = [];
       }

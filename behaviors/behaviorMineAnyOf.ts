@@ -6,6 +6,7 @@ import { getLastSnapshotRadius } from '../utils/context';
 import { getItemCountInInventory } from '../utils/inventory';
 
 import createCollectBlockState from './behaviorCollectBlock';
+import { isPositionNearLiquid } from './behaviorSafeFindBlock';
 
 interface Vec3Like {
   x: number;
@@ -127,7 +128,8 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
           ? mcData.blocksByName[blockName].id
           : null;
       const matcher = id != null ? id : (b: any) => b && b.name === blockName;
-      const positions = bot.findBlocks({ matching: matcher, maxDistance: radius, count: maxCount }) || [];
+      const allPositions = bot.findBlocks({ matching: matcher, maxDistance: radius, count: maxCount }) || [];
+      const positions = allPositions.filter((p) => !isPositionNearLiquid(bot, p));
       let near = Number.POSITIVE_INFINITY;
       const center = bot.entity && bot.entity.position ? bot.entity.position : { x: 0, y: 0, z: 0 };
       for (const p of positions) {

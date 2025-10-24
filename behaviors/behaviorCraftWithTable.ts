@@ -7,6 +7,7 @@ import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
+import { isPositionNearLiquid } from './behaviorSafeFindBlock';
 
 interface Vec3Like {
   x: number;
@@ -56,10 +57,11 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     } catch (_) {}
     if (!craftingTable) {
       try {
-        const list =
+        const allPositions =
           (bot.findBlocks &&
             bot.findBlocks({ matching: (b) => b.name === 'crafting_table', maxDistance: 4, count: 4 })) ||
           [];
+        const list = allPositions.filter((p) => !isPositionNearLiquid(bot, p));
         for (const p of list) {
           const b = bot.blockAt && bot.blockAt(p, false);
           if (b && b.name === 'crafting_table') {

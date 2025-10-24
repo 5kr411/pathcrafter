@@ -2,6 +2,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorEquipItem, Be
 
 const minecraftData = require('minecraft-data');
 import logger from '../utils/logger';
+import { isPositionNearLiquid } from './behaviorSafeFindBlock';
 import { addStateLogging } from '../utils/stateLogging';
 const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 import { getItemCountInInventory } from '../utils/inventory';
@@ -110,10 +111,10 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       const ids = ['furnace', 'lit_furnace']
         .filter((n) => bot.registry.blocksByName[n] !== undefined)
         .map((n) => bot.registry.blocksByName[n].id);
-      // Use safe finder if available to avoid repeating unreachable furnaces
       if (typeof bot.findBlocks === 'function') {
-        const list = bot.findBlocks({ matching: ids, maxDistance, count: 8 }) || [];
-        for (const p of list) {
+        const allPositions = bot.findBlocks({ matching: ids, maxDistance, count: 8 }) || [];
+        const positions = allPositions.filter((p: any) => !isPositionNearLiquid(bot, p));
+        for (const p of positions) {
           try {
             const b = bot.blockAt(p, false);
             if (b && (b.name === 'furnace' || b.name === 'lit_furnace')) return b;

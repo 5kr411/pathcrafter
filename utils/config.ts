@@ -7,6 +7,7 @@ let defaultPerGeneratorPaths = 50;
 let defaultSnapshotChunkRadius = 3;
 let planningTelemetryEnabled = false;
 let safeFindRepeatThreshold = 3;
+let liquidAvoidanceDistance = 3;
 
 export function setPruneWithWorldEnabled(v: boolean): void {
   pruneWithWorldEnabled = !!v;
@@ -52,5 +53,15 @@ export function setSafeFindRepeatThreshold(n: number): void {
 
 export function getSafeFindRepeatThreshold(): number {
   return safeFindRepeatThreshold;
+}
+
+export function setLiquidAvoidanceDistance(n: number): void {
+  if (Number.isFinite(n) && n >= 0) {
+    liquidAvoidanceDistance = Math.floor(n);
+  }
+}
+
+export function getLiquidAvoidanceDistance(): number {
+  return liquidAvoidanceDistance;
 }
 

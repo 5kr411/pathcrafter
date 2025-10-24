@@ -1,6 +1,7 @@
-import { getSafeFindRepeatThreshold } from '../utils/config';
+import { getSafeFindRepeatThreshold, getLiquidAvoidanceDistance } from '../utils/config';
 
 import logger from '../utils/logger';
+const minecraftData = require('minecraft-data');
 
 interface Vec3 {
   x: number;
@@ -21,6 +22,8 @@ interface Bot {
     count: number;
   }) => Vec3[];
   canSeeBlock: (block: Block) => boolean;
+  blockAt: (pos: Vec3, extraInfos?: boolean) => Block | null;
+  version?: string;
   [key: string]: any;
 }
 
@@ -98,6 +101,36 @@ class BehaviorSafeFindBlock {
     }
   }
 
+  isNearLiquid(pos: Vec3): boolean {
+    try {
+      const avoidanceRadius = getLiquidAvoidanceDistance();
+      if (avoidanceRadius <= 0) return false;
+
+      const mcData = minecraftData(this.bot.version);
+      const liquidIds = new Set([
+        mcData.blocksByName.water?.id,
+        mcData.blocksByName.flowing_water?.id,
+        mcData.blocksByName.lava?.id,
+        mcData.blocksByName.flowing_lava?.id
+      ].filter((id) => id !== undefined));
+
+      for (let dx = -avoidanceRadius; dx <= avoidanceRadius; dx++) {
+        for (let dy = -avoidanceRadius; dy <= avoidanceRadius; dy++) {
+          for (let dz = -avoidanceRadius; dz <= avoidanceRadius; dz++) {
+            const checkPos = { x: pos.x + dx, y: pos.y + dy, z: pos.z + dz };
+            const block = this.bot.blockAt(checkPos, false);
+            if (block && liquidIds.has(block.type)) {
+              return true;
+            }
+          }
+        }
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   private _recordReturn(pos: Vec3): void {
     try {
       const key = posKey(pos);
@@ -126,7 +159,7 @@ class BehaviorSafeFindBlock {
         }) || [];
       let chosen: Vec3 | undefined = undefined;
       for (const p of candidates) {
-        if (!this.isExcluded(p)) {
+        if (!this.isExcluded(p) && !this.isNearLiquid(p)) {
           chosen = p;
           break;
         }
@@ -149,6 +182,36 @@ class BehaviorSafeFindBlock {
 
 export default function createSafeFindBlock(bot: Bot, targets: Targets): BehaviorSafeFindBlock {
   return new BehaviorSafeFindBlock(bot, targets);
+}
+
+export function isPositionNearLiquid(bot: any, pos: Vec3): boolean {
+  try {
+    const avoidanceRadius = getLiquidAvoidanceDistance();
+    if (avoidanceRadius <= 0) return false;
+
+    const mcData = minecraftData(bot.version);
+    const liquidIds = new Set([
+      mcData.blocksByName.water?.id,
+      mcData.blocksByName.flowing_water?.id,
+      mcData.blocksByName.lava?.id,
+      mcData.blocksByName.flowing_lava?.id
+    ].filter((id) => id !== undefined));
+
+    for (let dx = -avoidanceRadius; dx <= avoidanceRadius; dx++) {
+      for (let dy = -avoidanceRadius; dy <= avoidanceRadius; dy++) {
+        for (let dz = -avoidanceRadius; dz <= avoidanceRadius; dz++) {
+          const checkPos = { x: pos.x + dx, y: pos.y + dy, z: pos.z + dz };
+          const block = bot.blockAt(checkPos, false);
+          if (block && liquidIds.has(block.type)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  } catch (_) {
+    return false;
+  }
 }
 
 export { BehaviorSafeFindBlock };
