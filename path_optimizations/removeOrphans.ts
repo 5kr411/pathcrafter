@@ -1,4 +1,5 @@
 import { ActionPath, ActionStep } from '../action_tree/types';
+import { getSmeltsPerUnitForFuel } from '../utils/smeltingConfig';
 
 /**
  * Gets the output item and count from a step
@@ -83,6 +84,15 @@ function addInputsToDemand(step: ActionStep, demand: Map<string, number>, stepCo
       const perSmelt = input.perSmelt || 1;
       const totalNeeded = perSmelt * stepCount;
       demand.set(input.item, (demand.get(input.item) || 0) + totalNeeded);
+    }
+    
+    const fuel = step.fuel?.variants?.[0]?.value;
+    if (fuel && typeof fuel === 'string') {
+      const smeltsPerFuelUnit = getSmeltsPerUnitForFuel(fuel);
+      if (smeltsPerFuelUnit > 0) {
+        const fuelNeeded = Math.ceil(stepCount / smeltsPerFuelUnit);
+        demand.set(fuel, (demand.get(fuel) || 0) + fuelNeeded);
+      }
     }
   }
   
