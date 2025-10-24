@@ -101,6 +101,21 @@ export function configurePrecisePathfinder(
     
     const movements = new Movements(bot, mcData);
     
+    const blocksCantBreakSet = new Set<number>();
+    
+    if (config.dontBreakDripstone !== false) {
+      const dripstoneIds = [
+        mcData.blocksByName.dripstone_block?.id,
+        mcData.blocksByName.pointed_dripstone?.id
+      ].filter((id) => id !== undefined);
+      dripstoneIds.forEach((id) => blocksCantBreakSet.add(id));
+    }
+    
+    bot.canDigBlock = (block: any) => {
+      if (!block || block.type === undefined) return false;
+      return !blocksCantBreakSet.has(block.type);
+    };
+    
     if (config.scafoldingBlocks !== undefined) {
       movements.scafoldingBlocks = config.scafoldingBlocks;
     } else {
@@ -212,16 +227,11 @@ export function configurePrecisePathfinder(
       movements.exclusionAreasPlace.push(...config.exclusionAreasPlace);
     }
     
-    if (config.dontBreakDripstone !== false) {
+    if (blocksCantBreakSet.size > 0) {
       if (!movements.blocksCantBreak) {
         movements.blocksCantBreak = new Set();
       }
-      
-      const dripstoneIds = [
-        mcData.blocksByName.dripstone_block?.id,
-        mcData.blocksByName.pointed_dripstone?.id
-      ].filter((id) => id !== undefined);
-      dripstoneIds.forEach((id) => movements.blocksCantBreak.add(id));
+      blocksCantBreakSet.forEach((id) => movements.blocksCantBreak.add(id));
     }
     
     if (config.placeCost !== undefined) {
