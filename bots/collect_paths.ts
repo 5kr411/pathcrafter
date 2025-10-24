@@ -73,6 +73,13 @@ bot.once('spawn', () => {
     perGenerator: config.perGenerator
   });
 
+  bot.on('death', () => {
+    logger.info('Collector: bot died, resetting and retrying all targets');
+    if (executor.isRunning() || executor.getTargets().length > 0) {
+      executor.resetAndRestart();
+    }
+  });
+
   bot.on('end', () => {
     workerManager.terminate();
   });

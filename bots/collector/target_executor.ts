@@ -63,6 +63,45 @@ export class TargetExecutor {
     return this.sequenceTargets;
   }
 
+  resetAndRestart(): void {
+    logInfo('Collector: resetting all targets and restarting from beginning');
+    this.running = false;
+    
+    if (this.activeBotStateMachine) {
+      try {
+        if (typeof this.activeBotStateMachine.stop === 'function') {
+          this.activeBotStateMachine.stop();
+        }
+      } catch (_) {}
+      this.activeBotStateMachine = null;
+    }
+    
+    if (this.activeStateMachine) {
+      try {
+        if (typeof this.activeStateMachine.onStateExited === 'function') {
+          this.activeStateMachine.onStateExited();
+        }
+      } catch (_) {}
+      this.activeStateMachine = null;
+    }
+    
+    try {
+      this.bot.clearControlStates();
+    } catch (_) {}
+    
+    this.workerManager.clearPending();
+    this.sequenceIndex = 0;
+    this.targetRetryCount.clear();
+    
+    this.safeChat('death detected, restarting all targets');
+    
+    setTimeout(() => {
+      try {
+        this.startNextTarget().catch(() => {});
+      } catch (_) {}
+    }, 3000);
+  }
+
   stop(): void {
     logInfo('Collector: stopping execution');
     this.running = false;
