@@ -166,6 +166,26 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
     return best;
   }
+  
+  function findSolidBaseFallback(maxRadius: number = 5): Vec3Like | null {
+    const botPos = bot.entity.position.clone();
+    for (let r = 1; r <= maxRadius; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        for (let dz = -r; dz <= r; dz++) {
+          if (Math.abs(dx) < r && Math.abs(dz) < r) continue;
+          const checkPos = botPos.clone().floored();
+          checkPos.x += dx;
+          checkPos.z += dz;
+          checkPos.y -= 1;
+          const above = checkPos.clone().offset(0, 1, 0);
+          if (isSolidBlock(checkPos) && bot.world.getBlockType(above) === 0) {
+            return checkPos;
+          }
+        }
+      }
+    }
+    return null;
+  }
   function gatherCandidateObstructions(): Vec3Like[] {
     const head = getHeadroom();
     const list: Vec3Like[] = [];
@@ -235,8 +255,13 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       const rough = base.clone();
       rough.x += offsetX;
       rough.z += offsetZ;
+      
+      const searchRadius = Math.min(2 + Math.floor(placeTries / 2), 5);
       const ground =
-        findSolidBaseNear(rough) || findSolidBaseNear(base) || findSolidBaseNear(base.offset(0, 0, 0));
+        findSolidBaseNear(rough, searchRadius) || 
+        findSolidBaseNear(base, searchRadius) || 
+        findSolidBaseFallback(searchRadius);
+      
       if (ground) {
         const placePos = ground.clone();
         targets.placePosition = placePos;
@@ -251,14 +276,9 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
         logger.info('BehaviorPlaceNear: Set place base:', placePos);
         logger.info('BehaviorPlaceNear: Set target position:', targets.position);
       } else {
-        const fallback = base.floored();
-        fallback.y -= 1;
-        targets.placePosition = fallback;
-        const fallbackPos = fallback.clone();
-        fallbackPos.x += 0.5;
-        fallbackPos.z += 0.5;
-        targets.position = fallbackPos;
-        logger.info('BehaviorPlaceNear: Fallback place base:', targets.placePosition);
+        logger.error('BehaviorPlaceNear: No valid placement location found after searching');
+        targets.placePosition = undefined;
+        targets.position = undefined;
       }
     }
   });
@@ -267,11 +287,20 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     name: 'BehaviorPlaceNear: find place coords -> move to place coords',
     parent: findPlaceCoords,
     child: moveToPlaceCoords,
-    shouldTransition: () => true,
+    shouldTransition: () => !!targets.placePosition && !!targets.position,
     onTransition: () => {
       logger.info('BehaviorPlaceNear: find place coords -> move to place coords');
-      // Start/restart movement timer
       moveStartTime = Date.now();
+    }
+  });
+  
+  const findPlaceCoordsToExitNoValidLocation = new StateTransition({
+    name: 'BehaviorPlaceNear: find place coords -> exit (no valid location)',
+    parent: findPlaceCoords,
+    child: exit,
+    shouldTransition: () => !targets.placePosition || !targets.position,
+    onTransition: () => {
+      logger.error('BehaviorPlaceNear: find place coords -> exit (no valid location found)');
     }
   });
 
@@ -513,6 +542,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     enterToExit,
     enterToFindPlaceCoords,
     findPlaceCoordsMaxAttemptsToExit,
+    findPlaceCoordsToExitNoValidLocation,
     findPlaceCoordsToMoveToPlaceCoords,
     moveToPlaceCoordsMaxAttemptsToExit,
     moveToPlaceCoordsToRepositionOnRefMissing,
