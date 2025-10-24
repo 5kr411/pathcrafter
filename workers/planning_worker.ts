@@ -7,6 +7,7 @@ import { dedupePaths } from '../path_generators/generateTopN';
 import { computePathWeight } from '../utils/pathUtils';
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { dedupePersistentItemsInPaths } from '../path_optimizations/dedupePersistentItems';
+import { removeOrphanedIngredientsInPaths } from '../path_optimizations/removeOrphans';
 import { WorkerPool } from '../utils/workerPool';
 import plan, { _internals } from '../planner';
 import logger from '../utils/logger';
@@ -163,6 +164,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
 
     let ranked = hoistMiningInPaths(merged);
     ranked = dedupePersistentItemsInPaths(ranked, item);
+    ranked = removeOrphanedIngredientsInPaths(ranked);
     const tFilterMs = Date.now() - tFilterStart;
     
     if (ranked.length > 0) {

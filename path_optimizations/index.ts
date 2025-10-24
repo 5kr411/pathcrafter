@@ -7,4 +7,5 @@
 
 export { hoistMiningInPath, hoistMiningInPaths } from './hoistMining';
 export { dedupePersistentItemsInPath, dedupePersistentItemsInPaths } from './dedupePersistentItems';
+export { removeOrphanedIngredientsInPath, removeOrphanedIngredientsInPaths } from './removeOrphans';
 

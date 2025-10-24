@@ -258,9 +258,9 @@ describe('integration: persistent items deduplication in generated paths', () =>
     
     // After deduplication, path should be reasonable length
     // Without optimization, it would be 50-60+ steps
-    // With optimization, should be ~30-40 steps
+    // With optimization, should be ~15-45 steps (removeOrphans makes it even more efficient)
     expect(firstPath.length).toBeLessThan(45);
-    expect(firstPath.length).toBeGreaterThan(25);
+    expect(firstPath.length).toBeGreaterThan(15);
     
     // Count total persistent item crafts - should be exactly 6:
     // 1 crafting_table, 1 wooden_pickaxe, 1 stone_pickaxe, 1 iron_pickaxe, 1 diamond_pickaxe, 1 furnace

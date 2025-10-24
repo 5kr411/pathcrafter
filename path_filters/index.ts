@@ -10,6 +10,7 @@ export {
 
 import { hoistMiningInPaths } from '../path_optimizations/hoistMining';
 import { dedupePersistentItemsInPaths } from '../path_optimizations/dedupePersistentItems';
+import { removeOrphanedIngredientsInPaths } from '../path_optimizations/removeOrphans';
 import { generateTopNPathsFromGenerators } from '../path_generators/generateTopN';
 import { getPruneWithWorldEnabled, getDefaultPerGeneratorPaths } from '../utils/config';
 import { plan, _internals as plannerInternals } from '../planner';
@@ -77,6 +78,7 @@ export async function generateTopNAndFilter(
   // Apply path optimizations
   let optimized = hoistMiningInPaths(filtered);
   optimized = dedupePersistentItemsInPaths(optimized, itemName);
+  optimized = removeOrphanedIngredientsInPaths(optimized);
   
   return optimized;
 }
