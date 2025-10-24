@@ -110,8 +110,11 @@ function isNodeViable(node: any): boolean {
     return true;
   }
   
-  // Root nodes are only viable if they have children (paths to obtain the item)
+  // Root nodes are viable if:
+  // 1. They have children (paths to obtain the item), OR
+  // 2. count=0 (item was satisfied by inventory deduction)
   if (node.action === 'root') {
+    if (node.count === 0) return true;  // Satisfied by inventory
     return node.children && 
            node.children.variants && 
            node.children.variants.length > 0;
@@ -490,8 +493,20 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     }
   }
 
+  // Also mark items as available if they have a child node with count=0
+  // This means the tree builder deducted them from inventory successfully
   for (const child of node.children?.variants || []) {
-    collectAvailableItems(child.value, available);
+    const childNode = child.value;
+    if (childNode.action === 'root' && childNode.count === 0) {
+      // This ingredient was satisfied by inventory deduction
+      const itemName = typeof childNode.what?.variants?.[0]?.value === 'string'
+        ? childNode.what.variants[0].value
+        : childNode.what?.variants?.[0]?.value?.item;
+      if (itemName) {
+        available.exactItems.add(itemName);
+      }
+    }
+    collectAvailableItems(childNode, available);
   }
 
   const resultCount = (node.result.variants || []).length;
@@ -510,8 +525,11 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
 
       if (isAvailableExact || isAvailableFamily) return true;
 
-      const wasInInventory = context.inventory?.has(ingredient.item) || false;
-      return wasInInventory;
+      // Check if this ingredient is available in current inventory in sufficient quantity
+      // This handles the case where the tree builder deducted some but left enough for crafting
+      const requiredCount = (ingredient.perCraftCount || 1) * (node.count || 1);
+      const availableInInventory = context.inventory?.get(ingredient.item) || 0;
+      return availableInInventory >= requiredCount;
     });
   };
 
