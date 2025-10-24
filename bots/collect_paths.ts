@@ -4,7 +4,7 @@ import { getConfig } from './collector/config';
 import { WorkerManager } from './collector/worker_manager';
 import { TargetExecutor } from './collector/target_executor';
 import { CommandHandler } from './collector/command_handler';
-import { setSafeFindRepeatThreshold } from '../utils/config';
+import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import logger from '../utils/logger';
 
@@ -30,6 +30,10 @@ bot.once('spawn', () => {
   
   if (Number.isFinite(config.safeFindRepeatThreshold)) {
     setSafeFindRepeatThreshold(Math.max(1, Math.floor(config.safeFindRepeatThreshold)));
+  }
+
+  if (Number.isFinite(config.liquidAvoidanceDistance)) {
+    setLiquidAvoidanceDistance(Math.max(0, Math.floor(config.liquidAvoidanceDistance)));
   }
 
   const safeChat = (msg: string): void => {

@@ -6,6 +6,7 @@ export interface RuntimeConfig {
   logLevel: string;
   progressLogIntervalMs: number;
   safeFindRepeatThreshold: number;
+  liquidAvoidanceDistance: number;
   usePersistentWorker: boolean;
   combineSimilarNodes: boolean;
 }
@@ -62,6 +63,7 @@ const RUNTIME: RuntimeConfig = {
   logLevel: 'DEBUG',
   progressLogIntervalMs: 250,
   safeFindRepeatThreshold: 10,
+  liquidAvoidanceDistance: 3,
   usePersistentWorker: true,
   combineSimilarNodes: true
 };
