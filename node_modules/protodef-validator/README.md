@@ -54,6 +54,10 @@ throws an exception if the protocol isn't correct
 
 ## History
 
+### 1.4.0
+* [Create commands.yml (#14)](https://github.com/ProtoDef-io/node-protodef-validator/commit/3597c71d35a600c76438b2082782032ab40daa97) (thanks @extremeheat)
+* [update submodule (#13)](https://github.com/ProtoDef-io/node-protodef-validator/commit/d79b1085a2590de5e33b811b777b16902134379b) (thanks @extremeheat)
+
 ### 1.3.0
 
 * update protodef
