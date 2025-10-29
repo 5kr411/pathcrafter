@@ -170,7 +170,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
 
     const itemName = best.itemName || best.blockName;
     const remaining = totalRequiredAmount - getTotalCollected();
-    const amount = Math.max(1, Math.min(remaining, 64));
+    const amount = Math.max(1, remaining);
     selection.chosen = { blockName: best.blockName, itemName, amount };
     return selection.chosen;
   }
