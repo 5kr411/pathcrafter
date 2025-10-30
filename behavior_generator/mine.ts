@@ -1,5 +1,6 @@
 import { ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState, MineTargets } from './types';
+import { ExecutionContext } from '../bots/collector/execution_context';
 
 import createCollectBlockState from '../behaviors/behaviorCollectBlock';
 import logger from '../utils/logger';
@@ -45,16 +46,18 @@ export function computeTargetsForMine(step: ActionStep): MineTargets | null {
  * Creates a behavior state for mining
  * @param bot - Mineflayer bot instance
  * @param step - Mine action step
+ * @param executionContext - Optional execution context for runtime interventions
  * @returns Behavior state that mines the specified block
  */
-export function create(bot: Bot, step: ActionStep): BehaviorState | null {
+export function create(bot: Bot, step: ActionStep, executionContext?: ExecutionContext): BehaviorState | null {
   const t = computeTargetsForMine(step);
   if (!t) return null;
 
   const targets = { 
     itemName: t.itemName, 
     amount: t.amount, 
-    blockName: t.blockName 
+    blockName: t.blockName,
+    executionContext
   };
 
   try {

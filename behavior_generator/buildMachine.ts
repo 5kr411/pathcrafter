@@ -1,5 +1,6 @@
 import { ActionPath, ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState, SharedState } from './types';
+import { ExecutionContext } from '../bots/collector/execution_context';
 
 const {
   StateTransition,
@@ -23,14 +24,15 @@ import logger from '../utils/logger';
  * @param bot - Mineflayer bot instance
  * @param step - Action step to create state for
  * @param _shared - Shared state across steps (currently unused)
+ * @param executionContext - Optional execution context for runtime interventions
  * @returns Behavior state or simple finished state if no handler found
  */
-export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedState): BehaviorState {
+export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedState, executionContext?: ExecutionContext): BehaviorState {
   if (!step || !step.action) return { isFinished: () => true };
 
   try {
     if (genMineAnyOf && typeof genMineAnyOf.canHandle === 'function' && genMineAnyOf.canHandle(step)) {
-      const s = genMineAnyOf.create(bot, step);
+      const s = genMineAnyOf.create(bot, step, executionContext);
       if (s) return s;
     }
   } catch (_) {
@@ -39,7 +41,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
 
   try {
     if (genMineOneOf && typeof genMineOneOf.canHandle === 'function' && genMineOneOf.canHandle(step)) {
-      const s = genMineOneOf.create(bot, step);
+      const s = genMineOneOf.create(bot, step, executionContext);
       if (s) return s;
     }
   } catch (_) {
@@ -48,7 +50,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
 
   try {
     if (genMine && typeof genMine.canHandle === 'function' && genMine.canHandle(step)) {
-      const s = genMine.create(bot, step);
+      const s = genMine.create(bot, step, executionContext);
       if (s) return s;
     }
   } catch (_) {
@@ -104,6 +106,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
  * @param bot - Mineflayer bot instance
  * @param pathSteps - Array of action steps to execute
  * @param onFinished - Callback to invoke when path execution completes (receives success status)
+ * @param executionContext - Optional execution context for runtime interventions
  * @returns NestedStateMachine that executes the entire path
  * 
  * @example
@@ -114,7 +117,8 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
 export function buildStateMachineForPath(
   bot: Bot,
   pathSteps: ActionPath,
-  onFinished?: (success: boolean) => void
+  onFinished?: (success: boolean) => void,
+  executionContext?: ExecutionContext
 ): any {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
@@ -128,7 +132,7 @@ export function buildStateMachineForPath(
   for (const step of pathSteps) {
     let st: any;
     try {
-      st = createStateForStep(bot, step, shared);
+      st = createStateForStep(bot, step, shared, executionContext);
       if (!st) {
         logger.error(`PathBuilder: Failed to create state for step ${index}`);
         shared.failed = true;

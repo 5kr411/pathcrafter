@@ -70,7 +70,8 @@ bot.once('spawn', () => {
     snapshotYHalf: config.snapshotYHalf,
     pruneWithWorld: config.pruneWithWorld,
     combineSimilarNodes: config.combineSimilarNodes,
-    perGenerator: config.perGenerator
+    perGenerator: config.perGenerator,
+    toolDurabilityThreshold: config.toolDurabilityThreshold
   });
 
   bot.on('death', () => {

@@ -9,6 +9,7 @@ export interface RuntimeConfig {
   liquidAvoidanceDistance: number;
   usePersistentWorker: boolean;
   combineSimilarNodes: boolean;
+  toolDurabilityThreshold: number;
 }
 
 export interface Target {
@@ -65,7 +66,8 @@ const RUNTIME: RuntimeConfig = {
   safeFindRepeatThreshold: 10,
   liquidAvoidanceDistance: 3,
   usePersistentWorker: true,
-  combineSimilarNodes: true
+  combineSimilarNodes: true,
+  toolDurabilityThreshold: 20
 };
 
 export function getConfig(): RuntimeConfig {
@@ -86,5 +88,9 @@ export function getPerGenerator(): number {
 
 export function getCombineSimilarNodes(): boolean {
   return RUNTIME.combineSimilarNodes;
+}
+
+export function getToolDurabilityThreshold(): number {
+  return RUNTIME.toolDurabilityThreshold;
 }
 

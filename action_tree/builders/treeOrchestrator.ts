@@ -89,7 +89,28 @@ function buildRecipeTreeInternal(
   const item = mcData?.itemsByName[primaryItem];
   const invMap = context.inventory;
 
+  // For persistent items, preserve the inventory counts for tool availability checking
+  const { isPersistentItem } = require('../../utils/persistentItemsConfig');
+  const persistentItemCounts = new Map<string, number>();
+  if (invMap) {
+    for (const name of variantsToUse) {
+      if (isPersistentItem(name)) {
+        const count = invMap.get(name) || 0;
+        if (count > 0) {
+          persistentItemCounts.set(name, count);
+        }
+      }
+    }
+  }
+
   targetCount = deductFromInventory(invMap, variantsToUse, targetCount);
+
+  // Restore persistent item counts so they remain available for tool checks
+  if (invMap && persistentItemCounts.size > 0) {
+    for (const [name, count] of persistentItemCounts.entries()) {
+      invMap.set(name, count);
+    }
+  }
 
   const whatVariants: VariantGroup<string> = createVariantGroupWithMetadata(
     variantMode,

@@ -20,6 +20,13 @@ import { addStateLogging } from '../utils/stateLogging';
 import { getLastSnapshotRadius } from '../utils/context';
 import createSafeFindBlockState from './behaviorSafeFindBlock';
 import { canSeeTargetBlock, findObstructingBlock } from '../utils/raycasting';
+import { ExecutionContext } from '../bots/collector/execution_context';
+import { signalToolIssue } from '../bots/collector/execution_context';
+import {
+  getMinimumToolForBlock,
+  hasEqualOrBetterToolTier,
+  findBestToolForBlock
+} from '../utils/toolValidation';
 
 const minecraftData = require('minecraft-data');
 
@@ -75,6 +82,7 @@ interface Targets {
   position?: Vec3Like;
   blockPosition?: Vec3Like;
   entity?: Entity | null;
+  executionContext?: ExecutionContext;
   [key: string]: any;
 }
 
@@ -197,19 +205,57 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
           ? new Set(Object.keys(blockInfo.harvestTools).map((id) => Number(id)))
           : null;
       if (!allowed || allowed.size === 0) return null;
-      let best: Item | null = null;
-      let bestScore = -1;
+
+      // Tier order: wooden(0), stone(1), iron(2), golden(3), diamond(4), netherite(5)
+      const toolTiers = ['wooden', 'stone', 'iron', 'golden', 'diamond', 'netherite'];
+      const getToolTier = (itemName: string): number => {
+        for (let i = 0; i < toolTiers.length; i++) {
+          if (itemName.startsWith(toolTiers[i])) return i;
+        }
+        return -1;
+      };
+
+      // First, find the highest tier available
+      let highestTier = -1;
       for (const it of items) {
-        if (!it || typeof it.type !== 'number') continue;
+        if (!it || typeof it.type !== 'number' || !it.name) continue;
         if (!allowed.has(it.type)) continue;
         const meta = mcData.items[it.type];
-        const score = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability! : 0;
-        if (score > bestScore) {
-          best = it;
-          bestScore = score;
+        const maxDurability = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability! : 0;
+        const durabilityUsed = it.durabilityUsed || 0;
+        const remainingUses = maxDurability - durabilityUsed;
+        if (remainingUses <= 0) continue;
+
+        const tier = getToolTier(it.name);
+        if (tier > highestTier) {
+          highestTier = tier;
         }
       }
-      logger.debug(`pickBestToolItemForBlock(${blockName}): selected ${best?.name || 'none'} with durability ${bestScore}`);
+
+      if (highestTier === -1) return null;
+
+      // Then, among tools of the highest tier, select the one with lowest remaining uses
+      let best: Item | null = null;
+      let lowestRemainingUses = Infinity;
+      for (const it of items) {
+        if (!it || typeof it.type !== 'number' || !it.name) continue;
+        if (!allowed.has(it.type)) continue;
+        const tier = getToolTier(it.name);
+        if (tier !== highestTier) continue; // Only consider highest tier
+
+        const meta = mcData.items[it.type];
+        const maxDurability = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability! : 0;
+        const durabilityUsed = it.durabilityUsed || 0;
+        const remainingUses = maxDurability - durabilityUsed;
+        
+        if (remainingUses < lowestRemainingUses && remainingUses > 0) {
+          best = it;
+          lowestRemainingUses = remainingUses;
+        }
+      }
+      
+      const tierName = highestTier >= 0 ? toolTiers[highestTier] : 'unknown';
+      logger.debug(`pickBestToolItemForBlock(${blockName}): selected ${best?.name || 'none'} (${tierName} tier) with ${lowestRemainingUses === Infinity ? 0 : lowestRemainingUses} uses remaining`);
       return best;
     } catch (_) {
       return null;
@@ -502,6 +548,28 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       // Safety check: never mine blocks directly under the bot's feet
       if (isTargetUnderFeet()) {
         return false; // equipToFindBlock will handle this
+      }
+      
+      // Tool requirement check (tier validation only - durability is handled by diggingCompleted event)
+      if (targets.executionContext && !targets.executionContext.toolIssueDetected) {
+        const blockName = targets.blockName;
+        const requiredTool = getMinimumToolForBlock(bot, blockName);
+        if (requiredTool && !hasEqualOrBetterToolTier(bot, requiredTool)) {
+          const tool = findBestToolForBlock(bot, blockName);
+          logger.info(`BehaviorCollectBlock: Block ${blockName} requires ${requiredTool}, requesting upgrade`);
+          signalToolIssue(targets.executionContext, {
+            type: 'requirement',
+            toolName: requiredTool,
+            blockName,
+            currentToolName: tool?.name
+          });
+          return false;
+        }
+      }
+      
+      // If tool issue was already detected, prevent mining
+      if (targets.executionContext && targets.executionContext.toolIssueDetected) {
+        return false;
       }
       
       // If we're in obstruction clearing mode, check if we should keep clearing or proceed to original target

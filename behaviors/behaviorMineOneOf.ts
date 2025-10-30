@@ -4,6 +4,7 @@ const minecraftData = require('minecraft-data');
 import logger from '../utils/logger';
 import { getLastSnapshotRadius, setCurrentSpeciesContext } from '../utils/context';
 import { getItemCountInInventory } from '../utils/inventory';
+import { ExecutionContext } from '../bots/collector/execution_context';
 
 import createCollectBlockState from './behaviorCollectBlock';
 import { isPositionNearLiquid } from './behaviorSafeFindBlock';
@@ -33,12 +34,14 @@ interface Candidate {
 interface Targets {
   candidates: Candidate[];
   amount?: number;
+  executionContext?: ExecutionContext;
 }
 
 interface DynamicTargets {
   blockName: string | null;
   itemName: string | null;
   amount: number;
+  executionContext?: ExecutionContext;
 }
 
 interface MinecraftData {
@@ -127,7 +130,12 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   }
 
   // Prepare a dynamic collect behavior whose targets we mutate at runtime
-  const dynamicTargets: DynamicTargets = { blockName: null, itemName: null, amount: 0 };
+  const dynamicTargets: DynamicTargets = {
+    blockName: null,
+    itemName: null,
+    amount: 0,
+    executionContext: targets.executionContext
+  };
   let collectBehavior: any = null;
   try {
     collectBehavior = createCollectBlockState(bot, dynamicTargets as any);

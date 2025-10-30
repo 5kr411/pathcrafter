@@ -1,5 +1,6 @@
 import { ActionStep } from '../action_tree/types';
 import { Bot, BehaviorState } from './types';
+import { ExecutionContext } from '../bots/collector/execution_context';
 import createMineAnyOfState from '../behaviors/behaviorMineAnyOf';
 
 interface Candidate {
@@ -11,6 +12,7 @@ interface Candidate {
 interface Targets {
   candidates: Candidate[];
   amount: number;
+  executionContext?: ExecutionContext;
 }
 
 function canHandle(step: ActionStep | null | undefined): boolean {
@@ -54,10 +56,10 @@ function computeTargetsForMineAnyOf(step: ActionStep): Targets | null {
   return { candidates, amount };
 }
 
-function create(bot: Bot, step: ActionStep): BehaviorState | null {
+function create(bot: Bot, step: ActionStep, executionContext?: ExecutionContext): BehaviorState | null {
   const t = computeTargetsForMineAnyOf(step);
   if (!t) return null;
-  return createMineAnyOfState(bot, { candidates: t.candidates, amount: t.amount });
+  return createMineAnyOfState(bot, { candidates: t.candidates, amount: t.amount, executionContext });
 }
 
 export { canHandle, computeTargetsForMineAnyOf, create };
