@@ -5,11 +5,11 @@ const {
   BehaviorIdle,
   NestedStateMachine,
   BehaviorFindInteractPosition,
-  BehaviorMoveTo,
   BehaviorPlaceBlock
 } = require('mineflayer-statemachine');
 
 import createClearAreaState from './behaviorClearArea';
+import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
@@ -61,7 +61,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const moveToPlaceCoords = new BehaviorMoveTo(bot, targets);
+  const moveToPlaceCoords = new BehaviorSmartMoveTo(bot, targets);
   moveToPlaceCoords.distance = 0.05;
 
   addStateLogging(moveToPlaceCoords, 'MoveTo', {

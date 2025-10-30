@@ -225,5 +225,59 @@ describe('unit: wooden_pickaxe with logs and sticks in inventory', () => {
     );
     expect(craftOnlyPaths.length).toBeGreaterThan(0);
   });
+
+  test('pale_oak_log inventory yields craft-only path without mining', () => {
+    const mcData21 = getCachedMcData('1.21.4');
+    const inventory = new Map([
+      ['pale_oak_log', 1],
+      ['stick', 2],
+      ['crafting_table', 1]
+    ]);
+
+    const worldBudget = {
+      blocks: {
+        oak_planks: 10
+      },
+      blocksInfo: {
+        oak_planks: { closestDistance: 5 }
+      },
+      entities: {},
+      entitiesInfo: {},
+      distanceThreshold: 32,
+      allowedBlocksWithinThreshold: new Set(['oak_planks']),
+      allowedEntitiesWithinThreshold: new Set<string>()
+    };
+
+    const context: Partial<BuildContext> = {
+      inventory,
+      visited: new Set<string>(),
+      depth: 0,
+      parentPath: [],
+      config: { preferMinimalTools: true, maxDepth: 10 },
+      variantConstraints: new VariantConstraintManager(),
+      combineSimilarNodes: true,
+      pruneWithWorld: true,
+      worldBudget
+    };
+
+    const tree = buildRecipeTree(mcData21, 'wooden_pickaxe', 1, context);
+    const paths = Array.from(enumerateActionPaths(tree));
+
+    expect(paths.length).toBeGreaterThan(0);
+
+    const craftOnlyPath = paths.find(path =>
+      path.every((step: any) => step.action !== 'mine') &&
+      path.some((step: any) =>
+        step.action === 'craft' &&
+        step.result?.variants?.some((v: any) => v.value?.item === 'pale_oak_planks')
+      ) &&
+      path.some((step: any) =>
+        step.action === 'craft' &&
+        step.result?.variants?.some((v: any) => v.value?.item === 'wooden_pickaxe')
+      )
+    );
+
+    expect(craftOnlyPath).toBeDefined();
+  });
 });
 

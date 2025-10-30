@@ -2,11 +2,11 @@ const {
   StateTransition,
   BehaviorIdle,
   NestedStateMachine,
-  BehaviorFindInteractPosition,
-  BehaviorMoveTo
+  BehaviorFindInteractPosition
 } = require('mineflayer-statemachine');
 
 import { BehaviorMineBlock } from './behaviorMineBlock';
+import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 
@@ -58,7 +58,7 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const moveTo = new BehaviorMoveTo(bot, targets);
+  const moveTo = new BehaviorSmartMoveTo(bot, targets);
 
   addStateLogging(moveTo, 'MoveTo', {
     logEnter: true,

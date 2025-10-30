@@ -8,11 +8,11 @@ const {
   NestedStateMachine,
   BehaviorFindBlock,
   BehaviorFindInteractPosition,
-  BehaviorEquipItem,
-  BehaviorMoveTo
+  BehaviorEquipItem
 } = require('mineflayer-statemachine');
 
 import { BehaviorMineBlock } from './behaviorMineBlock';
+import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import logger from '../utils/logger';
@@ -21,12 +21,6 @@ import { getLastSnapshotRadius } from '../utils/context';
 import createSafeFindBlockState from './behaviorSafeFindBlock';
 import { canSeeTargetBlock, findObstructingBlock } from '../utils/raycasting';
 import { ExecutionContext } from '../bots/collector/execution_context';
-import { signalToolIssue } from '../bots/collector/execution_context';
-import {
-  getMinimumToolForBlock,
-  hasEqualOrBetterToolTier,
-  findBestToolForBlock
-} from '../utils/toolValidation';
 
 const minecraftData = require('minecraft-data');
 
@@ -155,7 +149,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const goToBlock = new BehaviorMoveTo(bot, targets);
+  const goToBlock = new BehaviorSmartMoveTo(bot, targets);
   goToBlock.distance = 3.5;
 
   const equipTargets: EquipTargets = { item: null };
@@ -548,28 +542,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       // Safety check: never mine blocks directly under the bot's feet
       if (isTargetUnderFeet()) {
         return false; // equipToFindBlock will handle this
-      }
-      
-      // Tool requirement check (tier validation only - durability is handled by diggingCompleted event)
-      if (targets.executionContext && !targets.executionContext.toolIssueDetected) {
-        const blockName = targets.blockName;
-        const requiredTool = getMinimumToolForBlock(bot, blockName);
-        if (requiredTool && !hasEqualOrBetterToolTier(bot, requiredTool)) {
-          const tool = findBestToolForBlock(bot, blockName);
-          logger.info(`BehaviorCollectBlock: Block ${blockName} requires ${requiredTool}, requesting upgrade`);
-          signalToolIssue(targets.executionContext, {
-            type: 'requirement',
-            toolName: requiredTool,
-            blockName,
-            currentToolName: tool?.name
-          });
-          return false;
-        }
-      }
-      
-      // If tool issue was already detected, prevent mining
-      if (targets.executionContext && targets.executionContext.toolIssueDetected) {
-        return false;
       }
       
       // If we're in obstruction clearing mode, check if we should keep clearing or proceed to original target
