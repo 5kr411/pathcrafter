@@ -271,6 +271,7 @@ function collectAvailableItems(
   // Root nodes with no children are dead ends - skip entirely
   if (
     node.action === 'root' &&
+    node.count !== 0 &&
     (!node.children ||
       !node.children.variants ||
       node.children.variants.length === 0)
@@ -294,9 +295,6 @@ function collectAvailableItems(
   // but we should only mark a variant as available if it's actually produced by children.
   if (
     node.action === 'root' &&
-    node.children &&
-    node.children.variants &&
-    node.children.variants.length > 0 &&
     node.what &&
     node.what.variants
   ) {
@@ -304,15 +302,21 @@ function collectAvailableItems(
     const rootItem = typeof node.what.variants[0].value === 'string' 
       ? node.what.variants[0].value 
       : node.what.variants[0].value?.item;
-    
-    // Only add if children actually produced this exact item
-    if (rootItem && available.exactItems.has(rootItem)) {
-      // Item already added by children - this is the correct case
-      // Children mined/crafted this item, so it's truly available
-    } else if (rootItem) {
-      // Root item NOT in available means children didn't produce it
-      // This happens with combineSimilarNodes when oak_log root exists but only birch_log is mined
-      // Don't add it - it's not actually available
+    const hasChildren = node.children && node.children.variants && node.children.variants.length > 0;
+
+    if (hasChildren) {
+      // Only add if children actually produced this exact item
+      if (rootItem && available.exactItems.has(rootItem)) {
+        // Item already added by children - this is the correct case
+        // Children mined/crafted this item, so it's truly available
+      }
+    } else if (node.count === 0 && rootItem) {
+      // Inventory satisfied this root requirement; treat it as available
+      available.exactItems.add(rootItem);
+      if (isCombinableFamily(rootItem)) {
+        const family = getFamilyFromName(rootItem);
+        if (family) available.families.add(family);
+      }
     }
   }
 
