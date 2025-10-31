@@ -9,7 +9,7 @@ export interface ExecutionContext {
   toolIssueDetected: boolean;
   toolIssue: ToolIssue | null;
   onToolIssue: ((issue: ToolIssue) => void) | null;
-  durabilityThreshold: number;
+  durabilityThreshold: number; // Percentage of max durability (0-1, e.g., 0.1 = 10%)
   toolsBeingReplaced?: Set<string>;
 }
 

@@ -6,7 +6,6 @@ import { Bot, Target, PendingEntry, InventoryObject } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext, ToolIssue } from './execution_context';
-import { getToolRemainingUses } from '../../utils/toolValidation';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -74,10 +73,8 @@ export class TargetExecutor {
     logInfo('Collector: resetting all targets and restarting from beginning');
     this.running = false;
     
-    // Remove digging event listener
-    try {
-      this.bot.off('diggingCompleted', this.onDiggingCompleted);
-    } catch (_) {}
+    // Remove digging event listeners
+    this.removeDiggingListeners();
     
     if (this.activeBotStateMachine) {
       try {
@@ -117,6 +114,9 @@ export class TargetExecutor {
   stop(): void {
     logInfo('Collector: stopping execution');
     this.running = false;
+    
+    // Remove digging event listeners
+    this.removeDiggingListeners();
     
     if (this.activeBotStateMachine) {
       try {
@@ -318,10 +318,8 @@ export class TargetExecutor {
     const completionCallback = (success: boolean) => {
       this.running = false;
       
-      // Remove digging event listener
-      try {
-        this.bot.off('diggingCompleted', this.onDiggingCompleted);
-      } catch (_) {}
+      // Remove digging event listeners
+      this.removeDiggingListeners();
       
       this.activeStateMachine = null;
       this.activeBotStateMachine = null;
@@ -347,8 +345,8 @@ export class TargetExecutor {
     this.activeStateMachine = sm;
     this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
     
-    // Add digging event listener to catch tool durability issues during any block breaking
-    this.bot.on('diggingCompleted', this.onDiggingCompleted);
+    // Ensure digging event listeners are attached
+    this.ensureDiggingListeners();
   }
 
   private validateTargetSuccess(): boolean {
@@ -478,26 +476,18 @@ export class TargetExecutor {
     }
   }
 
-  private onDiggingCompleted = (block: any) => {
-    // Get the tool that was just used
-    const heldItem = this.bot.heldItem;
-    if (!heldItem || !heldItem.name) return;
-    
-    // Check if this tool is already being replaced
-    if (this.toolsBeingReplaced.has(heldItem.name)) return;
-    
-    // Check remaining durability
-    const remainingUses = getToolRemainingUses(this.bot, heldItem);
-    if (remainingUses <= 0 || remainingUses > this.config.toolDurabilityThreshold) return;
-    
-    // Trigger replacement
-    logInfo(`Collector: digging completed, ${heldItem.name} has ${remainingUses} uses left (threshold: ${this.config.toolDurabilityThreshold})`);
-    this.handleToolIssue({
-      type: 'durability',
-      toolName: heldItem.name,
-      blockName: block?.name || 'unknown',
-      currentToolName: heldItem.name
-    });
+  private onDiggingCompleted = () => {
+    logDebug(`Collector: diggingCompleted event (explicit dig complete)`);
+  }
+
+  private onDiggingAborted = (block: any) => {
+    const blockName = block?.name || 'unknown';
+    logDebug(`Collector: digging aborted on ${blockName}`);
+  }
+
+  private onDiggingStarted = (block: any) => {
+    const blockName = block?.name || 'unknown';
+    logDebug(`Collector: digging started on ${blockName} (explicit dig)`);
   }
 
   private handleToolIssue(issue: ToolIssue): void {
@@ -622,6 +612,9 @@ export class TargetExecutor {
     this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
     this.running = true;
     
+    // Ensure digging event listeners are attached for tool acquisition
+    this.ensureDiggingListeners();
+    
     // Start the bot state machine to begin tool acquisition
     try {
       if (typeof this.activeBotStateMachine.start === 'function') {
@@ -633,6 +626,23 @@ export class TargetExecutor {
       this.running = false;
       this.handleTargetFailure();
     }
+  }
+
+  private ensureDiggingListeners(): void {
+    this.removeDiggingListeners();
+    logDebug('Collector: attaching digging event listeners (for explicit digs only)');
+    this.bot.on('diggingStarted', this.onDiggingStarted);
+    this.bot.on('diggingCompleted', this.onDiggingCompleted);
+    this.bot.on('diggingAborted', this.onDiggingAborted);
+  }
+
+  private removeDiggingListeners(): void {
+    try {
+      this.bot.off('diggingCompleted', this.onDiggingCompleted);
+      this.bot.off('diggingAborted', this.onDiggingAborted);
+      this.bot.off('diggingStarted', this.onDiggingStarted);
+      logDebug('Collector: removed digging event listeners');
+    } catch (_) {}
   }
 }
 

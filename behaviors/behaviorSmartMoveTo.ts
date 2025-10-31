@@ -2,6 +2,8 @@ const { BehaviorMoveTo } = require('mineflayer-statemachine');
 const Vec3 = require('vec3').Vec3;
 import logger from '../utils/logger';
 import { BehaviorMineBlock } from './behaviorMineBlock';
+import { getToolRemainingUses } from '../utils/toolValidation';
+import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 
 interface Vec3Like {
   x: number;
@@ -38,6 +40,7 @@ export class BehaviorSmartMoveTo {
   private checkInterval: NodeJS.Timeout | null = null;
   private miningHitboxBlock: boolean = false;
   private mineBehavior: any = null;
+  private lastDurabilityCheck: number = 0;
 
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
@@ -71,11 +74,13 @@ export class BehaviorSmartMoveTo {
     this.isStuck = false;
     this.isUnsticking = false;
     this.unstickTarget = null;
+    this.lastDurabilityCheck = 0;
 
     this.recordCurrentPosition();
     
     this.checkInterval = setInterval(() => {
       this.checkIfStuck();
+      this.checkToolDurability();
     }, 1000);
     
     logger.debug(`BehaviorSmartMoveTo: Started stuck detection interval for target at (${this.originalTarget?.x}, ${this.originalTarget?.y}, ${this.originalTarget?.z})`);
@@ -102,6 +107,7 @@ export class BehaviorSmartMoveTo {
     this.isStuck = false;
     this.isUnsticking = false;
     this.miningHitboxBlock = false;
+    this.lastDurabilityCheck = 0;
 
     if (this.moveTo.onStateExited) {
       this.moveTo.onStateExited();
@@ -346,6 +352,58 @@ export class BehaviorSmartMoveTo {
     this.isUnsticking = true;
     this.isStuck = false;
     this.positionHistory = [];
+  }
+
+  private checkToolDurability(): void {
+    const now = Date.now();
+    if (now - this.lastDurabilityCheck < 500) {
+      return;
+    }
+    this.lastDurabilityCheck = now;
+
+    const executionContext = this.targets.executionContext as ExecutionContext | undefined;
+    if (!executionContext || !executionContext.durabilityThreshold) {
+      return;
+    }
+
+    const heldItem = this.bot.heldItem;
+    if (!heldItem || !heldItem.name) {
+      return;
+    }
+
+    try {
+      const remainingUses = getToolRemainingUses(this.bot, heldItem);
+      
+      if (!Number.isFinite(remainingUses) || remainingUses <= 0) {
+        return;
+      }
+
+      const itemData = this.bot.registry?.items?.[heldItem.type];
+      const maxDurability = itemData?.maxDurability;
+      
+      if (!maxDurability || maxDurability <= 0) {
+        return;
+      }
+
+      const durabilityPct = remainingUses / maxDurability;
+      
+      if (durabilityPct <= executionContext.durabilityThreshold) {
+        const pctDisplay = (durabilityPct * 100).toFixed(1);
+        const thresholdDisplay = (executionContext.durabilityThreshold * 100).toFixed(1);
+        logger.info(
+          `BehaviorSmartMoveTo: tool ${heldItem.name} low durability (${pctDisplay}% remaining, ${remainingUses}/${maxDurability} uses, threshold: ${thresholdDisplay}%)`
+        );
+        
+        signalToolIssue(executionContext, {
+          type: 'durability',
+          toolName: heldItem.name,
+          blockName: 'unknown',
+          currentToolName: heldItem.name
+        });
+      }
+    } catch (err: any) {
+      logger.debug(`BehaviorSmartMoveTo: error checking durability: ${err.message || err}`);
+    }
   }
 }
 

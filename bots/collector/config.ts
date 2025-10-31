@@ -9,7 +9,7 @@ export interface RuntimeConfig {
   liquidAvoidanceDistance: number;
   usePersistentWorker: boolean;
   combineSimilarNodes: boolean;
-  toolDurabilityThreshold: number;
+  toolDurabilityThreshold: number; // Percentage of max durability (0-1, e.g., 0.1 = 10%)
 }
 
 export interface Target {
@@ -67,7 +67,7 @@ const RUNTIME: RuntimeConfig = {
   liquidAvoidanceDistance: 3,
   usePersistentWorker: true,
   combineSimilarNodes: true,
-  toolDurabilityThreshold: 20
+  toolDurabilityThreshold: 0.1 // 10% of max durability
 };
 
 export function getConfig(): RuntimeConfig {
