@@ -5,7 +5,7 @@ import logger from '../../utils/logger';
 import { Bot, Target, PendingEntry, InventoryObject } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
-import { createExecutionContext, ToolIssue } from './execution_context';
+import { createExecutionContext } from './execution_context';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -36,10 +36,6 @@ export class TargetExecutor {
   private readonly MAX_RETRIES = 3;
   private activeStateMachine: any = null;
   private activeBotStateMachine: any = null;
-  private pausedStateMachine: any = null;
-  private pausedBotStateMachine: any = null;
-  private pausedCallback: ((success: boolean) => void) | null = null;
-  private toolsBeingReplaced: Set<string> = new Set();
 
   constructor(
     private bot: Bot,
@@ -308,38 +304,30 @@ export class TargetExecutor {
     } catch (_) {}
     
     const executionContext = createExecutionContext(
-      this.config.toolDurabilityThreshold,
-      (issue: ToolIssue) => {
-        this.handleToolIssue(issue);
-      },
-      this.toolsBeingReplaced
+      this.config.toolDurabilityThreshold
     );
-    
-    const completionCallback = (success: boolean) => {
-      this.running = false;
-      
-      // Remove digging event listeners
-      this.removeDiggingListeners();
-      
-      this.activeStateMachine = null;
-      this.activeBotStateMachine = null;
-      if (success) {
-        const currentTarget = this.sequenceTargets[this.sequenceIndex];
-        const completedDesc = currentTarget ? `${currentTarget.item} x${currentTarget.count}` : 'target';
-        this.safeChat(`plan complete: ${completedDesc}`);
-        this.handleTargetSuccess();
-      } else {
-        this.safeChat('plan failed');
-        this.handleTargetFailure();
-      }
-    };
-    
-    this.pausedCallback = completionCallback;
     
     const sm = buildStateMachineForPath(
       this.bot,
       best,
-      completionCallback,
+      (success: boolean) => {
+        this.running = false;
+        
+        // Remove digging event listeners
+        this.removeDiggingListeners();
+        
+        this.activeStateMachine = null;
+        this.activeBotStateMachine = null;
+        if (success) {
+          const currentTarget = this.sequenceTargets[this.sequenceIndex];
+          const completedDesc = currentTarget ? `${currentTarget.item} x${currentTarget.count}` : 'target';
+          this.safeChat(`plan complete: ${completedDesc}`);
+          this.handleTargetSuccess();
+        } else {
+          this.safeChat('plan failed');
+          this.handleTargetFailure();
+        }
+      },
       executionContext
     );
     this.activeStateMachine = sm;
@@ -404,78 +392,6 @@ export class TargetExecutor {
     }
   }
 
-  private pauseExecution(): void {
-    logInfo('Collector: pausing execution for tool intervention');
-    
-    if (this.activeBotStateMachine) {
-      this.pausedBotStateMachine = this.activeBotStateMachine;
-      try {
-        if (typeof this.activeBotStateMachine.stop === 'function') {
-          this.activeBotStateMachine.stop();
-        }
-      } catch (err: any) {
-        logDebug(`Collector: error stopping bot state machine: ${err.message || err}`);
-      }
-      this.activeBotStateMachine = null;
-    }
-    
-    if (this.activeStateMachine) {
-      this.pausedStateMachine = this.activeStateMachine;
-      try {
-        if (typeof this.activeStateMachine.onStateExited === 'function') {
-          this.activeStateMachine.onStateExited();
-        }
-      } catch (err: any) {
-        logDebug(`Collector: error calling onStateExited on paused state: ${err.message || err}`);
-      }
-      this.activeStateMachine = null;
-    }
-
-    try {
-      this.bot.clearControlStates();
-    } catch (_) {}
-    
-    this.running = false;
-  }
-
-  private resumeExecution(): void {
-    logInfo('Collector: resuming execution after tool intervention');
-    
-    if (!this.pausedStateMachine || !this.pausedBotStateMachine || !this.pausedCallback) {
-      logInfo('Collector: nothing to resume, treating as success');
-      if (this.pausedCallback) {
-        try {
-          this.pausedCallback(true);
-        } catch (_) {}
-      }
-      this.pausedStateMachine = null;
-      this.pausedBotStateMachine = null;
-      this.pausedCallback = null;
-      return;
-    }
-
-    this.running = true;
-    this.activeStateMachine = this.pausedStateMachine;
-    this.activeBotStateMachine = this.pausedBotStateMachine;
-    this.pausedStateMachine = null;
-    this.pausedBotStateMachine = null;
-    
-    try {
-      if (typeof this.activeBotStateMachine.start === 'function') {
-        this.activeBotStateMachine.start();
-      }
-    } catch (err: any) {
-      logInfo(`Collector: error restarting bot state machine: ${err.message || err}`);
-      this.running = false;
-      if (this.pausedCallback) {
-        try {
-          this.pausedCallback(false);
-        } catch (_) {}
-      }
-      this.pausedCallback = null;
-    }
-  }
-
   private onDiggingCompleted = () => {
     logDebug(`Collector: diggingCompleted event (explicit dig complete)`);
   }
@@ -488,144 +404,6 @@ export class TargetExecutor {
   private onDiggingStarted = (block: any) => {
     const blockName = block?.name || 'unknown';
     logDebug(`Collector: digging started on ${blockName} (explicit dig)`);
-  }
-
-  private handleToolIssue(issue: ToolIssue): void {
-    if (this.toolsBeingReplaced.has(issue.toolName)) {
-      logInfo(`Collector: tool issue detected but already replacing ${issue.toolName}, ignoring`);
-      return;
-    }
-
-    const issueType = issue.type === 'durability' ? 'low durability' : 'insufficient tool tier';
-    logInfo(`Collector: tool issue detected - ${issueType} for ${issue.toolName}`);
-    this.safeChat(`need to acquire ${issue.toolName} (${issueType})`);
-
-    this.pauseExecution();
-    this.toolsBeingReplaced.add(issue.toolName);
-
-    const invObj = getInventoryObject(this.bot);
-    const currentCount = invObj[issue.toolName] || 0;
-    const targetCount = currentCount + 1;
-
-    const toolTarget: Target = {
-      item: issue.toolName,
-      count: targetCount
-    };
-
-    const inventoryMap = new Map(Object.entries(invObj));
-
-    captureSnapshotForTarget(
-      this.bot,
-      toolTarget,
-      inventoryMap,
-      this.config.snapshotRadii,
-      this.config.snapshotYHalf,
-      this.config.pruneWithWorld,
-      this.config.combineSimilarNodes
-    ).then(result => {
-      const snapshot = result.snapshot;
-      const version = this.bot.version || '1.20.1';
-      const id = `tool_${Date.now()}_${Math.random()}`;
-      
-      logInfo(`Collector: planning tool acquisition for ${issue.toolName}`);
-      
-      const tempPendingEntry: PendingEntry = { snapshot, target: toolTarget };
-      
-      this.workerManager.postPlanningRequest(
-        id,
-        toolTarget,
-        snapshot,
-        invObj,
-        version,
-        this.config.perGenerator,
-        this.config.pruneWithWorld,
-        this.config.combineSimilarNodes
-      );
-
-      const originalOnResult = this.workerManager['onResult'];
-      
-      const onToolPlanResult = (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => {
-        if (entry === tempPendingEntry) {
-          this.handleToolPlanningResult(issue, ranked, ok, error);
-        } else {
-          originalOnResult(entry, ranked, ok, error);
-        }
-      };
-
-      this.workerManager['onResult'] = onToolPlanResult;
-    }).catch(err => {
-      logInfo(`Collector: tool snapshot capture failed - ${err.message || err}`);
-      this.safeChat('tool acquisition failed - snapshot error');
-      this.toolsBeingReplaced.delete(issue.toolName);
-      this.running = false;
-      this.handleTargetFailure();
-    });
-  }
-
-  private handleToolPlanningResult(issue: ToolIssue, ranked: any[], ok: boolean, error?: string): void {
-    if (!ok || ranked.length === 0) {
-      const errorMsg = error ? String(error) : 'no viable paths';
-      logInfo(`Collector: tool planning failed - ${errorMsg}`);
-      this.safeChat(`tool acquisition failed - ${errorMsg}`);
-      this.toolsBeingReplaced.delete(issue.toolName);
-      this.pausedStateMachine = null;
-      this.pausedBotStateMachine = null;
-      this.pausedCallback = null;
-      this.handleTargetFailure();
-      return;
-    }
-
-    const best = ranked[0];
-    logInfo(`Collector: executing tool acquisition plan with ${best.length} steps`);
-    this.safeChat(`acquiring ${issue.toolName}`);
-
-    const toolAcquisitionContext = createExecutionContext(
-      this.config.toolDurabilityThreshold,
-      (issue: ToolIssue) => {
-        this.handleToolIssue(issue);
-      },
-      this.toolsBeingReplaced
-    );
-
-    const sm = buildStateMachineForPath(
-      this.bot,
-      best,
-      (success: boolean) => {
-        this.toolsBeingReplaced.delete(issue.toolName);
-        if (success) {
-          logInfo(`Collector: tool acquisition succeeded for ${issue.toolName}`);
-          this.safeChat(`acquired ${issue.toolName}, resuming`);
-          this.resumeExecution();
-        } else {
-          logInfo(`Collector: tool acquisition failed for ${issue.toolName}`);
-          this.safeChat(`failed to acquire ${issue.toolName}`);
-          this.pausedStateMachine = null;
-          this.pausedBotStateMachine = null;
-          this.pausedCallback = null;
-          this.handleTargetFailure();
-        }
-      },
-      toolAcquisitionContext
-    );
-
-    this.activeStateMachine = sm;
-    this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
-    this.running = true;
-    
-    // Ensure digging event listeners are attached for tool acquisition
-    this.ensureDiggingListeners();
-    
-    // Start the bot state machine to begin tool acquisition
-    try {
-      if (typeof this.activeBotStateMachine.start === 'function') {
-        this.activeBotStateMachine.start();
-      }
-    } catch (err: any) {
-      logInfo(`Collector: error starting tool acquisition state machine: ${err.message || err}`);
-      this.toolsBeingReplaced.delete(issue.toolName);
-      this.running = false;
-      this.handleTargetFailure();
-    }
   }
 
   private ensureDiggingListeners(): void {
