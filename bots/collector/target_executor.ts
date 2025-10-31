@@ -69,9 +69,6 @@ export class TargetExecutor {
     logInfo('Collector: resetting all targets and restarting from beginning');
     this.running = false;
     
-    // Remove digging event listeners
-    this.removeDiggingListeners();
-    
     if (this.activeBotStateMachine) {
       try {
         if (typeof this.activeBotStateMachine.stop === 'function') {
@@ -110,9 +107,6 @@ export class TargetExecutor {
   stop(): void {
     logInfo('Collector: stopping execution');
     this.running = false;
-    
-    // Remove digging event listeners
-    this.removeDiggingListeners();
     
     if (this.activeBotStateMachine) {
       try {
@@ -312,10 +306,6 @@ export class TargetExecutor {
       best,
       (success: boolean) => {
         this.running = false;
-        
-        // Remove digging event listeners
-        this.removeDiggingListeners();
-        
         this.activeStateMachine = null;
         this.activeBotStateMachine = null;
         if (success) {
@@ -332,9 +322,6 @@ export class TargetExecutor {
     );
     this.activeStateMachine = sm;
     this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
-    
-    // Ensure digging event listeners are attached
-    this.ensureDiggingListeners();
   }
 
   private validateTargetSuccess(): boolean {
@@ -390,37 +377,6 @@ export class TargetExecutor {
         } catch (_) {}
       }, 1000);
     }
-  }
-
-  private onDiggingCompleted = () => {
-    logDebug(`Collector: diggingCompleted event (explicit dig complete)`);
-  }
-
-  private onDiggingAborted = (block: any) => {
-    const blockName = block?.name || 'unknown';
-    logDebug(`Collector: digging aborted on ${blockName}`);
-  }
-
-  private onDiggingStarted = (block: any) => {
-    const blockName = block?.name || 'unknown';
-    logDebug(`Collector: digging started on ${blockName} (explicit dig)`);
-  }
-
-  private ensureDiggingListeners(): void {
-    this.removeDiggingListeners();
-    logDebug('Collector: attaching digging event listeners (for explicit digs only)');
-    this.bot.on('diggingStarted', this.onDiggingStarted);
-    this.bot.on('diggingCompleted', this.onDiggingCompleted);
-    this.bot.on('diggingAborted', this.onDiggingAborted);
-  }
-
-  private removeDiggingListeners(): void {
-    try {
-      this.bot.off('diggingCompleted', this.onDiggingCompleted);
-      this.bot.off('diggingAborted', this.onDiggingAborted);
-      this.bot.off('diggingStarted', this.onDiggingStarted);
-      logDebug('Collector: removed digging event listeners');
-    } catch (_) {}
   }
 }
 
