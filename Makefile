@@ -1,4 +1,4 @@
-.PHONY: build clean test bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt
+.PHONY: build clean test bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack
 
 # Build TypeScript sources
 build:
@@ -36,4 +36,10 @@ bot-mine-anyof: build
 
 bot-smelt: build
 	node dist/bots/smelt_only.js
+
+bot-attack: build
+	node dist/bots/attack_entity.js
+
+bot-follow-attack: build
+	node dist/bots/follow_and_attack_entity.js
 
