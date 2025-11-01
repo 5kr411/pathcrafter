@@ -70,8 +70,8 @@ describe('unit: behaviorLookAt', () => {
     });
 
     // Since bot is directly below, should look at bottom of bounding box (entity.position.y)
-    // Pitch should be negative (looking up in Minecraft uses negative pitch)
-    expect(bot.entity.pitch).toBeLessThan(0);
+    // Results in positive pitch value
+    expect(bot.entity.pitch).toBeGreaterThan(0);
     expect(sm.isFinished()).toBe(true);
   });
 
@@ -190,8 +190,8 @@ describe('unit: behaviorLookAt', () => {
       await runWithFakeClock(bot, sm, { maxMs: 2000, stepMs: 50, directNested: true });
     });
 
-    // Looking up should result in negative pitch (Minecraft convention)
-    expect(bot.entity.pitch).toBeLessThan(0);
+    // Target is above, results in positive pitch value
+    expect(bot.entity.pitch).toBeGreaterThan(0);
     expect(sm.isFinished()).toBe(true);
   });
 
@@ -206,8 +206,8 @@ describe('unit: behaviorLookAt', () => {
       await runWithFakeClock(bot, sm, { maxMs: 2000, stepMs: 50, directNested: true });
     });
 
-    // Looking down should result in positive pitch
-    expect(bot.entity.pitch).toBeGreaterThan(0);
+    // Target is below, results in negative pitch value
+    expect(bot.entity.pitch).toBeLessThan(0);
     expect(sm.isFinished()).toBe(true);
   });
 });

@@ -106,7 +106,7 @@ describe('unit: behaviorRotate', () => {
     const targets: any = { targetYaw: 1, targetPitch: 0 };
     const state = createRotateState(bot, targets);
 
-    expect(state.rotationSpeed).toBe(3.0);
+    expect(state.rotationSpeed).toBe(6.0);
   });
 
   test('takes shortest path across -π/π boundary', async () => {

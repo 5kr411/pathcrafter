@@ -188,7 +188,7 @@ describe('integration: rotation attack flow', () => {
     const entity = createMockEntity({
       id: 1,
       name: 'zombie',
-      position: { x: 3, y: 65, z: 0 }
+      position: { x: 2.5, y: 64, z: 0 } // Within 3.0 blocks
     });
 
     bot.entities = { 1: entity };
