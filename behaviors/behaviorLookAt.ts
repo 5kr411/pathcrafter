@@ -86,14 +86,20 @@ function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3
       }
 
       const botPos = bot.entity.position;
+      const botEyeHeight = 1.62; // Standard player eye height in Minecraft
+      const botEyePos = {
+        x: botPos.x,
+        y: botPos.y + botEyeHeight,
+        z: botPos.z
+      };
       let lookTarget;
 
       // Update entity from state machine if it was set externally
       const currentEntity = (stateMachine as any).entity;
       
-      // If entity is provided, calculate nearest point on bounding box
+      // If entity is provided, calculate nearest point on bounding box from eye position
       if (currentEntity) {
-        lookTarget = getNearestPointOnEntityBoundingBox(botPos, currentEntity);
+        lookTarget = getNearestPointOnEntityBoundingBox(botEyePos, currentEntity);
         logger.info(`BehaviorLookAt: looking at nearest point on entity bounding box at (${lookTarget.x.toFixed(1)}, ${lookTarget.y.toFixed(1)}, ${lookTarget.z.toFixed(1)})`);
       } else if (targets.position) {
         lookTarget = targets.position;
@@ -105,14 +111,15 @@ function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3
         return;
       }
 
-      const dx = lookTarget.x - botPos.x;
-      const dy = lookTarget.y - botPos.y;
-      const dz = lookTarget.z - botPos.z;
+      const dx = lookTarget.x - botEyePos.x;
+      const dy = lookTarget.y - botEyePos.y;
+      const dz = lookTarget.z - botEyePos.z;
       const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
       // Calculate yaw and pitch
+      // In Minecraft: positive pitch = look down, negative pitch = look up
       rotateTargets.targetYaw = Math.atan2(-dx, -dz);
-      rotateTargets.targetPitch = -Math.asin(dy / distance);
+      rotateTargets.targetPitch = Math.asin(dy / distance);
 
       logger.info(`BehaviorLookAt: target angles - yaw: ${rotateTargets.targetYaw.toFixed(3)}, pitch: ${rotateTargets.targetPitch.toFixed(3)}`);
     }

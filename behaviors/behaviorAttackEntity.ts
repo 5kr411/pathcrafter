@@ -100,7 +100,7 @@ class BehaviorAttackEntityState {
 
     const entity = this.targets.entity;
     const distance = getDistanceToEntity(this.bot, entity);
-    const ATTACK_RANGE = 3.5;
+    const ATTACK_RANGE = 3.0;
     
     // Check if entity is still valid (exists in bot.entities)
     const isValid = this.bot.entities && Object.values(this.bot.entities).some((e: any) => e.id === entity.id);
@@ -232,18 +232,49 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     }
   });
 
+  const lookToExit = new StateTransition({
+    parent: lookAtEntity,
+    child: exit,
+    name: 'BehaviorAttackEntity: look -> exit (too far)',
+    shouldTransition: () => {
+      const lookFinished = typeof lookAtEntity.isFinished === 'function' 
+        ? lookAtEntity.isFinished() 
+        : lookAtEntity.isFinished === true;
+      
+      if (!lookFinished) return false;
+      
+      const ATTACK_RANGE = 3.0;
+      if (!targets.entity) return true;
+      
+      const distance = getDistanceToEntity(bot, targets.entity);
+      return distance > ATTACK_RANGE;
+    },
+    onTransition: () => {
+      const distance = targets.entity ? getDistanceToEntity(bot, targets.entity) : 0;
+      logger.info(`BehaviorAttackEntity: entity too far after rotation (${distance.toFixed(2)} > 3.0), exiting`);
+      targets.entity = null;
+    }
+  });
+
   const lookToAttack = new StateTransition({
     parent: lookAtEntity,
     child: attackState,
     name: 'BehaviorAttackEntity: look -> attack',
     shouldTransition: () => {
-      if (typeof lookAtEntity.isFinished === 'function') {
-        return lookAtEntity.isFinished();
-      }
-      return lookAtEntity.isFinished === true;
+      const lookFinished = typeof lookAtEntity.isFinished === 'function' 
+        ? lookAtEntity.isFinished() 
+        : lookAtEntity.isFinished === true;
+      
+      if (!lookFinished) return false;
+      
+      const ATTACK_RANGE = 3.0;
+      if (!targets.entity) return false;
+      
+      const distance = getDistanceToEntity(bot, targets.entity);
+      return distance <= ATTACK_RANGE;
     },
     onTransition: () => {
-      logger.info('BehaviorAttackEntity: finished looking, now attacking');
+      logger.info('BehaviorAttackEntity: finished looking and in range, now attacking');
     }
   });
 
@@ -253,7 +284,8 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorAttackEntity: attack -> exit',
     shouldTransition: () => attackState.isFinished,
     onTransition: () => {
-      logger.debug('BehaviorAttackEntity: attack complete');
+      logger.info('BehaviorAttackEntity: attack complete');
+      targets.entity = null;
     }
   });
 
@@ -261,6 +293,7 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     enterToEquip,
     enterToLook,
     equipToLook,
+    lookToExit,
     lookToAttack,
     attackToExit
   ];

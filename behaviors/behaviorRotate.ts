@@ -108,10 +108,29 @@ class BehaviorRotateState {
     // Get current and target angles
     this.startYaw = normalizeAngle(this.bot.entity.yaw);
     this.startPitch = normalizeAngle(this.bot.entity.pitch);
-    this.targetYaw = normalizeAngle(this.targets.targetYaw);
-    this.targetPitch = normalizeAngle(this.targets.targetPitch);
+    let targetYaw = normalizeAngle(this.targets.targetYaw);
+    let targetPitch = normalizeAngle(this.targets.targetPitch);
 
-    // Calculate angular distance
+    // Adjust target angles to ensure shortest path
+    // If the difference is > π, we should wrap around the other way
+    let yawDiff = targetYaw - this.startYaw;
+    if (yawDiff > Math.PI) {
+      targetYaw -= 2 * Math.PI;
+    } else if (yawDiff < -Math.PI) {
+      targetYaw += 2 * Math.PI;
+    }
+
+    let pitchDiff = targetPitch - this.startPitch;
+    if (pitchDiff > Math.PI) {
+      targetPitch -= 2 * Math.PI;
+    } else if (pitchDiff < -Math.PI) {
+      targetPitch += 2 * Math.PI;
+    }
+
+    this.targetYaw = targetYaw;
+    this.targetPitch = targetPitch;
+
+    // Calculate angular distance (now guaranteed to be shortest path)
     const yawDist = Math.abs(this.targetYaw - this.startYaw);
     const pitchDist = Math.abs(this.targetPitch - this.startPitch);
     this.totalDistance = Math.sqrt(yawDist * yawDist + pitchDist * pitchDist);

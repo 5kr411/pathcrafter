@@ -108,4 +108,63 @@ describe('unit: behaviorRotate', () => {
 
     expect(state.rotationSpeed).toBe(3.0);
   });
+
+  test('takes shortest path across -π/π boundary', async () => {
+    // Start near +π and target near -π
+    // Shortest path is ~0.3 radians, long way is ~6 radians
+    const bot = createRotationBot({ yaw: 3.0, pitch: 0 });
+    const targets: any = { targetYaw: -3.0, targetPitch: 0 };
+    const state = createRotateState(bot, targets, 10.0);
+
+    await withLoggerSpy(async () => {
+      state.onStateEntered();
+    });
+
+    // Total distance should be the short path (~0.28 radians)
+    expect(state.totalDistance).toBeLessThan(1.0);
+    expect(state.totalDistance).toBeGreaterThan(0.2);
+    
+    // Estimated duration should reflect the short path
+    // At 10 rad/s, 0.28 radians should take ~28ms
+    expect(state.estimatedDuration).toBeLessThan(100);
+  });
+
+  test('takes shortest path from negative to positive angle', async () => {
+    // Start near -π and target near +π
+    const bot = createRotationBot({ yaw: -2.8, pitch: 0 });
+    const targets: any = { targetYaw: 2.8, targetPitch: 0 };
+    const state = createRotateState(bot, targets, 10.0);
+
+    await withLoggerSpy(async () => {
+      state.onStateEntered();
+    });
+
+    // Should take short path (~0.6 radians) not long path (~5.6 radians)
+    expect(state.totalDistance).toBeLessThan(1.0);
+    expect(state.totalDistance).toBeGreaterThan(0.5);
+  });
+
+  test('adjusts target angles for shortest path interpolation', async () => {
+    // Start at 3.0 (near +π), target -3.0 (near -π)
+    const bot = createRotationBot({ yaw: 3.0, pitch: 0 });
+    const targets: any = { targetYaw: -3.0, targetPitch: 0 };
+    const state = createRotateState(bot, targets, 10.0);
+
+    await withLoggerSpy(async () => {
+      state.onStateEntered();
+    });
+
+    // After initialization, check that target angles were adjusted
+    // for shortest path interpolation
+    // Original target was -3.0, but for shortest path from 3.0,
+    // it should be adjusted to ~3.28 (which is -3.0 + 2π)
+    expect(state.startYaw).toBeCloseTo(3.0, 1);
+    
+    // Target should have been adjusted to be on the same "side" as start
+    // so the interpolation goes the short way
+    expect(state.targetYaw).toBeGreaterThan(3.0);
+    
+    // Distance should be small (short path)
+    expect(state.totalDistance).toBeLessThan(1.0);
+  });
 });
