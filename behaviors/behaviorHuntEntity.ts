@@ -34,14 +34,28 @@ interface Targets {
   [key: string]: any;
 }
 
-function isEntityAlive(entity: Entity | null | undefined): boolean {
+function isEntityAlive(bot: Bot, entity: Entity | null | undefined): boolean {
   if (!entity) return false;
-  if (typeof entity.isAlive === 'function') {
-    return entity.isAlive();
-  }
+  
+  // Check health FIRST - most reliable indicator
   if (typeof entity.health === 'number') {
     return entity.health > 0;
   }
+  
+  // Check if entity has isAlive method
+  if (typeof entity.isAlive === 'function') {
+    return entity.isAlive();
+  }
+  
+  // Check if entity is still in bot.entities (removed when killed/despawned)
+  if (bot.entities && entity.id) {
+    const stillExists = Object.values(bot.entities).some((e: any) => e.id === entity.id);
+    if (!stillExists) {
+      return false;
+    }
+  }
+  
+  // If we have an entity reference but can't determine state, assume alive and let combat continue
   return true;
 }
 
@@ -102,8 +116,9 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       }
 
       // If entity is still alive, continue hunting
-      const entityAlive = targetEntity && isEntityAlive(targetEntity);
-      logger.info(`BehaviorHuntEntity: loop check - entity: ${!!targetEntity}, alive: ${entityAlive}`);
+      const entityAlive = targetEntity && isEntityAlive(bot, targetEntity);
+      const health = targetEntity?.health ?? 'unknown';
+      logger.info(`BehaviorHuntEntity: loop check - entity: ${!!targetEntity}, alive: ${entityAlive}, health: ${health}`);
       if (entityAlive) {
         return true;
       }
@@ -136,7 +151,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       }
       
       // Exit if entity is dead or lost
-      if (!targetEntity || !isEntityAlive(targetEntity)) {
+      if (!targetEntity || !isEntityAlive(bot, targetEntity)) {
         return true;
       }
       
@@ -146,7 +161,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       const elapsed = Date.now() - huntStartTime;
       if (elapsed > HUNT_TIMEOUT) {
         logger.info('BehaviorHuntEntity: hunt timed out after 1 minute');
-      } else if (!targetEntity || !isEntityAlive(targetEntity)) {
+      } else if (!targetEntity || !isEntityAlive(bot, targetEntity)) {
         logger.info('BehaviorHuntEntity: entity eliminated');
       } else {
         logger.info('BehaviorHuntEntity: hunt complete');
