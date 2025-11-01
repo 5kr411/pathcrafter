@@ -116,10 +116,21 @@ function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3
       const dz = lookTarget.z - botEyePos.z;
       const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
+      // Handle case where target is at or very close to bot position
+      if (distance < 0.001) {
+        logger.info('BehaviorLookAt: target too close, maintaining current orientation');
+        rotateTargets.targetYaw = bot.entity?.yaw || 0;
+        rotateTargets.targetPitch = bot.entity?.pitch || 0;
+        return;
+      }
+
       // Calculate yaw and pitch
       // In Minecraft: positive pitch = look down, negative pitch = look up
       rotateTargets.targetYaw = Math.atan2(-dx, -dz);
-      rotateTargets.targetPitch = Math.asin(dy / distance);
+      
+      // Clamp dy/distance to [-1, 1] to prevent NaN from asin
+      const pitchRatio = Math.max(-1, Math.min(1, dy / distance));
+      rotateTargets.targetPitch = Math.asin(pitchRatio);
 
       logger.info(`BehaviorLookAt: target angles - yaw: ${rotateTargets.targetYaw.toFixed(3)}, pitch: ${rotateTargets.targetPitch.toFixed(3)}`);
     }

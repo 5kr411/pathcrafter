@@ -72,21 +72,25 @@ class BehaviorRotateState {
     this.rotationSpeed = rotationSpeed;
   }
 
-  // Generate random control point within the box formed by start and end
-  generateControlPoint(start: number, end: number, closerTo: 'start' | 'end'): number {
+  // Generate two fully random control points within bounds, sorted by proximity
+  generateControlPoints(start: number, end: number): [number, number] {
     const min = Math.min(start, end);
     const max = Math.max(start, end);
     const range = max - min;
     
-    if (closerTo === 'start') {
-      // Closer to start: 0-30% along the path
-      const t = Math.random() * 0.3;
-      return start + (end - start) * t + (Math.random() - 0.5) * range * 0.3;
-    } else {
-      // Closer to end: 70-100% along the path
-      const t = 0.7 + Math.random() * 0.3;
-      return start + (end - start) * t + (Math.random() - 0.5) * range * 0.3;
-    }
+    // Generate two fully random points within [min, max]
+    const random1 = min + Math.random() * range;
+    const random2 = min + Math.random() * range;
+    
+    // Sort them: closer to start first, closer to end second
+    const points = [random1, random2];
+    points.sort((a, b) => {
+      const distA = Math.abs(a - start);
+      const distB = Math.abs(b - start);
+      return distA - distB;
+    });
+    
+    return [points[0], points[1]];
   }
 
   onStateEntered(): void {
@@ -143,10 +147,13 @@ class BehaviorRotateState {
     }
 
     // Generate bezier control points
-    this.p1Yaw = this.generateControlPoint(this.startYaw, this.targetYaw, 'start');
-    this.p1Pitch = this.generateControlPoint(this.startPitch, this.targetPitch, 'start');
-    this.p2Yaw = this.generateControlPoint(this.startYaw, this.targetYaw, 'end');
-    this.p2Pitch = this.generateControlPoint(this.startPitch, this.targetPitch, 'end');
+    const [p1Yaw, p2Yaw] = this.generateControlPoints(this.startYaw, this.targetYaw);
+    const [p1Pitch, p2Pitch] = this.generateControlPoints(this.startPitch, this.targetPitch);
+    
+    this.p1Yaw = p1Yaw;
+    this.p1Pitch = p1Pitch;
+    this.p2Yaw = p2Yaw;
+    this.p2Pitch = p2Pitch;
 
     // Estimate duration based on rotation speed
     this.estimatedDuration = (this.totalDistance / this.rotationSpeed) * 1000; // convert to ms
