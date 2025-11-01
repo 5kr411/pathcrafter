@@ -46,6 +46,33 @@ function getDistanceToEntity(bot: Bot, entity: Entity): number {
   return bot.entity.position.distanceTo(entity.position);
 }
 
+function isEntityApproaching(bot: Bot, entity: Entity, lastPos: any, currentPos: any): boolean | null {
+  if (!bot.entity?.position || !entity?.position || !lastPos || !currentPos) {
+    return null;
+  }
+
+  // Calculate entity's movement vector
+  const movementX = currentPos.x - lastPos.x;
+  const movementY = currentPos.y - lastPos.y;
+  const movementZ = currentPos.z - lastPos.z;
+  const movementMagnitude = Math.sqrt(movementX * movementX + movementY * movementY + movementZ * movementZ);
+
+  // Entity not moving (positions are identical)
+  if (movementMagnitude < 0.001) {
+    return null;
+  }
+
+  // Calculate vector from entity's current position to bot
+  const toBotX = bot.entity.position.x - currentPos.x;
+  const toBotY = bot.entity.position.y - currentPos.y;
+  const toBotZ = bot.entity.position.z - currentPos.z;
+
+  // Dot product: positive = approaching, negative = fleeing
+  const dotProduct = (movementX * toBotX) + (movementY * toBotY) + (movementZ * toBotZ);
+
+  return dotProduct > 0;
+}
+
 function isEntityAlive(entity: Entity | null | undefined): boolean {
   if (!entity) return false;
   if (typeof entity.isAlive === 'function') {
@@ -65,7 +92,13 @@ function isEntityAlive(entity: Entity | null | undefined): boolean {
  * No looping back to follow or find. Simple one-shot behavior.
  */
 function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
-  const ATTACK_RANGE = targets.attackRange || 2.9;
+  const ATTACK_RANGE_APPROACHING = 2.9; // Entity moving towards bot
+  const ATTACK_RANGE_FLEEING = 1.5;     // Entity moving away from bot
+  const DEFAULT_ATTACK_RANGE = targets.attackRange || 2.9;
+
+  // Track entity position from last tick for real-time movement detection
+  let lastTickPosition: any = null;
+  let currentTickPosition: any = null;
 
   const enter = new BehaviorIdle();
 
@@ -100,7 +133,17 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
       const botPos = bot.entity?.position;
       if (!botPos || !botPos.distanceTo) return 'following entity';
       const dist = botPos.distanceTo(entity.position).toFixed(2);
-      return `following entity at distance ${dist}m, target range: ${ATTACK_RANGE.toFixed(1)}`;
+      
+      const approaching = isEntityApproaching(bot, entity, lastTickPosition, currentTickPosition);
+      const attackRange = approaching === true ? ATTACK_RANGE_APPROACHING : 
+                         approaching === false ? ATTACK_RANGE_FLEEING : 
+                         DEFAULT_ATTACK_RANGE;
+      
+      const movementDesc = approaching === true ? '(approaching)' : 
+                          approaching === false ? '(fleeing)' : 
+                          '(stationary)';
+      
+      return `following entity at distance ${dist}m, target range: ${attackRange.toFixed(1)}m ${movementDesc}`;
     }
   });
 
@@ -137,6 +180,11 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorFollowAndAttackEntity: enter -> follow',
     shouldTransition: () => !!targets.entity && isEntityAlive(targets.entity),
     onTransition: () => {
+      // Initialize position tracking only if not already tracking
+      if (!lastTickPosition && targets.entity?.position) {
+        currentTickPosition = targets.entity.position.clone();
+        lastTickPosition = currentTickPosition.clone();
+      }
       logger.info('BehaviorFollowAndAttackEntity: entity provided, starting follow');
     }
   });
@@ -165,6 +213,11 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
       return targets.entity !== null && isEntityAlive(targets.entity);
     },
     onTransition: () => {
+      // Initialize position tracking only if not already tracking
+      if (!lastTickPosition && targets.entity?.position) {
+        currentTickPosition = targets.entity.position.clone();
+        lastTickPosition = currentTickPosition.clone();
+      }
       logger.info('BehaviorFollowAndAttackEntity: entity found, following');
     }
   });
@@ -195,15 +248,50 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
       if (!targets.entity) return false;
       if (!isEntityAlive(targets.entity)) return false;
       
+      // Update position tracking only when entity actually moves
+      if (targets.entity.position) {
+        const newPosition = targets.entity.position.clone();
+        
+        // Only update if position has actually changed
+        if (currentTickPosition) {
+          const dx = newPosition.x - currentTickPosition.x;
+          const dy = newPosition.y - currentTickPosition.y;
+          const dz = newPosition.z - currentTickPosition.z;
+          const moved = Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001 || Math.abs(dz) > 0.001;
+          
+          if (moved) {
+            lastTickPosition = currentTickPosition.clone();
+            currentTickPosition = newPosition;
+          }
+        } else {
+          // First initialization
+          currentTickPosition = newPosition;
+        }
+      }
+      
       // Use actual bot-to-entity distance, not pathfinding distance
       const distance = getDistanceToEntity(bot, targets.entity);
-      const inRange = distance < ATTACK_RANGE;
+      
+      // Determine attack range based on entity movement direction
+      const approaching = isEntityApproaching(bot, targets.entity, lastTickPosition, currentTickPosition);
+      const attackRange = approaching === true ? ATTACK_RANGE_APPROACHING : 
+                         approaching === false ? ATTACK_RANGE_FLEEING : 
+                         DEFAULT_ATTACK_RANGE;
+      
+      const inRange = distance < attackRange;
       
       return inRange;
     },
     onTransition: () => {
       const distance = targets.entity ? getDistanceToEntity(bot, targets.entity) : 0;
-      logger.info(`BehaviorFollowAndAttackEntity: within ${ATTACK_RANGE} block range at distance ${distance.toFixed(2)}, attacking`);
+      const approaching = isEntityApproaching(bot, targets.entity!, lastTickPosition, currentTickPosition);
+      const attackRange = approaching === true ? ATTACK_RANGE_APPROACHING : 
+                         approaching === false ? ATTACK_RANGE_FLEEING : 
+                         DEFAULT_ATTACK_RANGE;
+      const movementDesc = approaching === true ? 'approaching' : 
+                          approaching === false ? 'fleeing' : 
+                          'stationary';
+      logger.info(`BehaviorFollowAndAttackEntity: within ${attackRange.toFixed(1)} block range at distance ${distance.toFixed(2)}, entity ${movementDesc}, attacking`);
     }
   });
 
@@ -219,6 +307,9 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       logger.info('BehaviorFollowAndAttackEntity: entity lost during follow, exiting');
       targets.entity = null;
+      // Reset position tracking when entity is lost
+      lastTickPosition = null;
+      currentTickPosition = null;
     }
   });
 
@@ -235,6 +326,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       logger.info('BehaviorFollowAndAttackEntity: attack cycle complete, exiting');
+      // Position tracking persists across attack cycles for continuous movement detection
     }
   });
 
