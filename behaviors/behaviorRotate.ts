@@ -66,7 +66,7 @@ class BehaviorRotateState {
   
   tickInterval: any = null;
 
-  constructor(bot: Bot, targets: Targets, rotationSpeed: number = 3.0) {
+  constructor(bot: Bot, targets: Targets, rotationSpeed: number = 6.0) {
     this.bot = bot;
     this.targets = targets;
     this.rotationSpeed = rotationSpeed;
@@ -227,7 +227,7 @@ class BehaviorRotateState {
   }
 }
 
-function createRotateState(bot: Bot, targets: Targets, rotationSpeed: number = 3.0): any {
+function createRotateState(bot: Bot, targets: Targets, rotationSpeed: number = 6.0): any {
   const rotateState = new BehaviorRotateState(bot, targets, rotationSpeed);
 
   addStateLogging(rotateState, 'Rotate', {

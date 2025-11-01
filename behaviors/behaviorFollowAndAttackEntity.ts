@@ -65,7 +65,7 @@ function isEntityAlive(entity: Entity | null | undefined): boolean {
  * No looping back to follow or find. Simple one-shot behavior.
  */
 function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
-  const ATTACK_RANGE = targets.attackRange || 2.6;
+  const ATTACK_RANGE = targets.attackRange || 2.9;
 
   const enter = new BehaviorIdle();
 
