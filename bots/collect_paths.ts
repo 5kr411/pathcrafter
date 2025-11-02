@@ -4,6 +4,9 @@ import { getConfig } from './collector/config';
 import { WorkerManager } from './collector/worker_manager';
 import { TargetExecutor } from './collector/target_executor';
 import { CommandHandler } from './collector/command_handler';
+import { ReactiveBehaviorRegistry } from './collector/reactive_behavior_registry';
+import { ReactiveBehaviorExecutorClass } from './collector/reactive_behavior_executor';
+import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_behavior';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import logger from '../utils/logger';
@@ -65,6 +68,11 @@ bot.once('spawn', () => {
     () => {}
   );
 
+  const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
+  reactiveBehaviorRegistry.register(hostileMobBehavior);
+
+  const reactiveBehaviorExecutor = new ReactiveBehaviorExecutorClass(bot, reactiveBehaviorRegistry);
+
   const executor = new TargetExecutor(bot, workerManager, safeChat, {
     snapshotRadii: config.snapshotRadii,
     snapshotYHalf: config.snapshotYHalf,
@@ -72,7 +80,7 @@ bot.once('spawn', () => {
     combineSimilarNodes: config.combineSimilarNodes,
     perGenerator: config.perGenerator,
     toolDurabilityThreshold: config.toolDurabilityThreshold
-  });
+  }, reactiveBehaviorExecutor);
 
   bot.on('death', () => {
     logger.info('Collector: bot died, resetting and retrying all targets');

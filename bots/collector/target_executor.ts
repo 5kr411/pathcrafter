@@ -6,6 +6,7 @@ import { Bot, Target, PendingEntry, InventoryObject } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext } from './execution_context';
+import { ReactiveBehaviorExecutorClass } from './reactive_behavior_executor';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -32,10 +33,17 @@ export class TargetExecutor {
   private sequenceIndex = 0;
   private targetRetryCount = new Map<number, number>();
   private running = false;
+  private paused = false;
+  private pausedState: {
+    sequenceIndex: number;
+    stateMachine: any;
+    botStateMachine: any;
+  } | null = null;
   private currentTargetStartInventory: InventoryObject = {};
   private readonly MAX_RETRIES = 3;
   private activeStateMachine: any = null;
   private activeBotStateMachine: any = null;
+  private reactiveBehaviorCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(
     private bot: Bot,
@@ -48,7 +56,8 @@ export class TargetExecutor {
       combineSimilarNodes: boolean;
       perGenerator: number;
       toolDurabilityThreshold: number;
-    }
+    },
+    private reactiveBehaviorExecutor?: ReactiveBehaviorExecutorClass
   ) {}
 
   isRunning(): boolean {
@@ -68,6 +77,19 @@ export class TargetExecutor {
   resetAndRestart(): void {
     logInfo('Collector: resetting all targets and restarting from beginning');
     this.running = false;
+    this.paused = false;
+    this.pausedState = null;
+    
+    this.stopReactiveBehaviorCheck();
+    
+    if (this.reactiveBehaviorExecutor) {
+      try {
+        this.reactiveBehaviorExecutor.stop();
+        logDebug('Collector: stopped reactive behavior executor during reset');
+      } catch (err: any) {
+        logDebug(`Collector: error stopping reactive behavior executor during reset: ${err?.message || err}`);
+      }
+    }
     
     if (this.activeBotStateMachine) {
       try {
@@ -107,6 +129,18 @@ export class TargetExecutor {
   stop(): void {
     logInfo('Collector: stopping execution');
     this.running = false;
+    this.paused = false;
+    
+    this.stopReactiveBehaviorCheck();
+    
+    if (this.reactiveBehaviorExecutor) {
+      try {
+        this.reactiveBehaviorExecutor.stop();
+        logDebug('Collector: stopped reactive behavior executor');
+      } catch (err: any) {
+        logDebug(`Collector: error stopping reactive behavior executor: ${err.message || err}`);
+      }
+    }
     
     if (this.activeBotStateMachine) {
       try {
@@ -143,7 +177,109 @@ export class TargetExecutor {
     this.sequenceTargets = [];
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
+    this.pausedState = null;
     this.safeChat('stopped');
+  }
+
+  pause(): void {
+    if (!this.running || this.paused) return;
+    
+    logInfo('Collector: pausing execution for reactive behavior');
+    this.paused = true;
+    
+    this.stopReactiveBehaviorCheck();
+    
+    if (this.activeBotStateMachine) {
+      try {
+        if (typeof this.activeBotStateMachine.stop === 'function') {
+          this.activeBotStateMachine.stop();
+        }
+      } catch (_) {}
+    }
+    
+    if (this.activeStateMachine) {
+      try {
+        if (typeof this.activeStateMachine.onStateExited === 'function') {
+          this.activeStateMachine.onStateExited();
+          logDebug('Collector: called onStateExited on nested state machine during pause');
+        }
+      } catch (err: any) {
+        logDebug(`Collector: error calling onStateExited during pause: ${err.message || err}`);
+      }
+    }
+    
+    try {
+      this.bot.clearControlStates();
+      logDebug('Collector: cleared bot control states during pause');
+    } catch (err: any) {
+      logDebug(`Collector: error clearing control states during pause: ${err.message || err}`);
+    }
+    
+    this.pausedState = {
+      sequenceIndex: this.sequenceIndex,
+      stateMachine: this.activeStateMachine,
+      botStateMachine: this.activeBotStateMachine
+    };
+    
+    this.activeBotStateMachine = null;
+    this.activeStateMachine = null;
+  }
+
+  resume(): void {
+    if (!this.paused || !this.pausedState) return;
+    
+    logInfo('Collector: resuming execution after reactive behavior');
+    this.paused = false;
+    
+    this.sequenceIndex = this.pausedState.sequenceIndex;
+    this.activeStateMachine = this.pausedState.stateMachine;
+    
+    if (this.activeStateMachine && this.bot) {
+      this.activeBotStateMachine = new BotStateMachine(this.bot, this.activeStateMachine);
+    }
+    
+    this.pausedState = null;
+    this.running = true;
+    
+    this.startReactiveBehaviorCheck();
+  }
+
+  isPaused(): boolean {
+    return this.paused;
+  }
+
+  private startReactiveBehaviorCheck(): void {
+    if (!this.reactiveBehaviorExecutor) return;
+    
+    this.stopReactiveBehaviorCheck();
+    
+    this.reactiveBehaviorCheckInterval = setInterval(async () => {
+      if (!this.running || this.paused) return;
+      if (!this.reactiveBehaviorExecutor) return;
+      if (this.reactiveBehaviorExecutor.isActive()) return;
+      
+      try {
+        const behavior = await this.reactiveBehaviorExecutor.registry.findActiveBehavior(this.bot);
+        if (behavior) {
+          logInfo(`Collector: reactive behavior ${behavior.name} detected, pausing execution`);
+          this.pause();
+          
+          const success = await this.reactiveBehaviorExecutor.executeBehavior(behavior);
+          logInfo(`Collector: reactive behavior ${behavior.name} completed (success: ${success})`);
+          
+          this.resume();
+        }
+      } catch (err: any) {
+        logDebug(`Collector: error checking reactive behaviors: ${err?.message || err}`);
+      }
+    }, 500);
+  }
+
+  private stopReactiveBehaviorCheck(): void {
+    if (this.reactiveBehaviorCheckInterval) {
+      clearInterval(this.reactiveBehaviorCheckInterval);
+      this.reactiveBehaviorCheckInterval = null;
+    }
   }
 
   async startNextTarget(): Promise<void> {
@@ -211,6 +347,7 @@ export class TargetExecutor {
       }
 
       this.running = true;
+      this.startReactiveBehaviorCheck();
       this.workerManager.postPlanningRequest(
         id,
         target,
@@ -225,6 +362,7 @@ export class TargetExecutor {
       logInfo(`Collector: snapshot capture failed - ${err.message || err}`);
       this.safeChat('snapshot capture failed');
       this.running = false;
+      this.stopReactiveBehaviorCheck();
       this.handleTargetFailure();
     }
   }
@@ -322,6 +460,7 @@ export class TargetExecutor {
     );
     this.activeStateMachine = sm;
     this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
+    this.startReactiveBehaviorCheck();
   }
 
   private validateTargetSuccess(): boolean {
