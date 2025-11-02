@@ -150,7 +150,11 @@ export class ToolReplacementExecutor {
     }
 
     try {
-      const executionContext = createExecutionContext(this.config.toolDurabilityThreshold);
+      const executionContext = createExecutionContext(
+        this.config.toolDurabilityThreshold,
+        undefined,
+        undefined
+      );
       const sm = buildStateMachineForPath(
         this.bot,
         best,

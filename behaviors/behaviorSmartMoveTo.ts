@@ -363,11 +363,13 @@ export class BehaviorSmartMoveTo {
 
     const executionContext = this.targets.executionContext as ExecutionContext | undefined;
     if (!executionContext || !executionContext.durabilityThreshold) {
+      logger.debug(`BehaviorSmartMoveTo: durability check skipped - executionContext=${!!executionContext}, threshold=${executionContext?.durabilityThreshold}`);
       return;
     }
 
     const heldItem = this.bot.heldItem;
     if (!heldItem || !heldItem.name) {
+      logger.debug(`BehaviorSmartMoveTo: durability check skipped - no held item`);
       return;
     }
 
@@ -375,6 +377,7 @@ export class BehaviorSmartMoveTo {
       const remainingUses = getToolRemainingUses(this.bot, heldItem);
       
       if (!Number.isFinite(remainingUses) || remainingUses <= 0) {
+        logger.debug(`BehaviorSmartMoveTo: durability check skipped - remainingUses=${remainingUses}`);
         return;
       }
 
@@ -382,10 +385,12 @@ export class BehaviorSmartMoveTo {
       const maxDurability = itemData?.maxDurability;
       
       if (!maxDurability || maxDurability <= 0) {
+        logger.debug(`BehaviorSmartMoveTo: durability check skipped - maxDurability=${maxDurability}`);
         return;
       }
 
       const durabilityPct = remainingUses / maxDurability;
+      logger.debug(`BehaviorSmartMoveTo: durability check - ${heldItem.name}: ${remainingUses}/${maxDurability} (${(durabilityPct * 100).toFixed(1)}%), threshold: ${(executionContext.durabilityThreshold * 100).toFixed(1)}%`);
       
       if (durabilityPct <= executionContext.durabilityThreshold) {
         const pctDisplay = (durabilityPct * 100).toFixed(1);

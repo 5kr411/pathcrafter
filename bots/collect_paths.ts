@@ -3,6 +3,7 @@ const mineflayer = require('mineflayer');
 import { getConfig } from './collector/config';
 import { WorkerManager } from './collector/worker_manager';
 import { TargetExecutor } from './collector/target_executor';
+import { ToolReplacementExecutor } from './collector/tool_replacement_executor';
 import { CommandHandler } from './collector/command_handler';
 import { ReactiveBehaviorRegistry } from './collector/reactive_behavior_registry';
 import { ReactiveBehaviorExecutorClass } from './collector/reactive_behavior_executor';
@@ -72,6 +73,15 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(hostileMobBehavior);
 
   const reactiveBehaviorExecutor = new ReactiveBehaviorExecutorClass(bot, reactiveBehaviorRegistry);
+  
+  const toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager, {
+    snapshotRadii: config.snapshotRadii,
+    snapshotYHalf: config.snapshotYHalf,
+    pruneWithWorld: config.pruneWithWorld,
+    combineSimilarNodes: config.combineSimilarNodes,
+    perGenerator: config.perGenerator,
+    toolDurabilityThreshold: config.toolDurabilityThreshold
+  });
 
   const executor = new TargetExecutor(bot, workerManager, safeChat, {
     snapshotRadii: config.snapshotRadii,
@@ -80,7 +90,7 @@ bot.once('spawn', () => {
     combineSimilarNodes: config.combineSimilarNodes,
     perGenerator: config.perGenerator,
     toolDurabilityThreshold: config.toolDurabilityThreshold
-  }, reactiveBehaviorExecutor);
+  }, reactiveBehaviorExecutor, toolReplacementExecutor);
 
   bot.on('death', () => {
     logger.info('Collector: bot died, resetting and retrying all targets');

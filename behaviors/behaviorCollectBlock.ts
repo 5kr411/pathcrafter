@@ -99,6 +99,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   } catch (_) {}
 
   let currentBlockCount = 0; // Will be set by resetBaseline on first entry
+  let pathfindingFailureCount = 0; // Track how many times pathfinding failed and we searched for closer block
+  const MAX_PATHFINDING_FAILURES = 20; // Max attempts before giving up
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -309,6 +311,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return shouldGo;
     },
     onTransition: () => {
+      pathfindingFailureCount = 0; // Reset counter when starting a new find block sequence
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -491,6 +494,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return true;
     },
     onTransition: () => {
+      pathfindingFailureCount = 0; // Reset counter on successful pathfinding
       targets.position = targets.blockPosition;
       try {
         equipTargets.item = pickBestToolItemForBlock(bot, targets.blockName);
@@ -530,6 +534,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return false;
     },
     onTransition: () => {
+      pathfindingFailureCount = 0; // Reset counter when searching for a different block
       logger.debug('equip -> find block (avoiding block under feet)');
     }
   });
@@ -588,7 +593,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
       if (finished && distance >= 6) {
-        logger.warn(`BehaviorCollectBlock: pathfinding failed (still ${distance.toFixed(2)} blocks away), searching for closer block`);
+        pathfindingFailureCount++;
+        if (pathfindingFailureCount >= MAX_PATHFINDING_FAILURES) {
+          logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times, giving up on ${targets.blockName}`);
+          return false; // Don't transition, let it exit via normal exit path
+        }
+        logger.warn(`BehaviorCollectBlock: pathfinding failed (still ${distance.toFixed(2)} blocks away), searching for closer block (attempt ${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES})`);
         return true;
       }
       return false;

@@ -28,6 +28,45 @@ function getInventoryObject(bot: Bot): InventoryObject {
   return out;
 }
 
+// Wrapper to create BotStateMachine with trackable physics tick listener
+function createTrackedBotStateMachine(bot: Bot, stateMachine: any): { botStateMachine: any; listener: () => void } {
+  const listener = function(this: Bot) {
+    try {
+      stateMachine.update();
+    } catch (err: any) {
+      logDebug(`BotStateMachine update error: ${err?.message || err}`);
+    }
+  };
+  
+  // Manually set up the bot state machine without using the constructor's listener setup
+  const botStateMachine = Object.create(BotStateMachine.prototype);
+  botStateMachine.bot = bot;
+  botStateMachine.rootStateMachine = stateMachine;
+  botStateMachine.states = [];
+  botStateMachine.transitions = [];
+  botStateMachine.nestedStateMachines = [];
+  
+  // Copy the setup methods from BotStateMachine
+  if (typeof BotStateMachine.prototype.findStatesRecursive === 'function') {
+    BotStateMachine.prototype.findStatesRecursive.call(botStateMachine, stateMachine);
+  }
+  if (typeof BotStateMachine.prototype.findTransitionsRecursive === 'function') {
+    BotStateMachine.prototype.findTransitionsRecursive.call(botStateMachine, stateMachine);
+  }
+  if (typeof BotStateMachine.prototype.findNestedStateMachines === 'function') {
+    BotStateMachine.prototype.findNestedStateMachines.call(botStateMachine, stateMachine);
+  }
+  
+  bot.on('physicTick', listener);
+  bot.on('physicsTick', listener); // Support both old and new event names
+  stateMachine.active = true;
+  if (typeof stateMachine.onStateEntered === 'function') {
+    stateMachine.onStateEntered();
+  }
+  
+  return { botStateMachine, listener };
+}
+
 export class TargetExecutor {
   private sequenceTargets: Target[] = [];
   private sequenceIndex = 0;
@@ -43,7 +82,9 @@ export class TargetExecutor {
   private readonly MAX_RETRIES = 3;
   private activeStateMachine: any = null;
   private activeBotStateMachine: any = null;
+  private activeBotStateMachineListener: ((this: Bot) => void) | null = null;
   private reactiveBehaviorCheckInterval: NodeJS.Timeout | null = null;
+  private toolsBeingReplaced = new Set<string>();
 
   constructor(
     private bot: Bot,
@@ -57,7 +98,8 @@ export class TargetExecutor {
       perGenerator: number;
       toolDurabilityThreshold: number;
     },
-    private reactiveBehaviorExecutor?: ReactiveBehaviorExecutorClass
+    private reactiveBehaviorExecutor?: ReactiveBehaviorExecutorClass,
+    private toolReplacementExecutor?: any
   ) {}
 
   isRunning(): boolean {
@@ -91,13 +133,29 @@ export class TargetExecutor {
       }
     }
     
+    if (this.toolReplacementExecutor && this.toolReplacementExecutor.isActive && this.toolReplacementExecutor.isActive()) {
+      try {
+        this.toolReplacementExecutor.stop();
+        logDebug('Collector: stopped tool replacement executor during reset');
+      } catch (err: any) {
+        logDebug(`Collector: error stopping tool replacement executor during reset: ${err?.message || err}`);
+      }
+    }
+    
+    this.toolsBeingReplaced.clear();
+    
     if (this.activeBotStateMachine) {
       try {
-        if (typeof this.activeBotStateMachine.stop === 'function') {
-          this.activeBotStateMachine.stop();
+        if ((this.activeBotStateMachine as any).rootStateMachine) {
+          (this.activeBotStateMachine as any).rootStateMachine.active = false;
+        }
+        if (this.activeBotStateMachineListener) {
+          this.bot.removeListener('physicTick', this.activeBotStateMachineListener);
+          this.bot.removeListener('physicsTick', this.activeBotStateMachineListener);
         }
       } catch (_) {}
       this.activeBotStateMachine = null;
+      this.activeBotStateMachineListener = null;
     }
     
     if (this.activeStateMachine) {
@@ -142,16 +200,32 @@ export class TargetExecutor {
       }
     }
     
+    if (this.toolReplacementExecutor && this.toolReplacementExecutor.isActive && this.toolReplacementExecutor.isActive()) {
+      try {
+        this.toolReplacementExecutor.stop();
+        logDebug('Collector: stopped tool replacement executor');
+      } catch (err: any) {
+        logDebug(`Collector: error stopping tool replacement executor: ${err.message || err}`);
+      }
+    }
+    
+    this.toolsBeingReplaced.clear();
+    
     if (this.activeBotStateMachine) {
       try {
-        if (typeof this.activeBotStateMachine.stop === 'function') {
-          logDebug('Collector: calling stop on BotStateMachine');
-          this.activeBotStateMachine.stop();
+        if ((this.activeBotStateMachine as any).rootStateMachine) {
+          (this.activeBotStateMachine as any).rootStateMachine.active = false;
+        }
+        if (this.activeBotStateMachineListener) {
+          this.bot.removeListener('physicTick', this.activeBotStateMachineListener);
+          this.bot.removeListener('physicsTick', this.activeBotStateMachineListener);
+          logDebug('Collector: removed BotStateMachine listeners');
         }
       } catch (err: any) {
         logDebug(`Collector: error stopping BotStateMachine: ${err.message || err}`);
       }
       this.activeBotStateMachine = null;
+      this.activeBotStateMachineListener = null;
     }
     
     if (this.activeStateMachine) {
@@ -178,6 +252,7 @@ export class TargetExecutor {
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
     this.pausedState = null;
+    this.toolsBeingReplaced.clear();
     this.safeChat('stopped');
   }
 
@@ -191,20 +266,18 @@ export class TargetExecutor {
     
     if (this.activeBotStateMachine) {
       try {
-        if (typeof this.activeBotStateMachine.stop === 'function') {
-          this.activeBotStateMachine.stop();
+        if ((this.activeBotStateMachine as any).rootStateMachine) {
+          (this.activeBotStateMachine as any).rootStateMachine.active = false;
+          logDebug('Collector: set rootStateMachine.active = false');
         }
-      } catch (_) {}
-    }
-    
-    if (this.activeStateMachine) {
-      try {
-        if (typeof this.activeStateMachine.onStateExited === 'function') {
-          this.activeStateMachine.onStateExited();
-          logDebug('Collector: called onStateExited on nested state machine during pause');
+        // Remove only the specific listener we added, not all physics tick listeners
+        if (this.activeBotStateMachineListener) {
+          this.bot.removeListener('physicTick', this.activeBotStateMachineListener);
+          this.bot.removeListener('physicsTick', this.activeBotStateMachineListener);
+          logDebug('Collector: removed BotStateMachine physicTick/physicsTick listener');
         }
       } catch (err: any) {
-        logDebug(`Collector: error calling onStateExited during pause: ${err.message || err}`);
+        logDebug(`Collector: error stopping BotStateMachine: ${err.message || err}`);
       }
     }
     
@@ -222,6 +295,7 @@ export class TargetExecutor {
     };
     
     this.activeBotStateMachine = null;
+    this.activeBotStateMachineListener = null;
     this.activeStateMachine = null;
   }
 
@@ -235,7 +309,9 @@ export class TargetExecutor {
     this.activeStateMachine = this.pausedState.stateMachine;
     
     if (this.activeStateMachine && this.bot) {
-      this.activeBotStateMachine = new BotStateMachine(this.bot, this.activeStateMachine);
+      const tracked = createTrackedBotStateMachine(this.bot, this.activeStateMachine);
+      this.activeBotStateMachine = tracked.botStateMachine;
+      this.activeBotStateMachineListener = tracked.listener;
     }
     
     this.pausedState = null;
@@ -436,7 +512,39 @@ export class TargetExecutor {
     } catch (_) {}
     
     const executionContext = createExecutionContext(
-      this.config.toolDurabilityThreshold
+      this.config.toolDurabilityThreshold,
+      (issue) => {
+        if (!this.toolReplacementExecutor) return;
+        
+        logInfo(`Collector: tool issue detected - ${issue.toolName}`);
+        
+        setImmediate(async () => {
+          if (!this.toolReplacementExecutor || this.toolsBeingReplaced.has(issue.toolName)) {
+            return;
+          }
+          
+          this.safeChat(`tool low, replacing ${issue.toolName}`);
+          this.toolsBeingReplaced.add(issue.toolName);
+          this.pause();
+          
+          try {
+            const success = await this.toolReplacementExecutor.executeReplacement(issue.toolName);
+            if (success) {
+              logInfo(`Collector: tool replacement succeeded for ${issue.toolName}`);
+              this.safeChat(`replaced ${issue.toolName}`);
+            } else {
+              logInfo(`Collector: tool replacement failed for ${issue.toolName}`);
+              this.safeChat(`failed to replace ${issue.toolName}`);
+            }
+          } catch (err: any) {
+            logInfo(`Collector: tool replacement error - ${err?.message || err}`);
+          } finally {
+            this.toolsBeingReplaced.delete(issue.toolName);
+            this.resume();
+          }
+        });
+      },
+      this.toolsBeingReplaced
     );
     
     const sm = buildStateMachineForPath(
@@ -459,7 +567,9 @@ export class TargetExecutor {
       executionContext
     );
     this.activeStateMachine = sm;
-    this.activeBotStateMachine = new BotStateMachine(this.bot, sm);
+    const tracked = createTrackedBotStateMachine(this.bot, sm);
+    this.activeBotStateMachine = tracked.botStateMachine;
+    this.activeBotStateMachineListener = tracked.listener;
     this.startReactiveBehaviorCheck();
   }
 
