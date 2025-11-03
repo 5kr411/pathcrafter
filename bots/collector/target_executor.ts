@@ -371,6 +371,9 @@ export class TargetExecutor {
       logInfo('Collector: all targets complete');
       this.safeChat('all targets complete');
       
+      this.running = false;
+      this.stopReactiveBehaviorCheck();
+      
       try {
         this.bot.clearControlStates();
         logDebug('Collector: cleared bot control states');
@@ -554,10 +557,8 @@ export class TargetExecutor {
         this.running = false;
         this.activeStateMachine = null;
         this.activeBotStateMachine = null;
+        this.activeBotStateMachineListener = null;
         if (success) {
-          const currentTarget = this.sequenceTargets[this.sequenceIndex];
-          const completedDesc = currentTarget ? `${currentTarget.item} x${currentTarget.count}` : 'target';
-          this.safeChat(`plan complete: ${completedDesc}`);
           this.handleTargetSuccess();
         } else {
           this.safeChat('plan failed');
@@ -592,6 +593,13 @@ export class TargetExecutor {
       logInfo('Collector: target validation failed, treating as failure');
       this.handleTargetFailure();
       return;
+    }
+
+    const currentTarget = this.sequenceTargets[this.sequenceIndex];
+    if (currentTarget) {
+      const completedDesc = `${currentTarget.item} x${currentTarget.count}`;
+      logInfo(`Collector: target complete: ${completedDesc}`);
+      this.safeChat(`collected ${completedDesc}`);
     }
 
     this.targetRetryCount.delete(this.sequenceIndex);

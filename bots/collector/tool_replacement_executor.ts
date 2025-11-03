@@ -29,6 +29,7 @@ export class ToolReplacementExecutor {
   constructor(
     private bot: Bot,
     private workerManager: WorkerManager,
+    private safeChat: (msg: string) => void,
     private config: {
       snapshotRadii: number[];
       snapshotYHalf: number | null;
@@ -172,6 +173,17 @@ export class ToolReplacementExecutor {
 
   private finishExecution(success: boolean): void {
     const fulfilled = success && this.validateSuccess();
+    
+    if (fulfilled && this.target) {
+      const invNow = getInventoryObject(this.bot);
+      const startCount = this.startInventory[this.target.item] || 0;
+      const currentCount = invNow[this.target.item] || 0;
+      const gained = currentCount - startCount;
+      
+      logger.info(`ToolReplacementExecutor: collected ${this.target.item} x${gained}`);
+      this.safeChat(`collected ${this.target.item} x${gained}`);
+    }
+    
     this.finish(fulfilled);
   }
 

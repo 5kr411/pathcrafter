@@ -5,6 +5,10 @@ import { BehaviorMineBlock } from './behaviorMineBlock';
 import { getToolRemainingUses } from '../utils/toolValidation';
 import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 
+// Global tracking of which tools have been warned about
+// This prevents spamming INFO logs across multiple state machine instances
+export const globalDurabilityWarnings = new Map<string, number>();
+
 interface Vec3Like {
   x: number;
   y: number;
@@ -393,11 +397,19 @@ export class BehaviorSmartMoveTo {
       logger.debug(`BehaviorSmartMoveTo: durability check - ${heldItem.name}: ${remainingUses}/${maxDurability} (${(durabilityPct * 100).toFixed(1)}%), threshold: ${(executionContext.durabilityThreshold * 100).toFixed(1)}%`);
       
       if (durabilityPct <= executionContext.durabilityThreshold) {
-        const pctDisplay = (durabilityPct * 100).toFixed(1);
-        const thresholdDisplay = (executionContext.durabilityThreshold * 100).toFixed(1);
-        logger.info(
-          `BehaviorSmartMoveTo: tool ${heldItem.name} low durability (${pctDisplay}% remaining, ${remainingUses}/${maxDurability} uses, threshold: ${thresholdDisplay}%)`
-        );
+        // Use global map to track warnings across ALL instances
+        const lastWarnedRemainingUses = globalDurabilityWarnings.get(heldItem.name);
+        
+        // Only log at INFO level if we haven't warned about this tool yet,
+        // OR if the remaining uses have decreased significantly (tool broke and was replaced)
+        if (lastWarnedRemainingUses === undefined || remainingUses > lastWarnedRemainingUses + 100) {
+          const pctDisplay = (durabilityPct * 100).toFixed(1);
+          const thresholdDisplay = (executionContext.durabilityThreshold * 100).toFixed(1);
+          logger.info(
+            `BehaviorSmartMoveTo: tool ${heldItem.name} low durability (${pctDisplay}% remaining, ${remainingUses}/${maxDurability} uses, threshold: ${thresholdDisplay}%)`
+          );
+          globalDurabilityWarnings.set(heldItem.name, remainingUses);
+        }
         
         signalToolIssue(executionContext, {
           type: 'durability',

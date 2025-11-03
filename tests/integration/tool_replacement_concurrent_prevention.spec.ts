@@ -43,7 +43,7 @@ describe('Tool Replacement Concurrent Execution Prevention', () => {
       toolDurabilityThreshold: 0.1
     };
 
-    toolReplacementExecutor = new ToolReplacementExecutor(mockBot, mockWorkerManager, config);
+    toolReplacementExecutor = new ToolReplacementExecutor(mockBot, mockWorkerManager, mockSafeChat, config);
     targetExecutor = new TargetExecutor(mockBot, mockWorkerManager, mockSafeChat, config, undefined, toolReplacementExecutor);
   });
 

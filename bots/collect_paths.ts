@@ -74,7 +74,7 @@ bot.once('spawn', () => {
 
   const reactiveBehaviorExecutor = new ReactiveBehaviorExecutorClass(bot, reactiveBehaviorRegistry);
   
-  const toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager, {
+  const toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager, safeChat, {
     snapshotRadii: config.snapshotRadii,
     snapshotYHalf: config.snapshotYHalf,
     pruneWithWorld: config.pruneWithWorld,
