@@ -52,6 +52,7 @@ export interface WorkerMessage {
 export interface PendingEntry {
   snapshot: Snapshot;
   target: Target;
+  handler?: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void;
 }
 
 export type Bot = any;

@@ -6,6 +6,9 @@ import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext } from './execution_context';
 
+const INVENTORY_CHECK_DELAY_MS = 250;
+const MAX_INVENTORY_CHECK_ATTEMPTS = 5;
+
 function getInventoryObject(bot: Bot): InventoryObject {
   const out: InventoryObject = {};
   try {
@@ -18,6 +21,44 @@ function getInventoryObject(bot: Bot): InventoryObject {
   return out;
 }
 
+function countDurableTools(bot: Bot, toolName: string, threshold: number): number {
+  let total = 0;
+  try {
+    const items = bot.inventory?.items() || [];
+    for (const it of items) {
+      if (!it || it.name !== toolName) continue;
+
+      const rawCount = Number.isFinite((it as any).count) ? (it as any).count : 1;
+      if (!rawCount || rawCount <= 0) continue;
+      const itemCount = rawCount;
+
+      if (!Number.isFinite(threshold) || threshold <= 0) {
+        total += itemCount;
+        continue;
+      }
+
+      const registryItems = (bot as any)?.registry?.items ?? {};
+      const registryEntry = registryItems[it.type];
+      const maxDurabilityCandidate = registryEntry?.maxDurability ?? (it as any)?.maxDurability;
+      const maxDurability = Number.isFinite(maxDurabilityCandidate) ? maxDurabilityCandidate : null;
+
+      if (!maxDurability || maxDurability <= 0) {
+        total += itemCount;
+        continue;
+      }
+
+      const used = Number.isFinite((it as any).durabilityUsed) ? (it as any).durabilityUsed : 0;
+      const remaining = Math.max(0, maxDurability - used);
+      const ratio = remaining / maxDurability;
+
+      if (ratio >= threshold) {
+        total += itemCount;
+      }
+    }
+  } catch (_) {}
+  return total;
+}
+
 export class ToolReplacementExecutor {
   private active = false;
   private target: Target | null = null;
@@ -25,6 +66,8 @@ export class ToolReplacementExecutor {
   private resolve: ((success: boolean) => void) | null = null;
   private startInventory: InventoryObject = {};
   private requiredGain = 0;
+  private inventoryCheckTimeout: NodeJS.Timeout | null = null;
+  private startDurableCount = 0;
 
   constructor(
     private bot: Bot,
@@ -71,6 +114,7 @@ export class ToolReplacementExecutor {
     this.startInventory = { ...startInventory };
     this.target = { item: toolName, count: desiredTotal };
     this.requiredGain = desiredGain;
+    this.startDurableCount = countDurableTools(this.bot, toolName, this.config.toolDurabilityThreshold);
 
     return await new Promise<boolean>((resolve) => {
       this.resolve = resolve;
@@ -109,7 +153,10 @@ export class ToolReplacementExecutor {
           version,
           this.config.perGenerator,
           this.config.pruneWithWorld,
-          this.config.combineSimilarNodes
+          this.config.combineSimilarNodes,
+          (_entry, ranked, ok, error) => {
+            this.handlePlanningResult(ranked, ok, error);
+          }
         );
       })
       .catch((err: any) => {
@@ -172,19 +219,87 @@ export class ToolReplacementExecutor {
   }
 
   private finishExecution(success: boolean): void {
-    const fulfilled = success && this.validateSuccess();
-    
-    if (fulfilled && this.target) {
-      const invNow = getInventoryObject(this.bot);
-      const startCount = this.startInventory[this.target.item] || 0;
-      const currentCount = invNow[this.target.item] || 0;
-      const gained = currentCount - startCount;
-      
-      logger.info(`ToolReplacementExecutor: collected ${this.target.item} x${gained}`);
-      this.safeChat(`collected ${this.target.item} x${gained}`);
+    logger.info(`ToolReplacementExecutor: finishExecution called (success=${success})`);
+    this.logInventoryState('finishExecution');
+    if (this.tryFinalizeSuccess()) {
+      if (!success) {
+        logger.warn('ToolReplacementExecutor: execution reported failure but inventory requirement is satisfied');
+      }
+      return;
     }
-    
-    this.finish(fulfilled);
+
+    if (!success) {
+      logger.info('ToolReplacementExecutor: execution reported failure, waiting for inventory confirmation');
+      this.logInventoryState('waiting-after-failure');
+      this.scheduleInventoryValidation(0);
+      return;
+    }
+
+    logger.info('ToolReplacementExecutor: awaiting inventory update before finalizing');
+    this.logInventoryState('waiting-after-success');
+    this.scheduleInventoryValidation(0);
+  }
+
+  private tryFinalizeSuccess(): boolean {
+    const validated = this.validateSuccess();
+    logger.info(`ToolReplacementExecutor: tryFinalizeSuccess validation=${validated}`);
+    if (!validated) {
+      return false;
+    }
+
+    this.emitSuccessAnnouncement();
+    this.finish(true);
+    return true;
+  }
+
+  private emitSuccessAnnouncement(): void {
+    if (!this.target) return;
+
+    const invNow = getInventoryObject(this.bot);
+    const startCount = this.startInventory[this.target.item] || 0;
+    const currentCount = invNow[this.target.item] || 0;
+    const gained = currentCount - startCount;
+    const durableNow = countDurableTools(this.bot, this.target.item, this.config.toolDurabilityThreshold);
+    const durableGain = durableNow - this.startDurableCount;
+    const announcedGain = gained > 0 ? gained : durableGain > 0 ? durableGain : 0;
+
+    if (announcedGain > 0) {
+      logger.info(`ToolReplacementExecutor: collected ${this.target.item} x${announcedGain}`);
+      this.safeChat(`collected ${this.target.item} x${announcedGain}`);
+    } else {
+      logger.info(`ToolReplacementExecutor: success confirmed but no gain detected for ${this.target.item}`);
+    }
+  }
+
+  private scheduleInventoryValidation(attempt: number): void {
+    if (attempt >= MAX_INVENTORY_CHECK_ATTEMPTS) {
+      logger.info('ToolReplacementExecutor: inventory update not observed, marking replacement as failed');
+      this.finish(false);
+      return;
+    }
+
+    if (this.inventoryCheckTimeout) {
+      clearTimeout(this.inventoryCheckTimeout);
+      this.inventoryCheckTimeout = null;
+    }
+
+    logger.info(`ToolReplacementExecutor: scheduling inventory validation attempt ${attempt + 1}/${MAX_INVENTORY_CHECK_ATTEMPTS}`);
+    this.inventoryCheckTimeout = setTimeout(() => {
+      this.inventoryCheckTimeout = null;
+
+      if (!this.active) {
+        logger.info('ToolReplacementExecutor: inventory validation fired but executor no longer active');
+        return;
+      }
+
+      logger.info(`ToolReplacementExecutor: running inventory validation attempt ${attempt + 1}`);
+      this.logInventoryState(`validation-attempt-${attempt + 1}`);
+      if (this.tryFinalizeSuccess()) {
+        return;
+      }
+
+      this.scheduleInventoryValidation(attempt + 1);
+    }, INVENTORY_CHECK_DELAY_MS);
   }
 
   private validateSuccess(): boolean {
@@ -197,10 +312,14 @@ export class ToolReplacementExecutor {
       const requiredGain = this.requiredGain > 0
         ? this.requiredGain
         : Math.max(0, this.target.count - startCount);
-      logger.debug(
-        `ToolReplacementExecutor: validation for ${this.target.item} - start: ${startCount}, current: ${currentCount}, gained: ${gained}, requiredGain: ${requiredGain}`
+      const durableNow = countDurableTools(this.bot, this.target.item, this.config.toolDurabilityThreshold);
+      const durableGain = durableNow - this.startDurableCount;
+      logger.info(
+        `ToolReplacementExecutor: validation for ${this.target.item} - start: ${startCount}, current: ${currentCount}, gained: ${gained}, requiredGain: ${requiredGain}, durableGain: ${durableGain}`
       );
-      return gained >= requiredGain && requiredGain > 0;
+      const gainedSatisfied = requiredGain > 0 && gained >= requiredGain;
+      const durableSatisfied = durableGain > 0;
+      return gainedSatisfied || durableSatisfied;
     } catch (err: any) {
       logger.debug(`ToolReplacementExecutor: error validating success: ${err?.message || err}`);
       return false;
@@ -208,6 +327,12 @@ export class ToolReplacementExecutor {
   }
 
   private finish(success: boolean): void {
+    this.logInventoryState(`finish(${success})`);
+    if (this.inventoryCheckTimeout) {
+      clearTimeout(this.inventoryCheckTimeout);
+      this.inventoryCheckTimeout = null;
+    }
+
     if (this.botStateMachine && typeof this.botStateMachine.stop === 'function') {
       try {
         this.botStateMachine.stop();
@@ -219,6 +344,7 @@ export class ToolReplacementExecutor {
     this.startInventory = {};
     this.requiredGain = 0;
     this.active = false;
+    this.startDurableCount = 0;
 
     const resolve = this.resolve;
     this.resolve = null;
@@ -238,6 +364,16 @@ export class ToolReplacementExecutor {
     }
     logger.debug('ToolReplacementExecutor: stopping');
     this.finish(false);
+  }
+
+  private logInventoryState(label: string): void {
+    const targetItem = this.target?.item;
+    const invNow = getInventoryObject(this.bot);
+    const startCount = targetItem ? this.startInventory[targetItem] || 0 : null;
+    const currentCount = targetItem ? invNow[targetItem] || 0 : null;
+    logger.info(
+      `ToolReplacementExecutor: [${label}] target=${targetItem ?? 'none'} start=${startCount ?? 'n/a'} current=${currentCount ?? 'n/a'} requiredGain=${this.requiredGain}`
+    );
   }
 }
 

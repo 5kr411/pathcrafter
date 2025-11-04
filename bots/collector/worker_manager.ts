@@ -46,7 +46,8 @@ export class WorkerManager {
       logDebug(`Collector: processing result for id ${msg.id}, ok=${msg.ok}`);
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : [];
       logDebug(`Collector: received ${ranked.length} ranked paths`);
-      this.onResult(entry, ranked, msg.ok || false, msg.error);
+      const callback = entry.handler || this.onResult;
+      callback(entry, ranked, msg.ok || false, msg.error);
     });
 
     this.worker.on('error', (err: Error) => {
@@ -74,10 +75,11 @@ export class WorkerManager {
     mcVersion: string,
     perGenerator: number,
     pruneWithWorld: boolean,
-    combineSimilarNodes: boolean
+    combineSimilarNodes: boolean,
+    handler?: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void
   ): void {
     this.ensureWorker();
-    this.pending.set(id, { snapshot, target });
+    this.pending.set(id, { snapshot, target, handler });
 
     const planMessage: WorkerMessage = {
       type: 'plan',

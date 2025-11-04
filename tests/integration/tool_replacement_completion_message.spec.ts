@@ -15,6 +15,11 @@ describe('Tool Replacement Completion Message', () => {
         items: jest.fn().mockReturnValue([
           { name: 'diamond_pickaxe', type: 871, count: 1 }
         ])
+      },
+      registry: {
+        items: {
+          871: { maxDurability: 1561 }
+        }
       }
     };
 
@@ -92,7 +97,88 @@ describe('Tool Replacement Completion Message', () => {
     expect(chatMessages).toContain('collected diamond_pickaxe x1');
   });
 
+  it('waits for inventory update before announcing collection', () => {
+    jest.useFakeTimers();
+
+    try {
+      const executor = new ToolReplacementExecutor(
+        mockBot,
+        mockWorkerManager,
+        mockSafeChat,
+        {
+          snapshotRadii: [32],
+          snapshotYHalf: null,
+          pruneWithWorld: true,
+          combineSimilarNodes: false,
+          perGenerator: 1,
+          toolDurabilityThreshold: 0.1
+        }
+      );
+
+      executor['active'] = true;
+      executor['target'] = { item: 'diamond_pickaxe', count: 2 };
+      executor['startInventory'] = { diamond_pickaxe: 0 };
+      executor['requiredGain'] = 2;
+
+      let inventoryUpdated = false;
+      mockBot.inventory.items.mockImplementation(() => {
+        if (inventoryUpdated) {
+          return [{ name: 'diamond_pickaxe', type: 871, count: 2 }];
+        }
+        return [{ name: 'diamond_pickaxe', type: 871, count: 0 }];
+      });
+
+      executor['finishExecution'](true);
+
+      expect(chatMessages).toHaveLength(0);
+
+      inventoryUpdated = true;
+      jest.runOnlyPendingTimers();
+
+      expect(chatMessages).toContain('collected diamond_pickaxe x2');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('MUST NOT say anything if plan fails', () => {
+    jest.useFakeTimers();
+
+    try {
+      const executor = new ToolReplacementExecutor(
+        mockBot,
+        mockWorkerManager,
+        mockSafeChat,
+        {
+          snapshotRadii: [32],
+          snapshotYHalf: null,
+          pruneWithWorld: true,
+          combineSimilarNodes: false,
+          perGenerator: 1,
+          toolDurabilityThreshold: 0.1
+        }
+      );
+
+      executor['active'] = true;
+      executor['target'] = { item: 'diamond_pickaxe', count: 2 };
+      executor['startInventory'] = { diamond_pickaxe: 0 };
+      executor['requiredGain'] = 2;
+      
+      // Plan failed - still have 0 pickaxes
+      mockBot.inventory.items.mockReturnValue([]);
+
+      executor['finishExecution'](false);
+      jest.runOnlyPendingTimers();
+
+      // Should NOT say "collected" because it failed
+      const hasCollectedMessage = chatMessages.some(msg => msg.includes('collected'));
+      expect(hasCollectedMessage).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('announces collection even if state machine reports failure but inventory is satisfied', () => {
     const executor = new ToolReplacementExecutor(
       mockBot,
       mockWorkerManager,
@@ -107,18 +193,56 @@ describe('Tool Replacement Completion Message', () => {
       }
     );
 
+    executor['active'] = true;
     executor['target'] = { item: 'diamond_pickaxe', count: 2 };
-    executor['startInventory'] = { diamond_pickaxe: 0 };
-    executor['requiredGain'] = 2;
-    
-    // Plan failed - still have 0 pickaxes
-    mockBot.inventory.items.mockReturnValue([]);
+    executor['startInventory'] = { diamond_pickaxe: 1 };
+    executor['requiredGain'] = 1;
+
+    mockBot.inventory.items.mockReturnValue([
+      { name: 'diamond_pickaxe', type: 871, count: 2 }
+    ]);
 
     executor['finishExecution'](false);
 
-    // Should NOT say "collected" because it failed
-    const hasCollectedMessage = chatMessages.some(msg => msg.includes('collected'));
-    expect(hasCollectedMessage).toBe(false);
+    expect(chatMessages).toContain('collected diamond_pickaxe x1');
+  });
+
+  it('announces collection when the original tool breaks during replacement', () => {
+    jest.useFakeTimers();
+
+    try {
+      const executor = new ToolReplacementExecutor(
+        mockBot,
+        mockWorkerManager,
+        mockSafeChat,
+        {
+          snapshotRadii: [32],
+          snapshotYHalf: null,
+          pruneWithWorld: true,
+          combineSimilarNodes: false,
+          perGenerator: 1,
+          toolDurabilityThreshold: 0.1
+        }
+      );
+
+      executor['active'] = true;
+      executor['target'] = { item: 'diamond_pickaxe', count: 2 };
+      executor['startInventory'] = { diamond_pickaxe: 1 };
+      executor['requiredGain'] = 1;
+      executor['startDurableCount'] = 0;
+
+      mockBot.inventory.items.mockReturnValue([
+        { name: 'diamond_pickaxe', type: 871, count: 1, durabilityUsed: 0 }
+      ]);
+
+      executor['finishExecution'](false);
+      jest.runOnlyPendingTimers();
+      jest.runOnlyPendingTimers();
+
+      expect(chatMessages).toContain('collected diamond_pickaxe x1');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 

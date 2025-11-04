@@ -531,7 +531,15 @@ export class TargetExecutor {
           this.pause();
           
           try {
+            const invBefore = getInventoryObject(this.bot);
+            logInfo(
+              `Collector: tool replacement starting for ${issue.toolName} (inventory=${invBefore[issue.toolName] || 0})`
+            );
             const success = await this.toolReplacementExecutor.executeReplacement(issue.toolName);
+            const invAfter = getInventoryObject(this.bot);
+            logInfo(
+              `Collector: tool replacement completed for ${issue.toolName} (success=${success}, inventory=${invAfter[issue.toolName] || 0})`
+            );
             if (success) {
               logInfo(`Collector: tool replacement succeeded for ${issue.toolName}`);
               this.safeChat(`replaced ${issue.toolName}`);
