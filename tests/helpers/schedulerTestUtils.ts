@@ -109,7 +109,8 @@ export function createMockBot(): any {
   const bot: any = emitter;
   bot.version = '1.20.1';
   bot.inventory = {
-    items: jest.fn().mockReturnValue([])
+    items: jest.fn().mockReturnValue([]),
+    slots: new Array(46).fill(null)
   };
   bot.registry = { items: {} };
   bot.clearControlStates = jest.fn();
@@ -121,6 +122,22 @@ export function createMockBot(): any {
   bot.chat = jest.fn();
   bot.safeChat = jest.fn();
   bot.blockAt = jest.fn().mockReturnValue(null);
+  bot.getEquipmentDestSlot = jest.fn((slot: string) => {
+    switch (slot) {
+      case 'head':
+        return 5;
+      case 'torso':
+        return 6;
+      case 'legs':
+        return 7;
+      case 'feet':
+        return 8;
+      case 'off-hand':
+        return 45;
+      default:
+        return 36;
+    }
+  });
   return bot;
 }
 

@@ -75,7 +75,7 @@ export function produced(step: ActionStep | null | undefined): string | null {
 }
 
 /**
- * Gets the total count of a specific item in the bot's inventory
+ * Gets the total count of a specific item in the bot's inventory and armor slots
  * 
  * @param bot - Mineflayer bot instance
  * @param itemName - Name of the item to count
@@ -83,13 +83,29 @@ export function produced(step: ActionStep | null | undefined): string | null {
  * 
  * @example
  * getItemCountInInventory(bot, 'oak_log') // returns total oak logs in inventory
+ * getItemCountInInventory(bot, 'diamond_chestplate') // includes equipped armor
  */
 export function getItemCountInInventory(bot: any, itemName: string): number {
   try {
+    // Count items in regular inventory
     const items = bot.inventory?.items?.() || [];
-    return items
+    let total = items
       .filter((item: any) => item && item.name === itemName)
-      .reduce((total: number, item: any) => total + (item.count || 0), 0);
+      .reduce((sum: number, item: any) => sum + (item.count || 0), 0);
+    
+    // Also check armor slots (head:5, torso:6, legs:7, feet:8)
+    const armorSlots = [5, 6, 7, 8];
+    const slots = bot.inventory?.slots;
+    if (Array.isArray(slots)) {
+      for (const slotIndex of armorSlots) {
+        const item = slots[slotIndex];
+        if (item && item.name === itemName) {
+          total += item.count || 1;
+        }
+      }
+    }
+    
+    return total;
   } catch (_) {
     return 0;
   }
