@@ -171,11 +171,17 @@ export class TargetExecutor implements ScheduledBehavior {
     } catch (_) {}
     
     this.workerManager.clearPending();
+    const hasQueuedTargets = Array.isArray(this.sequenceTargets) && this.sequenceTargets.length > 0;
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
     
+    if (!hasQueuedTargets) {
+      this.safeChat('death detected but no queued targets to restart');
+      return;
+    }
+
     this.safeChat('death detected, restarting all targets');
-    
+
     setTimeout(() => {
       try {
         this.startNextTarget().catch(() => {});

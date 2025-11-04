@@ -47,6 +47,7 @@ interface BehaviorFrame {
   suspendDepth: number;
   stateMachine: any;
   stateMachineListener: ((this: Bot) => void) | null;
+  rootStateMachine: any;
   hasStarted: boolean;
 }
 
@@ -206,6 +207,7 @@ export class BehaviorScheduler {
       suspendDepth: 0,
       stateMachine: null,
       stateMachineListener: null,
+      rootStateMachine: null,
       hasStarted: false
     };
     this.stack.push(frame);
@@ -364,6 +366,7 @@ export class BehaviorScheduler {
   attachStateMachine(frameId: string, stateMachine: any, listener: (this: Bot) => void): void {
     const frame = this.stack.find((f) => f.frameId === frameId);
     if (!frame) return;
+    const previousRoot = frame.rootStateMachine;
     if (frame.stateMachineListener) {
       try {
         this.bot.removeListener('physicTick', frame.stateMachineListener);
@@ -377,10 +380,16 @@ export class BehaviorScheduler {
       this.bot.on('physicsTick', listener);
     } catch (_) {}
     if (stateMachine && stateMachine.rootStateMachine) {
-      stateMachine.rootStateMachine.active = true;
-      if (!frame.hasStarted && typeof stateMachine.rootStateMachine.onStateEntered === 'function') {
+      const root = stateMachine.rootStateMachine;
+      frame.rootStateMachine = root;
+      const isNewRoot = root !== previousRoot;
+      if (isNewRoot) {
+        frame.hasStarted = false;
+      }
+      root.active = true;
+      if (!frame.hasStarted && typeof root.onStateEntered === 'function') {
         try {
-          stateMachine.rootStateMachine.onStateEntered();
+          root.onStateEntered();
         } catch (_) {}
       }
       if (!frame.hasStarted) {
@@ -430,6 +439,7 @@ export class BehaviorScheduler {
     frame.plannerHandlers.clear();
     frame.stateMachine = null;
     frame.stateMachineListener = null;
+    frame.rootStateMachine = null;
     frame.hasStarted = false;
   }
 
