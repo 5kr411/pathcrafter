@@ -119,6 +119,8 @@ export function createMockBot(): any {
   bot.emit = emitter.emit.bind(emitter);
   bot.removeAllListeners = emitter.removeAllListeners.bind(emitter);
   bot.chat = jest.fn();
+  bot.safeChat = jest.fn();
+  bot.blockAt = jest.fn().mockReturnValue(null);
   return bot;
 }
 

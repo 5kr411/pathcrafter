@@ -47,6 +47,8 @@ bot.once('spawn', () => {
     } catch (_) {}
   };
 
+  (bot as any).safeChat = safeChat;
+
   let connected = true;
   bot.on('kicked', (reason: string) => {
     connected = false;

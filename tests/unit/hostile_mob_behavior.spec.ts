@@ -1,13 +1,21 @@
 const minecraftData = require('minecraft-data');
 
+jest.mock('../../behaviors/behaviorHuntEntity', () => ({
+  __esModule: true,
+  default: jest.fn()
+}));
+
 describe('unit: hostile_mob_behavior', () => {
   let hostileMobBehavior: any;
   let getHostileMobNames: any;
+  let createHuntEntityState: jest.Mock;
 
   beforeEach(() => {
     jest.resetModules();
     const module = require('../../bots/collector/reactive_behaviors/hostile_mob_behavior');
     hostileMobBehavior = module.hostileMobBehavior;
+    createHuntEntityState = require('../../behaviors/behaviorHuntEntity').default as jest.Mock;
+    createHuntEntityState.mockReset();
     
     getHostileMobNames = (mcData: any) => {
       const hostileMobs = new Set<string>();
@@ -59,6 +67,10 @@ describe('unit: hostile_mob_behavior', () => {
 
       return hostileMobs;
     };
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   describe('getHostileMobNames', () => {
@@ -204,6 +216,34 @@ describe('unit: hostile_mob_behavior', () => {
       const result = hostileMobBehavior.shouldActivate(bot);
       expect(result).toBe(false);
     });
+
+    test('returns false when hostile mob is obstructed by solid block', () => {
+      const blockAt = jest.fn((pos: any) => {
+        if (Math.floor(pos.x) === 0 && Math.floor(pos.y) === 65 && Math.floor(pos.z) === 2) {
+          return { name: 'stone', boundingBox: 'block', transparent: false };
+        }
+        return null;
+      });
+
+      const bot = {
+        version: '1.20.1',
+        entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 5, height: 1.62 } },
+        entities: {
+          '1': {
+            name: 'zombie',
+            position: { x: 0, y: 64, z: 4 },
+            health: 20
+          }
+        },
+        blockAt,
+        chat: jest.fn(),
+        safeChat: jest.fn()
+      };
+
+      const result = hostileMobBehavior.shouldActivate(bot);
+      expect(result).toBe(false);
+      expect(blockAt).toHaveBeenCalled();
+    });
   });
 
   describe('execute', () => {
@@ -213,7 +253,9 @@ describe('unit: hostile_mob_behavior', () => {
         entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 10 } },
         entities: {
           '1': { name: 'pig', position: { x: 5, y: 64, z: 0 } }
-        }
+        },
+        safeChat: jest.fn(),
+        chat: jest.fn()
       };
       const executor = {
         finish: jest.fn()
@@ -223,6 +265,49 @@ describe('unit: hostile_mob_behavior', () => {
       
       expect(result).toBeNull();
       expect(executor.finish).toHaveBeenCalledWith(false);
+    });
+
+    test('announces combat start and completion via safeChat', async () => {
+      jest.useFakeTimers();
+
+      const machine = {
+        update: jest.fn(),
+        onStateEntered: jest.fn(),
+        onStateExited: jest.fn(),
+        isFinished: jest.fn().mockReturnValue(true)
+      };
+      createHuntEntityState.mockReturnValue(machine);
+
+      const bot = {
+        version: '1.20.1',
+        entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 5 } },
+        entities: {
+          '1': {
+            name: 'zombie',
+            displayName: 'Zombie',
+            position: { x: 5, y: 64, z: 0 },
+            health: 20
+          }
+        },
+        safeChat: jest.fn(),
+        chat: jest.fn()
+      };
+
+      const executor = {
+        finish: jest.fn()
+      };
+
+      const result = await hostileMobBehavior.execute(bot, executor);
+
+      expect(result).toBe(machine);
+      expect(bot.safeChat).toHaveBeenCalledWith('fighting Zombie');
+
+      jest.runOnlyPendingTimers();
+
+      expect(executor.finish).toHaveBeenCalledWith(true);
+      expect(bot.safeChat).toHaveBeenCalledWith('done fighting Zombie');
+
+      jest.useRealTimers();
     });
   });
 
