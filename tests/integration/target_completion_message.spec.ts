@@ -1,9 +1,22 @@
 import { TargetExecutor } from '../../bots/collector/target_executor';
-import { WorkerManager } from '../../bots/collector/worker_manager';
+import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
+import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
+import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
+
+jest.mock('mineflayer-statemachine', () => ({
+  BotStateMachine: jest.fn((_bot: any, machine: any) => {
+    machine.active = true;
+    return {
+      stop: jest.fn(() => {
+        machine.active = false;
+      })
+    };
+  })
+}));
 
 describe('Target Completion Message Fix', () => {
   let mockBot: any;
-  let mockWorkerManager: WorkerManager;
+  let mockWorkerManager: TestWorkerManager;
   let mockSafeChat: jest.Mock;
   let targetExecutor: TargetExecutor;
   let chatMessages: string[];
@@ -11,42 +24,32 @@ describe('Target Completion Message Fix', () => {
   beforeEach(() => {
     chatMessages = [];
     
-    mockBot = {
-      entity: { position: { x: 0, y: 60, z: 0 } },
-      inventory: {
-        items: jest.fn().mockReturnValue([
-          { name: 'diamond', type: 870, count: 1 }
-        ])
-      },
-      clearControlStates: jest.fn(),
-      removeListener: jest.fn(),
-      on: jest.fn()
-    };
-
-    mockWorkerManager = {
-      postPlanningRequest: jest.fn(),
-      clearPending: jest.fn(),
-      stop: jest.fn()
-    } as any;
+    mockBot = createMockBot();
+    mockBot.inventory.items.mockReturnValue([
+      { name: 'diamond', type: 870, count: 1 }
+    ]);
+    mockBot.clearControlStates = jest.fn();
 
     mockSafeChat = jest.fn((msg: string) => {
       chatMessages.push(msg);
     });
 
-    targetExecutor = new TargetExecutor(mockBot, mockWorkerManager, mockSafeChat, {
+    const harness = createSchedulerHarness(mockBot);
+    mockWorkerManager = harness.workerManager;
+
+    const reactiveExecutor = new ReactiveBehaviorExecutorClass(mockBot, new ReactiveBehaviorRegistry());
+
+    targetExecutor = new TargetExecutor(mockBot, mockWorkerManager as any, mockSafeChat, {
       snapshotRadii: [32],
       snapshotYHalf: null,
       pruneWithWorld: true,
       combineSimilarNodes: false,
       perGenerator: 1,
       toolDurabilityThreshold: 0.1
-    });
+    }, reactiveExecutor, undefined);
   });
 
   afterEach(() => {
-    if (targetExecutor) {
-      targetExecutor['stopReactiveBehaviorCheck']();
-    }
     jest.clearAllMocks();
   });
 

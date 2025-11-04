@@ -8,6 +8,7 @@ import { CommandHandler } from './collector/command_handler';
 import { ReactiveBehaviorRegistry } from './collector/reactive_behavior_registry';
 import { ReactiveBehaviorExecutorClass } from './collector/reactive_behavior_executor';
 import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_behavior';
+import { BehaviorScheduler } from './collector/behavior_scheduler';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import logger from '../utils/logger';
@@ -61,10 +62,17 @@ bot.once('spawn', () => {
 
   safeChat('collector ready');
 
+  let behaviorScheduler: BehaviorScheduler | null = null;
+  let executor: TargetExecutor;
+
   const workerManager = new WorkerManager(
-    (entry, ranked, ok, error) => {
+    (entry, ranked, ok, error, plannerId) => {
       if (!connected) return;
-      executor.handlePlanningResult(entry, ranked, ok, error);
+      if (behaviorScheduler) {
+        behaviorScheduler.handlePlannerResult(entry, ranked, ok, error, plannerId);
+      } else if (executor) {
+        executor.handlePlanningResult(entry, ranked, ok, error);
+      }
     },
     () => {}
   );
@@ -73,8 +81,9 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(hostileMobBehavior);
 
   const reactiveBehaviorExecutor = new ReactiveBehaviorExecutorClass(bot, reactiveBehaviorRegistry);
+  behaviorScheduler = new BehaviorScheduler(bot, workerManager);
   
-  const toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager, safeChat, {
+  const toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager, behaviorScheduler, safeChat, {
     snapshotRadii: config.snapshotRadii,
     snapshotYHalf: config.snapshotYHalf,
     pruneWithWorld: config.pruneWithWorld,
@@ -83,7 +92,7 @@ bot.once('spawn', () => {
     toolDurabilityThreshold: config.toolDurabilityThreshold
   });
 
-  const executor = new TargetExecutor(bot, workerManager, safeChat, {
+  executor = new TargetExecutor(bot, workerManager, safeChat, {
     snapshotRadii: config.snapshotRadii,
     snapshotYHalf: config.snapshotYHalf,
     pruneWithWorld: config.pruneWithWorld,
@@ -91,6 +100,29 @@ bot.once('spawn', () => {
     perGenerator: config.perGenerator,
     toolDurabilityThreshold: config.toolDurabilityThreshold
   }, reactiveBehaviorExecutor, toolReplacementExecutor);
+
+  behaviorScheduler.pushBehavior(executor);
+  behaviorScheduler.activateTop().catch(() => {});
+
+  behaviorScheduler.setReactivePoller(async () => {
+    if (!reactiveBehaviorExecutor || reactiveBehaviorExecutor.isActive()) {
+      return;
+    }
+    const behavior = await reactiveBehaviorExecutor.registry.findActiveBehavior(bot);
+    if (!behavior) {
+      return;
+    }
+    const run = reactiveBehaviorExecutor.createScheduledRun(behavior);
+    if (!run) {
+      return;
+    }
+    try {
+      await behaviorScheduler.pushAndActivate(run, `reactive ${behavior.name || 'unknown'}`);
+      await run.waitForCompletion();
+    } catch (err: any) {
+      logger.info(`Collector: reactive behavior orchestration error - ${err?.message || err}`);
+    }
+  });
 
   bot.on('death', () => {
     logger.info('Collector: bot died, resetting and retrying all targets');

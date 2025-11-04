@@ -1,214 +1,194 @@
+import { BehaviorScheduler } from '../../bots/collector/behavior_scheduler';
 import { TargetExecutor } from '../../bots/collector/target_executor';
-import { WorkerManager } from '../../bots/collector/worker_manager';
 import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
+import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
+import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
+import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
-describe('SIMULTANEOUS EXECUTION BUG - Tool Replacement During Mining', () => {
-  let mockBot: any;
-  let mockWorkerManager: WorkerManager;
-  let mockSafeChat: jest.Mock;
-  let toolReplacementExecutor: ToolReplacementExecutor;
+jest.mock('mineflayer-statemachine', () => ({
+  BotStateMachine: jest.fn((_bot: any, machine: any) => {
+    machine.active = true;
+    return {
+      stop: jest.fn(() => {
+        machine.active = false;
+      })
+    };
+  })
+}));
+
+jest.mock('../../bots/collector/snapshot_manager', () => ({
+  captureSnapshotForTarget: jest.fn()
+}));
+
+jest.mock('../../behavior_generator/buildMachine', () => ({
+  buildStateMachineForPath: jest.fn()
+}));
+
+describe('Nested pre-emption stack integrity', () => {
+  const { captureSnapshotForTarget } = require('../../bots/collector/snapshot_manager');
+  const { buildStateMachineForPath } = require('../../behavior_generator/buildMachine');
+
+  const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+  let bot: any;
+  let scheduler: BehaviorScheduler;
+  let workerManager: TestWorkerManager;
   let targetExecutor: TargetExecutor;
-  let toolReplacementStateMachineActive: boolean;
+  let toolReplacementExecutor: ToolReplacementExecutor;
+  let reactiveExecutor: ReactiveBehaviorExecutorClass;
+  let safeChat: jest.Mock;
+  let inventoryPhase: 'before' | 'after';
+
+  const config = {
+    snapshotRadii: [32],
+    snapshotYHalf: null,
+    pruneWithWorld: true,
+    combineSimilarNodes: false,
+    perGenerator: 1,
+    toolDurabilityThreshold: 0.3
+  };
 
   beforeEach(() => {
-    toolReplacementStateMachineActive = false;
+    jest.clearAllMocks();
 
-    mockBot = {
-      entity: { position: { x: 0, y: 60, z: 0 } },
-      inventory: {
-        items: jest.fn().mockReturnValue([
-          { name: 'diamond_pickaxe', type: 871, durabilityUsed: 1551, count: 1 }
-        ])
+    bot = createMockBot();
+    safeChat = jest.fn();
+
+    inventoryPhase = 'before';
+    bot.inventory.items.mockImplementation(() => {
+      if (inventoryPhase === 'before') {
+        return [
+          { name: 'iron_pickaxe', type: 257, count: 1, durabilityUsed: 200 }
+        ];
+      }
+      return [
+        { name: 'iron_pickaxe', type: 257, count: 2, durabilityUsed: 0 }
+      ];
+    });
+    bot.registry.items = {
+      257: { maxDurability: 250 }
+    };
+
+    const harness = createSchedulerHarness(bot);
+    scheduler = harness.scheduler;
+    workerManager = harness.workerManager;
+
+    reactiveExecutor = new ReactiveBehaviorExecutorClass(bot, new ReactiveBehaviorRegistry());
+    toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager as any, scheduler, safeChat, config);
+    targetExecutor = new TargetExecutor(bot, workerManager as any, safeChat, config, reactiveExecutor, toolReplacementExecutor);
+
+    (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 16 } });
+  });
+
+  it('handles reactive > tool replacement > target stack without concurrent updates', async () => {
+    const buildStateMachineForPathMock = buildStateMachineForPath as jest.Mock;
+
+    let targetTicks = 0;
+    buildStateMachineForPathMock.mockImplementationOnce((_bot: any, _path: any[], _onFinished: (success: boolean) => void) => ({
+      update: () => {
+        targetTicks += 1;
       },
-      registry: {
-        blocks: { chest: { id: 54 } },
-        items: {
-          871: {
-            name: 'diamond_pickaxe',
-            maxDurability: 1561
-          }
+      onStateEntered: jest.fn(),
+      onStateExited: jest.fn(),
+      transitions: [],
+      states: []
+    }));
+
+    let toolTicks = 0;
+    buildStateMachineForPathMock.mockImplementationOnce((_bot: any, _path: any[], onFinished: (success: boolean) => void) => ({
+      update: () => {
+        toolTicks += 1;
+        if (toolTicks >= 5) {
+          onFinished(true);
         }
       },
-      clearControlStates: jest.fn(),
-      removeAllListeners: jest.fn(),
-      removeListener: jest.fn(),
-      on: jest.fn(),
-      heldItem: {
-        name: 'diamond_pickaxe',
-        type: 871,
-        durabilityUsed: 1551
+      onStateEntered: jest.fn(),
+      onStateExited: jest.fn(),
+      transitions: [],
+      states: []
+    }));
+
+    targetExecutor.setTargets([{ item: 'oak_log', count: 1 }]);
+    scheduler.pushBehavior(targetExecutor);
+    await scheduler.activateTop();
+
+    const targetRequest = workerManager.findByItem('oak_log');
+    expect(targetRequest).not.toBeNull();
+    workerManager.resolve(targetRequest!.id, [[{ action: 'mine' }]]);
+
+    bot.emit('physicTick');
+    bot.emit('physicTick');
+    expect(targetTicks).toBeGreaterThanOrEqual(2);
+
+    const replacementPromise = toolReplacementExecutor.executeReplacement('iron_pickaxe');
+    await flush();
+
+    const toolRequest = workerManager.findByItem('iron_pickaxe');
+    expect(toolRequest).not.toBeNull();
+    workerManager.resolve(toolRequest!.id, [[{ action: 'replace' }]]);
+    inventoryPhase = 'after';
+
+    let reactiveTicks = 0;
+    let reactiveFinished = false;
+    const reactiveBehavior = {
+      priority: 200,
+      name: 'hostile-mob',
+      shouldActivate: async () => true,
+      execute: async (_: any, executor: { finish: (success: boolean) => void }) => {
+        return {
+          update: () => {
+            if (reactiveFinished) return;
+            reactiveTicks += 1;
+            if (reactiveTicks >= 4) {
+              reactiveFinished = true;
+              executor.finish(true);
+            }
+          },
+          onStateEntered: jest.fn(),
+          onStateExited: jest.fn(),
+          transitions: [],
+          states: []
+        };
       }
     };
 
-    mockSafeChat = jest.fn();
+    const run = reactiveExecutor.createScheduledRun(reactiveBehavior);
+    expect(run).not.toBeNull();
 
-    mockWorkerManager = new WorkerManager(
-      jest.fn(),
-      jest.fn()
-    );
+    const reactivePromise = (async () => {
+      await scheduler.pushAndActivate(run!, 'reactive-mob');
+      await run!.waitForCompletion();
+    })();
 
-    const config = {
-      snapshotRadii: [32],
-      snapshotYHalf: 16,
-      pruneWithWorld: true,
-      combineSimilarNodes: true,
-      perGenerator: 5,
-      toolDurabilityThreshold: 0.1
-    };
+    await flush();
 
-    toolReplacementExecutor = new ToolReplacementExecutor(mockBot, mockWorkerManager, mockSafeChat, config);
-    targetExecutor = new TargetExecutor(mockBot, mockWorkerManager, mockSafeChat, config, undefined, toolReplacementExecutor);
-  });
+    const toolTicksBeforeReactive = toolTicks;
 
-  afterEach(() => {
-    if (targetExecutor) {
-      targetExecutor.stop();
+    while (!reactiveFinished) {
+      bot.emit('physicTick');
+      await flush();
     }
-    if (toolReplacementExecutor) {
-      toolReplacementExecutor.stop();
+
+    await reactivePromise;
+
+    expect(toolTicks).toBe(toolTicksBeforeReactive);
+
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      await flush();
     }
-  });
 
-  it('MUST NOT allow main task state machine to continue after tool replacement triggers', (done) => {
-    const mockMainTaskStateMachine = {
-      onStateEntered: jest.fn(),
-      onStateExited: jest.fn(),
-      isFinished: jest.fn().mockReturnValue(false),
-      update: jest.fn(() => {
-        if (mockMainTaskStateMachine.active && toolReplacementStateMachineActive) {
-          clearInterval(updateInterval);
-          done(new Error('BOTH STATE MACHINES ACTIVE: Main task state machine updated while tool replacement is active'));
-        }
-      }),
-      transitions: [],
-      states: [],
-      active: true
-    };
+    await replacementPromise;
 
-    const mockMainBotStateMachine = {
-      isFinished: jest.fn().mockReturnValue(false),
-      rootStateMachine: mockMainTaskStateMachine
-    };
+    for (let spin = 0; spin < 8 && toolReplacementExecutor.isActive(); spin += 1) {
+      await flush();
+    }
+    expect(toolReplacementExecutor.isActive()).toBe(false);
 
-    const mockListener = jest.fn();
-    targetExecutor['running'] = true;
-    targetExecutor['paused'] = false;
-    targetExecutor['activeStateMachine'] = mockMainTaskStateMachine;
-    targetExecutor['activeBotStateMachine'] = mockMainBotStateMachine;
-    targetExecutor['activeBotStateMachineListener'] = mockListener;
-
-    const updateInterval = setInterval(() => {
-      if (mockMainTaskStateMachine.active) {
-        try {
-          mockMainTaskStateMachine.update();
-        } catch (e) {}
-      }
-    }, 50);
-
-    setTimeout(() => {
-      targetExecutor.pause();
-
-      expect(mockMainTaskStateMachine.active).toBe(false);
-      expect(mockBot.clearControlStates).toHaveBeenCalled();
-      expect(mockBot.removeListener).toHaveBeenCalled();
-
-      toolReplacementStateMachineActive = true;
-
-      setTimeout(() => {
-        if (mockMainTaskStateMachine.active) {
-          clearInterval(updateInterval);
-          done(new Error('FAILURE: Main task state machine still active after pause'));
-          return;
-        }
-
-        toolReplacementStateMachineActive = false;
-        clearInterval(updateInterval);
-        done();
-      }, 200);
-    }, 100);
-  });
-
-  it('MUST prevent activeBotStateMachine from processing after pause is called', (done) => {
-    const mockMainTaskStateMachine = {
-      onStateEntered: jest.fn(),
-      onStateExited: jest.fn(),
-      isFinished: jest.fn().mockReturnValue(false),
-      update: jest.fn(),
-      transitions: [],
-      states: [],
-      active: true
-    };
-
-    const mockMainBotStateMachine = {
-      isFinished: jest.fn().mockReturnValue(false),
-      update: jest.fn(() => {
-        if (mockMainTaskStateMachine.active) {
-          mockMainTaskStateMachine.update();
-        }
-      }),
-      rootStateMachine: mockMainTaskStateMachine
-    };
-
-    const mockListener = jest.fn();
-    targetExecutor['running'] = true;
-    targetExecutor['paused'] = false;
-    targetExecutor['activeStateMachine'] = mockMainTaskStateMachine;
-    targetExecutor['activeBotStateMachine'] = mockMainBotStateMachine;
-    targetExecutor['activeBotStateMachineListener'] = mockListener;
-
-    const updateCallsBeforePause = mockMainTaskStateMachine.update.mock.calls.length;
-
-    targetExecutor.pause();
-
-    expect(mockMainTaskStateMachine.active).toBe(false);
-    expect(targetExecutor['activeBotStateMachine']).toBeNull();
-    expect(mockBot.removeListener).toHaveBeenCalledWith('physicTick', expect.any(Function));
-    expect(mockBot.removeListener).toHaveBeenCalledWith('physicsTick', expect.any(Function));
-
-    setTimeout(() => {
-      const updatesAfterPause = mockMainTaskStateMachine.update.mock.calls.length - updateCallsBeforePause;
-      if (updatesAfterPause > 0) {
-        done(new Error(`State machine update() called ${updatesAfterPause} times after pause with active=false`));
-      } else {
-        done();
-      }
-    }, 100);
-  });
-
-  it('MUST verify activeBotStateMachine is nulled out after pause', (done) => {
-    const mockStateMachine = {
-      onStateEntered: jest.fn(),
-      onStateExited: jest.fn(),
-      isFinished: jest.fn().mockReturnValue(false),
-      transitions: [],
-      states: [],
-      active: true
-    };
-
-    const mockBotStateMachine = {
-      stop: jest.fn(),
-      isFinished: jest.fn().mockReturnValue(false),
-      rootStateMachine: mockStateMachine
-    };
-
-    const mockListener = jest.fn();
-    targetExecutor['running'] = true;
-    targetExecutor['paused'] = false;
-    targetExecutor['activeStateMachine'] = mockStateMachine;
-    targetExecutor['activeBotStateMachine'] = mockBotStateMachine;
-    targetExecutor['activeBotStateMachineListener'] = mockListener;
-
-    expect(targetExecutor['activeBotStateMachine']).not.toBeNull();
-    expect(mockStateMachine.active).toBe(true);
-
-    targetExecutor.pause();
-
-    expect(mockStateMachine.active).toBe(false);
-    expect(targetExecutor['activeBotStateMachine']).toBeNull();
-    expect(mockBot.removeListener).toHaveBeenCalledWith('physicTick', expect.any(Function));
-    expect(mockBot.removeListener).toHaveBeenCalledWith('physicsTick', expect.any(Function));
-
-    done();
+    const targetTicksDuringReactiveAndTool = targetTicks;
+    bot.emit('physicTick');
+    await flush();
+    expect(targetTicks).toBeGreaterThan(targetTicksDuringReactiveAndTool);
   });
 });
 

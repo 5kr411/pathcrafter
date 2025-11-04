@@ -1,113 +1,190 @@
-const { BotStateMachine } = require('mineflayer-statemachine');
 import logger from '../../utils/logger';
 import { Bot } from './reactive_behaviors/types';
 import { ReactiveBehaviorRegistry } from './reactive_behavior_registry';
+import { createTrackedBotStateMachine } from './state_machine_utils';
+import { BehaviorFrameContext, ScheduledBehavior } from './behavior_scheduler';
 
 export interface ReactiveBehaviorExecutor {
   finish(success: boolean): void;
 }
 
-export class ReactiveBehaviorExecutorClass {
-  private active = false;
-  private botStateMachine: any = null;
-  private resolve: ((success: boolean) => void) | null = null;
-  private currentBehavior: any = null;
-  public readonly registry: ReactiveBehaviorRegistry;
+const REACTIVE_BEHAVIOR_PRIORITY = 90;
+
+class ReactiveBehaviorRun implements ScheduledBehavior {
+  readonly type = 'reactive';
+  readonly priority = REACTIVE_BEHAVIOR_PRIORITY;
+  readonly id: string;
+  readonly name: string;
+
+  private schedulerContext: BehaviorFrameContext | null = null;
+  private activeStateMachine: any = null;
+  private finished = false;
+  private completionResolver: ((success: boolean) => void) | null = null;
+  private readonly completionPromise: Promise<boolean>;
 
   constructor(
-    private bot: Bot,
+    private readonly bot: Bot,
+    private readonly behavior: any,
+    private readonly manager: ReactiveBehaviorExecutorClass,
+    runId: number
+  ) {
+    const name = behavior?.name ? String(behavior.name) : 'unknown';
+    this.id = `reactive-${name}-${runId}`;
+    this.name = `Reactive:${name}`;
+    this.completionPromise = new Promise<boolean>((resolve) => {
+      this.completionResolver = resolve;
+    });
+  }
+
+  async activate(context: BehaviorFrameContext): Promise<void> {
+    this.schedulerContext = context;
+    await this.startExecution();
+  }
+
+  async onSuspend(context: BehaviorFrameContext): Promise<void> {
+    try {
+      context.detachStateMachine();
+      this.bot.clearControlStates();
+    } catch (err: any) {
+      logger.debug(`ReactiveBehaviorRun: error during suspend - ${err?.message || err}`);
+    }
+  }
+
+  async onResume(context: BehaviorFrameContext): Promise<void> {
+    this.schedulerContext = context;
+    this.rebindActiveStateMachine();
+  }
+
+  async onAbort(): Promise<void> {
+    await this.finish(false);
+  }
+
+  async onComplete(): Promise<void> {
+    // No additional completion logic.
+  }
+
+  waitForCompletion(): Promise<boolean> {
+    return this.completionPromise;
+  }
+
+  isFinished(): boolean {
+    return this.finished;
+  }
+
+  async abort(): Promise<void> {
+    await this.finish(false);
+  }
+
+  private async startExecution(): Promise<void> {
+    try {
+      const executor: ReactiveBehaviorExecutor = {
+        finish: (success: boolean) => {
+          void this.finish(success);
+        }
+      };
+
+      const stateMachine = await this.behavior.execute(this.bot, executor);
+
+      if (!stateMachine) {
+        logger.info(`ReactiveBehaviorRun: behavior ${this.behavior?.name || 'unknown'} returned no state machine`);
+        await this.finish(false);
+        return;
+      }
+
+      this.activeStateMachine = stateMachine;
+      this.bindStateMachine();
+    } catch (err: any) {
+      logger.info(`ReactiveBehaviorRun: failed to start execution - ${err?.message || err}`);
+      await this.finish(false);
+    }
+  }
+
+  private bindStateMachine(): void {
+    if (!this.schedulerContext || !this.activeStateMachine) {
+      return;
+    }
+    const tracked = createTrackedBotStateMachine(this.bot, this.activeStateMachine);
+    this.schedulerContext.attachStateMachine(tracked.botStateMachine, tracked.listener.bind(this.bot));
+  }
+
+  private rebindActiveStateMachine(): void {
+    if (!this.schedulerContext || !this.activeStateMachine) {
+      return;
+    }
+    this.bindStateMachine();
+  }
+
+  private async finish(success: boolean): Promise<void> {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+
+    if (this.schedulerContext) {
+      try {
+        this.schedulerContext.detachStateMachine();
+      } catch (_) {}
+    }
+
+    const context = this.schedulerContext;
+    this.schedulerContext = null;
+    this.activeStateMachine = null;
+
+    this.manager.notifyRunFinished(this);
+    if (context) {
+      await context.scheduler.completeFrame(context.frameId, success);
+    }
+
+    if (this.completionResolver) {
+      try {
+        this.completionResolver(success);
+      } catch (err: any) {
+        logger.debug(`ReactiveBehaviorRun: error resolving promise: ${err?.message || err}`);
+      }
+      this.completionResolver = null;
+    }
+  }
+}
+
+export class ReactiveBehaviorExecutorClass {
+  private currentRun: ReactiveBehaviorRun | null = null;
+  public readonly registry: ReactiveBehaviorRegistry;
+  private runCounter = 0;
+
+  constructor(
+    private readonly bot: Bot,
     registry: ReactiveBehaviorRegistry
   ) {
     this.registry = registry;
   }
 
   isActive(): boolean {
-    return this.active;
-  }
-
-  async executeBehavior(behavior: any): Promise<boolean> {
-    if (this.active) {
-      logger.warn('ReactiveBehaviorExecutor: behavior already in progress, rejecting concurrent request');
-      return false;
-    }
-
-    if (this.botStateMachine !== null) {
-      logger.warn('ReactiveBehaviorExecutor: bot state machine already active, rejecting request');
-      return false;
-    }
-
-    logger.info(`ReactiveBehaviorExecutor: starting behavior ${behavior.name}`);
-
-    this.active = true;
-    this.currentBehavior = behavior;
-
-    return await new Promise<boolean>((resolve) => {
-      this.resolve = resolve;
-      this.startExecution(behavior);
-    });
-  }
-
-  private async startExecution(behavior: any): Promise<void> {
-    try {
-      const executor: ReactiveBehaviorExecutor = {
-        finish: (success: boolean) => {
-          this.finish(success);
-        }
-      };
-
-      const stateMachine = await behavior.execute(this.bot, executor);
-      
-      if (!stateMachine) {
-        logger.info(`ReactiveBehaviorExecutor: behavior ${behavior.name} returned no state machine`);
-        this.finish(false);
-        return;
-      }
-
-      this.botStateMachine = new BotStateMachine(this.bot, stateMachine);
-    } catch (err: any) {
-      logger.info(`ReactiveBehaviorExecutor: failed to start execution - ${err?.message || err}`);
-      this.finish(false);
-    }
-  }
-
-  finish(success: boolean): void {
-    if (this.botStateMachine && typeof this.botStateMachine.stop === 'function') {
-      try {
-        this.botStateMachine.stop();
-      } catch (_) {}
-    }
-
-    this.botStateMachine = null;
-    
-    if (this.currentBehavior && typeof this.currentBehavior.onDeactivate === 'function') {
-      try {
-        this.currentBehavior.onDeactivate();
-      } catch (err: any) {
-        logger.debug(`ReactiveBehaviorExecutor: error in onDeactivate: ${err?.message || err}`);
-      }
-    }
-    
-    this.currentBehavior = null;
-    this.active = false;
-
-    const resolve = this.resolve;
-    this.resolve = null;
-
-    if (resolve) {
-      try {
-        resolve(success);
-      } catch (err: any) {
-        logger.debug(`ReactiveBehaviorExecutor: error resolving promise: ${err?.message || err}`);
-      }
-    }
+    return !!this.currentRun && !this.currentRun.isFinished();
   }
 
   stop(): void {
-    if (!this.active) {
+    if (!this.currentRun) {
       return;
     }
-    logger.debug('ReactiveBehaviorExecutor: stopping');
-    this.finish(false);
+    void this.currentRun.abort();
+  }
+
+  createScheduledRun(behavior: any): ReactiveBehaviorRun | null {
+    if (this.isActive()) {
+      logger.warn('ReactiveBehaviorExecutor: behavior already in progress, rejecting concurrent request');
+      return null;
+    }
+
+    const run = new ReactiveBehaviorRun(this.bot, behavior, this, ++this.runCounter);
+    this.currentRun = run;
+    return run;
+  }
+
+  notifyRunFinished(run: ReactiveBehaviorRun): void {
+    if (this.currentRun === run) {
+      this.currentRun = null;
+    }
   }
 }
+
 

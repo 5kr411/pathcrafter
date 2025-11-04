@@ -1,4 +1,3 @@
-const { BotStateMachine } = require('mineflayer-statemachine');
 import { buildStateMachineForPath } from '../../behavior_generator/buildMachine';
 import { _internals as plannerInternals } from '../../planner';
 import logger from '../../utils/logger';
@@ -7,6 +6,8 @@ import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext } from './execution_context';
 import { ReactiveBehaviorExecutorClass } from './reactive_behavior_executor';
+import { ScheduledBehavior, BehaviorFrameContext } from './behavior_scheduler';
+import { createTrackedBotStateMachine } from './state_machine_utils';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -29,62 +30,25 @@ function getInventoryObject(bot: Bot): InventoryObject {
 }
 
 // Wrapper to create BotStateMachine with trackable physics tick listener
-function createTrackedBotStateMachine(bot: Bot, stateMachine: any): { botStateMachine: any; listener: () => void } {
-  const listener = function(this: Bot) {
-    try {
-      stateMachine.update();
-    } catch (err: any) {
-      logDebug(`BotStateMachine update error: ${err?.message || err}`);
-    }
-  };
-  
-  // Manually set up the bot state machine without using the constructor's listener setup
-  const botStateMachine = Object.create(BotStateMachine.prototype);
-  botStateMachine.bot = bot;
-  botStateMachine.rootStateMachine = stateMachine;
-  botStateMachine.states = [];
-  botStateMachine.transitions = [];
-  botStateMachine.nestedStateMachines = [];
-  
-  // Copy the setup methods from BotStateMachine
-  if (typeof BotStateMachine.prototype.findStatesRecursive === 'function') {
-    BotStateMachine.prototype.findStatesRecursive.call(botStateMachine, stateMachine);
-  }
-  if (typeof BotStateMachine.prototype.findTransitionsRecursive === 'function') {
-    BotStateMachine.prototype.findTransitionsRecursive.call(botStateMachine, stateMachine);
-  }
-  if (typeof BotStateMachine.prototype.findNestedStateMachines === 'function') {
-    BotStateMachine.prototype.findNestedStateMachines.call(botStateMachine, stateMachine);
-  }
-  
-  bot.on('physicTick', listener);
-  bot.on('physicsTick', listener); // Support both old and new event names
-  stateMachine.active = true;
-  if (typeof stateMachine.onStateEntered === 'function') {
-    stateMachine.onStateEntered();
-  }
-  
-  return { botStateMachine, listener };
-}
+const TARGET_BEHAVIOR_ID = 'collector-target';
+const TARGET_BEHAVIOR_PRIORITY = 10;
 
-export class TargetExecutor {
+export class TargetExecutor implements ScheduledBehavior {
   private sequenceTargets: Target[] = [];
   private sequenceIndex = 0;
   private targetRetryCount = new Map<number, number>();
   private running = false;
-  private paused = false;
-  private pausedState: {
-    sequenceIndex: number;
-    stateMachine: any;
-    botStateMachine: any;
-  } | null = null;
   private currentTargetStartInventory: InventoryObject = {};
   private readonly MAX_RETRIES = 3;
   private activeStateMachine: any = null;
-  private activeBotStateMachine: any = null;
-  private activeBotStateMachineListener: ((this: Bot) => void) | null = null;
-  private reactiveBehaviorCheckInterval: NodeJS.Timeout | null = null;
   private toolsBeingReplaced = new Set<string>();
+  private activeBinding: { botStateMachine: any; listener: (this: Bot) => void } | null = null;
+  readonly id = TARGET_BEHAVIOR_ID;
+  readonly name = 'CollectorTarget';
+  readonly priority = TARGET_BEHAVIOR_PRIORITY;
+  readonly type = 'collection';
+  private schedulerContext: BehaviorFrameContext | null = null;
+  private frameId: string | null = null;
 
   constructor(
     private bot: Bot,
@@ -102,6 +66,47 @@ export class TargetExecutor {
     private toolReplacementExecutor?: any
   ) {}
 
+  async activate(context: BehaviorFrameContext): Promise<void> {
+    this.schedulerContext = context;
+    this.frameId = context.frameId;
+    if (this.activeStateMachine) {
+      this.rebindActiveStateMachine();
+      return;
+    }
+    if (!this.running) {
+      await this.startNextTarget();
+    }
+  }
+
+  async onSuspend(_context: BehaviorFrameContext): Promise<void> {
+    try {
+      if (this.schedulerContext) {
+        this.schedulerContext.detachStateMachine();
+      }
+      if (this.activeBinding) {
+        this.activeBinding = null;
+      }
+      this.bot.clearControlStates();
+      logDebug('Collector: cleared bot control states during scheduler suspend');
+    } catch (err: any) {
+      logDebug(`Collector: error during scheduler suspend: ${err?.message || err}`);
+    }
+  }
+
+  async onResume(context: BehaviorFrameContext): Promise<void> {
+    this.schedulerContext = context;
+    this.frameId = context.frameId;
+    this.rebindActiveStateMachine();
+  }
+
+  async onAbort(_context: BehaviorFrameContext): Promise<void> {
+    this.stop();
+  }
+
+  async onComplete(): Promise<void> {
+    // Target executor does not perform additional completion work here.
+  }
+
   isRunning(): boolean {
     return this.running;
   }
@@ -116,13 +121,21 @@ export class TargetExecutor {
     return this.sequenceTargets;
   }
 
+  private rebindActiveStateMachine(): void {
+    if (!this.schedulerContext || !this.activeStateMachine) {
+      return;
+    }
+    const tracked = createTrackedBotStateMachine(this.bot, this.activeStateMachine);
+    this.activeBinding = tracked;
+    this.schedulerContext.attachStateMachine(tracked.botStateMachine, tracked.listener.bind(this.bot));
+  }
+
   resetAndRestart(): void {
     logInfo('Collector: resetting all targets and restarting from beginning');
     this.running = false;
-    this.paused = false;
-    this.pausedState = null;
-    
-    this.stopReactiveBehaviorCheck();
+    if (this.schedulerContext) {
+      this.schedulerContext.detachStateMachine();
+    }
     
     if (this.reactiveBehaviorExecutor) {
       try {
@@ -143,20 +156,6 @@ export class TargetExecutor {
     }
     
     this.toolsBeingReplaced.clear();
-    
-    if (this.activeBotStateMachine) {
-      try {
-        if ((this.activeBotStateMachine as any).rootStateMachine) {
-          (this.activeBotStateMachine as any).rootStateMachine.active = false;
-        }
-        if (this.activeBotStateMachineListener) {
-          this.bot.removeListener('physicTick', this.activeBotStateMachineListener);
-          this.bot.removeListener('physicsTick', this.activeBotStateMachineListener);
-        }
-      } catch (_) {}
-      this.activeBotStateMachine = null;
-      this.activeBotStateMachineListener = null;
-    }
     
     if (this.activeStateMachine) {
       try {
@@ -187,9 +186,9 @@ export class TargetExecutor {
   stop(): void {
     logInfo('Collector: stopping execution');
     this.running = false;
-    this.paused = false;
-    
-    this.stopReactiveBehaviorCheck();
+    if (this.schedulerContext) {
+      this.schedulerContext.detachStateMachine();
+    }
     
     if (this.reactiveBehaviorExecutor) {
       try {
@@ -210,23 +209,6 @@ export class TargetExecutor {
     }
     
     this.toolsBeingReplaced.clear();
-    
-    if (this.activeBotStateMachine) {
-      try {
-        if ((this.activeBotStateMachine as any).rootStateMachine) {
-          (this.activeBotStateMachine as any).rootStateMachine.active = false;
-        }
-        if (this.activeBotStateMachineListener) {
-          this.bot.removeListener('physicTick', this.activeBotStateMachineListener);
-          this.bot.removeListener('physicsTick', this.activeBotStateMachineListener);
-          logDebug('Collector: removed BotStateMachine listeners');
-        }
-      } catch (err: any) {
-        logDebug(`Collector: error stopping BotStateMachine: ${err.message || err}`);
-      }
-      this.activeBotStateMachine = null;
-      this.activeBotStateMachineListener = null;
-    }
     
     if (this.activeStateMachine) {
       try {
@@ -251,111 +233,8 @@ export class TargetExecutor {
     this.sequenceTargets = [];
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
-    this.pausedState = null;
     this.toolsBeingReplaced.clear();
     this.safeChat('stopped');
-  }
-
-  pause(): void {
-    if (!this.running || this.paused) return;
-    
-    logInfo('Collector: pausing execution for reactive behavior');
-    this.paused = true;
-    
-    this.stopReactiveBehaviorCheck();
-    
-    if (this.activeBotStateMachine) {
-      try {
-        if ((this.activeBotStateMachine as any).rootStateMachine) {
-          (this.activeBotStateMachine as any).rootStateMachine.active = false;
-          logDebug('Collector: set rootStateMachine.active = false');
-        }
-        // Remove only the specific listener we added, not all physics tick listeners
-        if (this.activeBotStateMachineListener) {
-          this.bot.removeListener('physicTick', this.activeBotStateMachineListener);
-          this.bot.removeListener('physicsTick', this.activeBotStateMachineListener);
-          logDebug('Collector: removed BotStateMachine physicTick/physicsTick listener');
-        }
-      } catch (err: any) {
-        logDebug(`Collector: error stopping BotStateMachine: ${err.message || err}`);
-      }
-    }
-    
-    try {
-      this.bot.clearControlStates();
-      logDebug('Collector: cleared bot control states during pause');
-    } catch (err: any) {
-      logDebug(`Collector: error clearing control states during pause: ${err.message || err}`);
-    }
-    
-    this.pausedState = {
-      sequenceIndex: this.sequenceIndex,
-      stateMachine: this.activeStateMachine,
-      botStateMachine: this.activeBotStateMachine
-    };
-    
-    this.activeBotStateMachine = null;
-    this.activeBotStateMachineListener = null;
-    this.activeStateMachine = null;
-  }
-
-  resume(): void {
-    if (!this.paused || !this.pausedState) return;
-    
-    logInfo('Collector: resuming execution after reactive behavior');
-    this.paused = false;
-    
-    this.sequenceIndex = this.pausedState.sequenceIndex;
-    this.activeStateMachine = this.pausedState.stateMachine;
-    
-    if (this.activeStateMachine && this.bot) {
-      const tracked = createTrackedBotStateMachine(this.bot, this.activeStateMachine);
-      this.activeBotStateMachine = tracked.botStateMachine;
-      this.activeBotStateMachineListener = tracked.listener;
-    }
-    
-    this.pausedState = null;
-    this.running = true;
-    
-    this.startReactiveBehaviorCheck();
-  }
-
-  isPaused(): boolean {
-    return this.paused;
-  }
-
-  private startReactiveBehaviorCheck(): void {
-    if (!this.reactiveBehaviorExecutor) return;
-    
-    this.stopReactiveBehaviorCheck();
-    
-    this.reactiveBehaviorCheckInterval = setInterval(async () => {
-      if (!this.running || this.paused) return;
-      if (!this.reactiveBehaviorExecutor) return;
-      if (this.reactiveBehaviorExecutor.isActive()) return;
-      
-      try {
-        const behavior = await this.reactiveBehaviorExecutor.registry.findActiveBehavior(this.bot);
-        if (behavior) {
-          logInfo(`Collector: reactive behavior ${behavior.name} detected, pausing execution`);
-          this.pause();
-          
-          const success = await this.reactiveBehaviorExecutor.executeBehavior(behavior);
-          logInfo(`Collector: reactive behavior ${behavior.name} completed (success: ${success})`);
-          
-          this.resume();
-        }
-      } catch (err: any) {
-        logDebug(`Collector: error checking reactive behaviors: ${err?.message || err}`);
-      }
-    }, 500);
-  }
-
-  private stopReactiveBehaviorCheck(): void {
-    if (this.reactiveBehaviorCheckInterval) {
-      clearInterval(this.reactiveBehaviorCheckInterval);
-      this.reactiveBehaviorCheckInterval = null;
-    }
   }
 
   async startNextTarget(): Promise<void> {
@@ -372,7 +251,6 @@ export class TargetExecutor {
       this.safeChat('all targets complete');
       
       this.running = false;
-      this.stopReactiveBehaviorCheck();
       
       try {
         this.bot.clearControlStates();
@@ -426,7 +304,11 @@ export class TargetExecutor {
       }
 
       this.running = true;
-      this.startReactiveBehaviorCheck();
+      if (this.schedulerContext) {
+        this.schedulerContext.attachPlannerHandler(id, (pending, rankedResult, okResult, errResult) => {
+          this.handlePlanningResult(pending, rankedResult, okResult, errResult);
+        });
+      }
       this.workerManager.postPlanningRequest(
         id,
         target,
@@ -435,18 +317,21 @@ export class TargetExecutor {
         version,
         this.config.perGenerator,
         this.config.pruneWithWorld,
-        this.config.combineSimilarNodes
+        this.config.combineSimilarNodes,
+        { frameId: this.frameId ?? undefined }
       );
     } catch (err: any) {
       logInfo(`Collector: snapshot capture failed - ${err.message || err}`);
       this.safeChat('snapshot capture failed');
       this.running = false;
-      this.stopReactiveBehaviorCheck();
       this.handleTargetFailure();
     }
   }
 
   handlePlanningResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
+    if (entry?.id && this.schedulerContext) {
+      this.schedulerContext.detachPlannerHandler(entry.id);
+    }
     if (!ok) {
       this.running = false;
       const errorMsg = error ? String(error) : 'unknown error';
@@ -528,7 +413,6 @@ export class TargetExecutor {
           
           this.safeChat(`tool low, replacing ${issue.toolName}`);
           this.toolsBeingReplaced.add(issue.toolName);
-          this.pause();
           
           try {
             const invBefore = getInventoryObject(this.bot);
@@ -551,7 +435,6 @@ export class TargetExecutor {
             logInfo(`Collector: tool replacement error - ${err?.message || err}`);
           } finally {
             this.toolsBeingReplaced.delete(issue.toolName);
-            this.resume();
           }
         });
       },
@@ -564,8 +447,10 @@ export class TargetExecutor {
       (success: boolean) => {
         this.running = false;
         this.activeStateMachine = null;
-        this.activeBotStateMachine = null;
-        this.activeBotStateMachineListener = null;
+        this.activeBinding = null;
+        if (this.schedulerContext) {
+          this.schedulerContext.detachStateMachine();
+        }
         if (success) {
           this.handleTargetSuccess();
         } else {
@@ -577,9 +462,10 @@ export class TargetExecutor {
     );
     this.activeStateMachine = sm;
     const tracked = createTrackedBotStateMachine(this.bot, sm);
-    this.activeBotStateMachine = tracked.botStateMachine;
-    this.activeBotStateMachineListener = tracked.listener;
-    this.startReactiveBehaviorCheck();
+    this.activeBinding = tracked;
+    if (this.schedulerContext) {
+      this.schedulerContext.attachStateMachine(tracked.botStateMachine, tracked.listener.bind(this.bot));
+    }
   }
 
   private validateTargetSuccess(): boolean {

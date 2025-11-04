@@ -13,7 +13,7 @@ export class WorkerManager {
   private pending = new Map<string, PendingEntry>();
 
   constructor(
-    private onResult: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void,
+    private onResult: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string, plannerId?: string) => void,
     private onWorkerError: () => void
   ) {}
 
@@ -47,7 +47,7 @@ export class WorkerManager {
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : [];
       logDebug(`Collector: received ${ranked.length} ranked paths`);
       const callback = entry.handler || this.onResult;
-      callback(entry, ranked, msg.ok || false, msg.error);
+      callback(entry, ranked, msg.ok || false, msg.error, msg.id);
     });
 
     this.worker.on('error', (err: Error) => {
@@ -76,10 +76,25 @@ export class WorkerManager {
     perGenerator: number,
     pruneWithWorld: boolean,
     combineSimilarNodes: boolean,
-    handler?: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void
+    handlerOrOptions?:
+      | ((entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void)
+      | {
+          handler?: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void;
+          frameId?: string;
+        }
   ): void {
+    let handler: ((entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void) | undefined;
+    let frameId: string | undefined;
+
+    if (typeof handlerOrOptions === 'function') {
+      handler = handlerOrOptions;
+    } else if (handlerOrOptions && typeof handlerOrOptions === 'object') {
+      handler = handlerOrOptions.handler;
+      frameId = handlerOrOptions.frameId;
+    }
+
     this.ensureWorker();
-    this.pending.set(id, { snapshot, target, handler });
+    this.pending.set(id, { id, snapshot, target, handler, frameId });
 
     const planMessage: WorkerMessage = {
       type: 'plan',
