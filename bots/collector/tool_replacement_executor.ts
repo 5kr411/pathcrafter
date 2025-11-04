@@ -19,6 +19,18 @@ function getInventoryObject(bot: Bot): InventoryObject {
       if (!it || !it.name || !Number.isFinite(it.count)) continue;
       out[it.name] = (out[it.name] || 0) + it.count;
     }
+    
+    // Also check armor slots (head:5, torso:6, legs:7, feet:8)
+    const armorSlots = [5, 6, 7, 8];
+    const slots = bot.inventory?.slots;
+    if (Array.isArray(slots)) {
+      for (const slotIndex of armorSlots) {
+        const item = slots[slotIndex];
+        if (item && item.name) {
+          out[item.name] = (out[item.name] || 0) + (item.count || 1);
+        }
+      }
+    }
   } catch (_) {}
   return out;
 }

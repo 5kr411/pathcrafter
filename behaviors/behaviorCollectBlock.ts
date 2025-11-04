@@ -152,7 +152,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   });
 
   const goToBlock = new BehaviorSmartMoveTo(bot, targets);
-  goToBlock.distance = 3.5;
+  goToBlock.distance = 3;
 
   const equipTargets: EquipTargets = { item: null };
   const equipBestTool = new BehaviorEquipItem(bot, equipTargets);
@@ -405,7 +405,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
             logger.debug(`Target is vertical (dx=${dx.toFixed(1)}, dz=${dz.toFixed(1)}, dy=${dy.toFixed(1)}), using distance ${goToBlock.distance.toFixed(1)}`);
           } else {
             // Use standard distance for horizontal mining
-            goToBlock.distance = 3.5;
+            goToBlock.distance = 3;
           }
         }
         
@@ -434,7 +434,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         return false;
       }
       
-      if (distance >= 6) {
+      if (distance >= 3) {
         return false;
       }
       
@@ -592,7 +592,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      if (finished && distance >= 6) {
+      if (finished && distance >= 3) {
         pathfindingFailureCount++;
         if (pathfindingFailureCount >= MAX_PATHFINDING_FAILURES) {
           logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times, giving up on ${targets.blockName}`);

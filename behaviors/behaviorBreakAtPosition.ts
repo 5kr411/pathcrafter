@@ -188,7 +188,7 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
     parent: moveTo,
     child: mine,
     shouldTransition: () => {
-      if (!moveTo.isFinished() || moveTo.distanceToTarget() >= 6) return false;
+      if (!moveTo.isFinished() || moveTo.distanceToTarget() >= 3) return false;
       try {
         const blk = bot.blockAt(targets.blockPosition!, false);
         if (!blk) return false;
@@ -222,7 +222,7 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const started = moveStartTime != null;
       const tookTooLong = started && Date.now() - moveStartTime! > MOVE_TIMEOUT_MS;
-      const stuckFar = moveTo.isFinished() && moveTo.distanceToTarget() >= 6;
+      const stuckFar = moveTo.isFinished() && moveTo.distanceToTarget() >= 3;
       return tookTooLong || stuckFar;
     },
     onTransition: () => {
