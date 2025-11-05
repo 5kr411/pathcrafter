@@ -24,6 +24,9 @@ interface Bot {
   canSeeBlock: (block: Block) => boolean;
   blockAt: (pos: Vec3, extraInfos?: boolean) => Block | null;
   version?: string;
+  entity?: {
+    position?: Vec3 & { distanceTo?: (other: Vec3) => number };
+  };
   [key: string]: any;
 }
 
@@ -157,8 +160,9 @@ class BehaviorSafeFindBlock {
           maxDistance: this.maxDistance,
           count: 64
         }) || [];
+      const sorted = [...candidates].sort((a, b) => this._distanceSq(a) - this._distanceSq(b));
       let chosen: Vec3 | undefined = undefined;
-      for (const p of candidates) {
+      for (const p of sorted) {
         if (!this.isExcluded(p) && !this.isNearLiquid(p)) {
           chosen = p;
           break;
@@ -177,6 +181,25 @@ class BehaviorSafeFindBlock {
 
   isFinished(): boolean {
     return true;
+  }
+
+  private _distanceSq(pos: Vec3): number {
+    try {
+      const botPos = this.bot.entity?.position;
+      if (!botPos) return Number.POSITIVE_INFINITY;
+
+      if (typeof botPos.distanceTo === 'function') {
+        const dist = botPos.distanceTo(pos as any);
+        return Number.isFinite(dist) ? dist * dist : Number.POSITIVE_INFINITY;
+      }
+
+      const dx = pos.x - botPos.x;
+      const dy = pos.y - botPos.y;
+      const dz = pos.z - botPos.z;
+      return dx * dx + dy * dy + dz * dz;
+    } catch (_) {
+      return Number.POSITIVE_INFINITY;
+    }
   }
 }
 

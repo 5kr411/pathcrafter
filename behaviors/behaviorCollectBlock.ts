@@ -13,6 +13,7 @@ const {
 
 import { BehaviorMineBlock } from './behaviorMineBlock';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
+import createBreakBlockOnlyState, { BreakBlockTargets } from './behaviorBreakBlockOnly';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import logger from '../utils/logger';
@@ -417,92 +418,152 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  // Track the original target block so we can restore it after clearing obstructions
-  let originalTargetBlock: any = null;
-  let obstructionCheckAttempts = 0;
-  const MAX_OBSTRUCTION_CHECK_ATTEMPTS = 10;
+  const obstructionTargets: BreakBlockTargets = {};
+  const breakObstruction = createBreakBlockOnlyState(bot, obstructionTargets);
+  if (breakObstruction && typeof breakObstruction === 'object') {
+    (breakObstruction as any).stateName =
+      (breakObstruction as any).stateName || 'BreakObstruction';
+  }
+
+  const checkObstruction = new BehaviorIdle();
+  checkObstruction.stateName = 'CheckObstruction';
+
+  let obstructionAttempts = 0;
+  const MAX_OBSTRUCTION_ATTEMPTS = 12;
+
+  checkObstruction.onStateEntered = function () {
+    try {
+      const obstruction = findObstructingBlock(bot, targets);
+      if (obstruction && obstruction.position) {
+        obstructionTargets.position = obstruction.position;
+        obstructionTargets.blockPosition = obstruction.position;
+        obstructionTargets.blockName = obstruction.name || 'unknown';
+        logger.info(
+          `BehaviorCollectBlock: obstruction ${obstructionTargets.blockName} at (${obstruction.position.x}, ${obstruction.position.y}, ${obstruction.position.z})`
+        );
+      } else {
+        obstructionTargets.position = undefined;
+        obstructionTargets.blockPosition = undefined;
+        obstructionTargets.blockName = undefined;
+        const canSee = canSeeTargetBlock(bot, targets);
+        logger.debug(`BehaviorCollectBlock: obstruction clear (canSee=${canSee})`);
+      }
+    } catch (err: any) {
+      obstructionTargets.position = undefined;
+      obstructionTargets.blockPosition = undefined;
+      obstructionTargets.blockName = undefined;
+      logger.debug(
+        `BehaviorCollectBlock: obstruction check failed: ${err?.message || err}`
+      );
+    }
+  };
+
+  function prepareToEquip(context: string): void {
+    pathfindingFailureCount = 0;
+    targets.position = targets.blockPosition;
+    try {
+      equipTargets.item = pickBestToolItemForBlock(bot, targets.blockName);
+      const chosen = equipTargets.item ? equipTargets.item.name : 'none';
+      logger.debug(`${context}: equip best tool`, chosen);
+    } catch (_) {
+      logger.debug(`${context}: equip best tool`);
+    }
+  }
 
   const goToBlockToEquip = new StateTransition({
     parent: goToBlock,
     child: equipBestTool,
     name: 'BehaviorCollectBlock: go to block -> equip best tool',
     shouldTransition: () => {
-      const finished = goToBlock.isFinished();
+      if (!goToBlock.isFinished()) return false;
       const distance = goToBlock.distanceToTarget();
-      
-      if (!finished) {
-        return false;
-      }
-      
-      if (distance >= 3) {
-        return false;
-      }
-      
-      // Check if we can see the target
+      if (distance >= 3) return false;
+
       const canSee = canSeeTargetBlock(bot, targets);
-      logger.debug(`BehaviorCollectBlock: goToBlock finished, distance=${distance.toFixed(2)}, canSee=${canSee}`);
-      
-      if (canSee) {
-        // Clear path, proceed to mine
-        if (originalTargetBlock) {
-          // We were mining obstructions, but now have clear path - restore original target
-          logger.info('BehaviorCollectBlock: Path cleared, proceeding to mine original target');
-          originalTargetBlock = null;
-          obstructionCheckAttempts = 0;
-        }
-        return true;
+      logger.debug(
+        `BehaviorCollectBlock: goToBlock finished, distance=${distance.toFixed(
+          2
+        )}, canSee=${canSee}`
+      );
+      return canSee;
+    },
+    onTransition: () => {
+      obstructionAttempts = 0;
+      prepareToEquip('go to block');
+    }
+  });
+
+  const goToBlockToCheckObstructions = new StateTransition({
+    parent: goToBlock,
+    child: checkObstruction,
+    name: 'BehaviorCollectBlock: go to block -> check obstructions',
+    shouldTransition: () => {
+      if (!goToBlock.isFinished()) return false;
+      const distance = goToBlock.distanceToTarget();
+      if (distance >= 3) return false;
+      return !canSeeTargetBlock(bot, targets);
+    },
+    onTransition: () => {
+      obstructionAttempts = 0;
+      logger.debug('BehaviorCollectBlock: go to block -> check obstructions');
+    }
+  });
+
+  const checkObstructionToBreak = new StateTransition({
+    parent: checkObstruction,
+    child: breakObstruction,
+    name: 'BehaviorCollectBlock: check obstructions -> break obstruction',
+    shouldTransition: () =>
+      !!obstructionTargets.position && obstructionAttempts < MAX_OBSTRUCTION_ATTEMPTS,
+    onTransition: () => {
+      obstructionAttempts++;
+      const pos = obstructionTargets.position as Vec3Like;
+      const name = obstructionTargets.blockName || 'unknown';
+      logger.info(
+        `BehaviorCollectBlock: clearing obstruction ${obstructionAttempts}/${MAX_OBSTRUCTION_ATTEMPTS} (${name}) at (${pos.x}, ${pos.y}, ${pos.z})`
+      );
+    }
+  });
+
+  const breakObstructionToCheck = new StateTransition({
+    parent: breakObstruction,
+    child: checkObstruction,
+    name: 'BehaviorCollectBlock: break obstruction -> recheck',
+    shouldTransition: () => {
+      if (typeof breakObstruction.isFinished === 'function') {
+        return breakObstruction.isFinished();
       }
-      
-      // Can't see target - check for obstructions
-      logger.debug(`BehaviorCollectBlock: Cannot see target, checking for obstructions (attempt ${obstructionCheckAttempts + 1}/${MAX_OBSTRUCTION_CHECK_ATTEMPTS})`);
-      if (obstructionCheckAttempts >= MAX_OBSTRUCTION_CHECK_ATTEMPTS) {
-        logger.warn(`BehaviorCollectBlock: Tried ${obstructionCheckAttempts} times to clear path, giving up`);
-        obstructionCheckAttempts = 0;
-        originalTargetBlock = null;
-        return true; // Proceed to mine anyway
+      return !!breakObstruction.isFinished;
+    },
+    onTransition: () => {
+      obstructionTargets.position = undefined;
+      obstructionTargets.blockPosition = undefined;
+      obstructionTargets.blockName = undefined;
+    }
+  });
+
+  const checkObstructionToEquip = new StateTransition({
+    parent: checkObstruction,
+    child: equipBestTool,
+    name: 'BehaviorCollectBlock: check obstructions -> equip best tool',
+    shouldTransition: () => {
+      if (obstructionTargets.position) {
+        return obstructionAttempts >= MAX_OBSTRUCTION_ATTEMPTS;
       }
-      
-      // Try to find and redirect to obstruction
-      const obstruction = findObstructingBlock(bot, targets);
-      if (obstruction) {
-        obstructionCheckAttempts++;
-        // Save the original target if this is our first obstruction
-        if (!originalTargetBlock) {
-          originalTargetBlock = { 
-            position: targets.blockPosition, 
-            blockName: targets.blockName 
-          };
-          logger.info(`BehaviorCollectBlock: Saved original target ${originalTargetBlock.blockName} at (${originalTargetBlock.position.x}, ${originalTargetBlock.position.y}, ${originalTargetBlock.position.z})`);
-        }
-        
-        // Redirect to mine the obstruction instead
-        if (!obstruction.position || !obstruction.name) {
-          logger.warn('BehaviorCollectBlock: Obstruction missing position or name, skipping');
-          obstructionCheckAttempts++;
-          return false;
-        }
-        logger.info(`BehaviorCollectBlock: Clearing obstruction ${obstructionCheckAttempts}/${MAX_OBSTRUCTION_CHECK_ATTEMPTS}: ${obstruction.name} at (${obstruction.position.x}, ${obstruction.position.y}, ${obstruction.position.z})`);
-        targets.position = obstruction.position;
-        targets.blockPosition = obstruction.position;
-        targets.blockName = obstruction.name;
-        return true;
-      }
-      
-      // No obstruction found but can't see target - give up
-      logger.warn('BehaviorCollectBlock: Cannot see target and no obstructions found, proceeding anyway');
-      obstructionCheckAttempts++;
       return true;
     },
     onTransition: () => {
-      pathfindingFailureCount = 0; // Reset counter on successful pathfinding
-      targets.position = targets.blockPosition;
-      try {
-        equipTargets.item = pickBestToolItemForBlock(bot, targets.blockName);
-        const chosen = equipTargets.item ? equipTargets.item.name : 'none';
-        logger.debug('go to block -> equip best tool', chosen);
-      } catch (_) {
-        logger.debug('go to block -> equip best tool');
+      if (obstructionTargets.position) {
+        logger.warn(
+          `BehaviorCollectBlock: obstruction clearing exceeded ${MAX_OBSTRUCTION_ATTEMPTS} attempts, proceeding anyway`
+        );
+      } else if (!canSeeTargetBlock(bot, targets)) {
+        logger.warn(
+          'BehaviorCollectBlock: no obstruction detected but target still not visible, proceeding'
+        );
       }
+      obstructionAttempts = 0;
+      prepareToEquip('check obstructions');
     }
   });
 
@@ -543,43 +604,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: equipBestTool,
     child: mineBlock,
     name: 'BehaviorCollectBlock: equip best tool -> mine block',
-    shouldTransition: () => {
-      // Safety check: never mine blocks directly under the bot's feet
-      if (isTargetUnderFeet()) {
-        return false; // equipToFindBlock will handle this
-      }
-      
-      // If we're in obstruction clearing mode, check if we should keep clearing or proceed to original target
-      if (originalTargetBlock) {
-        // Check if we're about to mine the original target or an obstruction
-        const currentTarget = targets.blockPosition;
-        const originalPos = originalTargetBlock.position;
-        
-        if (!currentTarget) {
-          logger.warn('equipToMineBlock: no current target, proceeding anyway');
-          originalTargetBlock = null;
-          obstructionCheckAttempts = 0;
-          return true;
-        }
-        
-        const miningObstruction = !(currentTarget.x === originalPos.x && 
-                                      currentTarget.y === originalPos.y && 
-                                      currentTarget.z === originalPos.z);
-        
-        if (miningObstruction) {
-          // We're about to mine an obstruction, keep going
-          logger.debug('equipToMineBlock: about to mine obstruction');
-          return true;
-        } else {
-          // We're about to mine the original target, clear the flag
-          logger.info('BehaviorCollectBlock: About to mine original target, clearing obstruction flag');
-          originalTargetBlock = null;
-          obstructionCheckAttempts = 0;
-          return true;
-        }
-      }
-      return true;
-    },
+    shouldTransition: () => !isTargetUnderFeet(),
     onTransition: () => {
       logger.debug('equip best tool -> mine block');
     }
@@ -609,30 +634,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   });
 
   let mineBlockFinishTime: number | undefined;
-  
-  const mineBlockToGoToBlock = new StateTransition({
-    parent: mineBlock,
-    child: goToBlock,
-    name: 'BehaviorCollectBlock: mine block -> go to block (check for more obstructions)',
-    shouldTransition: () => {
-      if (mineBlock.isFinished && !mineBlockFinishTime) {
-        mineBlockFinishTime = Date.now();
-      }
-      const finished = mineBlockFinishTime ? Date.now() - mineBlockFinishTime > 500 : false;
-      // If we were mining an obstruction, loop back to goToBlock to re-check line of sight
-      return finished && !!originalTargetBlock;
-    },
-    onTransition: () => {
-      mineBlockFinishTime = undefined;
-      logger.info(`BehaviorCollectBlock: Cleared obstruction, checking for more obstructions to original target ${originalTargetBlock.blockName}`);
-      // Restore the original target so goToBlockToEquip can check line of sight and find more obstructions
-      targets.blockName = originalTargetBlock.blockName;
-      targets.blockPosition = originalTargetBlock.position;
-      targets.position = originalTargetBlock.position;
-      // Don't clear originalTargetBlock yet - we'll clear it once we successfully see and start mining the target
-    }
-  });
-  
+
   const mineBlockToFindDrop = new StateTransition({
     parent: mineBlock,
     child: findDrop,
@@ -642,8 +644,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         mineBlockFinishTime = Date.now();
       }
       const finished = mineBlockFinishTime ? Date.now() - mineBlockFinishTime > 500 : false;
-      // If we weren't mining an obstruction, proceed to find drop normally
-      return finished && !originalTargetBlock;
+      return finished;
     },
     onTransition: () => {
       mineBlockFinishTime = undefined;
@@ -735,10 +736,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findBlockToFindInteractPosition,
     findInteractPositionToGoToBlock,
     goToBlockToEquip,
+    goToBlockToCheckObstructions,
+    checkObstructionToBreak,
+    breakObstructionToCheck,
+    checkObstructionToEquip,
     equipToFindBlock, // Check if target is under feet before mining
     equipToMineBlock,
     goToBlockToFindBlock,
-    mineBlockToGoToBlock,
     mineBlockToFindDrop,
     findDropToGoToDrop,
     findDropToFindBlock,
