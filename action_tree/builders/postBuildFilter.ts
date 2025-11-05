@@ -178,6 +178,7 @@ function filterSingleCraftNode(
     collectAvailableItems(child.value, available);
   }
 
+
   // If no ingredients are available, clear all variants
   if (available.exactItems.size === 0 && available.families.size === 0) {
     craftNode.result.variants = [];
@@ -298,24 +299,46 @@ function collectAvailableItems(
     node.what &&
     node.what.variants
   ) {
-    // Check if children actually produced this root's item
-    const rootItem = typeof node.what.variants[0].value === 'string' 
-      ? node.what.variants[0].value 
-      : node.what.variants[0].value?.item;
     const hasChildren = node.children && node.children.variants && node.children.variants.length > 0;
 
     if (hasChildren) {
-      // Only add if children actually produced this exact item
-      if (rootItem && available.exactItems.has(rootItem)) {
-        // Item already added by children - this is the correct case
-        // Children mined/crafted this item, so it's truly available
+      // Only add items that children actually produced
+      // Check recursively what children provide
+      // (already handled by recursive collectAvailableItems calls above)
+    } else if (node.count === 0) {
+      // Inventory satisfied this root requirement
+      // Check which variants are actually in inventory
+      const inv: Map<string, number> | undefined = node?.context?.inventory;
+      let foundInInventory = false;
+      
+      if (inv && node.what.variants) {
+        for (const variant of node.what.variants) {
+          const itemName = typeof variant.value === 'string' 
+            ? variant.value 
+            : variant.value?.item;
+          // Accept count=0 too, because tree builder may have already deducted from inventory
+          if (itemName && inv.has(itemName)) {
+            // This variant IS in inventory (or was deducted from it)
+            available.exactItems.add(itemName);
+            if (isCombinableFamily(itemName)) {
+              const family = getFamilyFromName(itemName);
+              if (family) {
+                available.families.add(family);
+              }
+            }
+            foundInInventory = true;
+          }
+        }
       }
-    } else if (node.count === 0 && rootItem) {
-      // Inventory satisfied this root requirement; treat it as available
-      available.exactItems.add(rootItem);
-      if (isCombinableFamily(rootItem)) {
-        const family = getFamilyFromName(rootItem);
-        if (family) available.families.add(family);
+      
+      // Fallback: if we couldn't determine from inventory, use first variant
+      if (!foundInInventory && node.what.variants.length > 0) {
+        const rootItem = typeof node.what.variants[0].value === 'string' 
+          ? node.what.variants[0].value 
+          : node.what.variants[0].value?.item;
+        if (rootItem) {
+          available.exactItems.add(rootItem);
+        }
       }
     }
   }
@@ -503,11 +526,38 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     const childNode = child.value;
     if (childNode.action === 'root' && childNode.count === 0) {
       // This ingredient was satisfied by inventory deduction
-      const itemName = typeof childNode.what?.variants?.[0]?.value === 'string'
-        ? childNode.what.variants[0].value
-        : childNode.what?.variants?.[0]?.value?.item;
-      if (itemName) {
-        available.exactItems.add(itemName);
+      // Check which variants are actually in inventory
+      const inv: Map<string, number> | undefined = childNode?.context?.inventory;
+      let foundInInventory = false;
+      
+      if (inv && childNode.what?.variants) {
+        for (const variant of childNode.what.variants) {
+          const itemName = typeof variant.value === 'string'
+            ? variant.value
+            : variant.value?.item;
+          // Accept count=0 too, because tree builder may have already deducted from inventory
+          if (itemName && inv.has(itemName)) {
+            // This variant IS in inventory
+            available.exactItems.add(itemName);
+            if (isCombinableFamily(itemName)) {
+              const family = getFamilyFromName(itemName);
+              if (family) {
+                available.families.add(family);
+              }
+            }
+            foundInInventory = true;
+          }
+        }
+      }
+      
+      // Fallback: if we couldn't determine from inventory, use first variant
+      if (!foundInInventory && childNode.what?.variants?.length > 0) {
+        const itemName = typeof childNode.what.variants[0].value === 'string'
+          ? childNode.what.variants[0].value
+          : childNode.what.variants[0].value?.item;
+        if (itemName) {
+          available.exactItems.add(itemName);
+        }
       }
     }
     collectAvailableItems(childNode, available);
