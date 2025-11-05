@@ -39,31 +39,57 @@ interface Targets {
 
 function pickBestWeapon(bot: Bot): any | null {
   const items = bot.inventory?.items?.() || [];
-  const weaponNames = ['sword', 'axe', 'trident', 'bow', 'crossbow'];
-  
-  const weaponPriorities: Record<string, number> = {
-    sword: 100,
-    axe: 80,
-    trident: 60,
-    bow: 40,
-    crossbow: 30
+  const registry = bot.registry?.items ?? {};
+
+  type WeaponDescriptor = {
+    matches: (name: string) => boolean;
+    type: 'sword' | 'axe' | 'trident' | 'bow' | 'crossbow';
+    baseScore: number;
+  };
+
+  const descriptors: WeaponDescriptor[] = [
+    { matches: (name) => name.endsWith('_sword'), type: 'sword', baseScore: 400 },
+    { matches: (name) => name.endsWith('_axe'), type: 'axe', baseScore: 320 },
+    { matches: (name) => name === 'trident', type: 'trident', baseScore: 300 },
+    { matches: (name) => name === 'bow', type: 'bow', baseScore: 200 },
+    { matches: (name) => name === 'crossbow', type: 'crossbow', baseScore: 180 }
+  ];
+
+  const materialPriority = new Map<string, number>([
+    ['netherite', 70],
+    ['diamond', 60],
+    ['iron', 50],
+    ['stone', 40],
+    ['golden', 35],
+    ['gold', 35],
+    ['copper', 33],
+    ['wooden', 25],
+    ['wood', 25]
+  ]);
+
+  const getMaterialScore = (itemName: string): number => {
+    const prefix = itemName.split('_')[0];
+    return materialPriority.get(prefix) ?? 0;
   };
 
   let bestWeapon: any = null;
-  let bestPriority = -1;
+  let bestScore = -Infinity;
 
   for (const item of items) {
     if (!item || !item.name) continue;
-    
-    for (const weaponName of weaponNames) {
-      if (item.name.includes(weaponName)) {
-        const priority = weaponPriorities[weaponName] || 0;
-        if (priority > bestPriority) {
-          bestWeapon = item;
-          bestPriority = priority;
-          break;
-        }
-      }
+
+    const descriptor = descriptors.find((desc) => desc.matches(item.name));
+    if (!descriptor) continue;
+
+    const attackDamage = registry[item.type]?.attackDamage ?? 0;
+    const materialScore = getMaterialScore(item.name);
+
+    // Weapon type should dominate, but prefer higher damage/material within the same type.
+    const score = descriptor.baseScore + attackDamage * 10 + materialScore;
+
+    if (score > bestScore) {
+      bestScore = score;
+      bestWeapon = item;
     }
   }
 

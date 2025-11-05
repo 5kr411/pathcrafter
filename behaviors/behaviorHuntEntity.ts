@@ -67,6 +67,8 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   const HUNT_TIMEOUT = 60000; // 1 minute
   let huntStartTime = 0;
   let targetEntity: Entity | null | undefined = null;
+  (targets as any).followStuck = false;
+  let handleEntityGone: ((entity: any) => void) | null = null;
 
   const enter = new BehaviorIdle();
   const followAndAttack = createFollowAndAttackEntityState(bot, targets);
@@ -78,6 +80,16 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     if (targets.entity && !targetEntity) {
       targetEntity = targets.entity;
       logger.info(`BehaviorHuntEntity: captured entity reference: ${targetEntity.name}`);
+      if (!handleEntityGone) {
+        handleEntityGone = (gone: any) => {
+          if (targetEntity && gone?.id === (targetEntity as any).id) {
+            logger.info(`BehaviorHuntEntity: entity ${targetEntity.name} despawned/defeated`);
+            targetEntity = null;
+            targets.entity = null;
+          }
+        };
+        bot.on('entityGone', handleEntityGone);
+      }
     }
     if (originalUpdate) {
       return originalUpdate.call(this);
@@ -107,6 +119,12 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
         : followAndAttack.isFinished === true;
       
       if (!finished) return false;
+
+      if ((targets as any).followStuck) {
+        logger.warn('BehaviorHuntEntity: follow step reported stuck, aborting hunt loop');
+        targetEntity = null;
+        return false;
+      }
       
       // Check timeout
       const elapsed = Date.now() - huntStartTime;
@@ -143,6 +161,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
         : followAndAttack.isFinished === true;
       
       if (!finished) return false;
+
+      if ((targets as any).followStuck) {
+        return true;
+      }
       
       // Exit if timeout reached
       const elapsed = Date.now() - huntStartTime;
@@ -159,7 +181,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       const elapsed = Date.now() - huntStartTime;
-      if (elapsed > HUNT_TIMEOUT) {
+      const wasStuck = (targets as any).followStuck === true;
+      if (wasStuck) {
+        logger.warn('BehaviorHuntEntity: aborting hunt because path to target is blocked');
+      } else if (elapsed > HUNT_TIMEOUT) {
         logger.info('BehaviorHuntEntity: hunt timed out after 1 minute');
       } else if (!targetEntity || !isEntityAlive(bot, targetEntity)) {
         logger.info('BehaviorHuntEntity: entity eliminated');
@@ -168,6 +193,11 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       }
       targets.entity = null;
       targetEntity = null;
+      (targets as any).followStuck = false;
+      if (handleEntityGone) {
+        bot.removeListener('entityGone', handleEntityGone);
+        handleEntityGone = null;
+      }
     }
   });
 
@@ -190,6 +220,17 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       return 'no target';
     }
   });
+
+  const originalStateExit = stateMachine.onStateExited;
+  stateMachine.onStateExited = function(...args: any[]) {
+    if (handleEntityGone) {
+      bot.removeListener('entityGone', handleEntityGone);
+      handleEntityGone = null;
+    }
+    if (originalStateExit) {
+      return originalStateExit.apply(this, args);
+    }
+  };
 
   return stateMachine;
 }

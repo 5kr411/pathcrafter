@@ -45,6 +45,7 @@ export class BehaviorSmartMoveTo {
   private miningHitboxBlock: boolean = false;
   private mineBehavior: any = null;
   private lastDurabilityCheck: number = 0;
+  private allowUnstick: boolean = true;
 
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
@@ -79,6 +80,18 @@ export class BehaviorSmartMoveTo {
     this.isUnsticking = false;
     this.unstickTarget = null;
     this.lastDurabilityCheck = 0;
+    this.allowUnstick = this.targets?.disableSmartMoveUnstick !== true;
+
+    if (this.targets) {
+      if (typeof this.targets.smartMoveStuckCount === 'number') {
+        this.targets.smartMoveStuckCount = 0;
+      } else if ('smartMoveStuckCount' in this.targets) {
+        delete this.targets.smartMoveStuckCount;
+      }
+      if ('lastSmartMoveStuck' in this.targets) {
+        delete this.targets.lastSmartMoveStuck;
+      }
+    }
 
     this.recordCurrentPosition();
     
@@ -112,6 +125,16 @@ export class BehaviorSmartMoveTo {
     this.isUnsticking = false;
     this.miningHitboxBlock = false;
     this.lastDurabilityCheck = 0;
+    this.allowUnstick = true;
+
+    if (this.targets) {
+      if ('smartMoveStuckCount' in this.targets) {
+        delete this.targets.smartMoveStuckCount;
+      }
+      if ('lastSmartMoveStuck' in this.targets) {
+        delete this.targets.lastSmartMoveStuck;
+      }
+    }
 
     if (this.moveTo.onStateExited) {
       this.moveTo.onStateExited();
@@ -312,18 +335,31 @@ export class BehaviorSmartMoveTo {
     if (distanceMoved < 2 && !this.isStuck) {
       this.isStuck = true;
       logger.warn(`BehaviorSmartMoveTo: Bot is stuck! Moved only ${distanceMoved.toFixed(2)} blocks in ${(timespan/1000).toFixed(1)} seconds`);
-      
+
+      if (this.targets) {
+        const now = Date.now();
+        this.targets.lastSmartMoveStuck = now;
+        const prevCount = Number(this.targets.smartMoveStuckCount) || 0;
+        this.targets.smartMoveStuckCount = prevCount + 1;
+      }
+
       const blockInHitbox = this.findBlockInHitbox();
       if (blockInHitbox) {
         logger.info('BehaviorSmartMoveTo: Found blocks in hitbox, mining them first');
         this.startMiningHitboxBlock();
-      } else {
+      } else if (this.allowUnstick) {
         this.initiateUnstick();
+      } else {
+        logger.debug('BehaviorSmartMoveTo: Unstick suppressed for current targets');
       }
     }
   }
 
   private initiateUnstick(): void {
+    if (!this.allowUnstick) {
+      logger.debug('BehaviorSmartMoveTo: initiateUnstick called but unstick disabled');
+      return;
+    }
     if (!this.bot.entity?.position) return;
 
     const currentPos = this.bot.entity.position;

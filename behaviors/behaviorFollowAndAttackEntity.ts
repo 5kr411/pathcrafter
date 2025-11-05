@@ -92,9 +92,14 @@ function isEntityAlive(entity: Entity | null | undefined): boolean {
  * No looping back to follow or find. Simple one-shot behavior.
  */
 function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
-  const ATTACK_RANGE_APPROACHING = 2.9; // Entity moving towards bot
-  const ATTACK_RANGE_FLEEING = 1.5;     // Entity moving away from bot
-  const DEFAULT_ATTACK_RANGE = targets.attackRange || 2.9;
+  const MAX_STATIONARY_ATTACK_RANGE = 2.8; // Keep some buffer below melee limit
+  const DEFAULT_ATTACK_RANGE = Math.min(targets.attackRange ?? MAX_STATIONARY_ATTACK_RANGE, MAX_STATIONARY_ATTACK_RANGE);
+  const ATTACK_RANGE_APPROACHING = DEFAULT_ATTACK_RANGE; // Entity moving towards bot
+  const ATTACK_RANGE_FLEEING = Math.min(1.5, Math.max(0.8, DEFAULT_ATTACK_RANGE - 0.8)); // Entity moving away from bot
+
+  // Disable smart-move unsticking while chasing moving entities; it tends to fight follow logic
+  (targets as any).disableSmartMoveUnstick = true;
+  (targets as any).followStuck = false;
 
   // Track entity position from last tick for real-time movement detection
   let lastTickPosition: any = null;
@@ -118,6 +123,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
 
   // Follow entity until within attack range
   const followEntity = new BehaviorFollowEntity(bot, targets);
+  followEntity.followDistance = Math.max(0.2, DEFAULT_ATTACK_RANGE - 0.4);
   
   // Configure follow to stop at ATTACK_RANGE distance
   if (followEntity.movements) {
@@ -185,6 +191,13 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
         currentTickPosition = targets.entity.position.clone();
         lastTickPosition = currentTickPosition.clone();
       }
+      if ('smartMoveStuckCount' in targets) {
+        delete (targets as any).smartMoveStuckCount;
+      }
+      if ('lastSmartMoveStuck' in targets) {
+        delete (targets as any).lastSmartMoveStuck;
+      }
+      (targets as any).followStuck = false;
       logger.info('BehaviorFollowAndAttackEntity: entity provided, starting follow');
     }
   });
@@ -218,6 +231,13 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
         currentTickPosition = targets.entity.position.clone();
         lastTickPosition = currentTickPosition.clone();
       }
+      if ('smartMoveStuckCount' in targets) {
+        delete (targets as any).smartMoveStuckCount;
+      }
+      if ('lastSmartMoveStuck' in targets) {
+        delete (targets as any).lastSmartMoveStuck;
+      }
+      (targets as any).followStuck = false;
       logger.info('BehaviorFollowAndAttackEntity: entity found, following');
     }
   });
@@ -313,6 +333,29 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     }
   });
 
+  const followToStuckExit = new StateTransition({
+    parent: followEntity,
+    child: exit,
+    name: 'BehaviorFollowAndAttackEntity: follow -> exit (stuck)',
+    shouldTransition: () => {
+      const stuckCount = Number((targets as any).smartMoveStuckCount) || 0;
+      return stuckCount > 0;
+    },
+    onTransition: () => {
+      logger.warn('BehaviorFollowAndAttackEntity: aborting follow due to pathfinding failure');
+      (targets as any).followStuck = true;
+      if ('smartMoveStuckCount' in targets) {
+        delete (targets as any).smartMoveStuckCount;
+      }
+      if ('lastSmartMoveStuck' in targets) {
+        delete (targets as any).lastSmartMoveStuck;
+      }
+      targets.entity = null;
+      lastTickPosition = null;
+      currentTickPosition = null;
+    }
+  });
+
   // Transition: attack -> exit (always exit after attack completes, ONE CYCLE ONLY)
   const attackToExit = new StateTransition({
     parent: attackEntity,
@@ -337,6 +380,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     findToFollow,
     findToExit,
     followToAttack,
+    followToStuckExit,
     followToExit,
     attackToExit
   ];
