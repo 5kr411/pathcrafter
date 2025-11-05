@@ -27,6 +27,7 @@ interface Bot {
   entity?: {
     position?: Vec3 & { distanceTo?: (other: Vec3) => number };
   };
+  canDigBlock?: (block: Block) => boolean;
   [key: string]: any;
 }
 
@@ -161,16 +162,75 @@ class BehaviorSafeFindBlock {
           count: 64
         }) || [];
       const sorted = [...candidates].sort((a, b) => this._distanceSq(a) - this._distanceSq(b));
-      let chosen: Vec3 | undefined = undefined;
+      const avoidanceRadius = getLiquidAvoidanceDistance();
+      const nearLiquidPenalty = avoidanceRadius > 0 ? Math.max(avoidanceRadius * avoidanceRadius * 16, 256) : 0;
+
+      type RankedCandidate = {
+        pos: Vec3;
+        score: number;
+        distSq: number;
+        nearLiquid: boolean;
+      };
+
+      let best: RankedCandidate | null = null;
+
       for (const p of sorted) {
-        if (!this.isExcluded(p) && !this.isNearLiquid(p)) {
-          chosen = p;
-          break;
+        if (this.isExcluded(p)) continue;
+
+        try {
+          const block = this.bot.blockAt(p, false);
+          if (!block) continue;
+          if (typeof this.bot.canDigBlock === 'function' && !this.bot.canDigBlock(block)) continue;
+        } catch (_) {
+          continue;
+        }
+
+        const distSq = this._distanceSq(p);
+        if (!Number.isFinite(distSq)) continue;
+
+        let nearLiquid = false;
+        let penalty = 0;
+        if (avoidanceRadius > 0) {
+          nearLiquid = this.isNearLiquid(p);
+          if (nearLiquid) {
+            penalty = nearLiquidPenalty;
+            try {
+              logger.debug(
+                `BehaviorSafeFindBlock: candidate near liquid at (${p.x}, ${p.y}, ${p.z}), distSq=${distSq.toFixed(2)}, penalty=${penalty}`
+              );
+            } catch (_) {
+              /* ignore */
+            }
+          }
+        }
+
+        const score = distSq + penalty;
+
+        if (!best || score < best.score || (score === best.score && distSq < best.distSq)) {
+          best = { pos: p, score, distSq, nearLiquid };
+        } else if (nearLiquid && best && score >= best.score) {
+          try {
+            logger.debug(
+              `BehaviorSafeFindBlock: skipping near-liquid candidate at (${p.x}, ${p.y}, ${p.z}) due to higher score (${score.toFixed(2)} >= ${best.score.toFixed(2)})`
+            );
+          } catch (_) {
+            /* ignore */
+          }
         }
       }
-      if (chosen) {
-        this.targets.position = chosen;
-        this._recordReturn(chosen);
+
+      if (best) {
+        this.targets.position = best.pos;
+        this._recordReturn(best.pos);
+        if (best.nearLiquid) {
+          try {
+            logger.debug(
+              `BehaviorSafeFindBlock: selected near-liquid block at (${best.pos.x}, ${best.pos.y}, ${best.pos.z}) (distSq=${best.distSq.toFixed(2)}, score=${best.score.toFixed(2)})`
+            );
+          } catch (_) {
+            /* ignore */
+          }
+        }
       } else {
         this.targets.position = undefined;
       }
