@@ -34,7 +34,7 @@ function isSolidBlock(block: any): boolean {
   return true;
 }
 
-function hasLineOfSight(bot: Bot, entity: any): boolean {
+export function hasLineOfSight(bot: Bot, entity: any): boolean {
   try {
     if (!bot || !bot.entity || !bot.entity.position || !entity || !entity.position) return false;
     if (typeof (bot as any).blockAt !== 'function') return true;

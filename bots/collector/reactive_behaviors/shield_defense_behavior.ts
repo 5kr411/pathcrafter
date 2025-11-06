@@ -1,7 +1,7 @@
 import logger from '../../../utils/logger';
 import { ReactiveBehavior, Bot } from './types';
 import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
-import { findClosestHostileMob, getHostileMobNames } from './hostile_mob_behavior';
+import { findClosestHostileMob, getHostileMobNames, hasLineOfSight } from './hostile_mob_behavior';
 import { createShieldDefenseState } from '../../../behaviors/behaviorShieldDefense';
 
 const minecraftData = require('minecraft-data');
@@ -106,13 +106,26 @@ export async function ensureShieldEquipped(bot: Bot, preferredShield?: any): Pro
 export function shouldContinueShieldDefense(bot: Bot): boolean {
   const { current, max } = getBotHealthInfo(bot);
   if (current <= 0) {
+    logger.debug('ShieldDefense: continue check failed - health <= 0');
     return false;
   }
 
   const lowHealth = max > 0 && current < max / 2;
   const creeperThreat = findClosestCreeper(bot, CREEPER_REACQUIRE_RADIUS);
+  if (creeperThreat) {
+    return true;
+  }
 
-  return lowHealth || !!creeperThreat;
+  if (!lowHealth) {
+    logger.debug('ShieldDefense: continue check failed - health recovered and no creeper');
+    return false;
+  }
+
+  const nearbyHostile = findClosestHostileMob(bot, CREEPER_REACQUIRE_RADIUS);
+  if (!nearbyHostile) {
+    logger.debug('ShieldDefense: continue check failed - low health but no hostile in close range');
+  }
+  return !!nearbyHostile;
 }
 
 function isEntityAlive(entity: any): boolean {
@@ -148,6 +161,9 @@ export function findClosestCreeper(bot: Bot, maxDistance: number): any | null {
     try {
       const distance = botPos.distanceTo(entity.position);
       if (Number.isFinite(maxDistance) && maxDistance > 0 && distance > maxDistance) {
+        continue;
+      }
+      if (!hasLineOfSight(bot, entity)) {
         continue;
       }
       if (distance < closestDistance) {
@@ -229,14 +245,32 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
       return false;
     }
 
-    const lowHealth = max > 0 && current < max / 2;
     const creeperThreat = findClosestCreeper(bot, CREEPER_TRIGGER_RADIUS);
+    if (creeperThreat) {
+      return true;
+    }
 
-    return lowHealth || !!creeperThreat;
+    const lowHealth = max > 0 && current < max / 2;
+    if (!lowHealth) {
+      return false;
+    }
+
+    const nearbyHostile = findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS);
+    if (!nearbyHostile) {
+        return false;
+    }
+
+    return true;
   },
 
   execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
     try {
+      const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        ? (bot as any).safeChat.bind(bot)
+        : typeof bot?.chat === 'function'
+          ? bot.chat.bind(bot)
+          : null;
+
       const shieldItem = findShieldItem(bot);
       if (!shieldItem) {
         executor.finish(false);
@@ -291,13 +325,42 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
       });
 
       let finished = false;
+      let deathListener: (() => void) | null = null;
+
+      const removeDeathListener = () => {
+        if (!deathListener) {
+          return;
+        }
+        try {
+          if (typeof (bot as any)?.off === 'function') {
+            (bot as any).off('death', deathListener);
+          } else if (typeof (bot as any)?.removeListener === 'function') {
+            (bot as any).removeListener('death', deathListener);
+          }
+        } catch (err: any) {
+          logger.debug(`ShieldDefense: failed to detach death listener - ${err?.message || err}`);
+        }
+        deathListener = null;
+      };
+
+      const finishBehavior = (success: boolean, message?: string) => {
+        if (finished) {
+          return;
+        }
+        finished = true;
+        removeDeathListener();
+        executor.finish(success);
+        if (message && sendChat) {
+          try {
+            sendChat(message);
+          } catch (_) {
+          }
+        }
+      };
 
       const originalOnStateExited = stateMachine.onStateExited;
       stateMachine.onStateExited = function() {
-        if (!finished) {
-          finished = true;
-          executor.finish(true);
-        }
+        finishBehavior(true, 'done shielding');
         if (typeof originalOnStateExited === 'function') {
           try {
             return originalOnStateExited.call(this);
@@ -308,7 +371,33 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         return undefined;
       };
 
+      const attachDeathListener = () => {
+        if (deathListener) {
+          return;
+        }
+        const handler = () => finishBehavior(false);
+        deathListener = handler;
+        try {
+          if (typeof (bot as any)?.on === 'function') {
+            (bot as any).on('death', handler);
+          } else if (typeof (bot as any)?.addListener === 'function') {
+            (bot as any).addListener('death', handler);
+          }
+        } catch (err: any) {
+          logger.debug(`ShieldDefense: failed to attach death listener - ${err?.message || err}`);
+          removeDeathListener();
+        }
+      };
+
+      attachDeathListener();
+
       logger.info('ShieldDefense: reactive shield behavior engaged');
+      if (sendChat) {
+        try {
+          sendChat('shielding now');
+        } catch (_) {
+        }
+      }
       return stateMachine;
     } catch (err: any) {
       logger.info(`ShieldDefense: failed to execute - ${err?.message || err}`);
