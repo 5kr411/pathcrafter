@@ -7,7 +7,8 @@ const {
 
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
-import createLookAtState from './behaviorLookAt';
+import createLookAtState, { getNearestPointOnEntityBoundingBox } from './behaviorLookAt';
+import { Vec3 } from 'vec3';
 
 interface Bot {
   version?: string;
@@ -102,8 +103,26 @@ function getDistanceToEntity(bot: Bot, entity: Entity): number {
   }
   return bot.entity.position.distanceTo(entity.position);
 }
+function getEntityAimPoint(bot: Bot, entity: Entity): any {
+  if (!bot?.entity?.position || !entity) {
+    return entity?.position || null;
+  }
 
-// Old BehaviorLookAtEntityState removed - now using createLookAtState from behaviorLookAt.ts
+  const botPos = bot.entity.position;
+  const eyeHeightCandidate = (bot.entity as any)?.height;
+  const eyeHeight = typeof eyeHeightCandidate === 'number' && eyeHeightCandidate > 0 ? eyeHeightCandidate : 1.62;
+  const botEyePos = botPos.clone ? botPos.clone() : new Vec3(botPos.x, botPos.y, botPos.z);
+  if (botEyePos && typeof botEyePos.y === 'number') {
+    botEyePos.y += eyeHeight;
+  }
+
+  const aim = getNearestPointOnEntityBoundingBox(botEyePos, entity);
+  if (!aim) {
+    return entity.position ?? null;
+  }
+
+  return aim;
+}
 
 class BehaviorAttackEntityState {
   bot: Bot;
@@ -147,6 +166,15 @@ class BehaviorAttackEntityState {
       logger.info('BehaviorAttackEntity: bot.attack not available');
       this.isFinished = true;
       return;
+    }
+
+    const aimPoint = getEntityAimPoint(this.bot, entity);
+    if (aimPoint && typeof this.bot.lookAt === 'function') {
+      try {
+        this.bot.lookAt(aimPoint, true);
+      } catch (err: any) {
+        logger.debug(`BehaviorAttackEntity: failed to pre-align look - ${err?.message || err}`);
+      }
     }
 
     logger.info(`BehaviorAttackEntity: attacking ${entity.name || entity.displayName || 'entity'} at distance ${distance.toFixed(2)}`);
@@ -195,6 +223,7 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
   const lookAtEntity = createLookAtState(bot, lookTargets, 3.0, null);
 
   const attackState = new BehaviorAttackEntityState(bot, targets);
+  const fastAttack = Boolean((targets as any).fastAttack);
 
   addStateLogging(attackState, 'AttackEntity', {
     logEnter: true,
@@ -227,7 +256,7 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     parent: enter,
     child: lookAtEntity,
     name: 'BehaviorAttackEntity: enter -> look (no weapon)',
-    shouldTransition: () => pickBestWeapon(bot) === null,
+    shouldTransition: () => !fastAttack && pickBestWeapon(bot) === null,
     onTransition: () => {
       // Pass the entity to lookAtEntity for bounding box calculation
       if (targets.entity) {
@@ -243,6 +272,9 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     child: lookAtEntity,
     name: 'BehaviorAttackEntity: equip -> look',
     shouldTransition: () => {
+      if (fastAttack) {
+        return false;
+      }
       if (typeof equipWeapon.isFinished === 'function') {
         return equipWeapon.isFinished();
       }
@@ -255,6 +287,34 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
         (lookAtEntity as any).entity = targets.entity;
       }
       logger.info('BehaviorAttackEntity: weapon equipped, proceeding to look at target');
+    }
+  });
+
+  const enterToAttackDirect = new StateTransition({
+    parent: enter,
+    child: attackState,
+    name: 'BehaviorAttackEntity: enter -> attack (fast)',
+    shouldTransition: () => fastAttack && pickBestWeapon(bot) === null,
+    onTransition: () => {
+      logger.info('BehaviorAttackEntity: fast-attack mode without weapon, attacking immediately');
+    }
+  });
+
+  const equipToAttackFast = new StateTransition({
+    parent: equipWeapon,
+    child: attackState,
+    name: 'BehaviorAttackEntity: equip -> attack (fast)',
+    shouldTransition: () => {
+      if (!fastAttack) {
+        return false;
+      }
+      if (typeof equipWeapon.isFinished === 'function') {
+        return equipWeapon.isFinished();
+      }
+      return true;
+    },
+    onTransition: () => {
+      logger.info('BehaviorAttackEntity: fast-attack mode, skipping look and attacking immediately');
     }
   });
 
@@ -319,6 +379,8 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     enterToEquip,
     enterToLook,
     equipToLook,
+    enterToAttackDirect,
+    equipToAttackFast,
     lookToExit,
     lookToAttack,
     attackToExit

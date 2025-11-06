@@ -8,6 +8,7 @@ import { CommandHandler } from './collector/command_handler';
 import { ReactiveBehaviorRegistry } from './collector/reactive_behavior_registry';
 import { ReactiveBehaviorExecutorClass } from './collector/reactive_behavior_executor';
 import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_behavior';
+import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_defense_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
 import { BehaviorScheduler } from './collector/behavior_scheduler';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
@@ -81,6 +82,7 @@ bot.once('spawn', () => {
   );
 
   const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
+  reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
 

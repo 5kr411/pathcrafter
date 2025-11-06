@@ -7,36 +7,29 @@ const {
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import createRotateState from './behaviorRotate';
+import { Vec3 } from 'vec3';
 
-// Calculate the nearest point on an entity's bounding box to the bot
-function getNearestPointOnEntityBoundingBox(botPos: any, entity: any): any {
-  if (!entity.position) return entity.position;
-  
+export function getNearestPointOnEntityBoundingBox(botEyePos: any, entity: any): any {
+  if (!entity?.position) return entity?.position ?? null;
+
   const entityPos = entity.position;
-  const width = entity.width || 0.6; // Default to 0.6 if not available
-  const height = entity.height || 1.8; // Default to 1.8 if not available
-  
-  // Entity bounding box is centered horizontally on entity.position
+  const width = entity.width || 0.6;
+  const height = entity.height || 1.8;
+
   const halfWidth = width / 2;
-  
-  // Calculate bounding box bounds
+
   const minX = entityPos.x - halfWidth;
   const maxX = entityPos.x + halfWidth;
   const minY = entityPos.y;
   const maxY = entityPos.y + height;
   const minZ = entityPos.z - halfWidth;
   const maxZ = entityPos.z + halfWidth;
-  
-  // Clamp bot position to bounding box to find nearest point
-  const nearestX = Math.max(minX, Math.min(maxX, botPos.x));
-  const nearestY = Math.max(minY, Math.min(maxY, botPos.y));
-  const nearestZ = Math.max(minZ, Math.min(maxZ, botPos.z));
-  
-  return {
-    x: nearestX,
-    y: nearestY,
-    z: nearestZ
-  };
+
+  const nearestX = Math.max(minX, Math.min(maxX, botEyePos.x));
+  const nearestY = Math.max(minY, Math.min(maxY, botEyePos.y));
+  const nearestZ = Math.max(minZ, Math.min(maxZ, botEyePos.z));
+
+  return new Vec3(nearestX, nearestY, nearestZ);
 }
 
 interface Bot {

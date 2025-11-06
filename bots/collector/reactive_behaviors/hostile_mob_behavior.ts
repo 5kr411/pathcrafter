@@ -104,7 +104,7 @@ function hasLineOfSight(bot: Bot, entity: any): boolean {
   }
 }
 
-function getHostileMobNames(mcData: any): Set<string> {
+export function getHostileMobNames(mcData: any): Set<string> {
   const hostileMobs = new Set<string>();
   
   if (!mcData) return hostileMobs;
@@ -155,7 +155,7 @@ function getHostileMobNames(mcData: any): Set<string> {
   return hostileMobs;
 }
 
-function findClosestHostileMob(bot: Bot, maxDistance: number = 16): any | null {
+export function findClosestHostileMob(bot: Bot, maxDistance: number = 16): any | null {
   if (!bot.entities) return null;
 
   const mcData = minecraftData(bot.version);
