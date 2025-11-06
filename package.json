@@ -15,9 +15,9 @@
   "author": "5kr411",
   "license": "MIT",
   "dependencies": {
-    "@miner-org/mineflayer-baritone": "^4.1.0",
-    "jest-util": "^30.2.0",
-    "minecraft-data": "^3.99.1",
+    "@miner-org/mineflayer-baritone": "^4.1.1",
+    "jest-util": "^29.7.0",
+    "minecraft-data": "^3.100.0",
     "minecraft-protocol": "^1.62.0",
     "mineflayer": "^4.33.0",
     "mineflayer-collectblock": "^1.6.0",
@@ -25,8 +25,8 @@
     "semver": "^7.7.3"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.12",
-    "@types/node": "^24.9.1",
+    "@types/jest": "^29.5.14",
+    "@types/node": "^24.10.0",
     "exit-x": "^0.2.2",
     "jest": "^29.7.0",
     "ts-jest": "^29.4.5",
