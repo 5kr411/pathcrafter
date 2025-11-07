@@ -155,7 +155,7 @@ export function getHostileMobNames(mcData: any): Set<string> {
   return hostileMobs;
 }
 
-export function findClosestHostileMob(bot: Bot, maxDistance: number = 16): any | null {
+export function findClosestHostileMob(bot: Bot, maxDistance: number = 16, requireLineOfSight: boolean = true): any | null {
   if (!bot.entities) return null;
 
   const mcData = minecraftData(bot.version);
@@ -180,7 +180,7 @@ export function findClosestHostileMob(bot: Bot, maxDistance: number = 16): any |
     const distance = botPos.distanceTo(entity.position);
     if (distance > maxDistance) continue;
 
-    if (!hasLineOfSight(bot, entity)) continue;
+    if (requireLineOfSight && !hasLineOfSight(bot, entity)) continue;
 
     if (distance < closestDistance) {
       closest = entity;

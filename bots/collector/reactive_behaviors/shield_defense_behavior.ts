@@ -7,8 +7,8 @@ import { createShieldDefenseState } from '../../../behaviors/behaviorShieldDefen
 const minecraftData = require('minecraft-data');
 
 const SHIELD_HOLD_DURATION_MS = 5000;
-const CREEPER_TRIGGER_RADIUS = 5;
-const CREEPER_REACQUIRE_RADIUS = 7;
+const CREEPER_TRIGGER_RADIUS = 8;
+const CREEPER_REACQUIRE_RADIUS = 8;
 const HOSTILE_SEARCH_RADIUS = 32;
 
 function getInventoryItems(bot: Bot): any[] {
@@ -121,7 +121,7 @@ export function shouldContinueShieldDefense(bot: Bot): boolean {
     return false;
   }
 
-  const nearbyHostile = findClosestHostileMob(bot, CREEPER_REACQUIRE_RADIUS);
+  const nearbyHostile = findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS, true);
   if (!nearbyHostile) {
     logger.debug('ShieldDefense: continue check failed - low health but no hostile in close range');
   }
@@ -296,7 +296,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
           return creeper;
         }
         try {
-          return findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS);
+          return findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS, true);
         } catch (err: any) {
           logger.debug(`ShieldDefense: threat lookup failed - ${err?.message || err}`);
           return null;
@@ -321,7 +321,10 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         targets,
         reacquireThreat,
         holdDurationMs: SHIELD_HOLD_DURATION_MS,
-        shouldContinue: () => shouldContinueShieldDefense(bot)
+        shouldContinue: () => shouldContinueShieldDefense(bot),
+        onFinished: (success: boolean) => {
+          finishBehavior(success, success ? 'done shielding' : undefined);
+        }
       });
 
       let finished = false;
@@ -356,19 +359,6 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
           } catch (_) {
           }
         }
-      };
-
-      const originalOnStateExited = stateMachine.onStateExited;
-      stateMachine.onStateExited = function() {
-        finishBehavior(true, 'done shielding');
-        if (typeof originalOnStateExited === 'function') {
-          try {
-            return originalOnStateExited.call(this);
-          } catch (err: any) {
-            logger.debug(`ShieldDefense: error invoking nested onStateExited - ${err?.message || err}`);
-          }
-        }
-        return undefined;
       };
 
       const attachDeathListener = () => {

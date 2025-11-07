@@ -152,7 +152,7 @@ describe('Nested pre-emption stack integrity', () => {
       }
     };
 
-    const run = reactiveExecutor.createScheduledRun(reactiveBehavior);
+    const run = await reactiveExecutor.createScheduledRun(reactiveBehavior);
     expect(run).not.toBeNull();
 
     const reactivePromise = (async () => {

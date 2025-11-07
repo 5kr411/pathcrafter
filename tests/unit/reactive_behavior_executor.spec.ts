@@ -40,7 +40,7 @@ describe('unit: ReactiveBehaviorExecutorClass', () => {
       }
     };
 
-    const run = executor.createScheduledRun(behavior);
+    const run = await executor.createScheduledRun(behavior);
     expect(run).not.toBeNull();
     expect(executor.isActive()).toBe(true);
 
@@ -62,13 +62,13 @@ describe('unit: ReactiveBehaviorExecutorClass', () => {
       }
     };
 
-    const run = executor.createScheduledRun(blockingBehavior);
+    const run = await executor.createScheduledRun(blockingBehavior);
     expect(run).not.toBeNull();
 
     scheduler.pushBehavior(run!);
     void scheduler.activateTop();
 
-    const rejected = executor.createScheduledRun(blockingBehavior);
+    const rejected = await executor.createScheduledRun(blockingBehavior);
     expect(rejected).toBeNull();
 
     await run!.waitForCompletion();
@@ -89,7 +89,7 @@ describe('unit: ReactiveBehaviorExecutorClass', () => {
       }
     };
 
-    const run = executor.createScheduledRun(behavior);
+    const run = await executor.createScheduledRun(behavior);
     expect(run).not.toBeNull();
 
     scheduler.pushBehavior(run!);

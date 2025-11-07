@@ -53,7 +53,8 @@ jest.mock('mineflayer-statemachine', () => {
 jest.mock('../../bots/collector/reactive_behaviors/hostile_mob_behavior', () => ({
   __esModule: true,
   findClosestHostileMob: jest.fn(() => null),
-  getHostileMobNames: jest.fn(() => new Set(['zombie', 'creeper']))
+  getHostileMobNames: jest.fn(() => new Set(['zombie', 'creeper'])),
+  hasLineOfSight: jest.fn(() => true)
 }));
 
 describe('unit: shield_defense_behavior', () => {
@@ -170,6 +171,7 @@ describe('unit: shield_defense_behavior', () => {
 
     test('returns true when below half health even without creeper', () => {
       const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob.mockReturnValueOnce({ name: 'zombie' });
       expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
     });
 

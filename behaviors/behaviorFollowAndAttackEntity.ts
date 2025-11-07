@@ -73,14 +73,37 @@ function isEntityApproaching(bot: Bot, entity: Entity, lastPos: any, currentPos:
   return dotProduct > 0;
 }
 
-function isEntityAlive(entity: Entity | null | undefined): boolean {
+function isEntityAlive(bot: Bot, entity: Entity | null | undefined): boolean {
   if (!entity) return false;
+
+  // If the entity exposes an isAlive hook, respect it
   if (typeof entity.isAlive === 'function') {
-    return entity.isAlive();
+    try {
+      if (!entity.isAlive()) {
+        return false;
+      }
+    } catch {
+      return false;
+    }
   }
-  if (typeof entity.health === 'number') {
-    return entity.health > 0;
+
+  // Health metadata
+  if (typeof entity.health === 'number' && entity.health <= 0) {
+    return false;
   }
+
+  // Ensure the entity is still being tracked by the bot – once despawned/defeated
+  // Mineflayer removes it from bot.entities.
+  if (bot?.entities && entity && Object.keys(bot.entities).length > 0) {
+    const entityId = (entity as any)?.id;
+    if (entityId !== undefined && entityId !== null) {
+      const tracked = Object.values(bot.entities).find((candidate: any) => candidate?.id === entityId);
+      if (!tracked) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
@@ -184,7 +207,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     parent: enter,
     child: followEntity,
     name: 'BehaviorFollowAndAttackEntity: enter -> follow',
-    shouldTransition: () => !!targets.entity && isEntityAlive(targets.entity),
+    shouldTransition: () => !!targets.entity && isEntityAlive(bot, targets.entity),
     onTransition: () => {
       // Initialize position tracking only if not already tracking
       if (!lastTickPosition && targets.entity?.position) {
@@ -207,7 +230,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     parent: enter,
     child: exit,
     name: 'BehaviorFollowAndAttackEntity: enter -> exit (no valid entity)',
-    shouldTransition: () => targets.entity !== null && targets.entity !== undefined && !isEntityAlive(targets.entity),
+    shouldTransition: () => targets.entity !== null && targets.entity !== undefined && !isEntityAlive(bot, targets.entity),
     onTransition: () => {
       logger.info('BehaviorFollowAndAttackEntity: entity not valid, exiting');
       targets.entity = null;
@@ -221,9 +244,9 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorFollowAndAttackEntity: find -> follow',
     shouldTransition: () => {
       if (typeof findEntity.isFinished === 'function') {
-        return findEntity.isFinished() && targets.entity !== null && isEntityAlive(targets.entity);
+        return findEntity.isFinished() && targets.entity !== null && isEntityAlive(bot, targets.entity);
       }
-      return targets.entity !== null && isEntityAlive(targets.entity);
+      return targets.entity !== null && isEntityAlive(bot, targets.entity);
     },
     onTransition: () => {
       // Initialize position tracking only if not already tracking
@@ -249,9 +272,9 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorFollowAndAttackEntity: find -> exit (no entity found)',
     shouldTransition: () => {
       if (typeof findEntity.isFinished === 'function') {
-        return findEntity.isFinished() && (targets.entity === null || !isEntityAlive(targets.entity));
+        return findEntity.isFinished() && (targets.entity === null || !isEntityAlive(bot, targets.entity));
       }
-      return targets.entity === null || !isEntityAlive(targets.entity);
+      return targets.entity === null || !isEntityAlive(bot, targets.entity);
     },
     onTransition: () => {
       logger.info('BehaviorFollowAndAttackEntity: no entity found, exiting');
@@ -266,7 +289,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorFollowAndAttackEntity: follow -> attack',
     shouldTransition: () => {
       if (!targets.entity) return false;
-      if (!isEntityAlive(targets.entity)) return false;
+      if (!isEntityAlive(bot, targets.entity)) return false;
       
       // Update position tracking only when entity actually moves
       if (targets.entity.position) {
@@ -322,7 +345,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorFollowAndAttackEntity: follow -> exit (entity lost)',
     shouldTransition: () => {
       if (!targets.entity) return true;
-      return !isEntityAlive(targets.entity);
+      return !isEntityAlive(bot, targets.entity);
     },
     onTransition: () => {
       logger.info('BehaviorFollowAndAttackEntity: entity lost during follow, exiting');

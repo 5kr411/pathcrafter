@@ -36,6 +36,10 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
     });
   }
 
+  matchesBehavior(behavior: any): boolean {
+    return this.behavior === behavior;
+  }
+
   async activate(context: BehaviorFrameContext): Promise<void> {
     this.schedulerContext = context;
     await this.startExecution();
@@ -114,6 +118,10 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
     this.bindStateMachine();
   }
 
+  getPriority(): number {
+    return Number(this.behavior?.priority ?? 0);
+  }
+
   private async finish(success: boolean): Promise<void> {
     if (this.finished) {
       return;
@@ -169,10 +177,25 @@ export class ReactiveBehaviorExecutorClass {
     void this.currentRun.abort();
   }
 
-  createScheduledRun(behavior: any): ReactiveBehaviorRun | null {
-    if (this.isActive()) {
-      logger.warn('ReactiveBehaviorExecutor: behavior already in progress, rejecting concurrent request');
-      return null;
+  async createScheduledRun(behavior: any): Promise<ReactiveBehaviorRun | null> {
+    const newPriority = Number(behavior?.priority ?? 0);
+
+    if (this.currentRun) {
+      if (!this.currentRun.isFinished()) {
+        if (this.currentRun.matchesBehavior(behavior)) {
+          return null;
+        }
+
+        const currentPriority = this.currentRun.getPriority();
+
+        if (newPriority <= currentPriority) {
+          logger.debug(`ReactiveBehaviorExecutor: skipping ${behavior?.name || 'unknown'} because ${this.currentRun.name} (priority ${currentPriority}) is active`);
+          return null;
+        }
+
+        logger.info(`ReactiveBehaviorExecutor: preempting ${this.currentRun.name} (priority ${currentPriority}) with ${behavior?.name || 'unknown'} (priority ${newPriority})`);
+        await this.currentRun.abort();
+      }
     }
 
     const run = new ReactiveBehaviorRun(this.bot, behavior, this, ++this.runCounter);

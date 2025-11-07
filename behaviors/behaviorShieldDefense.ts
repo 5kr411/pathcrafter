@@ -7,7 +7,6 @@ import {
 
 import createFollowAndAttackEntityState from './behaviorFollowAndAttackEntity';
 import logger from '../utils/logger';
-import { getNearestPointOnEntityBoundingBox } from './behaviorLookAt';
 import { Vec3 } from 'vec3';
 
 export interface ShieldDefenseStateConfig {
@@ -15,6 +14,7 @@ export interface ShieldDefenseStateConfig {
   reacquireThreat: () => any | null;
   holdDurationMs?: number;
   shouldContinue: () => boolean;
+  onFinished?: (success: boolean) => void;
 }
 
 class ShieldHoldState implements StateBehavior {
@@ -23,46 +23,11 @@ class ShieldHoldState implements StateBehavior {
   private finished = false;
   private holdTimer: NodeJS.Timeout | null = null;
   private threatInterval: NodeJS.Timeout | null = null;
+  private damageCheckInterval: NodeJS.Timeout | null = null;
   private pendingThreat: any = null;
   private currentThreat: any = null;
   private offHandSlot: number | null = null;
   private lastShieldDamage: number | null = null;
-  private lastLookTime = 0;
-  private readonly handleShieldSlotUpdate = (slot: number, oldItem: any, newItem: any) => {
-    if (!this.active || this.finished) {
-      return;
-    }
-    if (this.offHandSlot == null || slot !== this.offHandSlot) {
-      return;
-    }
-
-    if (!this.isShieldItem(oldItem) && !this.isShieldItem(newItem)) {
-      return;
-    }
-
-    const oldDamage = this.getShieldDamage(oldItem);
-    const newDamage = this.getShieldDamage(newItem);
-    const shieldBroken = this.isShieldItem(oldItem) && !this.isShieldItem(newItem);
-    const damageIncreased = typeof oldDamage === 'number' && typeof newDamage === 'number' && newDamage > oldDamage;
-
-    this.lastShieldDamage = newDamage ?? oldDamage ?? this.lastShieldDamage;
-
-    if (!shieldBroken && !damageIncreased) {
-      return;
-    }
-
-    this.refreshThreat(true);
-
-    const currentIsCreeper = this.isCreeper(this.currentThreat);
-    if (currentIsCreeper && !shieldBroken) {
-      return;
-    }
-
-    const threat = this.pendingThreat || this.currentThreat;
-    if (threat || shieldBroken) {
-      this.finishWithThreat(threat);
-    }
-  };
 
   constructor(
     private readonly bot: any,
@@ -85,19 +50,30 @@ class ShieldHoldState implements StateBehavior {
     }
 
     this.offHandSlot = this.getOffhandSlot();
-    this.lastShieldDamage = this.getShieldDamage(this.getItemInSlot(this.offHandSlot));
+    const initialShieldItem = this.getItemInSlot(this.offHandSlot);
+    this.lastShieldDamage = this.getShieldDamage(initialShieldItem);
+    
+    logger.info(`ShieldDefense: initialized shield damage tracking - slot=${this.offHandSlot}, durability=${this.lastShieldDamage}/${initialShieldItem?.maxDurability || '?'}`)
 
+    // Initialize threat data without looking to prevent head snap
     try {
-      const inventory: any = this.bot?.inventory;
-      if (inventory && typeof inventory.on === 'function') {
-        inventory.on('updateSlot', this.handleShieldSlotUpdate);
+      const threat = this.reacquireThreat();
+      this.currentThreat = threat || null;
+      if (threat) {
+        if (this.isCreeper(threat)) {
+          this.pendingThreat = null;
+        } else {
+          this.pendingThreat = threat;
+        }
+      } else {
+        this.pendingThreat = null;
       }
     } catch (err: any) {
-      logger.debug(`ShieldDefense: failed to attach shield listener - ${err?.message || err}`);
+      logger.debug(`ShieldDefense: error while acquiring initial threat - ${err?.message || err}`);
     }
-
-    this.refreshThreat(true);
+    
     this.startThreatPolling();
+    this.startDamageChecking();
     this.startHoldTimer();
   }
 
@@ -128,9 +104,9 @@ class ShieldHoldState implements StateBehavior {
     this.finished = false;
     if (resetThreat) {
       this.pendingThreat = null;
+      this.currentThreat = null;
     }
     this.active = false;
-    this.currentThreat = null;
 
     try {
       if (typeof this.bot?.deactivateItem === 'function') {
@@ -145,15 +121,6 @@ class ShieldHoldState implements StateBehavior {
     } catch (err: any) {
       logger.debug(`ShieldDefense: error clearing control states - ${err?.message || err}`);
     }
-
-    try {
-      const inventory: any = this.bot?.inventory;
-      if (inventory && typeof inventory.removeListener === 'function') {
-        inventory.removeListener('updateSlot', this.handleShieldSlotUpdate);
-      }
-    } catch (err: any) {
-      logger.debug(`ShieldDefense: failed to detach shield listener - ${err?.message || err}`);
-    }
   }
 
   private clearTimers(): void {
@@ -164,6 +131,10 @@ class ShieldHoldState implements StateBehavior {
     if (this.threatInterval) {
       clearInterval(this.threatInterval);
       this.threatInterval = null;
+    }
+    if (this.damageCheckInterval) {
+      clearInterval(this.damageCheckInterval);
+      this.damageCheckInterval = null;
     }
   }
 
@@ -176,7 +147,22 @@ class ShieldHoldState implements StateBehavior {
     this.finished = false;
     const duration = Math.max(250, this.holdDurationMs);
     this.holdTimer = setTimeout(() => {
-      this.refreshThreat(true);
+      // Update threat data without looking (we're about to attack)
+      try {
+        const threat = this.reacquireThreat();
+        this.currentThreat = threat || null;
+        if (threat) {
+          if (this.isCreeper(threat)) {
+            this.pendingThreat = null;
+          } else {
+            this.pendingThreat = threat;
+          }
+        } else {
+          this.pendingThreat = null;
+        }
+      } catch (err: any) {
+        logger.debug(`ShieldDefense: error while acquiring threat in timeout - ${err?.message || err}`);
+      }
 
       const continueShielding = this.evaluateShouldContinue();
       if (this.isCreeper(this.currentThreat)) {
@@ -201,48 +187,91 @@ class ShieldHoldState implements StateBehavior {
 
     const intervalMs = Math.max(200, Math.min(1000, Math.floor(this.holdDurationMs / 3)));
     this.threatInterval = setInterval(() => {
-      this.refreshThreat(false);
+      // Update threat data and look using smooth angle calculation
+      let threat: any = null;
+      try {
+        threat = this.reacquireThreat();
+      } catch (err: any) {
+        logger.debug(`ShieldDefense: error while acquiring threat - ${err?.message || err}`);
+      }
+
+      this.currentThreat = threat || null;
+
+      if (threat) {
+        if (this.isCreeper(threat)) {
+          this.pendingThreat = null;
+        } else {
+          this.pendingThreat = threat;
+        }
+        this.lookAtThreatSmooth(threat);
+      } else {
+        this.pendingThreat = null;
+      }
     }, intervalMs);
   }
 
-  private refreshThreat(forceLook: boolean): void {
-    let threat: any = null;
-    try {
-      threat = this.reacquireThreat();
-    } catch (err: any) {
-      logger.debug(`ShieldDefense: error while acquiring threat - ${err?.message || err}`);
+  private startDamageChecking(): void {
+    if (this.damageCheckInterval) {
+      clearInterval(this.damageCheckInterval);
+      this.damageCheckInterval = null;
     }
 
-    this.currentThreat = threat || null;
-
-    if (threat) {
-      if (this.isCreeper(threat)) {
-        this.pendingThreat = null;
-      } else {
-        this.pendingThreat = threat;
+    this.damageCheckInterval = setInterval(() => {
+      if (!this.active || this.finished) {
+        return;
       }
-      this.maybeLookAtThreat(threat, forceLook);
-    } else {
-      this.pendingThreat = null;
-    }
+
+      const currentItem = this.getItemInSlot(this.offHandSlot);
+      if (!this.isShieldItem(currentItem)) {
+        logger.info('ShieldDefense: shield no longer equipped, finishing');
+        this.finishWithThreat(this.currentThreat);
+        return;
+      }
+
+      const currentDamage = this.getShieldDamage(currentItem);
+      
+      if (typeof currentDamage === 'number' && typeof this.lastShieldDamage === 'number') {
+        if (currentDamage > this.lastShieldDamage) {
+          logger.info(`ShieldDefense: shield damage detected (${this.lastShieldDamage} -> ${currentDamage}), triggering counter-attack`);
+          this.lastShieldDamage = currentDamage;
+          
+          // Update threat and look
+          try {
+            const threat = this.reacquireThreat();
+            this.currentThreat = threat || null;
+            if (threat) {
+              if (this.isCreeper(threat)) {
+                logger.debug('ShieldDefense: creeper threat, continuing to block instead of attacking');
+                this.pendingThreat = null;
+                this.lookAtThreatSmooth(threat);
+                return;
+              }
+              this.pendingThreat = threat;
+              this.lookAtThreatSmooth(threat);
+              this.finishWithThreat(threat);
+            }
+          } catch (err: any) {
+            logger.debug(`ShieldDefense: error while acquiring threat after damage - ${err?.message || err}`);
+          }
+        }
+      }
+    }, 50);
   }
 
-  private maybeLookAtThreat(threat: any, forceLook: boolean): void {
-    if (!threat || !threat.position || typeof this.bot?.lookAt !== 'function') {
-      return;
-    }
-
-    const now = Date.now();
-    if (!forceLook && now - this.lastLookTime < 250) {
+  private lookAtThreatSmooth(threat: any): void {
+    if (!threat?.position || typeof this.bot?.lookAt !== 'function') {
       return;
     }
 
     try {
-      const lookTarget = this.getEntityAimPoint(threat);
-      if (lookTarget) {
-        this.bot.lookAt(lookTarget, true);
-      }
-      this.lastLookTime = now;
+      // Look at entity center to avoid cardinal angle snapping from axis-aligned bounding box at melee range
+      const entityHeight = threat.height || 1.8;
+      const centerPos = new Vec3(
+        threat.position.x,
+        threat.position.y + entityHeight / 2,
+        threat.position.z
+      );
+      this.bot.lookAt(centerPos, true);
     } catch (err: any) {
       logger.debug(`ShieldDefense: failed to look at threat - ${err?.message || err}`);
     }
@@ -286,11 +315,11 @@ class ShieldHoldState implements StateBehavior {
     if (!this.isShieldItem(item)) {
       return null;
     }
-    if (typeof item.metadata === 'number') {
-      return item.metadata;
-    }
     if (typeof item.durabilityUsed === 'number') {
       return item.durabilityUsed;
+    }
+    if (typeof item.metadata === 'number' && item.metadata > 0) {
+      return item.metadata;
     }
     if (item.nbt && typeof item.nbt === 'object') {
       try {
@@ -329,24 +358,6 @@ class ShieldHoldState implements StateBehavior {
     return null;
   }
 
-  private getEntityAimPoint(entity: any): any {
-    if (!entity || !entity.position || !this.bot?.entity?.position) {
-      return entity?.position ?? null;
-    }
-
-    const botPos = this.bot.entity.position;
-    const eyeHeight = typeof this.bot.entity.height === 'number' && this.bot.entity.height > 0 ? this.bot.entity.height : 1.62;
-    const botEyePos = botPos.clone ? botPos.clone() : new Vec3(botPos.x, botPos.y, botPos.z);
-    if (botEyePos && typeof botEyePos.y === 'number') {
-      botEyePos.y += eyeHeight;
-    }
-
-    const aim = getNearestPointOnEntityBoundingBox(botEyePos, entity);
-    if (!aim) {
-      return entity.position ?? null;
-    }
-    return aim;
-  }
 }
 
 export function createShieldDefenseState(bot: any, config: ShieldDefenseStateConfig): any {
@@ -355,6 +366,21 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
   const followAndAttack = createFollowAndAttackEntityState(bot, config.targets);
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
+
+  let finishedNotified = false;
+  const notifyFinished = (success: boolean): void => {
+    if (finishedNotified) {
+      return;
+    }
+    finishedNotified = true;
+    if (typeof config.onFinished === 'function') {
+      try {
+        config.onFinished(success);
+      } catch (err: any) {
+        logger.debug(`ShieldDefense: error notifying finish - ${err?.message || err}`);
+      }
+    }
+  };
 
   let cycleCount = 0;
 
@@ -365,6 +391,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     shouldTransition: () => true,
     onTransition: () => {
       cycleCount = 0;
+      finishedNotified = false;
       logger.info('ShieldDefense: activating shield behavior');
     }
   });
@@ -377,7 +404,22 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       if (!shieldHold.isFinished()) {
         return false;
       }
-      return !!shieldHold.getNextThreat();
+      if (!shieldHold.getNextThreat()) {
+        return false;
+      }
+      // Verify we should still continue the behavior before attacking
+      try {
+        if (!config.shouldContinue()) {
+          logger.debug('ShieldDefense: conditions no longer met, clearing threat and exiting instead of attacking');
+          shieldHold.consumeNextThreat();
+          return false;
+        }
+      } catch (err: any) {
+        logger.debug(`ShieldDefense: error checking shouldContinue in transition - ${err?.message || err}`);
+        shieldHold.consumeNextThreat();
+        return false;
+      }
+      return true;
     },
     onTransition: () => {
       const threat = shieldHold.consumeNextThreat();
@@ -393,11 +435,31 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     name: 'ShieldDefense: shield -> exit',
     parent: shieldHold,
     child: exit,
-    shouldTransition: () => shieldHold.isFinished() && !shieldHold.getNextThreat(),
+    shouldTransition: () => {
+      // Exit if no more threats after blocking
+      if (shieldHold.isFinished() && !shieldHold.getNextThreat()) {
+        return true;
+      }
+      
+      // Exit if conditions no longer met while shielding
+      if (shieldHold.isFinished()) {
+        try {
+          if (!config.shouldContinue()) {
+            logger.debug('ShieldDefense: conditions no longer met after shield, exiting');
+            return true;
+          }
+        } catch (err: any) {
+          logger.debug(`ShieldDefense: error checking shouldContinue after shield - ${err?.message || err}`);
+        }
+      }
+      
+      return false;
+    },
     onTransition: () => {
       shieldHold.consumeNextThreat();
       config.targets.entity = null;
-      logger.info('ShieldDefense: no threats after blocking, exiting');
+      logger.info('ShieldDefense: exiting from shield state');
+      notifyFinished(true);
     }
   });
 
@@ -409,11 +471,111 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       const finished = typeof followAndAttack.isFinished === 'function'
         ? followAndAttack.isFinished()
         : followAndAttack.isFinished === true;
-      return finished;
+      
+      if (finished) {
+        // Don't cycle back to shield if conditions are no longer met
+        try {
+          if (!config.shouldContinue()) {
+            logger.debug('ShieldDefense: attack finished but conditions no longer met, not cycling back to shield');
+            return false;
+          }
+        } catch (err: any) {
+          logger.debug(`ShieldDefense: error checking shouldContinue after attack - ${err?.message || err}`);
+          return false;
+        }
+        return true;
+      }
+      
+      // Check for closer/higher priority threats while attacking
+      try {
+        const currentTarget = config.targets.entity;
+        const newThreat = config.reacquireThreat();
+        
+        if (!newThreat || !currentTarget) {
+          return false;
+        }
+        
+        // If we found a different entity, compare priorities
+        if (newThreat !== currentTarget) {
+          const botPos = bot?.entity?.position;
+          if (!botPos || typeof botPos.distanceTo !== 'function') {
+            return false;
+          }
+          
+          // Always interrupt for creepers (highest priority)
+          const newIsCreeper = newThreat.name?.toLowerCase() === 'creeper';
+          const currentIsCreeper = currentTarget.name?.toLowerCase() === 'creeper';
+          
+          if (newIsCreeper && !currentIsCreeper) {
+            // Verify we should still continue before interrupting
+            if (!config.shouldContinue()) {
+              logger.debug('ShieldDefense: creeper detected but conditions no longer met, not interrupting');
+              return false;
+            }
+            logger.info('ShieldDefense: interrupting attack - creeper threat detected');
+            return true;
+          }
+          
+          // Interrupt if new threat is significantly closer (more than 5 blocks closer)
+          try {
+            const currentDist = botPos.distanceTo(currentTarget.position);
+            const newDist = botPos.distanceTo(newThreat.position);
+            
+            if (newDist < currentDist - 5) {
+              // Verify we should still continue before interrupting
+              if (!config.shouldContinue()) {
+                logger.debug('ShieldDefense: closer threat detected but conditions no longer met, not interrupting');
+                return false;
+              }
+              logger.info(`ShieldDefense: interrupting attack - closer threat detected (${newDist.toFixed(1)}m vs ${currentDist.toFixed(1)}m)`);
+              return true;
+            }
+          } catch (err: any) {
+            logger.debug(`ShieldDefense: error comparing threat distances - ${err?.message || err}`);
+          }
+        }
+      } catch (err: any) {
+        logger.debug(`ShieldDefense: error checking for closer threats - ${err?.message || err}`);
+      }
+      
+      return false;
     },
     onTransition: () => {
       config.targets.entity = null;
-      logger.debug('ShieldDefense: attack cycle complete, raising shield again');
+      cycleCount += 1;
+      
+      // Safety valve: exit if cycling too many times
+      if (cycleCount > 20) {
+        logger.warn(`ShieldDefense: cycle limit reached (${cycleCount}), forcing exit to prevent memory leak`);
+        shieldHold.cancel();
+        notifyFinished(false);
+        return;
+      }
+      
+      logger.debug(`ShieldDefense: attack cycle complete, raising shield again (cycle ${cycleCount})`);
+    }
+  });
+
+  const followToExit = new StateTransition({
+    name: 'ShieldDefense: attack -> exit',
+    parent: followAndAttack,
+    child: exit,
+    shouldTransition: () => {
+      // Exit if conditions are no longer met while attacking
+      try {
+        if (!config.shouldContinue()) {
+          logger.info('ShieldDefense: conditions no longer met during attack, exiting');
+          return true;
+        }
+      } catch (err: any) {
+        logger.debug(`ShieldDefense: error checking shouldContinue during attack - ${err?.message || err}`);
+      }
+      return false;
+    },
+    onTransition: () => {
+      config.targets.entity = null;
+      logger.info('ShieldDefense: exiting from attack state');
+      notifyFinished(true);
     }
   });
 
@@ -421,6 +583,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     enterToShield,
     shieldToAttack,
     shieldToExit,
+    followToExit,
     followToShield
   ];
 
@@ -430,6 +593,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
   const originalOnStateExited = stateMachine.onStateExited;
   stateMachine.onStateExited = function() {
     shieldHold.cancel();
+    notifyFinished(true);
     if (typeof originalOnStateExited === 'function') {
       try {
         return originalOnStateExited.call(this);

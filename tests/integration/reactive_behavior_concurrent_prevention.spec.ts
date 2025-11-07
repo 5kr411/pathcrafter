@@ -120,7 +120,7 @@ describe('Reactive Behavior Pre-emption', () => {
       }
     };
 
-    const run = reactiveExecutor.createScheduledRun(behavior);
+    const run = await reactiveExecutor.createScheduledRun(behavior);
     expect(run).not.toBeNull();
 
     const reactivePromise = (async () => {

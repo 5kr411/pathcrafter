@@ -111,14 +111,14 @@ bot.once('spawn', () => {
   behaviorScheduler.activateTop().catch(() => {});
 
   behaviorScheduler.setReactivePoller(async () => {
-    if (!reactiveBehaviorExecutor || reactiveBehaviorExecutor.isActive()) {
+    if (!reactiveBehaviorExecutor) {
       return;
     }
     const behavior = await reactiveBehaviorExecutor.registry.findActiveBehavior(bot);
     if (!behavior) {
       return;
     }
-    const run = reactiveBehaviorExecutor.createScheduledRun(behavior);
+    const run = await reactiveBehaviorExecutor.createScheduledRun(behavior);
     if (!run) {
       return;
     }
