@@ -14,6 +14,7 @@ import { BehaviorScheduler } from './collector/behavior_scheduler';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { installExplosionSanitizer } from '../utils/explosionSanitizer';
+import { installPacketErrorSuppressor } from '../utils/packetErrorSuppressor';
 import logger from '../utils/logger';
 
 const config = getConfig();
@@ -35,6 +36,7 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 
 bot.once('login', () => {
   installExplosionSanitizer(bot);
+  installPacketErrorSuppressor(bot);
 });
 
 bot.once('spawn', () => {
