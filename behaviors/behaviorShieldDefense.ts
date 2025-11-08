@@ -37,6 +37,7 @@ class ShieldHoldState implements StateBehavior {
   ) {}
 
   onStateEntered(): void {
+    logger.debug('ShieldDefense: onStateEntered called, resetting state');
     this.finished = false;
     this.pendingThreat = null;
     this.active = true;
@@ -78,6 +79,7 @@ class ShieldHoldState implements StateBehavior {
   }
 
   onStateExited(): void {
+    logger.debug('ShieldDefense: onStateExited called');
     this.cleanup(false);
   }
 
@@ -165,16 +167,21 @@ class ShieldHoldState implements StateBehavior {
       }
 
       const continueShielding = this.evaluateShouldContinue();
+      logger.debug(`ShieldDefense: hold timer fired - continueShielding=${continueShielding}, isCreeper=${this.isCreeper(this.currentThreat)}, pendingThreat=${!!this.pendingThreat}`);
+      
       if (this.isCreeper(this.currentThreat)) {
+        logger.debug('ShieldDefense: hold timer restarting for creeper');
         this.startHoldTimer();
         return;
       }
 
       if (!this.pendingThreat && continueShielding) {
+        logger.debug('ShieldDefense: hold timer restarting - no pending threat but should continue');
         this.startHoldTimer();
         return;
       }
 
+      logger.info('ShieldDefense: hold timer finished, marking state as finished');
       this.finished = true;
     }, duration);
   }
@@ -436,16 +443,24 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     parent: shieldHold,
     child: exit,
     shouldTransition: () => {
+      const isFinished = shieldHold.isFinished();
+      const nextThreat = shieldHold.getNextThreat();
+      
+      logger.debug(`ShieldDefense: shieldToExit check - isFinished=${isFinished}, nextThreat=${!!nextThreat}`);
+      
       // Exit if no more threats after blocking
-      if (shieldHold.isFinished() && !shieldHold.getNextThreat()) {
+      if (isFinished && !nextThreat) {
+        logger.info('ShieldDefense: shieldToExit firing - no threats');
         return true;
       }
       
       // Exit if conditions no longer met while shielding
-      if (shieldHold.isFinished()) {
+      if (isFinished) {
         try {
-          if (!config.shouldContinue()) {
-            logger.debug('ShieldDefense: conditions no longer met after shield, exiting');
+          const shouldCont = config.shouldContinue();
+          logger.debug(`ShieldDefense: shieldToExit check - shouldContinue=${shouldCont}`);
+          if (!shouldCont) {
+            logger.info('ShieldDefense: shieldToExit firing - conditions no longer met');
             return true;
           }
         } catch (err: any) {

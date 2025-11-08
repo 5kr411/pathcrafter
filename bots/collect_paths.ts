@@ -13,6 +13,7 @@ import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgra
 import { BehaviorScheduler } from './collector/behavior_scheduler';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
+import { installExplosionSanitizer } from '../utils/explosionSanitizer';
 import logger from '../utils/logger';
 
 const config = getConfig();
@@ -31,6 +32,10 @@ if (process.argv.length >= 4) {
 
 const bot: any = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
+
+bot.once('login', () => {
+  installExplosionSanitizer(bot);
+});
 
 bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
