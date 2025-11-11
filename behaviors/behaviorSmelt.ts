@@ -267,10 +267,29 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       } catch (_) {}
       if (!furnaceBlock) furnaceBlock = findNearbyFurnace(6);
       if (!furnaceBlock) return;
-      const furnace = await bot.openFurnace(furnaceBlock);
+      
       const have0 = getItemCountInInventory(bot, wantItem);
       const outTarget = have0 + Math.max(1, wantCount);
-      logger.info(`run start (have ${have0} ${wantItem}, target ${outTarget})`);
+      
+      const haveInput = inputItem ? getItemCount(inputItem) : 0;
+      const haveFuel = fuelItem ? getItemCount(fuelItem) : 0;
+      
+      logger.info(`run start (have ${have0} ${wantItem}, target ${outTarget}, input: ${haveInput} ${inputItem}, fuel: ${haveFuel} ${fuelItem})`);
+      
+      if (!inputItem || haveInput === 0) {
+        logger.error(`Cannot smelt: no input material (${inputItem}) in inventory`);
+        breakRecommended = placedByUs;
+        return;
+      }
+      
+      if (!fuelItem || haveFuel === 0) {
+        logger.error(`Cannot smelt: no fuel (${fuelItem}) in inventory`);
+        breakRecommended = placedByUs;
+        return;
+      }
+      
+      const furnace = await bot.openFurnace(furnaceBlock);
+      
       function idOf(name: string): number | undefined {
         return mc.itemsByName[name]?.id;
       }
@@ -297,7 +316,9 @@ function createSmeltState(bot: Bot, targets: Targets): any {
             logger.debug(`put input x${toPut} ${inputItem}`);
             acted = true;
           }
-        } catch (_) {}
+        } catch (err) {
+          logger.warn(`Failed to put input: ${err}`);
+        }
         try {
           if (fuelItem && getItemCount(fuelItem) > 0) {
             const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
@@ -318,7 +339,9 @@ function createSmeltState(bot: Bot, targets: Targets): any {
               acted = true;
             }
           }
-        } catch (_) {}
+        } catch (err) {
+          logger.warn(`Failed to put fuel: ${err}`);
+        }
         try {
           if (furnace.outputItem()) {
             const outStack = furnace.outputItem();
@@ -335,14 +358,26 @@ function createSmeltState(bot: Bot, targets: Targets): any {
             logger.debug(`took output (have ~${estHave}/${outTarget})`);
             acted = true;
           }
-        } catch (_) {}
+        } catch (err) {
+          logger.warn(`Failed to take output: ${err}`);
+        }
+        
+        let hasInput = false;
+        let hasOutput = false;
+        try {
+          hasInput = !!furnace.inputItem();
+          hasOutput = !!furnace.outputItem();
+        } catch (err) {
+          logger.warn(`Failed to check furnace state: ${err}`);
+        }
+        
         const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0;
         const curOut = getItemCountInInventory(bot, wantItem);
         if (curOut > prevOut) {
           lastActivity = Date.now();
           prevOut = curOut;
         }
-        if (acted || prog > lastProgress || furnace.inputItem() || furnace.outputItem()) {
+        if (acted || prog > lastProgress || hasInput || hasOutput) {
           lastActivity = Date.now();
         }
         lastProgress = prog;
