@@ -484,10 +484,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const distance = goToBlock.distanceToTarget();
       const canSee = canSeeTargetBlock(bot, targets);
       
-      logger.debug(
-        `BehaviorCollectBlock: goToBlockToEquip check - finished=${finished}, distance=${distance.toFixed(2)}, canSee=${canSee}, target=${targets.blockPosition ? `(${targets.blockPosition.x}, ${targets.blockPosition.y}, ${targets.blockPosition.z})` : 'unknown'}`
-      );
-      
       if (!finished) return false;
       if (distance >= 3) {
         logger.debug(`BehaviorCollectBlock: goToBlockToEquip - distance ${distance.toFixed(2)} >= 3, not close enough yet`);
