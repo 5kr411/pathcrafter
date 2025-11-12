@@ -304,6 +304,9 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
       };
 
       const initialThreat = reacquireThreat();
+      const threatName = initialThreat 
+        ? String(initialThreat.name || initialThreat.displayName || 'hostile mob')
+        : 'hostile mob';
 
       const targets: any = {
         entity: initialThreat ?? null,
@@ -381,10 +384,10 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
 
       attachDeathListener();
 
-      logger.info('ShieldDefense: reactive shield behavior engaged');
+      logger.info(`ShieldDefense: reactive shield behavior engaged against ${threatName}`);
       if (sendChat) {
         try {
-          sendChat('shielding now');
+          sendChat(`shielding against ${threatName}`);
         } catch (_) {
         }
       }

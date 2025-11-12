@@ -1,4 +1,4 @@
-.PHONY: build clean test bot-collect bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield
+.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield
 
 # Build TypeScript sources
 build:
@@ -15,6 +15,11 @@ tests: build
 # E2E Bots
 bot-collect: build
 	node dist/bots/collect_paths.js
+
+# Run multiple collector instances (default 10)
+# Usage: make bot-collect-multi [NUM=10] [HOST=localhost] [PORT=25565] [NAME=collector]
+bot-collect-multi: build
+	node dist/bots/collect_paths_multi.js $(or $(NUM),10) $(or $(HOST),localhost) $(or $(PORT),25565) $(or $(NAME),collector)
 
 bot-craft-inv: build
 	node dist/bots/craft_inventory.js

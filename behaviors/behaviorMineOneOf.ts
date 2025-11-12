@@ -149,7 +149,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
     if (list.length === 0) return null;
     
-    // Calculate how much we still need (for one_of, this should always be the full original amount or 0)
+    // Calculate how much we still need
     const totalCollected = getTotalCollected();
     const stillNeeded = Math.max(0, totalRequiredAmount - totalCollected);
     
@@ -158,31 +158,27 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
 
     let best: any = null;
     let bestNear = Number.POSITIVE_INFINITY;
+    let bestCount = 0;
 
-    // Only consider candidates that have ENOUGH supply for the FULL amount and haven't been tried yet
+    // Find the best available candidate (closest, with most blocks available)
+    // Don't require that a single candidate has ALL blocks needed - mine from multiple if necessary
     for (const c of list) {
       if (!c || !c.blockName) continue;
       
-      // Skip candidates we've already tried
-      if (triedCandidates.has(c.blockName)) continue;
-      
       const evalRes = evaluateCandidate(c.blockName, stillNeeded);
-      if (evalRes.count >= stillNeeded) {
-        if (evalRes.nearest < bestNear) {
-          bestNear = evalRes.nearest;
-          best = { ...c, eval: evalRes };
-        } else if (evalRes.nearest === bestNear && best) {
-          // tie-breaker: higher count available
-          if ((evalRes.count || 0) > ((best.eval && best.eval.count) || 0)) {
-            best = { ...c, eval: evalRes };
-          }
-        }
+      
+      // Skip if no blocks are available for this candidate
+      if (evalRes.count === 0) continue;
+      
+      // Prefer closest blocks, tie-break by count available
+      if (evalRes.nearest < bestNear) {
+        bestNear = evalRes.nearest;
+        bestCount = evalRes.count;
+        best = { ...c, eval: evalRes };
+      } else if (evalRes.nearest === bestNear && evalRes.count > bestCount) {
+        bestCount = evalRes.count;
+        best = { ...c, eval: evalRes };
       }
-    }
-
-    // If we found a viable candidate, mark it as tried
-    if (best && best.blockName) {
-      triedCandidates.add(best.blockName);
     }
 
     if (!best) return null;
@@ -201,8 +197,9 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
 
     // Normalize target item name: default to blockName when missing
     const itemName = best.itemName || best.blockName;
-    // Request the full amount still needed
-    const amount = stillNeeded;
+    // Request either the amount available or the amount still needed, whichever is less
+    const availableCount = best.eval?.count || 0;
+    const amount = Math.min(availableCount, stillNeeded);
     selection.chosen = { blockName: best.blockName, itemName, amount };
     return selection.chosen;
   }
@@ -305,6 +302,8 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       try {
         logger.info(`BehaviorMineOneOf: progress ${total}/${totalRequiredAmount}, finding next block...`);
       } catch (_) {}
+      // Clear tried candidates so we can reconsider all options with updated world state
+      triedCandidates.clear();
       selection.chosen = null;
       const chosen = selectBestCandidate();
       if (chosen) selection.chosen = chosen;
