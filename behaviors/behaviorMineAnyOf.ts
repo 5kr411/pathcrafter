@@ -177,8 +177,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     if (!best) return null;
 
     const itemName = best.itemName || best.blockName;
-    const remaining = totalRequiredAmount - getTotalCollected();
-    const amount = Math.max(1, remaining);
+    const amount = 1;
     selection.chosen = { blockName: best.blockName, itemName, amount };
     return selection.chosen;
   }
@@ -251,7 +250,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         const breakdown = getCollectionBreakdown();
         try {
           logger.info(
-            `mining ${dynamicTargets.blockName} (progress: ${total}/${totalRequiredAmount} total, collected: ${breakdown})`
+            `MineAnyOf: mining ${dynamicTargets.blockName} (overall progress: ${total}/${totalRequiredAmount}, breakdown: ${breakdown})`
           );
         } catch (_) {}
       }
@@ -306,12 +305,12 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       if (collectedCount > 0) {
         consecutiveFailures = 0;
         try {
-          logger.info(`progress: ${total}/${totalRequiredAmount} (${breakdown}), finding next block...`);
+          logger.info(`MineAnyOf: overall progress ${total}/${totalRequiredAmount} (${breakdown}), re-evaluating for next block...`);
         } catch (_) {}
       } else {
         consecutiveFailures++;
         try {
-          logger.warn(`progress: ${total}/${totalRequiredAmount} (${breakdown}), failed to collect (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}), finding next block...`);
+          logger.warn(`MineAnyOf: overall progress ${total}/${totalRequiredAmount} (${breakdown}), failed to collect (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}), re-evaluating...`);
         } catch (_) {}
       }
       
