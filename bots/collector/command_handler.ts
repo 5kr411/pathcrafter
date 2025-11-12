@@ -15,16 +15,55 @@ export class CommandHandler {
     if (username === this.bot.username) return;
     
     const m = message.trim();
-    const parts = m.split(/\s+/);
+    
+    const targetInfo = this.extractTarget(m);
+    if (!targetInfo.shouldRespond) {
+      return;
+    }
+    
+    const parts = targetInfo.command.split(/\s+/);
     const command = parts[0];
 
     if (command === 'collect') {
-      this.handleCollectCommand(message);
+      this.handleCollectCommand(targetInfo.command);
     } else if (command === 'go') {
       this.handleGoCommand();
     } else if (command === 'stop') {
       this.handleStopCommand();
     }
+  }
+
+  private extractTarget(message: string): { shouldRespond: boolean; command: string } {
+    const botName = this.bot.username.toLowerCase();
+    const messageLower = message.toLowerCase().trim();
+    
+    if (!messageLower.startsWith('@')) {
+      return { shouldRespond: false, command: message };
+    }
+    
+    if (messageLower.startsWith('@all ')) {
+      return {
+        shouldRespond: true,
+        command: message.substring(5).trim()
+      };
+    }
+    
+    if (messageLower.startsWith(`@${botName} `)) {
+      return {
+        shouldRespond: true,
+        command: message.substring(botName.length + 2).trim()
+      };
+    }
+    
+    const collectorMatch = messageLower.match(/^@collector(\d+)\s+(.+)$/);
+    if (collectorMatch && botName === `collector${collectorMatch[1]}`) {
+      return {
+        shouldRespond: true,
+        command: collectorMatch[2].trim()
+      };
+    }
+    
+    return { shouldRespond: false, command: message };
   }
 
   private handleCollectCommand(message: string): void {

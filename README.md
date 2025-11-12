@@ -352,7 +352,7 @@ async function acquireItem(bot: any, itemName: string, count: number) {
 
 The collection bot is an end-to-end mineflayer bot that can acquire items in a live Minecraft world.
 
-### Starting the Bot
+### Starting a Single Bot
 
 ```bash
 make bot-collect
@@ -364,19 +364,51 @@ The bot connects to `localhost:25565` by default. You can customize connection s
 node dist/bots/collect_paths.js <host> <port> [username] [password]
 ```
 
+### Running Multiple Bots
+
+Run multiple collector instances in parallel (default 10):
+
+```bash
+make bot-collect-multi
+```
+
+Customize the number of bots and connection:
+
+```bash
+make bot-collect-multi NUM=20 HOST=localhost PORT=25565 NAME=collector
+```
+
+This spawns bots named `collector1`, `collector2`, ..., `collector20`.
+
 ### In-Game Commands
 
-Once the bot spawns, use these commands in chat:
+All commands require a target prefix to specify which bot(s) should respond:
+
+#### Command Format
+
+```
+@<target> <command> [arguments]
+```
+
+**Targets:**
+- `@all` - All bots respond
+- `@<botname>` - Specific bot by exact name
 
 #### Collect Items
 
 ```
-collect <item> <count>[, <item> <count>, ...]
+@<target> collect <item> <count>[, <item> <count>, ...]
 ```
 
-Example:
+Examples:
 ```
-collect crafting_table 5, stick 16, wooden_pickaxe 1, stone_pickaxe 1, iron_pickaxe 1, diamond_pickaxe 1, diamond_shovel 1, diamond_helmet 1, diamond_chestplate 1, diamond_leggings 1, diamond_boots 1, diamond_sword 1, diamond_axe 1
+@all collect crafting_table 5, stick 16, stone_sword 1, shield 1, diamond_pickaxe 1, diamond_sword 1, diamond_shovel 1, diamond_helmet 1, diamond_chestplate 1, diamond_leggings 1, diamond_boots 1, diamond_axe 1, diamond 128
+```
+
+```
+@collector1 collect oak_log 64
+@collector2 collect cobblestone 128, iron_ore 32
+@collector5 collect diamond 16
 ```
 
 The bot will:
@@ -388,18 +420,30 @@ The bot will:
 #### Repeat Last Collection
 
 ```
-go
+@<target> go
 ```
 
-Repeats the last `collect` command.
+Examples:
+```
+@all go
+@collector3 go
+```
+
+Repeats the last `collect` command for the specified bot(s).
 
 #### Stop Execution
 
 ```
-stop
+@<target> stop
 ```
 
-Stops the current collection sequence.
+Examples:
+```
+@all stop
+@collector1 stop
+```
+
+Stops the current collection sequence for the specified bot(s).
 
 ## Development
 
