@@ -10,6 +10,10 @@ export interface RuntimeConfig {
   usePersistentWorker: boolean;
   combineSimilarNodes: boolean;
   toolDurabilityThreshold: number; // Percentage of max durability (0-1, e.g., 0.1 = 10%)
+  dropFollowTimeoutMs: {
+    valuable: number; // Timeout for valuable blocks like ores (ms)
+    common: number;   // Timeout for common blocks (ms)
+  };
 }
 
 export interface Target {
@@ -70,7 +74,11 @@ const RUNTIME: RuntimeConfig = {
   liquidAvoidanceDistance: 3,
   usePersistentWorker: true,
   combineSimilarNodes: true,
-  toolDurabilityThreshold: 0.1 // 10% of max durability
+  toolDurabilityThreshold: 0.1, // 10% of max durability
+  dropFollowTimeoutMs: {
+    valuable: 20000, // 20 seconds for ores and valuable blocks
+    common: 5000     // 5 seconds for common blocks
+  }
 };
 
 export function getConfig(): RuntimeConfig {
@@ -95,5 +103,9 @@ export function getCombineSimilarNodes(): boolean {
 
 export function getToolDurabilityThreshold(): number {
   return RUNTIME.toolDurabilityThreshold;
+}
+
+export function getDropFollowTimeoutMs(): { valuable: number; common: number } {
+  return RUNTIME.dropFollowTimeoutMs;
 }
 
