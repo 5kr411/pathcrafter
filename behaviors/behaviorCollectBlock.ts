@@ -91,7 +91,7 @@ interface EquipTargets {
 }
 
 interface MinecraftData {
-  blocksByName: Record<string, { id?: number; harvestTools?: Record<string, any> }>;
+  blocksByName: Record<string, { id?: number; harvestTools?: Record<string, any>; material?: string }>;
   items: Array<{ id?: number; name?: string; maxDurability?: number }>;
 }
 
@@ -198,15 +198,48 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     if (originalMineOnStateExited) return originalMineOnStateExited();
   };
 
+  function getPreferredToolsForBlock(blockName: string): Set<number> | null {
+    const blockInfo = mcData.blocksByName[blockName];
+    if (!blockInfo || !blockInfo.material) return null;
+    
+    const material = String(blockInfo.material).toLowerCase();
+    let toolType: string | null = null;
+    
+    if (material.includes('mineable/shovel')) {
+      toolType = 'shovel';
+    } else if (material.includes('mineable/axe')) {
+      toolType = 'axe';
+    } else if (material.includes('mineable/pickaxe')) {
+      toolType = 'pickaxe';
+    } else if (material.includes('mineable/hoe')) {
+      toolType = 'hoe';
+    }
+    
+    if (!toolType) return null;
+    
+    const tools = Object.values(mcData.items).filter(item => 
+      item && item.name && item.name.endsWith(`_${toolType}`)
+    );
+    
+    if (tools.length === 0) return null;
+    
+    return new Set(tools.map(t => t.id).filter((id): id is number => typeof id === 'number'));
+  }
+
   function pickBestToolItemForBlock(bot: Bot, blockName: string): Item | null {
     try {
       const blockInfo = mcData.blocksByName[blockName];
       const items = bot.inventory?.items?.() || [];
-      const allowed =
+      
+      let allowed =
         blockInfo && blockInfo.harvestTools
           ? new Set(Object.keys(blockInfo.harvestTools).map((id) => Number(id)))
           : null;
-      if (!allowed || allowed.size === 0) return null;
+      
+      if (!allowed || allowed.size === 0) {
+        allowed = getPreferredToolsForBlock(blockName);
+        if (!allowed || allowed.size === 0) return null;
+      }
 
       // Tier order: wooden(0), stone(1), iron(2), golden(3), diamond(4), netherite(5)
       const toolTiers = ['wooden', 'stone', 'iron', 'golden', 'diamond', 'netherite'];
