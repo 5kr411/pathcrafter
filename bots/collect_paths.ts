@@ -33,6 +33,7 @@ if (process.argv.length >= 4) {
 
 const bot: any = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
+bot.loadPlugin(require('mineflayer-pvp').plugin);
 
 bot.once('login', () => {
   installExplosionSanitizer(bot);

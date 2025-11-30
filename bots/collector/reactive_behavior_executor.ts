@@ -49,6 +49,14 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
     try {
       context.detachStateMachine();
       this.bot.clearControlStates();
+      
+      // Stop any active pvp attack when suspended
+      if (this.bot.pvp && this.bot.pvp.target) {
+        logger.debug('ReactiveBehaviorRun: stopping pvp attack on suspend');
+        try {
+          this.bot.pvp.stop();
+        } catch (_) {}
+      }
     } catch (err: any) {
       logger.debug(`ReactiveBehaviorRun: error during suspend - ${err?.message || err}`);
     }
@@ -60,6 +68,13 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
   }
 
   async onAbort(): Promise<void> {
+    // Stop any active pvp attack when aborted
+    if (this.bot.pvp && this.bot.pvp.target) {
+      logger.debug('ReactiveBehaviorRun: stopping pvp attack on abort');
+      try {
+        this.bot.pvp.stop();
+      } catch (_) {}
+    }
     await this.finish(false);
   }
 

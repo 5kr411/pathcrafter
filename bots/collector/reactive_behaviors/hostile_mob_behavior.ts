@@ -4,6 +4,9 @@ import createHuntEntityState from '../../../behaviors/behaviorHuntEntity';
 import { Vec3 } from 'vec3';
 const minecraftData = require('minecraft-data');
 
+// NOTE: This behavior requires mineflayer-pvp plugin to be loaded on the bot.
+// Load it after mineflayer-pathfinder: bot.loadPlugin(require('mineflayer-pvp').plugin);
+
 const MAX_LOS_DISTANCE = 48; // Safety cap for ray traversal
 const DEFAULT_EYE_HEIGHT = 1.62;
 

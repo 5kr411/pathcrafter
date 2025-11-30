@@ -5,7 +5,7 @@ import {
   StateBehavior
 } from 'mineflayer-statemachine';
 
-import createFollowAndAttackEntityState from './behaviorFollowAndAttackEntity';
+import { BehaviorPvpAttack } from './behaviorPvpAttack';
 import logger from '../utils/logger';
 import { Vec3 } from 'vec3';
 
@@ -56,7 +56,6 @@ class ShieldHoldState implements StateBehavior {
     
     logger.info(`ShieldDefense: initialized shield damage tracking - slot=${this.offHandSlot}, durability=${this.lastShieldDamage}/${initialShieldItem?.maxDurability || '?'}`)
 
-    // Initialize threat data without looking to prevent head snap
     try {
       const threat = this.reacquireThreat();
       this.currentThreat = threat || null;
@@ -149,7 +148,6 @@ class ShieldHoldState implements StateBehavior {
     this.finished = false;
     const duration = Math.max(250, this.holdDurationMs);
     this.holdTimer = setTimeout(() => {
-      // Update threat data without looking (we're about to attack)
       try {
         const threat = this.reacquireThreat();
         this.currentThreat = threat || null;
@@ -194,7 +192,6 @@ class ShieldHoldState implements StateBehavior {
 
     const intervalMs = Math.max(200, Math.min(1000, Math.floor(this.holdDurationMs / 3)));
     this.threatInterval = setInterval(() => {
-      // Update threat data and look using smooth angle calculation
       let threat: any = null;
       try {
         threat = this.reacquireThreat();
@@ -242,7 +239,6 @@ class ShieldHoldState implements StateBehavior {
           logger.info(`ShieldDefense: shield damage detected (${this.lastShieldDamage} -> ${currentDamage}), triggering counter-attack`);
           this.lastShieldDamage = currentDamage;
           
-          // Update threat and look
           try {
             const threat = this.reacquireThreat();
             this.currentThreat = threat || null;
@@ -271,7 +267,6 @@ class ShieldHoldState implements StateBehavior {
     }
 
     try {
-      // Look at entity center to avoid cardinal angle snapping from axis-aligned bounding box at melee range
       const entityHeight = threat.height || 1.8;
       const centerPos = new Vec3(
         threat.position.x,
@@ -370,7 +365,16 @@ class ShieldHoldState implements StateBehavior {
 export function createShieldDefenseState(bot: any, config: ShieldDefenseStateConfig): any {
   const holdDuration = Math.max(250, config.holdDurationMs ?? 5000);
   const shieldHold = new ShieldHoldState(bot, holdDuration, config.reacquireThreat, config.shouldContinue);
-  const followAndAttack = createFollowAndAttackEntityState(bot, config.targets);
+  
+  const pvpAttack = new BehaviorPvpAttack(bot, config.targets, {
+    singleAttack: true,
+    attackRange: config.targets.attackRange ?? 3.0,
+    followRange: config.targets.followRange ?? 2.0,
+    onStopped: (reason) => {
+      logger.debug(`ShieldDefense: pvp counter-attack stopped - reason: ${reason}`);
+    }
+  });
+
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
@@ -406,7 +410,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
   const shieldToAttack = new StateTransition({
     name: 'ShieldDefense: shield -> attack',
     parent: shieldHold,
-    child: followAndAttack,
+    child: pvpAttack,
     shouldTransition: () => {
       if (!shieldHold.isFinished()) {
         return false;
@@ -414,7 +418,6 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       if (!shieldHold.getNextThreat()) {
         return false;
       }
-      // Verify we should still continue the behavior before attacking
       try {
         if (!config.shouldContinue()) {
           logger.debug('ShieldDefense: conditions no longer met, clearing threat and exiting instead of attacking');
@@ -434,7 +437,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
         config.targets.entity = threat;
       }
       cycleCount += 1;
-      logger.debug(`ShieldDefense: transitioning to attack (cycle ${cycleCount})`);
+      logger.debug(`ShieldDefense: transitioning to pvp counter-attack (cycle ${cycleCount})`);
     }
   });
 
@@ -448,13 +451,11 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       
       logger.debug(`ShieldDefense: shieldToExit check - isFinished=${isFinished}, nextThreat=${!!nextThreat}`);
       
-      // Exit if no more threats after blocking
       if (isFinished && !nextThreat) {
         logger.info('ShieldDefense: shieldToExit firing - no threats');
         return true;
       }
       
-      // Exit if conditions no longer met while shielding
       if (isFinished) {
         try {
           const shouldCont = config.shouldContinue();
@@ -478,88 +479,30 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     }
   });
 
-  const followToShield = new StateTransition({
+  const attackToShield = new StateTransition({
     name: 'ShieldDefense: attack -> shield',
-    parent: followAndAttack,
+    parent: pvpAttack,
     child: shieldHold,
     shouldTransition: () => {
-      const finished = typeof followAndAttack.isFinished === 'function'
-        ? followAndAttack.isFinished()
-        : followAndAttack.isFinished === true;
-      
-      if (finished) {
-        // Don't cycle back to shield if conditions are no longer met
-        try {
-          if (!config.shouldContinue()) {
-            logger.debug('ShieldDefense: attack finished but conditions no longer met, not cycling back to shield');
-            return false;
-          }
-        } catch (err: any) {
-          logger.debug(`ShieldDefense: error checking shouldContinue after attack - ${err?.message || err}`);
-          return false;
-        }
-        return true;
+      if (!pvpAttack.isFinished()) {
+        return false;
       }
       
-      // Check for closer/higher priority threats while attacking
       try {
-        const currentTarget = config.targets.entity;
-        const newThreat = config.reacquireThreat();
-        
-        if (!newThreat || !currentTarget) {
+        if (!config.shouldContinue()) {
+          logger.debug('ShieldDefense: attack finished but conditions no longer met, not cycling back to shield');
           return false;
-        }
-        
-        // If we found a different entity, compare priorities
-        if (newThreat !== currentTarget) {
-          const botPos = bot?.entity?.position;
-          if (!botPos || typeof botPos.distanceTo !== 'function') {
-            return false;
-          }
-          
-          // Always interrupt for creepers (highest priority)
-          const newIsCreeper = newThreat.name?.toLowerCase() === 'creeper';
-          const currentIsCreeper = currentTarget.name?.toLowerCase() === 'creeper';
-          
-          if (newIsCreeper && !currentIsCreeper) {
-            // Verify we should still continue before interrupting
-            if (!config.shouldContinue()) {
-              logger.debug('ShieldDefense: creeper detected but conditions no longer met, not interrupting');
-              return false;
-            }
-            logger.info('ShieldDefense: interrupting attack - creeper threat detected');
-            return true;
-          }
-          
-          // Interrupt if new threat is significantly closer (more than 5 blocks closer)
-          try {
-            const currentDist = botPos.distanceTo(currentTarget.position);
-            const newDist = botPos.distanceTo(newThreat.position);
-            
-            if (newDist < currentDist - 5) {
-              // Verify we should still continue before interrupting
-              if (!config.shouldContinue()) {
-                logger.debug('ShieldDefense: closer threat detected but conditions no longer met, not interrupting');
-                return false;
-              }
-              logger.info(`ShieldDefense: interrupting attack - closer threat detected (${newDist.toFixed(1)}m vs ${currentDist.toFixed(1)}m)`);
-              return true;
-            }
-          } catch (err: any) {
-            logger.debug(`ShieldDefense: error comparing threat distances - ${err?.message || err}`);
-          }
         }
       } catch (err: any) {
-        logger.debug(`ShieldDefense: error checking for closer threats - ${err?.message || err}`);
+        logger.debug(`ShieldDefense: error checking shouldContinue after attack - ${err?.message || err}`);
+        return false;
       }
-      
-      return false;
+      return true;
     },
     onTransition: () => {
       config.targets.entity = null;
       cycleCount += 1;
       
-      // Safety valve: exit if cycling too many times
       if (cycleCount > 20) {
         logger.warn(`ShieldDefense: cycle limit reached (${cycleCount}), forcing exit to prevent memory leak`);
         shieldHold.cancel();
@@ -567,19 +510,22 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
         return;
       }
       
-      logger.debug(`ShieldDefense: attack cycle complete, raising shield again (cycle ${cycleCount})`);
+      logger.debug(`ShieldDefense: counter-attack complete, raising shield again (cycle ${cycleCount})`);
     }
   });
 
-  const followToExit = new StateTransition({
+  const attackToExit = new StateTransition({
     name: 'ShieldDefense: attack -> exit',
-    parent: followAndAttack,
+    parent: pvpAttack,
     child: exit,
     shouldTransition: () => {
-      // Exit if conditions are no longer met while attacking
+      if (!pvpAttack.isFinished()) {
+        return false;
+      }
+      
       try {
         if (!config.shouldContinue()) {
-          logger.info('ShieldDefense: conditions no longer met during attack, exiting');
+          logger.info('ShieldDefense: conditions no longer met after attack, exiting');
           return true;
         }
       } catch (err: any) {
@@ -598,8 +544,8 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     enterToShield,
     shieldToAttack,
     shieldToExit,
-    followToExit,
-    followToShield
+    attackToExit,
+    attackToShield
   ];
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
@@ -608,6 +554,11 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
   const originalOnStateExited = stateMachine.onStateExited;
   stateMachine.onStateExited = function() {
     shieldHold.cancel();
+    
+    if (pvpAttack.active) {
+      pvpAttack.forceStop();
+    }
+    
     notifyFinished(true);
     if (typeof originalOnStateExited === 'function') {
       try {
@@ -621,5 +572,3 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
 
   return stateMachine;
 }
-
-

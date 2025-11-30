@@ -6,6 +6,9 @@ import { createShieldDefenseState } from '../../../behaviors/behaviorShieldDefen
 
 const minecraftData = require('minecraft-data');
 
+// NOTE: This behavior requires mineflayer-pvp plugin to be loaded on the bot.
+// Load it after mineflayer-pathfinder: bot.loadPlugin(require('mineflayer-pvp').plugin);
+
 const SHIELD_HOLD_DURATION_MS = 5000;
 const CREEPER_TRIGGER_RADIUS = 8;
 const CREEPER_REACQUIRE_RADIUS = 8;
