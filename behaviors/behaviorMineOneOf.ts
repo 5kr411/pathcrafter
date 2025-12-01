@@ -144,6 +144,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
   }
 
   const triedCandidates = new Set<string>();
+  const failedBlocks = new Set<string>();
 
   function selectBestCandidate(): { blockName: string; itemName: string; amount: number } | null {
     const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
@@ -164,6 +165,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     // Don't require that a single candidate has ALL blocks needed - mine from multiple if necessary
     for (const c of list) {
       if (!c || !c.blockName) continue;
+      if (failedBlocks.has(c.blockName)) continue;
       
       const evalRes = evaluateCandidate(c.blockName, stillNeeded);
       
@@ -232,6 +234,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       initialInventoryCounts = {};
       totalRequiredAmount = Number(targets.amount || 1);
       triedCandidates.clear();
+      failedBlocks.clear();
       const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
       for (const c of list) {
         if (!c || !c.itemName) continue;
@@ -302,6 +305,15 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       try {
         logger.info(`BehaviorMineOneOf: progress ${total}/${totalRequiredAmount}, finding next block...`);
       } catch (_) {}
+      const failureReason = typeof (collectBehavior as any).getLastFailureReason === 'function'
+        ? (collectBehavior as any).getLastFailureReason()
+        : null;
+      if (failureReason === 'not_found' && selection?.chosen?.blockName) {
+        failedBlocks.add(selection.chosen.blockName);
+        try {
+          logger.warn(`BehaviorMineOneOf: excluding ${selection.chosen.blockName} after find failure`);
+        } catch (_) {}
+      }
       // Clear tried candidates so we can reconsider all options with updated world state
       triedCandidates.clear();
       selection.chosen = null;
@@ -352,4 +364,3 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
 }
 
 export default createMineOneOfState;
-

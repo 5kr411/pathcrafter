@@ -72,6 +72,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const prepare = new BehaviorIdle();
   const exit = new BehaviorIdle();
+  const failedBlocks = new Set<string>();
 
   const mcData: MinecraftData | null = (() => {
     try {
@@ -167,6 +168,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
 
     for (const c of list) {
       if (!c || !c.blockName) continue;
+      if (failedBlocks.has(c.blockName)) continue;
       const evalRes = evaluateCandidate(c.blockName, 1);
       if (evalRes.count > 0 && evalRes.nearest < bestNear) {
         bestNear = evalRes.nearest;
@@ -208,6 +210,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       initialInventoryCounts = {};
       totalRequiredAmount = Number(targets.amount || 1);
       consecutiveFailures = 0;
+      failedBlocks.clear();
       const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
       for (const c of list) {
         if (!c || !c.itemName) continue;
@@ -301,6 +304,15 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       const collectedCount = typeof (collectBehavior as any).collectedCount === 'function' 
         ? (collectBehavior as any).collectedCount() 
         : 0;
+      const failureReason = typeof (collectBehavior as any).getLastFailureReason === 'function'
+        ? (collectBehavior as any).getLastFailureReason()
+        : null;
+      if (failureReason === 'not_found' && selection?.chosen?.blockName) {
+        failedBlocks.add(selection.chosen.blockName);
+        try {
+          logger.warn(`MineAnyOf: excluding ${selection.chosen.blockName} after find failure`);
+        } catch (_) {}
+      }
       
       if (collectedCount > 0) {
         consecutiveFailures = 0;
@@ -363,4 +375,3 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
 }
 
 export default createMineAnyOfState;
-

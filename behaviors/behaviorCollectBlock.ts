@@ -108,6 +108,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   let pathfindingGiveUpLogged = false;
   let lastEnterLogCollected: number | null = null;
   let lastEnterLogTime = 0;
+  let lastFindFailTime: number | null = null;
+  const lastFindFailLogTimeByBlock = new Map<string, number>();
+  let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -318,6 +321,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         resetBaseline();
         baselineInitialized = true;
       }
+      if (lastFindFailTime && Date.now() - lastFindFailTime < 2000) {
+        logger.debug('enterToFindBlock: cooling down after recent find failure');
+        return false;
+      }
       const collected = collectedCount();
       const shouldGo = collected < targets.amount;
       if (shouldGo) {
@@ -338,6 +345,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       pathfindingFailureCount = 0; // Reset counter when starting a new find block sequence
       pathfindingGiveUpLogged = false;
       missingToolInfo = null;
+      lastFindFailTime = null;
+      lastFailureReason = null;
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -368,7 +377,16 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return false;
     },
     onTransition: () => {
-      logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
+      const now = Date.now();
+      const lastLog = lastFindFailLogTimeByBlock.get(targets.blockName) || 0;
+      if (now - lastLog > 2000) {
+        logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
+        lastFindFailLogTimeByBlock.set(targets.blockName, now);
+      } else {
+        logger.debug(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
+      }
+      lastFindFailTime = now;
+      lastFailureReason = 'not_found';
     }
   });
 
@@ -751,6 +769,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
         : 'position info unavailable';
       logger.error(`BehaviorCollectBlock: giving up after ${pathfindingFailureCount} pathfinding failures on ${targets.blockName}. ${posInfo}`);
+      lastFailureReason = 'pathfinding';
     }
   });
 
@@ -888,10 +907,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
   (stateMachine as any).resetBaseline = resetBaseline;
   (stateMachine as any).collectedCount = collectedCount;
+  (stateMachine as any).getLastFailureReason = () => lastFailureReason;
   
   stateMachine.onStateExited = function() {
     logger.debug('CollectBlock: cleaning up on state exit');
     missingToolInfo = null;
+    lastFailureReason = null;
     
     if (goToBlock && typeof goToBlock.onStateExited === 'function') {
       try {
