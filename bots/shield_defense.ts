@@ -24,6 +24,7 @@ if (process.argv.length >= 4) {
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-pvp').plugin);
+bot.loadPlugin(require('mineflayer-tool').plugin);
 
 bot.on('error', (err: any) => {
   console.error('ShieldDefense bot error:', err);

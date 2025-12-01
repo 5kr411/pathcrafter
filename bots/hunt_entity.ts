@@ -19,6 +19,9 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 console.log('Loading pvp plugin...');
 bot.loadPlugin(require('mineflayer-pvp').plugin);
 
+console.log('Loading tool plugin...');
+bot.loadPlugin(require('mineflayer-tool').plugin);
+
 function configurePrecisePathfinder(bot: any) {
   const pathfinder = bot.pathfinder;
   if (pathfinder && pathfinder.setMovements) {

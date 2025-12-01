@@ -153,6 +153,12 @@ export function createFakeBot(options?: {
     const dest = vec3(ref.position.x + face.x, ref.position.y + face.y, ref.position.z + face.z);
     bot.world.setBlockType(dest, 1);
   };
+  
+  // Mock mineflayer-tool plugin
+  bot.tool = {
+    equipForBlock: async (_block: FakeBlock, _options?: { requireHarvest?: boolean }): Promise<void> => {}
+  };
+  
   return bot;
 }
 

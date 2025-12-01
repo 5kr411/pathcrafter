@@ -19,6 +19,7 @@ if (process.argv.length >= 4) {
 
 const bot = mineflayer.createBot(botOptions);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
+bot.loadPlugin(require('mineflayer-tool').plugin);
 
 bot.once('spawn', () => {
   const targets: any = {};

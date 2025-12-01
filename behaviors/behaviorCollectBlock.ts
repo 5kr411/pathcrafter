@@ -7,8 +7,7 @@ const {
   BehaviorGetClosestEntity,
   NestedStateMachine,
   BehaviorFindBlock,
-  BehaviorFindInteractPosition,
-  BehaviorEquipItem
+  BehaviorFindInteractPosition
 } = require('mineflayer-statemachine');
 
 import { BehaviorMineBlock } from './behaviorMineBlock';
@@ -86,10 +85,6 @@ interface Targets {
   [key: string]: any;
 }
 
-interface EquipTargets {
-  item: Item | null;
-}
-
 interface MinecraftData {
   blocksByName: Record<string, { id?: number; harvestTools?: Record<string, any>; material?: string }>;
   items: Array<{ id?: number; name?: string; maxDurability?: number }>;
@@ -160,15 +155,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const goToBlock = new BehaviorSmartMoveTo(bot, targets);
   goToBlock.distance = 3;
 
-  const equipTargets: EquipTargets = { item: null };
-  const equipBestTool = new BehaviorEquipItem(bot, equipTargets);
-
-  // Add logging to EquipItem
-  addStateLogging(equipBestTool, 'EquipItem', {
-    logEnter: true,
-    getExtraInfo: () => (equipTargets.item ? `equipping ${equipTargets.item.name}` : 'no item to equip')
-  });
-
   const mineBlock = new BehaviorMineBlock(bot, targets);
 
   // Add detailed logging to MineBlock with timing
@@ -197,105 +183,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
     if (originalMineOnStateExited) return originalMineOnStateExited();
   };
-
-  function getPreferredToolsForBlock(blockName: string): Set<number> | null {
-    const blockInfo = mcData.blocksByName[blockName];
-    if (!blockInfo || !blockInfo.material) return null;
-    
-    const material = String(blockInfo.material).toLowerCase();
-    let toolType: string | null = null;
-    
-    if (material.includes('mineable/shovel')) {
-      toolType = 'shovel';
-    } else if (material.includes('mineable/axe')) {
-      toolType = 'axe';
-    } else if (material.includes('mineable/pickaxe')) {
-      toolType = 'pickaxe';
-    } else if (material.includes('mineable/hoe')) {
-      toolType = 'hoe';
-    }
-    
-    if (!toolType) return null;
-    
-    const tools = Object.values(mcData.items).filter(item => 
-      item && item.name && item.name.endsWith(`_${toolType}`)
-    );
-    
-    if (tools.length === 0) return null;
-    
-    return new Set(tools.map(t => t.id).filter((id): id is number => typeof id === 'number'));
-  }
-
-  function pickBestToolItemForBlock(bot: Bot, blockName: string): Item | null {
-    try {
-      const blockInfo = mcData.blocksByName[blockName];
-      const items = bot.inventory?.items?.() || [];
-      
-      let allowed =
-        blockInfo && blockInfo.harvestTools
-          ? new Set(Object.keys(blockInfo.harvestTools).map((id) => Number(id)))
-          : null;
-      
-      if (!allowed || allowed.size === 0) {
-        allowed = getPreferredToolsForBlock(blockName);
-        if (!allowed || allowed.size === 0) return null;
-      }
-
-      // Tier order: wooden(0), stone(1), iron(2), golden(3), diamond(4), netherite(5)
-      const toolTiers = ['wooden', 'stone', 'iron', 'golden', 'diamond', 'netherite'];
-      const getToolTier = (itemName: string): number => {
-        for (let i = 0; i < toolTiers.length; i++) {
-          if (itemName.startsWith(toolTiers[i])) return i;
-        }
-        return -1;
-      };
-
-      // First, find the highest tier available
-      let highestTier = -1;
-      for (const it of items) {
-        if (!it || typeof it.type !== 'number' || !it.name) continue;
-        if (!allowed.has(it.type)) continue;
-        const meta = mcData.items[it.type];
-        const maxDurability = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability! : 0;
-        const durabilityUsed = it.durabilityUsed || 0;
-        const remainingUses = maxDurability - durabilityUsed;
-        if (remainingUses <= 0) continue;
-
-        const tier = getToolTier(it.name);
-        if (tier > highestTier) {
-          highestTier = tier;
-        }
-      }
-
-      if (highestTier === -1) return null;
-
-      // Then, among tools of the highest tier, select the one with lowest remaining uses
-      let best: Item | null = null;
-      let lowestRemainingUses = Infinity;
-      for (const it of items) {
-        if (!it || typeof it.type !== 'number' || !it.name) continue;
-        if (!allowed.has(it.type)) continue;
-        const tier = getToolTier(it.name);
-        if (tier !== highestTier) continue; // Only consider highest tier
-
-        const meta = mcData.items[it.type];
-        const maxDurability = meta && Number.isFinite(meta.maxDurability) ? meta.maxDurability! : 0;
-        const durabilityUsed = it.durabilityUsed || 0;
-        const remainingUses = maxDurability - durabilityUsed;
-        
-        if (remainingUses < lowestRemainingUses && remainingUses > 0) {
-          best = it;
-          lowestRemainingUses = remainingUses;
-        }
-      }
-      
-      const tierName = highestTier >= 0 ? toolTiers[highestTier] : 'unknown';
-      logger.debug(`pickBestToolItemForBlock(${blockName}): selected ${best?.name || 'none'} (${tierName} tier) with ${lowestRemainingUses === Infinity ? 0 : lowestRemainingUses} uses remaining`);
-      return best;
-    } catch (_) {
-      return null;
-    }
-  }
 
   const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity: Entity) => {
     const botPos = bot.entity?.position;
@@ -496,22 +383,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   };
 
-  function prepareToEquip(context: string): void {
-    pathfindingFailureCount = 0;
-    targets.position = targets.blockPosition;
-    try {
-      equipTargets.item = pickBestToolItemForBlock(bot, targets.blockName);
-      const chosen = equipTargets.item ? equipTargets.item.name : 'none';
-      logger.debug(`${context}: equip best tool`, chosen);
-    } catch (_) {
-      logger.debug(`${context}: equip best tool`);
-    }
-  }
-
-  const goToBlockToEquip = new StateTransition({
+  const goToBlockToMine = new StateTransition({
     parent: goToBlock,
-    child: equipBestTool,
-    name: 'BehaviorCollectBlock: go to block -> equip best tool',
+    child: mineBlock,
+    name: 'BehaviorCollectBlock: go to block -> mine block',
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
@@ -519,19 +394,46 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       
       if (!finished) return false;
       if (distance >= 3) {
-        logger.debug(`BehaviorCollectBlock: goToBlockToEquip - distance ${distance.toFixed(2)} >= 3, not close enough yet`);
+        logger.debug(`BehaviorCollectBlock: goToBlockToMine - distance ${distance.toFixed(2)} >= 3, not close enough yet`);
         return false;
       }
       
-      if (canSee) {
-        logger.info(`BehaviorCollectBlock: reached target block at distance ${distance.toFixed(2)}, can see target, proceeding to equip`);
+      if (!canSee) return false;
+      
+      if (isTargetUnderFeet()) {
+        logger.warn('BehaviorCollectBlock: Target is directly under bot feet, cannot mine');
+        return false;
       }
       
-      return canSee;
+      logger.info(`BehaviorCollectBlock: reached target block at distance ${distance.toFixed(2)}, can see target, proceeding to mine`);
+      return true;
     },
     onTransition: () => {
       obstructionAttempts = 0;
-      prepareToEquip('go to block');
+      pathfindingFailureCount = 0;
+      targets.position = targets.blockPosition;
+      logger.debug('go to block -> mine block');
+    }
+  });
+
+  const goToBlockToFindBlockUnderFeet = new StateTransition({
+    parent: goToBlock,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: go to block -> find block (target under feet)',
+    shouldTransition: () => {
+      const finished = goToBlock.isFinished();
+      const distance = goToBlock.distanceToTarget();
+      const canSee = canSeeTargetBlock(bot, targets);
+      
+      if (!finished) return false;
+      if (distance >= 3) return false;
+      if (!canSee) return false;
+      
+      return isTargetUnderFeet();
+    },
+    onTransition: () => {
+      pathfindingFailureCount = 0;
+      logger.debug('go to block -> find block (avoiding block under feet)');
     }
   });
 
@@ -596,11 +498,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const checkObstructionToEquip = new StateTransition({
+  const checkObstructionToMine = new StateTransition({
     parent: checkObstruction,
-    child: equipBestTool,
-    name: 'BehaviorCollectBlock: check obstructions -> equip best tool',
+    child: mineBlock,
+    name: 'BehaviorCollectBlock: check obstructions -> mine block',
     shouldTransition: () => {
+      if (isTargetUnderFeet()) return false;
       if (obstructionTargets.position) {
         return obstructionAttempts >= MAX_OBSTRUCTION_ATTEMPTS;
       }
@@ -617,7 +520,26 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         );
       }
       obstructionAttempts = 0;
-      prepareToEquip('check obstructions');
+      pathfindingFailureCount = 0;
+      targets.position = targets.blockPosition;
+      logger.debug('check obstructions -> mine block');
+    }
+  });
+
+  const checkObstructionToFindBlockUnderFeet = new StateTransition({
+    parent: checkObstruction,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: check obstructions -> find block (target under feet)',
+    shouldTransition: () => {
+      if (!isTargetUnderFeet()) return false;
+      if (obstructionTargets.position) {
+        return obstructionAttempts >= MAX_OBSTRUCTION_ATTEMPTS;
+      }
+      return true;
+    },
+    onTransition: () => {
+      pathfindingFailureCount = 0;
+      logger.debug('check obstructions -> find block (avoiding block under feet)');
     }
   });
 
@@ -636,33 +558,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     // Check if target is directly under bot (same X/Z, Y-1)
     return targetBlockX === botBlockX && targetBlockZ === botBlockZ && targetBlockY === botBlockY - 1;
   };
-
-  const equipToFindBlock = new StateTransition({
-    parent: equipBestTool,
-    child: findBlock,
-    name: 'BehaviorCollectBlock: equip -> find block (target under feet)',
-    shouldTransition: () => {
-      if (isTargetUnderFeet()) {
-        logger.warn('BehaviorCollectBlock: Target is directly under bot feet, cannot mine - finding different block');
-        return true;
-      }
-      return false;
-    },
-    onTransition: () => {
-      pathfindingFailureCount = 0; // Reset counter when searching for a different block
-      logger.debug('equip -> find block (avoiding block under feet)');
-    }
-  });
-
-  const equipToMineBlock = new StateTransition({
-    parent: equipBestTool,
-    child: mineBlock,
-    name: 'BehaviorCollectBlock: equip best tool -> mine block',
-    shouldTransition: () => !isTargetUnderFeet(),
-    onTransition: () => {
-      logger.debug('equip best tool -> mine block');
-    }
-  });
 
   const goToBlockToFindBlock = new StateTransition({
     parent: goToBlock,
@@ -807,13 +702,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findBlockToExit,
     findBlockToFindInteractPosition,
     findInteractPositionToGoToBlock,
-    goToBlockToEquip,
+    goToBlockToMine,
+    goToBlockToFindBlockUnderFeet,
     goToBlockToCheckObstructions,
     checkObstructionToBreak,
     breakObstructionToCheck,
-    checkObstructionToEquip,
-    equipToFindBlock, // Check if target is under feet before mining
-    equipToMineBlock,
+    checkObstructionToMine,
+    checkObstructionToFindBlockUnderFeet,
     goToBlockToFindBlock,
     mineBlockToFindDrop,
     findDropToGoToDrop,

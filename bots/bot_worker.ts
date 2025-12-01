@@ -22,6 +22,7 @@ const bot = mineflayer.createBot({
 });
 
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
+bot.loadPlugin(require('mineflayer-tool').plugin);
 
 bot.once('spawn', () => {
   const targets: any = {};

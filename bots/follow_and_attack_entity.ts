@@ -35,6 +35,9 @@ bot.on('end', () => {
 console.log('Loading pathfinder plugin...');
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 
+console.log('Loading tool plugin...');
+bot.loadPlugin(require('mineflayer-tool').plugin);
+
 console.log('Setting up spawn handler...');
 bot.once('spawn', () => {
   console.log('Bot spawned successfully!');
