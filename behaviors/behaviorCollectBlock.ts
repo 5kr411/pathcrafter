@@ -57,6 +57,10 @@ interface Item {
 interface Entity {
   displayName?: string;
   position: Vec3Like;
+  metadata?: any[];
+  name?: string;
+  objectType?: number;
+  type?: string;
   [key: string]: any;
 }
 
@@ -111,6 +115,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   let lastFindFailTime: number | null = null;
   const lastFindFailLogTimeByBlock = new Map<string, number>();
   let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
+  let lastDropMetadataLogTime: number | null = null;
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -179,6 +184,20 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const enter = new BehaviorIdle();
 
+  function getDroppedItemInfo(entity: Entity): { name: string | null; count: number } {
+    // Mineflayer encodes dropped item stack in metadata index 7 for item entities
+    try {
+      const meta = Array.isArray(entity?.metadata) ? entity.metadata[7] : null;
+      if (meta && meta.itemId !== undefined) {
+        const itemId = meta.itemId;
+        const itemName = mcData.items?.[itemId]?.name || null;
+        const count = Number(meta.itemCount || meta.count || 1) || 1;
+        return { name: itemName, count };
+      }
+    } catch (_) {}
+    return { name: null, count: 0 };
+  }
+
   // Prefer safe find behavior which avoids looping over repeated positions
   let createSafeFind: any | null = null;
   let findBlock: any;
@@ -228,6 +247,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     typeof mineBlock.onStateEntered === 'function' ? mineBlock.onStateEntered.bind(mineBlock) : null;
   mineBlock.onStateEntered = function () {
     mineStartTime = Date.now();
+    lastDropMetadataLogTime = null;
     const pos = targets.position;
     try {
       const block = pos ? bot.blockAt?.(pos) : null;
@@ -251,14 +271,54 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity: Entity) => {
     const botPos = bot.entity?.position;
-    if (!botPos || !entity.position.distanceTo) return false;
-    const isItem = entity.displayName === 'Item' || entity.name === 'item' || entity.type === 'object';
-    const inRange = entity.position.distanceTo(botPos) < 8;
-    if (isItem && inRange) {
-      logger.debug(`Found drop entity: displayName=${entity.displayName}, name=${entity.name}, type=${entity.type}`);
+    if (!botPos || !entity.position?.distanceTo) return false;
+    const isItem =
+      entity.displayName === 'Item' ||
+      entity.name === 'item' ||
+      entity.type === 'object' ||
+      Array.isArray(entity.metadata);
+    if (!isItem) return false;
+
+    const targetPos = targets.blockPosition || targets.position;
+    const distToMine =
+      targetPos && targetPos.distanceTo ? targetPos.distanceTo(entity.position) : Number.POSITIVE_INFINITY;
+
+    // Collect any item within 3 blocks of the mined block
+    const nearMinedPos = distToMine < 3;
+    const inBotRange = entity.position.distanceTo(botPos) < 12;
+
+    if (nearMinedPos && inBotRange) {
+      const dropInfo = getDroppedItemInfo(entity);
+      logger.debug(
+        `Found drop near mined block (${targetPos?.x},${targetPos?.y},${targetPos?.z}): metaName=${dropInfo.name}, count=${dropInfo.count}, distToMine=${distToMine.toFixed(
+          2
+        )}`
+      );
+      return true;
     }
-    return isItem && inRange;
+    return false;
   });
+
+  function logNearbyItemMetadata(context: string): void {
+    const now = Date.now();
+    const targetPos = targets.blockPosition || targets.position || bot.entity?.position;
+    if (!targetPos) return;
+    if (lastDropMetadataLogTime && now - lastDropMetadataLogTime < 1000) return;
+    lastDropMetadataLogTime = now;
+    try {
+      const items = Object.values(bot.entities || {}).filter((e: any) => {
+        return e && (e.displayName === 'Item' || e.name === 'item' || e.type === 'object') && e.position?.distanceTo;
+      });
+      const desc = items.map((e: any) => {
+        const dist = targetPos && e.position?.distanceTo ? e.position.distanceTo(targetPos).toFixed(2) : 'n/a';
+        const meta = Array.isArray(e.metadata) ? e.metadata[7] : undefined;
+        return `@${e.position?.x?.toFixed(1)},${e.position?.y?.toFixed(1)},${e.position?.z?.toFixed(1)} d=${dist} meta=${JSON.stringify(meta)}`;
+      });
+      logger.debug(`DropDebug[${context}]: nearby items for ${targets.itemName}: ${desc.join(' | ') || 'none'}`);
+    } catch (err: any) {
+      logger.debug(`DropDebug[${context}]: error logging item metadata: ${err?.message || err}`);
+    }
+  }
 
   // Add logging to GetClosestEntity
   addStateLogging(findDrop, 'GetClosestEntity', {
@@ -838,6 +898,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       } catch (_) {
         logger.debug('find drop -> find block');
       }
+      logNearbyItemMetadata('no-match');
     }
   });
 
@@ -860,6 +921,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const timeElapsed = Date.now() - goToBlockStartTime;
       logger.debug(`go to drop -> find block: ${timeElapsed}ms elapsed (timeout: ${timeout}ms, valuable: ${isValuable})`);
       logger.info(`Blocks collected: ${collectedCount()}/${targets.amount} ${targets.itemName}`);
+      logNearbyItemMetadata('timeout');
     }
   });
 

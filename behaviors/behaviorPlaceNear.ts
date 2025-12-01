@@ -471,9 +471,19 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       // Don't retry if we've exceeded max tries
       if (placeTries >= 8) return false;
 
-      // Check if block was actually placed
-      const blockType = bot.world.getBlockType(targets.placedPosition);
-      if (blockType !== 0) return false; // Block exists, don't retry
+      const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
+      const desiredName = targets.item?.name;
+      const blockPlaced = placedBlock && placedBlock.type !== 0;
+
+      // If a block was placed but it's not the desired one, retry elsewhere
+      if (blockPlaced && desiredName && placedBlock!.name !== desiredName) {
+        logger.warn(
+          `BehaviorPlaceNear: wrong block placed (${placedBlock!.name}) instead of ${desiredName}, retrying elsewhere`
+        );
+        return true;
+      }
+
+      if (blockPlaced) return false; // Block exists and matches (or no desired name), don't retry
 
       // Block not placed - retry with different position
       return true;
@@ -498,10 +508,13 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       // Wait minimum time for block update
       if (Date.now() - placeStartTime < 500) return false;
 
-      const blockType = bot.world.getBlockType(targets.placedPosition);
+      const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
+      const desiredName = targets.item?.name;
+      const blockType = placedBlock?.type ?? 0;
+      const nameMatches = placedBlock && desiredName ? placedBlock.name === desiredName : true;
 
-      // SUCCESS: Block was placed successfully
-      if (blockType !== 0) {
+      // SUCCESS: Block was placed successfully and matches desired item (if known)
+      if (blockType !== 0 && nameMatches) {
         return true;
       }
 
@@ -591,4 +604,3 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
 }
 
 export default createPlaceNearState;
-
