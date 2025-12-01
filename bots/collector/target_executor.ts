@@ -4,7 +4,7 @@ import logger from '../../utils/logger';
 import { Bot, Target, PendingEntry, InventoryObject } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
-import { createExecutionContext } from './execution_context';
+import { createExecutionContext, ToolIssue } from './execution_context';
 import { ReactiveBehaviorExecutorClass } from './reactive_behavior_executor';
 import { ScheduledBehavior, BehaviorFrameContext } from './behavior_scheduler';
 import { createTrackedBotStateMachine } from './state_machine_utils';
@@ -44,6 +44,83 @@ function getInventoryObject(bot: Bot): InventoryObject {
 // Wrapper to create BotStateMachine with trackable physics tick listener
 const TARGET_BEHAVIOR_ID = 'collector-target';
 const TARGET_BEHAVIOR_PRIORITY = 10;
+
+type ScheduleFn = (fn: () => void) => void;
+
+export function createToolIssueHandler(options: {
+  toolReplacementExecutor: { executeReplacement: (toolName: string) => Promise<boolean> } | null | undefined;
+  toolsBeingReplaced: Set<string>;
+  bot: Bot;
+  safeChat: (msg: string) => void;
+  schedule?: ScheduleFn;
+}): (issue: ToolIssue) => void {
+  const {
+    toolReplacementExecutor,
+    toolsBeingReplaced,
+    bot,
+    safeChat,
+    schedule = (fn: () => void) => setImmediate(fn)
+  } = options;
+
+  return (issue: ToolIssue) => {
+    if (!toolReplacementExecutor) return;
+    
+    const toolLabel = issue.toolName || 'unknown tool';
+    if (toolLabel === 'unknown tool') {
+      logInfo('Collector: tool issue received without tool name, ignoring');
+      return;
+    }
+    
+    if (issue.type === 'requirement') {
+      logInfo(
+        `Collector: missing required tool ${toolLabel}${issue.blockName ? ` for ${issue.blockName}` : ''}`
+      );
+    } else {
+      logInfo(`Collector: tool durability low - ${toolLabel}`);
+    }
+    
+    schedule(async () => {
+      if (!toolReplacementExecutor || toolsBeingReplaced.has(toolLabel)) {
+        return;
+      }
+      
+      if (issue.type === 'requirement') {
+        safeChat(`missing tool, acquiring ${toolLabel}`);
+      } else {
+        safeChat(`tool low, replacing ${toolLabel}`);
+      }
+      
+      toolsBeingReplaced.add(toolLabel);
+      
+      try {
+        const invBefore = getInventoryObject(bot);
+        logInfo(
+          `Collector: tool replacement starting for ${toolLabel} (inventory=${invBefore[toolLabel] || 0})`
+        );
+        const success = await toolReplacementExecutor.executeReplacement(toolLabel);
+        const invAfter = getInventoryObject(bot);
+        logInfo(
+          `Collector: tool replacement completed for ${toolLabel} (success=${success}, inventory=${invAfter[toolLabel] || 0})`
+        );
+        if (success) {
+          const msg =
+            issue.type === 'requirement'
+              ? `acquired ${toolLabel}`
+              : `replaced ${toolLabel}`;
+          logInfo(`Collector: tool replacement succeeded for ${toolLabel}`);
+          safeChat(msg);
+        } else {
+          logInfo(`Collector: tool replacement failed for ${toolLabel}`);
+          safeChat(`failed to replace ${toolLabel}`);
+        }
+      } catch (err: any) {
+        logInfo(`Collector: tool replacement error - ${err?.message || err}`);
+      } finally {
+        toolsBeingReplaced.delete(toolLabel);
+      }
+    });
+  };
+}
 
 export class TargetExecutor implements ScheduledBehavior {
   private sequenceTargets: Target[] = [];
@@ -419,43 +496,12 @@ export class TargetExecutor implements ScheduledBehavior {
     
     const executionContext = createExecutionContext(
       this.config.toolDurabilityThreshold,
-      (issue) => {
-        if (!this.toolReplacementExecutor) return;
-        
-        logInfo(`Collector: tool issue detected - ${issue.toolName}`);
-        
-        setImmediate(async () => {
-          if (!this.toolReplacementExecutor || this.toolsBeingReplaced.has(issue.toolName)) {
-            return;
-          }
-          
-          this.safeChat(`tool low, replacing ${issue.toolName}`);
-          this.toolsBeingReplaced.add(issue.toolName);
-          
-          try {
-            const invBefore = getInventoryObject(this.bot);
-            logInfo(
-              `Collector: tool replacement starting for ${issue.toolName} (inventory=${invBefore[issue.toolName] || 0})`
-            );
-            const success = await this.toolReplacementExecutor.executeReplacement(issue.toolName);
-            const invAfter = getInventoryObject(this.bot);
-            logInfo(
-              `Collector: tool replacement completed for ${issue.toolName} (success=${success}, inventory=${invAfter[issue.toolName] || 0})`
-            );
-            if (success) {
-              logInfo(`Collector: tool replacement succeeded for ${issue.toolName}`);
-              this.safeChat(`replaced ${issue.toolName}`);
-            } else {
-              logInfo(`Collector: tool replacement failed for ${issue.toolName}`);
-              this.safeChat(`failed to replace ${issue.toolName}`);
-            }
-          } catch (err: any) {
-            logInfo(`Collector: tool replacement error - ${err?.message || err}`);
-          } finally {
-            this.toolsBeingReplaced.delete(issue.toolName);
-          }
-        });
-      },
+      createToolIssueHandler({
+        toolReplacementExecutor: this.toolReplacementExecutor,
+        toolsBeingReplaced: this.toolsBeingReplaced,
+        bot: this.bot,
+        safeChat: this.safeChat
+      }),
       this.toolsBeingReplaced
     );
     
@@ -548,4 +594,3 @@ export class TargetExecutor implements ScheduledBehavior {
     }
   }
 }
-

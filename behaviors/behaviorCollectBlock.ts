@@ -15,12 +15,13 @@ import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import createBreakBlockOnlyState, { BreakBlockTargets } from './behaviorBreakBlockOnly';
 
 import { getItemCountInInventory } from '../utils/inventory';
+import { chooseMinimalToolName, hasEqualOrBetterTool } from '../utils/items';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getLastSnapshotRadius } from '../utils/context';
 import createSafeFindBlockState from './behaviorSafeFindBlock';
 import { canSeeTargetBlock, findObstructingBlock } from '../utils/raycasting';
-import { ExecutionContext } from '../bots/collector/execution_context';
+import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 import { getDropFollowTimeoutMs } from '../bots/collector/config';
 
 const minecraftData = require('minecraft-data');
@@ -42,6 +43,7 @@ interface Vec3Like {
 interface Block {
   type?: number;
   name?: string;
+  harvestTools?: Record<string, any>;
   [key: string]: any;
 }
 
@@ -102,6 +104,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   let currentBlockCount = 0; // Will be set by resetBaseline on first entry
   let pathfindingFailureCount = 0; // Track how many times pathfinding failed and we searched for closer block
   const MAX_PATHFINDING_FAILURES = 20; // Max attempts before giving up
+  let missingToolInfo: { requiredTool?: string; blockName?: string; currentTool?: string } | null = null;
+  let pathfindingGiveUpLogged = false;
+  let lastEnterLogCollected: number | null = null;
+  let lastEnterLogTime = 0;
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -110,6 +116,62 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   function resetBaseline(): void {
     currentBlockCount = getItemCountInInventory(bot, targets.itemName);
     logger.debug(`resetBaseline: currentBlockCount set to ${currentBlockCount} for ${targets.itemName}`);
+  }
+
+  function inventoryAsMap(): Map<string, number> {
+    const out = new Map<string, number>();
+    try {
+      const items = bot.inventory?.items?.() || [];
+      for (const item of items) {
+        if (!item || !item.name) continue;
+        const count = Number.isFinite(item.count) ? item.count! : 1;
+        if (!count || count <= 0) continue;
+        out.set(item.name, (out.get(item.name) || 0) + count);
+      }
+    } catch (_) {}
+    return out;
+  }
+
+  function getHarvestToolNames(block: Block | null | undefined, fallbackName?: string): string[] {
+    const harvestTools =
+      block?.harvestTools ||
+      (fallbackName ? mcData.blocksByName[fallbackName]?.harvestTools : undefined);
+    if (!harvestTools) return [];
+
+    return Object.keys(harvestTools)
+      .map((id) => {
+        const toolId = Number(id);
+        return mcData.items[toolId]?.name;
+      })
+      .filter((n): n is string => !!n);
+  }
+
+  function checkToolRequirement(): { ok: boolean; requiredTool?: string; blockName?: string } {
+    const pos = targets.blockPosition || targets.position;
+    let block: Block | null | undefined = null;
+
+    try {
+      block = pos && bot.blockAt ? bot.blockAt(pos) : null;
+    } catch (_) {
+      block = null;
+    }
+
+    const blockName = block?.name || targets.blockName;
+    const possibleTools = getHarvestToolNames(block, blockName);
+    if (possibleTools.length === 0) {
+      return { ok: true, blockName };
+    }
+
+    const requiredTool =
+      chooseMinimalToolName(possibleTools) || possibleTools[0] || undefined;
+    if (!requiredTool) {
+      return { ok: true, blockName };
+    }
+
+    const inv = inventoryAsMap();
+    const hasTool = hasEqualOrBetterTool(inv, requiredTool);
+
+    return { ok: hasTool, requiredTool, blockName };
   }
 
   const enter = new BehaviorIdle();
@@ -222,6 +284,31 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   let baselineInitialized = false;
 
+  const enterToExitSatisfied = new StateTransition({
+    parent: enter,
+    child: exit,
+    name: 'BehaviorCollectBlock: enter -> exit (already satisfied)',
+    shouldTransition: () => {
+      if (!baselineInitialized && targets.itemName) {
+        resetBaseline();
+        baselineInitialized = true;
+      }
+      const collected = collectedCount();
+      const done = collected >= targets.amount;
+      if (done) {
+        logger.info(
+          `BehaviorCollectBlock: already satisfied ${collected}/${targets.amount} ${targets.itemName}, exiting`
+        );
+      }
+      return done;
+    },
+    onTransition: () => {
+      pathfindingFailureCount = 0;
+      pathfindingGiveUpLogged = false;
+      missingToolInfo = null;
+    }
+  });
+
   const enterToFindBlock = new StateTransition({
     parent: enter,
     child: findBlock,
@@ -233,11 +320,24 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       }
       const collected = collectedCount();
       const shouldGo = collected < targets.amount;
-      logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
+      if (shouldGo) {
+        logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
+      } else {
+        const now = Date.now();
+        if (lastEnterLogCollected !== collected || now - lastEnterLogTime > 5000) {
+          logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
+          lastEnterLogCollected = collected;
+          lastEnterLogTime = now;
+        } else {
+          logger.debug(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
+        }
+      }
       return shouldGo;
     },
     onTransition: () => {
       pathfindingFailureCount = 0; // Reset counter when starting a new find block sequence
+      pathfindingGiveUpLogged = false;
+      missingToolInfo = null;
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -295,7 +395,34 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: findInteractPosition,
     child: goToBlock,
     name: 'BehaviorCollectBlock: find interact position -> go to block',
-    shouldTransition: () => true,
+    shouldTransition: () => {
+      const requirement = checkToolRequirement();
+      if (!requirement.ok) {
+        if (!missingToolInfo) {
+          missingToolInfo = {
+            requiredTool: requirement.requiredTool,
+            blockName: requirement.blockName || targets.blockName,
+            currentTool: bot.heldItem?.name
+          };
+
+          const executionContext = targets.executionContext as ExecutionContext | undefined;
+          if (executionContext) {
+            signalToolIssue(executionContext, {
+              type: 'requirement',
+              toolName: missingToolInfo.requiredTool || 'unknown tool',
+              blockName: missingToolInfo.blockName,
+              currentToolName: missingToolInfo.currentTool
+            });
+          }
+
+          logger.error(
+            `BehaviorCollectBlock: missing required tool ${missingToolInfo.requiredTool || 'unknown'} for ${missingToolInfo.blockName || targets.blockName}`
+          );
+        }
+        return false;
+      }
+      return true;
+    },
     onTransition: () => {
       if (targets.blockPosition) {
         if (!isMainThread && parentPort) {
@@ -340,6 +467,22 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         } catch (_) {}
         logger.debug('find interact position -> go to block');
       }
+    }
+  });
+
+  const findInteractPositionToExitMissingTool = new StateTransition({
+    parent: findInteractPosition,
+    child: exit,
+    name: 'BehaviorCollectBlock: missing required tool -> exit',
+    shouldTransition: () => !!missingToolInfo,
+    onTransition: () => {
+      const info = missingToolInfo;
+      const blockName = info?.blockName || targets.blockName;
+      const required = info?.requiredTool || 'unknown tool';
+      logger.error(
+        `BehaviorCollectBlock: cannot collect ${blockName} - missing required tool ${required}`
+      );
+      missingToolInfo = null;
     }
   });
 
@@ -567,25 +710,47 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
       
-      if (finished && distance >= 3) {
-        pathfindingFailureCount++;
-        const botPos = bot.entity?.position;
-        const targetPos = targets.blockPosition;
-        const posInfo = botPos && targetPos 
-          ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
-          : 'position info unavailable';
-        
-        if (pathfindingFailureCount >= MAX_PATHFINDING_FAILURES) {
+      if (!finished || distance < 3) return false;
+
+      if (pathfindingFailureCount >= MAX_PATHFINDING_FAILURES) {
+        if (!pathfindingGiveUpLogged) {
+          const botPos = bot.entity?.position;
+          const targetPos = targets.blockPosition;
+          const posInfo = botPos && targetPos 
+            ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
+            : 'position info unavailable';
           logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times, giving up on ${targets.blockName}. ${posInfo}`);
-          return false;
+          pathfindingGiveUpLogged = true;
         }
-        logger.warn(`BehaviorCollectBlock: pathfinding failed (still ${distance.toFixed(2)} blocks away from ${targets.blockName}), searching for closer block (attempt ${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}). ${posInfo}`);
-        return true;
+        return false;
       }
-      return false;
+
+      pathfindingFailureCount++;
+      const botPos = bot.entity?.position;
+      const targetPos = targets.blockPosition;
+      const posInfo = botPos && targetPos 
+        ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
+        : 'position info unavailable';
+      logger.warn(`BehaviorCollectBlock: pathfinding failed (still ${distance.toFixed(2)} blocks away from ${targets.blockName}), searching for closer block (attempt ${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}). ${posInfo}`);
+      return true;
     },
     onTransition: () => {
       logger.debug('go to block -> find block (pathfinding retry)');
+    }
+  });
+
+  const goToBlockToExitPathfail = new StateTransition({
+    parent: goToBlock,
+    child: exit,
+    name: 'BehaviorCollectBlock: go to block -> exit (pathfinding give up)',
+    shouldTransition: () => pathfindingFailureCount >= MAX_PATHFINDING_FAILURES && goToBlock.isFinished(),
+    onTransition: () => {
+      const botPos = bot.entity?.position;
+      const targetPos = targets.blockPosition;
+      const posInfo = botPos && targetPos 
+        ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
+        : 'position info unavailable';
+      logger.error(`BehaviorCollectBlock: giving up after ${pathfindingFailureCount} pathfinding failures on ${targets.blockName}. ${posInfo}`);
     }
   });
 
@@ -698,10 +863,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   });
 
   const transitions = [
+    enterToExitSatisfied,
     enterToFindBlock,
     findBlockToExit,
     findBlockToFindInteractPosition,
     findInteractPositionToGoToBlock,
+    findInteractPositionToExitMissingTool,
     goToBlockToMine,
     goToBlockToFindBlockUnderFeet,
     goToBlockToCheckObstructions,
@@ -714,7 +881,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findDropToGoToDrop,
     findDropToFindBlock,
     goToDropToFindBlock,
-    goToDropToExit
+    goToDropToExit,
+    goToBlockToExitPathfail
   ];
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
@@ -723,6 +891,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   
   stateMachine.onStateExited = function() {
     logger.debug('CollectBlock: cleaning up on state exit');
+    missingToolInfo = null;
     
     if (goToBlock && typeof goToBlock.onStateExited === 'function') {
       try {
@@ -763,4 +932,3 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 }
 
 export default createCollectBlockState;
-
