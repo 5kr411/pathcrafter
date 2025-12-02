@@ -472,6 +472,151 @@ describe('unit: armor_upgrade_behavior', () => {
     expect(finish).toHaveBeenCalledWith(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped netherite_helmet');
   });
+
+  test('activates and equips shield when in inventory and offhand is empty', async () => {
+    const shield = {
+      name: 'shield',
+      type: mcData.itemsByName.shield.id,
+      maxDurability: mcData.itemsByName.shield.maxDurability,
+      durabilityUsed: 0
+    };
+
+    const bot = createBot({
+      items: [shield],
+      equipped: { head: null, torso: null, legs: null, feet: null }
+    });
+
+    bot.equip = jest.fn().mockImplementation((item: any, destination: string) => {
+      const slotIndex = bot.getEquipmentDestSlot(destination);
+      bot.inventory.slots[slotIndex] = item;
+      const idx = bot._inventoryItems.indexOf(item);
+      if (idx >= 0) {
+        bot._inventoryItems.splice(idx, 1);
+      }
+      return Promise.resolve();
+    });
+
+    expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
+
+    const finish = jest.fn();
+    await armorUpgradeBehavior.execute(bot, { finish });
+    await flush();
+    await flush();
+    await flush();
+
+    expect(bot.equip).toHaveBeenCalledWith(shield, 'off-hand');
+    expect(finish).toHaveBeenCalledWith(true);
+    expect(bot.safeChat).toHaveBeenCalledWith('equipped shield');
+  });
+
+  test('does not activate for shield when shield already in offhand', () => {
+    const shield = {
+      name: 'shield',
+      type: mcData.itemsByName.shield.id,
+      maxDurability: mcData.itemsByName.shield.maxDurability,
+      durabilityUsed: 0
+    };
+
+    const bot = createBot({
+      items: [],
+      equipped: { head: null, torso: null, legs: null, feet: null }
+    });
+    bot.inventory.slots[SLOT_INDEX['off-hand']] = shield;
+
+    expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(false);
+  });
+
+  test('prioritizes armor upgrade over shield equip', async () => {
+    const ironHelmet = {
+      name: 'iron_helmet',
+      type: mcData.itemsByName.iron_helmet.id,
+      maxDurability: mcData.itemsByName.iron_helmet.maxDurability,
+      durabilityUsed: 0
+    };
+
+    const shield = {
+      name: 'shield',
+      type: mcData.itemsByName.shield.id,
+      maxDurability: mcData.itemsByName.shield.maxDurability,
+      durabilityUsed: 0
+    };
+
+    const bot = createBot({
+      items: [ironHelmet, shield],
+      equipped: { head: null, torso: null, legs: null, feet: null },
+      registryItems: {
+        [ironHelmet.type]: { maxDurability: ironHelmet.maxDurability }
+      }
+    });
+
+    bot.equip = jest.fn().mockImplementation((item: any, destination: string) => {
+      const slotIndex = bot.getEquipmentDestSlot(destination);
+      bot.inventory.slots[slotIndex] = item;
+      const idx = bot._inventoryItems.indexOf(item);
+      if (idx >= 0) {
+        bot._inventoryItems.splice(idx, 1);
+      }
+      return Promise.resolve();
+    });
+
+    expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
+
+    const finish = jest.fn();
+    await armorUpgradeBehavior.execute(bot, { finish });
+    await flush();
+    await flush();
+    await flush();
+
+    expect(bot.equip).toHaveBeenCalledWith(ironHelmet, 'head');
+    expect(finish).toHaveBeenCalledWith(true);
+    expect(bot.safeChat).toHaveBeenCalledWith('equipped iron_helmet');
+  });
+
+  test('shield equip respects cooldown', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(0);
+
+    const shield = {
+      name: 'shield',
+      type: mcData.itemsByName.shield.id,
+      maxDurability: mcData.itemsByName.shield.maxDurability,
+      durabilityUsed: 0
+    };
+
+    const bot = createBot({
+      items: [shield],
+      equipped: { head: null, torso: null, legs: null, feet: null }
+    });
+
+    bot.equip = jest.fn().mockImplementation((item: any, destination: string) => {
+      const slotIndex = bot.getEquipmentDestSlot(destination);
+      bot.inventory.slots[slotIndex] = item;
+      const idx = bot._inventoryItems.indexOf(item);
+      if (idx >= 0) {
+        bot._inventoryItems.splice(idx, 1);
+      }
+      return Promise.resolve();
+    });
+
+    expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
+
+    const finish = jest.fn();
+    await armorUpgradeBehavior.execute(bot, { finish });
+    await flush();
+    expect(finish).toHaveBeenCalledWith(true);
+
+    bot._inventoryItems = [{ ...shield }];
+    bot.inventory.items = jest.fn(() => bot._inventoryItems);
+    bot.inventory.slots[SLOT_INDEX['off-hand']] = null;
+
+    expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(false);
+
+    jest.advanceTimersByTime(2000);
+
+    expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
+
+    jest.useRealTimers();
+  });
 });
 
 

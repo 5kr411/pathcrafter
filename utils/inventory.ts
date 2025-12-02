@@ -4,6 +4,11 @@ import { ActionStep } from '../action_tree/types';
  * Inventory manipulation utilities
  */
 
+// Equipment slot indices: head:5, torso:6, legs:7, feet:8, offhand:45
+const EQUIPMENT_SLOTS = [5, 6, 7, 8, 45];
+
+export type InventoryObject = Record<string, number>;
+
 /**
  * Converts an inventory object to a Map
  * 
@@ -75,7 +80,36 @@ export function produced(step: ActionStep | null | undefined): string | null {
 }
 
 /**
- * Gets the total count of a specific item in the bot's inventory and armor slots
+ * Gets the full inventory as an object mapping item names to counts.
+ * Includes regular inventory, armor slots, and offhand.
+ * 
+ * @param bot - Mineflayer bot instance
+ * @returns Object mapping item names to total counts
+ */
+export function getInventoryObject(bot: any): InventoryObject {
+  const out: InventoryObject = {};
+  try {
+    const items = bot.inventory?.items() || [];
+    for (const it of items) {
+      if (!it || !it.name || !Number.isFinite(it.count)) continue;
+      out[it.name] = (out[it.name] || 0) + it.count;
+    }
+    
+    const slots = bot.inventory?.slots;
+    if (Array.isArray(slots)) {
+      for (const slotIndex of EQUIPMENT_SLOTS) {
+        const item = slots[slotIndex];
+        if (item && item.name) {
+          out[item.name] = (out[item.name] || 0) + (item.count || 1);
+        }
+      }
+    }
+  } catch (_) {}
+  return out;
+}
+
+/**
+ * Gets the total count of a specific item in the bot's inventory and equipment slots
  * 
  * @param bot - Mineflayer bot instance
  * @param itemName - Name of the item to count
@@ -84,20 +118,18 @@ export function produced(step: ActionStep | null | undefined): string | null {
  * @example
  * getItemCountInInventory(bot, 'oak_log') // returns total oak logs in inventory
  * getItemCountInInventory(bot, 'diamond_chestplate') // includes equipped armor
+ * getItemCountInInventory(bot, 'shield') // includes shield in offhand
  */
 export function getItemCountInInventory(bot: any, itemName: string): number {
   try {
-    // Count items in regular inventory
     const items = bot.inventory?.items?.() || [];
     let total = items
       .filter((item: any) => item && item.name === itemName)
       .reduce((sum: number, item: any) => sum + (item.count || 0), 0);
     
-    // Also check armor slots (head:5, torso:6, legs:7, feet:8)
-    const armorSlots = [5, 6, 7, 8];
     const slots = bot.inventory?.slots;
     if (Array.isArray(slots)) {
-      for (const slotIndex of armorSlots) {
+      for (const slotIndex of EQUIPMENT_SLOTS) {
         const item = slots[slotIndex];
         if (item && item.name === itemName) {
           total += item.count || 1;

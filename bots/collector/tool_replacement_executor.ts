@@ -1,6 +1,7 @@
 import logger from '../../utils/logger';
 import { buildStateMachineForPath } from '../../behavior_generator/buildMachine';
-import { Bot, Target, InventoryObject, PendingEntry } from './config';
+import { getInventoryObject, InventoryObject } from '../../utils/inventory';
+import { Bot, Target, PendingEntry } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext } from './execution_context';
@@ -10,30 +11,6 @@ import { createTrackedBotStateMachine } from './state_machine_utils';
 const INVENTORY_CHECK_DELAY_MS = 250;
 const MAX_INVENTORY_CHECK_ATTEMPTS = 5;
 const TOOL_REPLACEMENT_PRIORITY = 80;
-
-function getInventoryObject(bot: Bot): InventoryObject {
-  const out: InventoryObject = {};
-  try {
-    const items = bot.inventory?.items() || [];
-    for (const it of items) {
-      if (!it || !it.name || !Number.isFinite(it.count)) continue;
-      out[it.name] = (out[it.name] || 0) + it.count;
-    }
-    
-    // Also check armor slots (head:5, torso:6, legs:7, feet:8)
-    const armorSlots = [5, 6, 7, 8];
-    const slots = bot.inventory?.slots;
-    if (Array.isArray(slots)) {
-      for (const slotIndex of armorSlots) {
-        const item = slots[slotIndex];
-        if (item && item.name) {
-          out[item.name] = (out[item.name] || 0) + (item.count || 1);
-        }
-      }
-    }
-  } catch (_) {}
-  return out;
-}
 
 function countDurableTools(bot: Bot, toolName: string, threshold: number): number {
   let total = 0;
@@ -162,7 +139,7 @@ class ToolReplacementBehavior implements ScheduledBehavior {
 
   private async startPlanning(): Promise<void> {
     try {
-      const inventoryMap = new Map(Object.entries(this.startInventory));
+      const inventoryMap = new Map<string, number>(Object.entries(this.startInventory));
       const result = await captureSnapshotForTarget(
         this.bot,
         this.target,

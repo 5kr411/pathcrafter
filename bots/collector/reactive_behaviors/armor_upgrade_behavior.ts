@@ -3,18 +3,19 @@ import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
 import logger from '../../../utils/logger';
 
 type ArmorSlot = 'head' | 'torso' | 'legs' | 'feet';
+type EquipSlot = ArmorSlot | 'off-hand';
 
 const SLOT_SUCCESS_COOLDOWN_MS = 1500;
 const SLOT_RETRY_COOLDOWN_MS = 250;
 const SLOT_IN_PROGRESS_COOLDOWN_MS = 250;
 
-const slotCooldowns = new Map<ArmorSlot, number>();
+const slotCooldowns = new Map<EquipSlot, number>();
 
-function setSlotCooldown(slot: ArmorSlot, durationMs: number): void {
+function setSlotCooldown(slot: EquipSlot, durationMs: number): void {
   slotCooldowns.set(slot, Date.now() + Math.max(0, durationMs));
 }
 
-function isSlotCooling(slot: ArmorSlot): boolean {
+function isSlotCooling(slot: EquipSlot): boolean {
   const expiresAt = slotCooldowns.get(slot);
   return typeof expiresAt === 'number' && expiresAt > Date.now();
 }
@@ -178,64 +179,152 @@ function selectArmorUpgrade(bot: Bot, slotFilter?: (slot: ArmorSlot) => boolean)
   return best;
 }
 
+function getOffhandItem(bot: Bot): any | null {
+  try {
+    if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
+      return null;
+    }
+    const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
+    const slots = (bot as any)?.inventory?.slots;
+    if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
+      return null;
+    }
+    return slots[offHandIndex] ?? null;
+  } catch (err: any) {
+    logger.debug(`ArmorUpgrade: unable to read off-hand slot - ${err?.message || err}`);
+    return null;
+  }
+}
+
+function isShieldItem(item: any): boolean {
+  if (!item || typeof item.name !== 'string') {
+    return false;
+  }
+  return item.name.toLowerCase() === 'shield';
+}
+
+function hasShieldInOffhand(bot: Bot): boolean {
+  return isShieldItem(getOffhandItem(bot));
+}
+
+function findShieldInInventory(bot: Bot): any | null {
+  const inventoryItems = (bot as any)?.inventory?.items?.();
+  if (!Array.isArray(inventoryItems)) {
+    return null;
+  }
+
+  for (const item of inventoryItems) {
+    if (isShieldItem(item)) {
+      return item;
+    }
+  }
+  return null;
+}
+
+function shouldEquipShield(bot: Bot): any | null {
+  if (hasShieldInOffhand(bot)) {
+    return null;
+  }
+  return findShieldInInventory(bot);
+}
+
 export const armorUpgradeBehavior: ReactiveBehavior = {
   priority: 80,
   name: 'armor_upgrade',
 
   shouldActivate: (bot: Bot): boolean => {
-    const candidate = selectArmorUpgrade(bot, (slot) => !isSlotCooling(slot));
-    return candidate !== null;
+    const armorCandidate = selectArmorUpgrade(bot, (slot) => !isSlotCooling(slot));
+    if (armorCandidate !== null) {
+      return true;
+    }
+
+    if (!isSlotCooling('off-hand')) {
+      const shieldItem = shouldEquipShield(bot);
+      if (shieldItem !== null) {
+        return true;
+      }
+    }
+
+    return false;
   },
 
   execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
-    const candidate = selectArmorUpgrade(bot, (slot) => !isSlotCooling(slot));
-    if (!candidate) {
-      executor.finish(false);
-      return null;
-    }
-
     const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
       ? (bot as any).safeChat.bind(bot)
       : null;
 
-    const equipped = getEquippedItem(bot, candidate.slot);
-    const currentScore = equipped ? evaluateArmor(bot, equipped)?.score : 0;
-    logger.debug(`ArmorUpgrade: attempting upgrade slot=${candidate.slot} current=${equipped?.name || 'none'}(${currentScore}) -> target=${candidate.item.name}(${candidate.score}) improvement=${candidate.improvement}`);
+    const armorCandidate = selectArmorUpgrade(bot, (slot) => !isSlotCooling(slot));
+    if (armorCandidate) {
+      const equipped = getEquippedItem(bot, armorCandidate.slot);
+      const currentScore = equipped ? evaluateArmor(bot, equipped)?.score : 0;
+      logger.debug(`ArmorUpgrade: attempting upgrade slot=${armorCandidate.slot} current=${equipped?.name || 'none'}(${currentScore}) -> target=${armorCandidate.item.name}(${armorCandidate.score}) improvement=${armorCandidate.improvement}`);
 
-    setSlotCooldown(candidate.slot, SLOT_IN_PROGRESS_COOLDOWN_MS);
+      setSlotCooldown(armorCandidate.slot, SLOT_IN_PROGRESS_COOLDOWN_MS);
 
-    // Try direct equip approach: unequip old armor first, then equip new
-    try {
-      const oldArmor = getEquippedItem(bot, candidate.slot);
-      if (oldArmor && typeof (bot as any)?.unequip === 'function') {
-        logger.debug(`ArmorUpgrade: unequipping old armor ${oldArmor.name}`);
-        await (bot as any).unequip(candidate.slot);
-      }
-      
-      logger.debug(`ArmorUpgrade: equipping new armor ${candidate.item.name}`);
-      await (bot as any).equip(candidate.item, candidate.slot);
-      
-      // Verify success
-      setTimeout(() => {
-        const nowEquipped = getEquippedItem(bot, candidate.slot);
-        const success = nowEquipped?.name === candidate.item.name;
-        
-        logger.debug(`ArmorUpgrade: direct equip result slot=${candidate.slot} expected=${candidate.item.name} nowEquipped=${nowEquipped?.name || 'none'} success=${success}`);
-        
-        setSlotCooldown(candidate.slot, success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
-        if (success && sendChat) {
-          sendChat(`equipped ${candidate.item.name}`);
+      try {
+        const oldArmor = getEquippedItem(bot, armorCandidate.slot);
+        if (oldArmor && typeof (bot as any)?.unequip === 'function') {
+          logger.debug(`ArmorUpgrade: unequipping old armor ${oldArmor.name}`);
+          await (bot as any).unequip(armorCandidate.slot);
         }
-        executor.finish(success);
-      }, 100);
-      
-      return null;
-    } catch (err: any) {
-      logger.debug(`ArmorUpgrade: equip error`, { error: String(err) });
-      setSlotCooldown(candidate.slot, SLOT_RETRY_COOLDOWN_MS);
-      executor.finish(false);
-      return null;
+        
+        logger.debug(`ArmorUpgrade: equipping new armor ${armorCandidate.item.name}`);
+        await (bot as any).equip(armorCandidate.item, armorCandidate.slot);
+        
+        setTimeout(() => {
+          const nowEquipped = getEquippedItem(bot, armorCandidate.slot);
+          const success = nowEquipped?.name === armorCandidate.item.name;
+          
+          logger.debug(`ArmorUpgrade: direct equip result slot=${armorCandidate.slot} expected=${armorCandidate.item.name} nowEquipped=${nowEquipped?.name || 'none'} success=${success}`);
+          
+          setSlotCooldown(armorCandidate.slot, success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
+          if (success && sendChat) {
+            sendChat(`equipped ${armorCandidate.item.name}`);
+          }
+          executor.finish(success);
+        }, 100);
+        
+        return null;
+      } catch (err: any) {
+        logger.debug(`ArmorUpgrade: equip error`, { error: String(err) });
+        setSlotCooldown(armorCandidate.slot, SLOT_RETRY_COOLDOWN_MS);
+        executor.finish(false);
+        return null;
+      }
     }
+
+    if (!isSlotCooling('off-hand')) {
+      const shieldItem = shouldEquipShield(bot);
+      if (shieldItem) {
+        logger.debug(`ArmorUpgrade: attempting to equip shield in off-hand`);
+        setSlotCooldown('off-hand', SLOT_IN_PROGRESS_COOLDOWN_MS);
+
+        try {
+          await (bot as any).equip(shieldItem, 'off-hand');
+
+          setTimeout(() => {
+            const success = hasShieldInOffhand(bot);
+            logger.debug(`ArmorUpgrade: shield equip result success=${success}`);
+
+            setSlotCooldown('off-hand', success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
+            if (success && sendChat) {
+              sendChat('equipped shield');
+            }
+            executor.finish(success);
+          }, 100);
+
+          return null;
+        } catch (err: any) {
+          logger.debug(`ArmorUpgrade: shield equip error`, { error: String(err) });
+          setSlotCooldown('off-hand', SLOT_RETRY_COOLDOWN_MS);
+          executor.finish(false);
+          return null;
+        }
+      }
+    }
+
+    executor.finish(false);
+    return null;
   },
 
   onDeactivate: () => {

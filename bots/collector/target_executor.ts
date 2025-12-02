@@ -1,7 +1,8 @@
 import { buildStateMachineForPath } from '../../behavior_generator/buildMachine';
 import { _internals as plannerInternals } from '../../planner';
 import logger from '../../utils/logger';
-import { Bot, Target, PendingEntry, InventoryObject } from './config';
+import { getInventoryObject, InventoryObject } from '../../utils/inventory';
+import { Bot, Target, PendingEntry } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext, ToolIssue } from './execution_context';
@@ -15,30 +16,6 @@ function logInfo(msg: string, ...args: any[]): void {
 
 function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
-}
-
-function getInventoryObject(bot: Bot): InventoryObject {
-  const out: InventoryObject = {};
-  try {
-    const items = bot.inventory?.items() || [];
-    for (const it of items) {
-      if (!it || !it.name || !Number.isFinite(it.count)) continue;
-      out[it.name] = (out[it.name] || 0) + it.count;
-    }
-    
-    // Also check armor slots (head:5, torso:6, legs:7, feet:8)
-    const armorSlots = [5, 6, 7, 8];
-    const slots = bot.inventory?.slots;
-    if (Array.isArray(slots)) {
-      for (const slotIndex of armorSlots) {
-        const item = slots[slotIndex];
-        if (item && item.name) {
-          out[item.name] = (out[item.name] || 0) + (item.count || 1);
-        }
-      }
-    }
-  } catch (_) {}
-  return out;
 }
 
 // Wrapper to create BotStateMachine with trackable physics tick listener
