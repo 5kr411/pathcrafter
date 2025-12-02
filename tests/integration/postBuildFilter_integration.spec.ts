@@ -1,11 +1,12 @@
 import plan from '../../planner';
 import type { WorldSnapshot } from '../../utils/worldSnapshotTypes';
+import { getCachedMcData } from '../testHelpers';
 
 describe('integration: post-build filtering and pruning', () => {
   let ctx: any;
 
-  beforeEach(() => {
-    ctx = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    ctx = getCachedMcData('1.20.1');
   });
 
   describe('dead branch pruning', () => {

@@ -29,7 +29,7 @@ jest.mock('mineflayer-statemachine', () => {
 import { createBehaviorForStep } from '../../behavior_generator';
 import { setCurrentSpeciesContext, getCurrentSpeciesContext } from '../../utils/context';
 import { ActionStep } from '../../action_tree/types';
-import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup, getCachedMcData } from '../testHelpers';
 
 describe('integration: variant state machine creation', () => {
   beforeEach(() => {
@@ -177,7 +177,7 @@ describe('integration: variant state machine creation', () => {
       result: createTestItemReferenceGroup('oak_door', 1)
     });
 
-    const mc = require('minecraft-data')('1.20.1');
+    const mc = getCachedMcData('1.20.1');
     const bot = {
       version: '1.20.1',
       mcData: mc,

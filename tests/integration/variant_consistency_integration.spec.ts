@@ -1,12 +1,13 @@
 import plan from '../../planner';
 import type { WorldSnapshot } from '../../utils/worldSnapshotTypes';
 import { enumerateActionPaths } from '../../action_tree/enumerate';
+import { getCachedMcData } from '../testHelpers';
 
 describe('integration: variant consistency end-to-end', () => {
   let mcData: any;
 
-  beforeEach(() => {
-    mcData = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
   });
 
   describe('stone-type material plans', () => {

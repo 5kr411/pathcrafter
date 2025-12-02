@@ -1,6 +1,6 @@
 import { createBehaviorForStep } from '../../behavior_generator';
 import { setSafeFindRepeatThreshold } from '../../utils/config';
-import { createTestActionStep, createTestStringGroup } from '../testHelpers';
+import { createTestActionStep, createTestStringGroup, getCachedMcData } from '../testHelpers';
 
 describe('integration: behavior_generator mineOneOf', () => {
   beforeEach(() => {
@@ -13,7 +13,7 @@ describe('integration: behavior_generator mineOneOf', () => {
       what: createTestStringGroup('oak_log'),
       count: 2
     });
-    const mc = require('minecraft-data')('1.20.1');
+    const mc = getCachedMcData('1.20.1');
     const bot = {
       version: '1.20.1',
       inventory: { items: () => [] },

@@ -1,6 +1,7 @@
 import { ActionStep } from '../../action_tree/types';
 import plan from '../../planner';
 import { createBehaviorForStep } from '../../behavior_generator';
+import { getCachedMcData } from '../testHelpers';
 
 describe('integration: behavior_generator mine', () => {
     const { resolveMcData } = (plan as any)._internals;
@@ -21,7 +22,7 @@ describe('integration: behavior_generator mine', () => {
         expect(path).toBeDefined();
         const mineLeaf = path.find((s: any) => s.action === 'mine' && (!s.operator || !s.children || s.children.length === 0));
         expect(mineLeaf).toBeDefined();
-        const mc = require('minecraft-data')('1.20.1');
+        const mc = getCachedMcData('1.20.1');
         const bot = { 
             version: '1.20.1', 
             mcData: mc, 

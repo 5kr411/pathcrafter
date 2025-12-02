@@ -4,8 +4,9 @@ import { loadSnapshotFromFile } from '../../utils/worldSnapshot';
 import { WorldSnapshot } from '../../utils/worldSnapshotTypes';
 import plan, { _internals } from '../../planner';
 import { canConsumeWorld } from '../../utils/worldBudget';
+import { getCachedMcData } from '../testHelpers';
 
-const mcData = require('minecraft-data')('1.20.1');
+const mcData = getCachedMcData('1.20.1');
 
 describe('Snapshot Validator Consistency', () => {
   let snapshotWithRadius: WorldSnapshot;

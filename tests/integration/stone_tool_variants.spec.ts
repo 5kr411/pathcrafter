@@ -1,12 +1,13 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 import plan from '../../planner';
 import { WorldSnapshot } from '../../utils/worldSnapshotTypes';
+import { getCachedMcData } from '../testHelpers';
 
 describe('integration: stone tool recipe variants', () => {
   let mcData: any;
 
-  beforeEach(() => {
-    mcData = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
   });
 
   describe('tree building with multi-variant stone craft nodes', () => {

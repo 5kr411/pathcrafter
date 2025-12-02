@@ -29,6 +29,7 @@ jest.mock('mineflayer-statemachine', () => {
 import { ActionStep } from '../../action_tree/types';
 import plan from '../../planner';
 import { createBehaviorForStep } from '../../behavior_generator';
+import { getCachedMcData } from '../testHelpers';
 
 describe('integration: behavior_generator craft-in-table', () => {
     const { resolveMcData, enumerateLowestWeightPathsGenerator } = (plan as any)._internals;
@@ -41,7 +42,7 @@ describe('integration: behavior_generator craft-in-table', () => {
         expect(path).toBeDefined();
         const craftTableStep = path.find((s: any) => s.action === 'craft' && s.what.variants[0].value === 'table' && s.result && s.result.variants[0].value.item === 'wooden_pickaxe');
         expect(craftTableStep).toBeDefined();
-        const mc = require('minecraft-data')('1.20.1');
+        const mc = getCachedMcData('1.20.1');
         const bot = { 
             version: '1.20.1', 
             mcData: mc, 
