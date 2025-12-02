@@ -1,10 +1,11 @@
 import plan from '../../planner';
+import { getCachedMcData } from '../testHelpers';
 
 describe('unit: variant consistency', () => {
   let mcData: any;
 
-  beforeEach(() => {
-    mcData = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
   });
 
   describe('stone-type material grouping', () => {

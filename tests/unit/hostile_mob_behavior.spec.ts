@@ -1,4 +1,4 @@
-const minecraftData = require('minecraft-data');
+import { getCachedMcData } from '../testHelpers';
 
 jest.mock('../../behaviors/behaviorHuntEntity', () => ({
   __esModule: true,
@@ -145,7 +145,7 @@ describe('unit: hostile_mob_behavior', () => {
     });
 
     test('works with real minecraft-data', () => {
-      const mcData = minecraftData('1.20.1');
+      const mcData = getCachedMcData('1.20.1');
       const result = getHostileMobNames(mcData);
       expect(result.size).toBeGreaterThan(0);
     });

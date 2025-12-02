@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
+import { getCachedMcData } from '../testHelpers';
 
 /**
  * Test that stone pickaxe crafting works with runtime variant selection
@@ -10,8 +11,8 @@ import { describe, it, expect, beforeEach } from '@jest/globals';
 describe('Stone Pickaxe Runtime Variant Selection', () => {
   let mcData: any;
 
-  beforeEach(() => {
-    mcData = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
   });
 
   it('stone_pickaxe has multiple valid recipes with different stone types', () => {

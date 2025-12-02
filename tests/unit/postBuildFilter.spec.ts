@@ -1,4 +1,5 @@
 import { BuildContext } from '../../action_tree/types';
+import { getCachedMcData } from '../testHelpers';
 
 // Import the module to test (we'll need to export the internal functions for testing)
 const postBuildFilter = require('../../action_tree/builders/postBuildFilter');
@@ -6,8 +7,8 @@ const postBuildFilter = require('../../action_tree/builders/postBuildFilter');
 describe('unit: postBuildFilter', () => {
   let mcData: any;
 
-  beforeEach(() => {
-    mcData = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
   });
 
   describe('isNodeViable', () => {

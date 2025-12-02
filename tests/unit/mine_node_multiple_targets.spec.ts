@@ -14,7 +14,7 @@ import { getCachedMcData } from '../testHelpers';
 describe('Mine Node Builder - Multiple Target Items', () => {
   let mcData: any;
 
-  beforeEach(() => {
+  beforeAll(() => {
     mcData = getCachedMcData('1.20.1');
   });
 

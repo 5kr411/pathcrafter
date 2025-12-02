@@ -151,8 +151,7 @@ jest.mock('mineflayer-statemachine', () => {
 });
 
 import { armorUpgradeBehavior, resetArmorUpgradeCooldowns } from '../../bots/collector/reactive_behaviors/armor_upgrade_behavior';
-
-const minecraftData = require('minecraft-data');
+import { getCachedMcData } from '../testHelpers';
 
 const SLOT_INDEX: Record<string, number> = {
   head: 5,
@@ -223,7 +222,7 @@ describe('unit: armor_upgrade_behavior', () => {
   let mcData: any;
 
   beforeAll(() => {
-    mcData = minecraftData('1.20.1');
+    mcData = getCachedMcData('1.20.1');
   });
 
   beforeEach(() => {

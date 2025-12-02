@@ -9,6 +9,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { MinecraftData } from '../types';
 
+let featuresFilesEnsured = false;
+
 /**
  * Ensures that minecraft-data features files exist
  * 
@@ -17,6 +19,9 @@ import { MinecraftData } from '../types';
  * for the minecraft-data package and creates the files if they don't exist.
  */
 export function ensureMinecraftDataFeaturesFiles(): void {
+  if (featuresFilesEnsured) return;
+  featuresFilesEnsured = true;
+  
   const projectRoot = path.join(__dirname, '..', '..');
   const candidates: string[] = [];
 

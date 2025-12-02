@@ -27,7 +27,7 @@ jest.mock('mineflayer-statemachine', () => {
 });
 
 import { _internals, createBehaviorForStep } from '../../behavior_generator';
-import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup } from '../testHelpers';
+import { createTestActionStep, createTestStringGroup, createTestItemReferenceGroup, getCachedMcData } from '../testHelpers';
 
 describe('unit: behavior_generator craft-in-table mapping', () => {
     test('computeTargetsForCraftInTable calculates total amount', () => {
@@ -37,7 +37,7 @@ describe('unit: behavior_generator craft-in-table mapping', () => {
     });
 
     test('createBehaviorForStep returns behavior for craft in table and includes break step hook', () => {
-        const mcData = require('minecraft-data')('1.20.1');
+        const mcData = getCachedMcData('1.20.1');
         const bot = { 
             version: '1.20.1', 
             mcData, 

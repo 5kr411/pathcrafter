@@ -1,11 +1,12 @@
-import { describe, it, expect, beforeEach } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 import { findIngredientAlternativesFromRecipes } from '../../action_tree/utils/itemSimilarity';
+import { getCachedMcData } from '../testHelpers';
 
 describe('unit: itemSimilarity - recipe-based alternatives', () => {
   let mcData: any;
 
-  beforeEach(() => {
-    mcData = require('minecraft-data')('1.20.1');
+  beforeAll(() => {
+    mcData = getCachedMcData('1.20.1');
   });
 
   describe('findIngredientAlternativesFromRecipes', () => {
