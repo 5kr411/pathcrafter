@@ -2,7 +2,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEnt
 
 const minecraftData = require('minecraft-data');
 
-import { getItemCountInInventory } from '../utils/inventory';
+import { getItemCountInInventory, getInventoryObject } from '../utils/inventory';
 import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
@@ -93,6 +93,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
 
     logger.info(`BehaviorCraftWithTable: Searching for recipes for ${itemName} (id: ${item.id})`);
+    logger.info('BehaviorCraftWithTable: Inventory before craft attempt', getInventoryObject(bot));
     // Use recipesFor with minResultCount=1 to find recipes where bot has ingredients for at least 1 craft
     const recipes = bot.recipesFor(item.id, null, 1, craftingTable);
     logger.info(`BehaviorCraftWithTable: Found ${recipes.length} craftable recipes`);
@@ -101,6 +102,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
     if (!recipe) {
       logger.error(`BehaviorCraftWithTable: No recipe found for ${itemName}. Available recipes: ${recipes.length}`);
+      logger.error('BehaviorCraftWithTable: Inventory at recipe-miss', getInventoryObject(bot));
       return false;
     }
 
@@ -130,6 +132,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
     if (!hasIngredients) {
       logger.error(`BehaviorCraftWithTable: Cannot craft ${itemName} - missing ingredients`);
+      logger.error('BehaviorCraftWithTable: Inventory at ingredient check failure', getInventoryObject(bot));
       return false;
     }
 
@@ -151,12 +154,14 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
       if (newCount === currentCount) {
         logger.error('BehaviorCraftWithTable: Crafting did not increase item count');
+        logger.error('BehaviorCraftWithTable: Inventory after failed craft increment', getInventoryObject(bot));
         return false;
       }
 
       return newCount >= targetCount;
     } catch (err) {
       logger.error(`BehaviorCraftWithTable: Error crafting ${itemName}:`, err);
+      logger.error('BehaviorCraftWithTable: Inventory after craft error', getInventoryObject(bot));
       return false;
     }
   };
@@ -272,16 +277,31 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'BehaviorCraftWithTable: place table -> wait for craft',
     shouldTransition: () => {
       if (typeof placeTable.isFinished !== 'function') return true;
-      return placeTable.isFinished();
+      return placeTable.isFinished() && !!placeTableTargets.placedConfirmed;
     },
     onTransition: () => {
-      if (placeTableTargets.placedPosition) {
+      if (placeTableTargets.placedPosition && placeTableTargets.placedConfirmed) {
         targets.placedPosition = placeTableTargets.placedPosition;
         wePlacedTable = true; // We placed it, so we need to break it later
         logger.info('BehaviorCraftWithTable: Crafting table placed, proceeding to craft');
       } else {
         logger.error('BehaviorCraftWithTable: Failed to place crafting table');
       }
+    }
+  });
+
+  // If placement finished but was not confirmed, loop back to check again instead of breaking air or chasing ghost drops
+  const placeTableRetry = new StateTransition({
+    parent: placeTable,
+    child: checkForTable,
+    name: 'BehaviorCraftWithTable: place table -> check for table (retry placement)',
+    shouldTransition: () => {
+      if (typeof placeTable.isFinished !== 'function') return false;
+      return placeTable.isFinished() && !placeTableTargets.placedConfirmed;
+    },
+    onTransition: () => {
+      wePlacedTable = false;
+      logger.error('BehaviorCraftWithTable: placement finished but not confirmed, retrying placement');
     }
   });
 
@@ -627,6 +647,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     enterToCheckForTable,
     checkForTableToPlaceTable,
     checkForTableToWaitForCraft,
+    placeTableRetry,
     placeTableToWaitForCraft,
     waitForCraftToBreakTable,
     waitForCraftToExit,
@@ -686,4 +707,3 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 };
 
 export default createCraftWithTableState;
-

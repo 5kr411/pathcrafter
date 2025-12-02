@@ -226,6 +226,43 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     return obstructedDirectionsCount() >= 2;
   }
 
+  function pickPlacementTarget() {
+    placeTries = Math.max(1, placeTries);
+    targets.placedConfirmed = false;
+
+    const base = bot.entity.position.clone();
+    const offsetX = Math.random() < 0.5 ? -1.5 : 1.5;
+    const offsetZ = Math.random() < 0.5 ? -1.5 : 1.5;
+    const rough = base.clone();
+    rough.x += offsetX;
+    rough.z += offsetZ;
+    const searchRadius = Math.min(2 + Math.floor(placeTries / 2), 5);
+
+    const ground =
+      findSolidBaseNear(rough, searchRadius) ||
+      findSolidBaseNear(base, searchRadius) ||
+      findSolidBaseFallback(searchRadius);
+
+    if (ground) {
+      const placePos = ground.clone();
+      targets.placePosition = placePos;
+      const center = placePos.clone();
+      center.x += 0.5;
+      center.y += 1;
+      center.z += 0.5;
+      targets.position = placePos.clone();
+      targets.position.x += 0.5;
+      targets.position.y += 0;
+      targets.position.z += 0.5;
+      logger.info('BehaviorPlaceNear: Set place base:', placePos);
+      logger.info('BehaviorPlaceNear: Set target position:', targets.position);
+    } else {
+      logger.error('BehaviorPlaceNear: No valid placement location found after searching');
+      targets.placePosition = undefined;
+      targets.position = undefined;
+    }
+  }
+
   const enterToExit = new StateTransition({
     name: 'BehaviorPlaceNear: enter -> exit',
     parent: enter,
@@ -247,39 +284,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       logger.info('BehaviorPlaceNear: enter -> find place coords');
       placeTries = 1;
-      targets.placedConfirmed = false;
-
-      const base = bot.entity.position.clone();
-      const offsetX = Math.random() < 0.5 ? -1.5 : 1.5;
-      const offsetZ = Math.random() < 0.5 ? -1.5 : 1.5;
-      const rough = base.clone();
-      rough.x += offsetX;
-      rough.z += offsetZ;
-      
-      const searchRadius = Math.min(2 + Math.floor(placeTries / 2), 5);
-      const ground =
-        findSolidBaseNear(rough, searchRadius) || 
-        findSolidBaseNear(base, searchRadius) || 
-        findSolidBaseFallback(searchRadius);
-      
-      if (ground) {
-        const placePos = ground.clone();
-        targets.placePosition = placePos;
-        const center = placePos.clone();
-        center.x += 0.5;
-        center.y += 1;
-        center.z += 0.5;
-        targets.position = placePos.clone();
-        targets.position.x += 0.5;
-        targets.position.y += 0;
-        targets.position.z += 0.5;
-        logger.info('BehaviorPlaceNear: Set place base:', placePos);
-        logger.info('BehaviorPlaceNear: Set target position:', targets.position);
-      } else {
-        logger.error('BehaviorPlaceNear: No valid placement location found after searching');
-        targets.placePosition = undefined;
-        targets.position = undefined;
-      }
+      pickPlacementTarget();
     }
   });
 
@@ -356,6 +361,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       logger.warn('BehaviorPlaceNear: no solid reference at place base -> reposition');
       placeTries++;
+      pickPlacementTarget();
     }
   });
 
@@ -370,6 +376,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       logger.warn('BehaviorPlaceNear: move to place coords timed out -> reposition');
       placeTries++;
+      pickPlacementTarget();
     }
   });
 
@@ -451,6 +458,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       logger.info('BehaviorPlaceNear: clearing capped or still obstructed -> reposition');
       placeTries++;
+      pickPlacementTarget();
     }
   });
 
@@ -497,6 +505,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       );
       placeTries++;
       lastPlaceError = null;
+      pickPlacementTarget();
     }
   });
 

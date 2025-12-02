@@ -88,28 +88,42 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
   let consecutiveFailures = 0;
   const MAX_CONSECUTIVE_FAILURES = 10;
 
-  function getTotalCollected(): number {
-    let total = 0;
+  function getTrackedItemNames(): string[] {
     const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
-    for (const c of list) {
-      if (!c || !c.itemName) continue;
-      const current = getItemCountInInventory(bot, c.itemName);
-      const initial = initialInventoryCounts[c.itemName] || 0;
+    return Array.from(new Set(list.map((c) => c?.itemName).filter(Boolean) as string[]));
+  }
+
+  function getTotalCollected(): number {
+    const itemNames = getTrackedItemNames();
+    if (itemNames.length === 0) return 0;
+
+    // If all candidates produce the same item, measure only that item to avoid double-counting
+    if (itemNames.length === 1) {
+      const name = itemNames[0];
+      const current = getItemCountInInventory(bot, name);
+      const initial = initialInventoryCounts[name] || 0;
+      return Math.max(0, current - initial);
+    }
+
+    // Mixed outputs: sum deltas across unique item names
+    let total = 0;
+    for (const name of itemNames) {
+      const current = getItemCountInInventory(bot, name);
+      const initial = initialInventoryCounts[name] || 0;
       total += Math.max(0, current - initial);
     }
     return total;
   }
 
   function getCollectionBreakdown(): string {
-    const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
+    const itemNames = getTrackedItemNames();
     const breakdown: string[] = [];
-    for (const c of list) {
-      if (!c || !c.itemName) continue;
-      const current = getItemCountInInventory(bot, c.itemName);
-      const initial = initialInventoryCounts[c.itemName] || 0;
+    for (const name of itemNames) {
+      const current = getItemCountInInventory(bot, name);
+      const initial = initialInventoryCounts[name] || 0;
       const collected = Math.max(0, current - initial);
       if (collected > 0) {
-        breakdown.push(`${c.itemName}:${collected}`);
+        breakdown.push(`${name}:${collected}`);
       }
     }
     return breakdown.length > 0 ? breakdown.join(', ') : 'none';
@@ -211,10 +225,9 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       totalRequiredAmount = Number(targets.amount || 1);
       consecutiveFailures = 0;
       failedBlocks.clear();
-      const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
-      for (const c of list) {
-        if (!c || !c.itemName) continue;
-        initialInventoryCounts[c.itemName] = getItemCountInInventory(bot, c.itemName);
+      const itemNames = getTrackedItemNames();
+      for (const name of itemNames) {
+        initialInventoryCounts[name] = getItemCountInInventory(bot, name);
       }
       try {
         logger.debug('preparing selection...');
