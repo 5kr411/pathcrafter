@@ -2,7 +2,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEnt
 
 const minecraftData = require('minecraft-data');
 
-import { getItemCountInInventory, getInventoryObject } from '../utils/inventory';
+import { getItemCountInInventory } from '../utils/inventory';
 import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
@@ -46,6 +46,12 @@ interface MinecraftData {
 }
 
 const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
+  function getInventorySummary(): string {
+    const items = bot.inventory?.items?.() || [];
+    if (items.length === 0) return 'empty';
+    return items.map((it: any) => `${it.name}:${it.count}`).join(', ');
+  }
+
   function findCraftingTableNearby(): Block | null {
     let craftingTable: Block | null = null;
     try {
@@ -93,7 +99,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
 
     logger.info(`BehaviorCraftWithTable: Searching for recipes for ${itemName} (id: ${item.id})`);
-    logger.info('BehaviorCraftWithTable: Inventory before craft attempt', getInventoryObject(bot));
+    logger.info(`BehaviorCraftWithTable: Inventory before craft attempt { ${getInventorySummary()} }`);
     // Use recipesFor with minResultCount=1 to find recipes where bot has ingredients for at least 1 craft
     const recipes = bot.recipesFor(item.id, null, 1, craftingTable);
     logger.info(`BehaviorCraftWithTable: Found ${recipes.length} craftable recipes`);
@@ -102,7 +108,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
     if (!recipe) {
       logger.error(`BehaviorCraftWithTable: No recipe found for ${itemName}. Available recipes: ${recipes.length}`);
-      logger.error('BehaviorCraftWithTable: Inventory at recipe-miss', getInventoryObject(bot));
+      logger.error(`BehaviorCraftWithTable: Inventory at recipe-miss { ${getInventorySummary()} }`);
       return false;
     }
 
@@ -132,7 +138,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
     if (!hasIngredients) {
       logger.error(`BehaviorCraftWithTable: Cannot craft ${itemName} - missing ingredients`);
-      logger.error('BehaviorCraftWithTable: Inventory at ingredient check failure', getInventoryObject(bot));
+      logger.error(`BehaviorCraftWithTable: Inventory at ingredient check failure { ${getInventorySummary()} }`);
       return false;
     }
 
@@ -154,14 +160,14 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
       if (newCount === currentCount) {
         logger.error('BehaviorCraftWithTable: Crafting did not increase item count');
-        logger.error('BehaviorCraftWithTable: Inventory after failed craft increment', getInventoryObject(bot));
+        logger.error(`BehaviorCraftWithTable: Inventory after failed craft increment { ${getInventorySummary()} }`);
         return false;
       }
 
       return newCount >= targetCount;
     } catch (err) {
       logger.error(`BehaviorCraftWithTable: Error crafting ${itemName}:`, err);
-      logger.error('BehaviorCraftWithTable: Inventory after craft error', getInventoryObject(bot));
+      logger.error(`BehaviorCraftWithTable: Inventory after craft error { ${getInventorySummary()} }`);
       return false;
     }
   };

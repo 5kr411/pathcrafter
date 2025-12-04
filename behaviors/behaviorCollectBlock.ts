@@ -116,6 +116,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const lastFindFailLogTimeByBlock = new Map<string, number>();
   let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
   let lastDropMetadataLogTime: number | null = null;
+  let cooldownLoggedForCurrentFailure = false;
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -382,7 +383,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         baselineInitialized = true;
       }
       if (lastFindFailTime && Date.now() - lastFindFailTime < 2000) {
-        logger.debug('enterToFindBlock: cooling down after recent find failure');
+        if (!cooldownLoggedForCurrentFailure) {
+          logger.debug('enterToFindBlock: cooling down after recent find failure (2s)');
+          cooldownLoggedForCurrentFailure = true;
+        }
         return false;
       }
       const collected = collectedCount();
@@ -407,6 +411,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       missingToolInfo = null;
       lastFindFailTime = null;
       lastFailureReason = null;
+      cooldownLoggedForCurrentFailure = false;
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -974,7 +979,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   stateMachine.onStateExited = function() {
     logger.debug('CollectBlock: cleaning up on state exit');
     missingToolInfo = null;
-    lastFailureReason = null;
+    // NOTE: Do NOT clear lastFailureReason here - MineAnyOf needs to read it
+    // in its onTransition. It gets reset in enterToFindBlock.onTransition instead.
     
     if (goToBlock && typeof goToBlock.onStateExited === 'function') {
       try {
