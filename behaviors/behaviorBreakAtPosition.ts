@@ -336,4 +336,3 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
 }
 
 export default createBreakAtPositionState;
-

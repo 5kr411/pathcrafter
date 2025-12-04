@@ -1,42 +1,16 @@
 const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEntity, BehaviorFollowEntity } = require('mineflayer-statemachine');
-
 const minecraftData = require('minecraft-data');
 
 import { getItemCountInInventory } from '../utils/inventory';
 import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
-import { addStateLogging } from '../utils/stateLogging';
-import { isPositionNearLiquid } from './behaviorSafeFindBlock';
 
-interface Vec3Like {
-  x: number;
-  y: number;
-  z: number;
-  [key: string]: any;
-}
-
-interface Block {
-  name?: string;
-  [key: string]: any;
-}
-
-interface Bot {
-  version?: string;
-  findBlocks?: (options: { matching: (b: Block) => boolean; maxDistance: number; count: number }) => Vec3Like[];
-  findBlock?: (options: { matching: (block: Block) => boolean; maxDistance: number }) => Block | null;
-  blockAt?: (pos: Vec3Like, extraInfos: boolean) => Block | null;
-  recipesFor: (itemId: number, metadata: any, minResultCount: number, craftingTable: Block | null) => any[];
-  recipesAll: (itemId: number, metadata: any, craftingTable: Block | null) => any[];
-  craft: (recipe: any, count: number, craftingTable: Block) => Promise<void>;
-  [key: string]: any;
-}
+type Bot = any;
 
 interface Targets {
   itemName?: string;
   amount: number;
-  placedPosition?: Vec3Like;
-  variantStep?: any;
   [key: string]: any;
 }
 
@@ -46,669 +20,299 @@ interface MinecraftData {
 }
 
 const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
+  const mcData: MinecraftData = minecraftData(bot.version);
+
   function getInventorySummary(): string {
     const items = bot.inventory?.items?.() || [];
     if (items.length === 0) return 'empty';
     return items.map((it: any) => `${it.name}:${it.count}`).join(', ');
   }
 
-  function findCraftingTableNearby(): Block | null {
-    let craftingTable: Block | null = null;
-    try {
-      // Prefer placed position if provided (from place behavior)
-      if (targets && targets.placedPosition && bot.blockAt) {
-        const maybe = bot.blockAt(targets.placedPosition, false);
-        if (maybe && maybe.name === 'crafting_table') craftingTable = maybe;
-      }
-    } catch (_) {}
-    if (!craftingTable) {
-      try {
-        const allPositions =
-          (bot.findBlocks &&
-            bot.findBlocks({ matching: (b) => b.name === 'crafting_table', maxDistance: 4, count: 4 })) ||
-          [];
-        const list = allPositions.filter((p) => !isPositionNearLiquid(bot, p));
-        for (const p of list) {
-          const b = bot.blockAt && bot.blockAt(p, false);
-          if (b && b.name === 'crafting_table') {
-            craftingTable = b;
-            break;
-          }
-        }
-      } catch (_) {}
-      if (!craftingTable && bot.findBlock)
-        craftingTable = bot.findBlock({ matching: (block) => block.name === 'crafting_table', maxDistance: 4 });
-    }
-    return craftingTable;
-  }
-
-  const craftItemWithTable = async (itemName: string, additionalNeeded: number): Promise<boolean> => {
-    const mcData: MinecraftData = minecraftData(bot.version);
+  const craftItemWithTable = async (itemName: string, additionalNeeded: number, craftingTable: any): Promise<boolean> => {
     const item = mcData.itemsByName[itemName];
-
     if (!item) {
-      logger.error(`BehaviorCraftWithTable: Item ${itemName} not found`);
+      logger.error(`CraftWithTable: Item ${itemName} not found`);
       return false;
     }
 
-    const craftingTable = findCraftingTableNearby();
-
-    if (!craftingTable) {
-      logger.error(`BehaviorCraftWithTable: No crafting table within range`);
-      return false;
-    }
-
-    logger.info(`BehaviorCraftWithTable: Searching for recipes for ${itemName} (id: ${item.id})`);
-    logger.info(`BehaviorCraftWithTable: Inventory before craft attempt { ${getInventorySummary()} }`);
-    // Use recipesFor with minResultCount=1 to find recipes where bot has ingredients for at least 1 craft
+    logger.info(`CraftWithTable: Crafting ${itemName}, inventory: { ${getInventorySummary()} }`);
     const recipes = bot.recipesFor(item.id, null, 1, craftingTable);
-    logger.info(`BehaviorCraftWithTable: Found ${recipes.length} craftable recipes`);
+    if (!recipes.length) {
+      logger.error(`CraftWithTable: No recipe found for ${itemName}`);
+      return false;
+    }
 
     const recipe = recipes[0];
-
-    if (!recipe) {
-      logger.error(`BehaviorCraftWithTable: No recipe found for ${itemName}. Available recipes: ${recipes.length}`);
-      logger.error(`BehaviorCraftWithTable: Inventory at recipe-miss { ${getInventorySummary()} }`);
-      return false;
-    }
-
     const startingCount = getItemCountInInventory(bot, itemName);
     const targetCount = startingCount + additionalNeeded;
-    let currentCount = startingCount;
-
-    logger.info(
-      `BehaviorCraftWithTable: Starting with ${startingCount} ${itemName}, need ${additionalNeeded} more (target: ${targetCount})`
-    );
 
     const hasIngredients = recipe.delta
       .filter((item: any) => item.count < 0)
       .every((item: any) => {
         const requiredCount = Math.abs(item.count);
         const availableCount = getItemCountInInventory(bot, mcData.items[item.id].name);
-        const hasEnough = availableCount >= requiredCount;
-
-        if (!hasEnough) {
-          logger.warn(
-            `BehaviorCraftWithTable: Missing ingredients. Need ${requiredCount} ${mcData.items[item.id].name} but only have ${availableCount}`
-          );
-        }
-
-        return hasEnough;
+        return availableCount >= requiredCount;
       });
 
     if (!hasIngredients) {
-      logger.error(`BehaviorCraftWithTable: Cannot craft ${itemName} - missing ingredients`);
-      logger.error(`BehaviorCraftWithTable: Inventory at ingredient check failure { ${getInventorySummary()} }`);
+      logger.error(`CraftWithTable: Missing ingredients for ${itemName}`);
       return false;
     }
 
     try {
-      const remainingNeeded = targetCount - currentCount;
       const timesToCraft = Math.min(
-        Math.ceil(remainingNeeded / recipe.result.count),
+        Math.ceil((targetCount - startingCount) / recipe.result.count),
         Math.floor(64 / recipe.result.count)
       );
-
-      logger.info(`BehaviorCraftWithTable: Attempting to craft ${timesToCraft} times`);
-
       await bot.craft(recipe, timesToCraft, craftingTable);
-
       const newCount = getItemCountInInventory(bot, itemName);
-      logger.info(
-        `BehaviorCraftWithTable: Successfully crafted. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`
-      );
-
-      if (newCount === currentCount) {
-        logger.error('BehaviorCraftWithTable: Crafting did not increase item count');
-        logger.error(`BehaviorCraftWithTable: Inventory after failed craft increment { ${getInventorySummary()} }`);
-        return false;
-      }
-
+      logger.info(`CraftWithTable: Crafted ${itemName}, now have ${newCount}/${targetCount}`);
       return newCount >= targetCount;
     } catch (err) {
-      logger.error(`BehaviorCraftWithTable: Error crafting ${itemName}:`, err);
-      logger.error(`BehaviorCraftWithTable: Inventory after craft error { ${getInventorySummary()} }`);
+      logger.error(`CraftWithTable: Error crafting ${itemName}:`, err);
       return false;
     }
   };
 
   const enter = new BehaviorIdle();
-  const checkForTable = new BehaviorIdle();
-  
-  const mcData: MinecraftData = minecraftData(bot.version);
-  const craftingTableItem = mcData.itemsByName['crafting_table'];
-  const placeTableTargets = { 
-    item: craftingTableItem ? bot.inventory.items().find((i: any) => i && i.name === 'crafting_table') : null,
+  const exit = new BehaviorIdle();
+
+  const placeTargets: { item: any; placedPosition?: any; placedConfirmed?: boolean } = {
+    item: null,
     placedPosition: undefined,
     placedConfirmed: false
   };
-  const placeTable = createPlaceNearState(bot, placeTableTargets);
-  
+  const placeTable = createPlaceNearState(bot, placeTargets);
+
   const waitForCraft = new BehaviorIdle();
-  
-  // Track whether we placed the table (need to clean up)
-  let wePlacedTable = false;
-  
-  // Track crafting table count before breaking
-  let craftingTableCountBeforeBreak = 0;
-  
-  // Break table after crafting (if we placed it)
+
   const breakTargets: { position: any } = { position: null };
-  const breakTable = createBreakAtPositionState(bot as any, breakTargets);
-  
-  // Collect dropped table
-  const COLLECT_TIMEOUT_MS = 7000;
-  const MAX_COLLECT_RETRIES = 2;
-  const FOLLOW_TIMEOUT_MS = 7000;
-  const MAX_FOLLOW_RETRIES = 2;
-  
+  const breakTable = createBreakAtPositionState(bot, breakTargets);
+
+  const waitForPickup = new BehaviorIdle();
+
   const dropTargets: { entity: any } = { entity: null };
-  const getDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) => 
+  const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) =>
     e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'crafting_table'
   );
-  addStateLogging(getDrop, 'GetClosestEntity', { logEnter: true, getExtraInfo: () => 'looking for dropped crafting_table' });
-  
   const followDrop = new BehaviorFollowEntity(bot, dropTargets);
-  addStateLogging(followDrop, 'FollowEntity', {
-    logEnter: true,
-    getExtraInfo: () => {
-      if (dropTargets.entity) {
-        const pos = dropTargets.entity.position;
-        return `following dropped table at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}), distance: ${bot.entity?.position?.distanceTo?.(pos)?.toFixed(2) || 'n/a'}m`;
-      }
-      return 'no entity';
-    }
-  });
-  
-  let collectStartTime: number = 0;
-  let followStartTime: number = 0;
-  let collectRetryCount = 0;
-  let followRetryCount = 0;
-  
-  const exit = new BehaviorIdle();
 
+  let craftingDone = false;
+  let tableCountBeforeBreak = 0;
+  let waitStartTime = 0;
+
+  const hasPickedUpTable = () => getItemCountInInventory(bot, 'crafting_table') > tableCountBeforeBreak;
+
+  // enter -> exit (invalid targets)
   const enterToExit = new StateTransition({
     parent: enter,
     child: exit,
-    name: 'BehaviorCraftWithTable: enter -> exit',
-    shouldTransition: () => targets.itemName == null || targets.amount == null,
-    onTransition: () => {
-      if (targets.itemName == null) {
-        logger.error('BehaviorCraftWithTable: Error: No item name');
-      }
-      if (targets.amount == null) {
-        logger.error('BehaviorCraftWithTable: Error: No amount');
-      }
-      logger.info('BehaviorCraftWithTable: enter -> exit');
-    }
+    name: 'CraftWithTable: enter -> exit (invalid)',
+    shouldTransition: () => !targets.itemName || targets.amount == null,
+    onTransition: () => logger.error('CraftWithTable: Missing itemName or amount')
   });
 
-  const enterToCheckForTable = new StateTransition({
+  // enter -> place
+  const enterToPlace = new StateTransition({
     parent: enter,
-    child: checkForTable,
-    name: 'BehaviorCraftWithTable: enter -> check for table',
-    shouldTransition: () => targets.itemName != null && targets.amount != null,
-    onTransition: () => {
-      logger.info('BehaviorCraftWithTable: enter -> check for table');
-    }
-  });
-
-  const checkForTableToPlaceTable = new StateTransition({
-    parent: checkForTable,
     child: placeTable,
-    name: 'BehaviorCraftWithTable: check for table -> place table',
-    shouldTransition: () => {
-      const tableNearby = findCraftingTableNearby();
-      if (tableNearby) return false;
-      
-      const hasTableInInventory = getItemCountInInventory(bot, 'crafting_table') > 0;
-      if (!hasTableInInventory) {
-        logger.error('BehaviorCraftWithTable: No crafting table nearby and none in inventory');
-        return false;
-      }
-      
-      return true;
-    },
+    name: 'CraftWithTable: enter -> place',
+    shouldTransition: () => !!targets.itemName && targets.amount != null,
     onTransition: () => {
-      logger.info('BehaviorCraftWithTable: No crafting table nearby, placing one');
-      placeTableTargets.item = bot.inventory.items().find((i: any) => i && i.name === 'crafting_table') || null;
-      placeTableTargets.placedPosition = undefined;
-      placeTableTargets.placedConfirmed = false;
+      placeTargets.item = bot.inventory.items().find((i: any) => i?.name === 'crafting_table') || null;
+      placeTargets.placedPosition = undefined;
+      placeTargets.placedConfirmed = false;
+      logger.info(`CraftWithTable: Placing table to craft ${targets.amount} ${targets.itemName}`);
     }
   });
 
-  const placeTableToWaitForCraft = new StateTransition({
+  // place -> exit (failed)
+  const placeToExitFailed = new StateTransition({
     parent: placeTable,
-    child: waitForCraft,
-    name: 'BehaviorCraftWithTable: place table -> wait for craft',
-    shouldTransition: () => {
-      if (typeof placeTable.isFinished !== 'function') return true;
-      return placeTable.isFinished() && !!placeTableTargets.placedConfirmed;
-    },
-    onTransition: () => {
-      if (placeTableTargets.placedPosition && placeTableTargets.placedConfirmed) {
-        targets.placedPosition = placeTableTargets.placedPosition;
-        wePlacedTable = true; // We placed it, so we need to break it later
-        logger.info('BehaviorCraftWithTable: Crafting table placed, proceeding to craft');
-      } else {
-        logger.error('BehaviorCraftWithTable: Failed to place crafting table');
-      }
-    }
-  });
-
-  // If placement finished but was not confirmed, loop back to check again instead of breaking air or chasing ghost drops
-  const placeTableRetry = new StateTransition({
-    parent: placeTable,
-    child: checkForTable,
-    name: 'BehaviorCraftWithTable: place table -> check for table (retry placement)',
+    child: exit,
+    name: 'CraftWithTable: place -> exit (failed)',
     shouldTransition: () => {
       if (typeof placeTable.isFinished !== 'function') return false;
-      return placeTable.isFinished() && !placeTableTargets.placedConfirmed;
+      return placeTable.isFinished() && !placeTargets.placedConfirmed;
     },
-    onTransition: () => {
-      wePlacedTable = false;
-      logger.error('BehaviorCraftWithTable: placement finished but not confirmed, retrying placement');
-    }
+    onTransition: () => logger.error('CraftWithTable: Failed to place crafting table')
   });
 
-  const checkForTableToWaitForCraft = new StateTransition({
-    parent: checkForTable,
+  // place -> craft
+  const placeToCraft = new StateTransition({
+    parent: placeTable,
     child: waitForCraft,
-    name: 'BehaviorCraftWithTable: check for table -> wait for craft',
+    name: 'CraftWithTable: place -> craft',
     shouldTransition: () => {
-      const tableNearby = findCraftingTableNearby();
-      if (tableNearby) return true;
-      
-      const hasTableInInventory = getItemCountInInventory(bot, 'crafting_table') > 0;
-      if (!hasTableInInventory) {
-        logger.error('BehaviorCraftWithTable: No crafting table nearby and none in inventory');
-        return true; // Exit to prevent infinite loop
-      }
-      
-      return false;
+      if (typeof placeTable.isFinished !== 'function') return false;
+      return placeTable.isFinished() && !!placeTargets.placedConfirmed;
     },
     onTransition: () => {
-      const tableNearby = findCraftingTableNearby();
-      if (tableNearby) {
-        logger.info('BehaviorCraftWithTable: Found crafting table nearby');
-      } else {
-        logger.error('BehaviorCraftWithTable: No crafting table available, cannot craft');
-      }
-    }
-  });
+      craftingDone = false;
+      logger.info('CraftWithTable: Table placed, starting craft');
 
-  let waitForCraftStartTime: number;
-  let craftingDone = false;
-  let craftingOk = false;
-  const waitForCraftOnEnter = () => {
-    waitForCraftStartTime = Date.now();
-    logger.info('BehaviorCraftWithTable: starting craft');
-    craftingDone = false;
-    craftingOk = false;
-    
-    if (!targets.itemName) {
-      logger.error('BehaviorCraftWithTable: no itemName set');
-      craftingOk = false;
-      craftingDone = true;
-      return;
-    }
-    
-    Promise.resolve()
-      .then(() => craftItemWithTable(targets.itemName!, targets.amount))
-      .then((ok) => {
-        craftingOk = !!ok;
+      const craftingTable = placeTargets.placedPosition ? bot.blockAt(placeTargets.placedPosition, false) : null;
+      if (!craftingTable) {
+        logger.error('CraftWithTable: Could not find placed table');
         craftingDone = true;
-      })
-      .catch((err) => {
-        logger.error('BehaviorCraftWithTable: craft promise error', err);
-        craftingOk = false;
-        craftingDone = true;
-      });
-  };
-
-  // Hook into the checkForTableToWaitForCraft transition
-  const originalCheckToWaitTransition = checkForTableToWaitForCraft.onTransition;
-  checkForTableToWaitForCraft.onTransition = () => {
-    if (originalCheckToWaitTransition) originalCheckToWaitTransition();
-    waitForCraftOnEnter();
-  };
-
-  // Hook into the placeTableToWaitForCraft transition
-  const originalPlaceToWaitTransition = placeTableToWaitForCraft.onTransition;
-  placeTableToWaitForCraft.onTransition = () => {
-    if (originalPlaceToWaitTransition) originalPlaceToWaitTransition();
-    waitForCraftOnEnter();
-  };
-
-  const craftDone = () => {
-    if (!targets.itemName) return craftingDone;
-    const have = getItemCountInInventory(bot, targets.itemName);
-    if (have >= targets.amount) return true;
-    const timedOut = Date.now() - waitForCraftStartTime > 20000;
-    if (timedOut) return true;
-    return craftingDone;
-  };
-  
-  // If we placed the table, break it after crafting
-  const waitForCraftToBreakTable = new StateTransition({
-    parent: waitForCraft,
-    child: breakTable,
-    name: 'BehaviorCraftWithTable: wait for craft -> break table',
-    shouldTransition: () => wePlacedTable && craftDone(),
-    onTransition: () => {
-      craftingTableCountBeforeBreak = getItemCountInInventory(bot, 'crafting_table');
-      
-      if (!targets.itemName) {
-        logger.info(`BehaviorCraftWithTable: wait for craft -> break table (no itemName), have ${craftingTableCountBeforeBreak} tables`);
-      } else {
-        const have = getItemCountInInventory(bot, targets.itemName);
-        logger.info(`BehaviorCraftWithTable: wait for craft -> break table (${have}/${targets.amount}), have ${craftingTableCountBeforeBreak} tables`);
-      }
-      
-      // Set break position to the placed table position
-      if (placeTableTargets.placedPosition) {
-        breakTargets.position = placeTableTargets.placedPosition;
-      }
-    }
-  });
-  
-  // If we found an existing table, just exit
-  const waitForCraftToExit = new StateTransition({
-    parent: waitForCraft,
-    child: exit,
-    name: 'BehaviorCraftWithTable: wait for craft -> exit',
-    shouldTransition: () => !wePlacedTable && craftDone(),
-    onTransition: () => {
-      if (!targets.itemName) {
-        logger.info('BehaviorCraftWithTable: wait for craft -> exit (no itemName)');
         return;
       }
-      const have = getItemCountInInventory(bot, targets.itemName);
-      const timedOut = Date.now() - waitForCraftStartTime > 20000;
-      if (have >= targets.amount) {
-        logger.info(`BehaviorCraftWithTable: wait for craft -> exit (complete ${have}/${targets.amount})`);
-      } else if (timedOut) {
-        logger.info(`BehaviorCraftWithTable: wait for craft -> exit (timeout ${have}/${targets.amount})`);
-      } else {
-        logger.info(
-          `BehaviorCraftWithTable: wait for craft -> exit (craftingDone=${craftingDone}, ok=${craftingOk})`
-        );
-      }
+
+      craftItemWithTable(targets.itemName!, targets.amount, craftingTable)
+        .then(() => { craftingDone = true; })
+        .catch(() => { craftingDone = true; });
     }
   });
-  
-  // Exit immediately if table was already picked up after breaking
-  const breakTableToExitIfPickedUp = new StateTransition({
-    parent: breakTable,
-    child: exit,
-    name: 'BehaviorCraftWithTable: break table -> exit (already picked up)',
-    shouldTransition: () => {
-      if (!breakTable.isFinished()) return false;
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      return currentCount > craftingTableCountBeforeBreak;
-    },
+
+  // craft -> break
+  const craftToBreak = new StateTransition({
+    parent: waitForCraft,
+    child: breakTable,
+    name: 'CraftWithTable: craft -> break',
+    shouldTransition: () => craftingDone,
     onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      logger.info(`BehaviorCraftWithTable: break table -> exit (already picked up: ${craftingTableCountBeforeBreak} -> ${currentCount})`);
+      tableCountBeforeBreak = getItemCountInInventory(bot, 'crafting_table');
+      breakTargets.position = placeTargets.placedPosition;
+      const have = getItemCountInInventory(bot, targets.itemName!);
+      logger.info(`CraftWithTable: Crafting done (${have}/${targets.amount}), breaking table (had ${tableCountBeforeBreak})`);
     }
   });
-  
-  // After breaking, collect the drop
-  const breakTableToGetDrop = new StateTransition({
+
+  // break -> wait for auto-pickup
+  const breakToWait = new StateTransition({
     parent: breakTable,
-    child: getDrop,
-    name: 'BehaviorCraftWithTable: break table -> get drop',
+    child: waitForPickup,
+    name: 'CraftWithTable: break -> wait',
     shouldTransition: () => breakTable.isFinished(),
     onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      logger.info(`BehaviorCraftWithTable: break table -> get drop (had ${craftingTableCountBeforeBreak} tables before break, now have ${currentCount})`);
-      collectStartTime = Date.now();
-      collectRetryCount = 0;
+      waitStartTime = Date.now();
+      logger.info('CraftWithTable: Table broken, waiting for auto-pickup');
     }
   });
-  
-  // Exit early if we picked up the table
-  const getDropToExitIfPickedUp = new StateTransition({
-    parent: getDrop,
+
+  // wait -> exit (already picked up, after giving drop time to spawn)
+  const waitToExitPickedUp = new StateTransition({
+    parent: waitForPickup,
     child: exit,
-    name: 'BehaviorCraftWithTable: get drop -> exit (picked up)',
-    shouldTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      return currentCount > craftingTableCountBeforeBreak;
-    },
+    name: 'CraftWithTable: wait -> exit (picked up)',
+    shouldTransition: () => hasPickedUpTable() && Date.now() - waitStartTime > 1000,
     onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      logger.info(`BehaviorCraftWithTable: get drop -> exit (picked up: ${craftingTableCountBeforeBreak} -> ${currentCount})`);
+      const have = getItemCountInInventory(bot, targets.itemName!);
+      logger.info(`CraftWithTable: Auto-picked up table, complete (${have}/${targets.amount} ${targets.itemName})`);
     }
   });
-  
-  // Follow the drop entity
-  const getDropToFollowDrop = new StateTransition({
-    parent: getDrop,
+
+  // wait -> findDrop (not picked up after delay for drop to spawn)
+  const waitToFindDrop = new StateTransition({
+    parent: waitForPickup,
+    child: findDrop,
+    name: 'CraftWithTable: wait -> find drop',
+    shouldTransition: () => !hasPickedUpTable() && Date.now() - waitStartTime > 1000,
+    onTransition: () => {
+      dropTargets.entity = null;
+      logger.info('CraftWithTable: Not auto-picked up, looking for drop');
+    }
+  });
+
+  // findDrop -> exit (picked up)
+  const findDropToExitPickedUp = new StateTransition({
+    parent: findDrop,
+    child: exit,
+    name: 'CraftWithTable: find drop -> exit (picked up)',
+    shouldTransition: () => hasPickedUpTable(),
+    onTransition: () => {
+      const have = getItemCountInInventory(bot, targets.itemName!);
+      logger.info(`CraftWithTable: Picked up table, complete (${have}/${targets.amount} ${targets.itemName})`);
+    }
+  });
+
+  // findDrop -> followDrop
+  const findDropToFollow = new StateTransition({
+    parent: findDrop,
     child: followDrop,
-    name: 'BehaviorCraftWithTable: get drop -> follow drop',
-    shouldTransition: () => {
-      const elapsed = Date.now() - collectStartTime;
-      if (elapsed > COLLECT_TIMEOUT_MS) return false;
-      return !!dropTargets.entity;
-    },
+    name: 'CraftWithTable: find drop -> follow',
+    shouldTransition: () => !!dropTargets.entity,
     onTransition: () => {
-      const entity = dropTargets.entity;
-      if (entity && entity.position) {
-        logger.info(
-          `BehaviorCraftWithTable: get drop -> follow drop (x=${entity.position.x}, y=${entity.position.y}, z=${entity.position.z})`
-        );
-        followStartTime = Date.now();
-        followRetryCount = 0;
-      }
+      const pos = dropTargets.entity?.position;
+      logger.info(`CraftWithTable: Found drop at (${pos?.x?.toFixed(1)}, ${pos?.y?.toFixed(1)}, ${pos?.z?.toFixed(1)})`);
     }
   });
-  
-  // Retry getDrop if timed out
-  const getDropRetry = new StateTransition({
-    parent: getDrop,
-    child: getDrop,
-    name: 'BehaviorCraftWithTable: get drop -> get drop (retry)',
-    shouldTransition: () => {
-      const elapsed = Date.now() - collectStartTime;
-      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
-      return timedOut && !dropTargets.entity && collectRetryCount < MAX_COLLECT_RETRIES;
-    },
-    onTransition: () => {
-      collectRetryCount++;
-      logger.info(`BehaviorCraftWithTable: get drop -> get drop (retry ${collectRetryCount}/${MAX_COLLECT_RETRIES})`);
-      collectStartTime = Date.now();
-    }
-  });
-  
-  // Exit if getDrop timed out after retries
-  const getDropToExit = new StateTransition({
-    parent: getDrop,
+
+  // findDrop -> exit (timeout, no drop found)
+  let findDropStartTime = 0;
+  const findDropOnEnter = findDrop.onStateEntered;
+  findDrop.onStateEntered = () => {
+    findDropStartTime = Date.now();
+    if (findDropOnEnter) findDropOnEnter();
+  };
+  const findDropToExitTimeout = new StateTransition({
+    parent: findDrop,
     child: exit,
-    name: 'BehaviorCraftWithTable: get drop -> exit',
-    shouldTransition: () => {
-      const elapsed = Date.now() - collectStartTime;
-      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
-      return timedOut && collectRetryCount >= MAX_COLLECT_RETRIES;
-    },
+    name: 'CraftWithTable: find drop -> exit (timeout)',
+    shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 3000,
     onTransition: () => {
-      logger.info(`BehaviorCraftWithTable: get drop -> exit (timeout after ${MAX_COLLECT_RETRIES} retries)`);
+      const have = getItemCountInInventory(bot, targets.itemName!);
+      logger.warn(`CraftWithTable: Could not find dropped table, exiting (${have}/${targets.amount} ${targets.itemName})`);
     }
   });
-  
-  // Exit early if we picked up the table while following
-  const followDropToExitIfPickedUp = new StateTransition({
+
+  // followDrop -> exit (picked up)
+  const followDropToExitPickedUp = new StateTransition({
     parent: followDrop,
     child: exit,
-    name: 'BehaviorCraftWithTable: follow drop -> exit (picked up)',
-    shouldTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      return currentCount > craftingTableCountBeforeBreak;
-    },
+    name: 'CraftWithTable: follow drop -> exit (picked up)',
+    shouldTransition: () => hasPickedUpTable(),
     onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'crafting_table');
-      logger.info(`BehaviorCraftWithTable: follow drop -> exit (picked up: ${craftingTableCountBeforeBreak} -> ${currentCount})`);
+      const have = getItemCountInInventory(bot, targets.itemName!);
+      logger.info(`CraftWithTable: Collected table, complete (${have}/${targets.amount} ${targets.itemName})`);
     }
   });
-  
-  // Retry followDrop if timed out
-  const followDropRetry = new StateTransition({
-    parent: followDrop,
-    child: getDrop,
-    name: 'BehaviorCraftWithTable: follow drop -> get drop (retry)',
-    shouldTransition: () => {
-      const elapsed = Date.now() - followStartTime;
-      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
-      return timedOut && followRetryCount < MAX_FOLLOW_RETRIES;
-    },
-    onTransition: () => {
-      followRetryCount++;
-      logger.info(`BehaviorCraftWithTable: follow drop -> get drop (retry ${followRetryCount}/${MAX_FOLLOW_RETRIES})`);
-      collectStartTime = Date.now();
-    }
-  });
-  
-  // Exit if followDrop timed out after retries
-  const followDropToExit = new StateTransition({
+
+  // followDrop -> exit (timeout)
+  let followStartTime = 0;
+  const followOnEnter = followDrop.onStateEntered;
+  followDrop.onStateEntered = () => {
+    followStartTime = Date.now();
+    if (followOnEnter) followOnEnter();
+  };
+  const followDropToExitTimeout = new StateTransition({
     parent: followDrop,
     child: exit,
-    name: 'BehaviorCraftWithTable: follow drop -> exit',
-    shouldTransition: () => {
-      const elapsed = Date.now() - followStartTime;
-      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
-      return timedOut && followRetryCount >= MAX_FOLLOW_RETRIES;
-    },
+    name: 'CraftWithTable: follow drop -> exit (timeout)',
+    shouldTransition: () => Date.now() - followStartTime > 5000,
     onTransition: () => {
-      logger.info(`BehaviorCraftWithTable: follow drop -> exit (timeout after ${MAX_FOLLOW_RETRIES} retries)`);
-    }
-  });
-  
-  // Track when we first got close to the drop for pickup delay
-  let closeToDropSince: number = 0;
-  const PICKUP_WAIT_MS = 1000; // Wait 1s after getting close to allow auto-pickup
-  const PICKUP_RANGE = 0.5; // Minecraft pickup range is ~1 block, use 0.5 for safety
-  
-  // Success: collected the drop (only exits after being close long enough)
-  const followDropToExit2 = new StateTransition({
-    parent: followDrop,
-    child: exit,
-    name: 'BehaviorCraftWithTable: follow drop -> exit',
-    shouldTransition: () => {
-      // If entity disappeared, check if we picked it up (inventory increased)
-      if (!dropTargets.entity) {
-        const currentCount = getItemCountInInventory(bot, 'crafting_table');
-        const pickedUp = currentCount > craftingTableCountBeforeBreak;
-        if (pickedUp) {
-          logger.info(`BehaviorCraftWithTable: entity disappeared but we picked it up (${craftingTableCountBeforeBreak} -> ${currentCount})`);
-          return true;
-        }
-        // Entity disappeared but we didn't pick it up - let retry/timeout handle it
-        logger.warn('BehaviorCraftWithTable: entity disappeared but inventory did not increase');
-        return false;
-      }
-      
-      const elapsed = Date.now() - followStartTime;
-      if (elapsed > FOLLOW_TIMEOUT_MS) return false; // Let timeout transition handle this
-      
-      const entity = dropTargets.entity;
-      if (!entity || !entity.position) return false;
-      
-      const dist = bot.entity?.position?.distanceTo?.(entity.position);
-      if (dist == null) return false;
-      
-      // Check if we're within pickup range
-      if (dist < PICKUP_RANGE) {
-        if (closeToDropSince === 0) {
-          closeToDropSince = Date.now();
-          logger.debug(`BehaviorCraftWithTable: within pickup range (${dist.toFixed(2)}m), waiting for auto-pickup`);
-        }
-        
-        // Wait for pickup delay before exiting
-        const waitedEnough = Date.now() - closeToDropSince >= PICKUP_WAIT_MS;
-        if (waitedEnough) {
-          const currentCount = getItemCountInInventory(bot, 'crafting_table');
-          const pickedUp = currentCount > craftingTableCountBeforeBreak;
-          if (pickedUp) {
-            logger.info(`BehaviorCraftWithTable: picked up table after waiting (${craftingTableCountBeforeBreak} -> ${currentCount})`);
-            return true;
-          }
-          // Waited long enough but didn't pick up - something's wrong
-          logger.warn(`BehaviorCraftWithTable: within range for ${PICKUP_WAIT_MS}ms but inventory did not increase`);
-        }
-      } else {
-        // Reset the timer if we move away
-        closeToDropSince = 0;
-      }
-      
-      return false; // Keep following
-    },
-    onTransition: () => {
-      closeToDropSince = 0; // Reset for next time
-      logger.info('BehaviorCraftWithTable: follow drop -> exit (collected)');
+      const have = getItemCountInInventory(bot, targets.itemName!);
+      logger.warn(`CraftWithTable: Follow timeout, exiting (${have}/${targets.amount} ${targets.itemName})`);
     }
   });
 
   const transitions = [
     enterToExit,
-    enterToCheckForTable,
-    checkForTableToPlaceTable,
-    checkForTableToWaitForCraft,
-    placeTableRetry,
-    placeTableToWaitForCraft,
-    waitForCraftToBreakTable,
-    waitForCraftToExit,
-    breakTableToExitIfPickedUp,
-    breakTableToGetDrop,
-    getDropToExitIfPickedUp,
-    getDropToFollowDrop,
-    getDropRetry,
-    getDropToExit,
-    followDropToExitIfPickedUp,
-    followDropRetry,
-    followDropToExit,
-    followDropToExit2
+    enterToPlace,
+    placeToExitFailed,
+    placeToCraft,
+    craftToBreak,
+    breakToWait,
+    waitToExitPickedUp,
+    waitToFindDrop,
+    findDropToExitPickedUp,
+    findDropToFollow,
+    findDropToExitTimeout,
+    followDropToExitPickedUp,
+    followDropToExitTimeout
   ];
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
-  
-  stateMachine.onStateExited = function() {
-    logger.debug('CraftWithTable: cleaning up on state exit');
-    
-    if (placeTable && typeof placeTable.onStateExited === 'function') {
-      try {
-        placeTable.onStateExited();
-        logger.debug('CraftWithTable: cleaned up placeTable');
-      } catch (err: any) {
-        logger.warn(`CraftWithTable: error cleaning up placeTable: ${err.message}`);
+
+  stateMachine.onStateExited = function () {
+    for (const sub of [placeTable, breakTable, followDrop]) {
+      if (sub && typeof sub.onStateExited === 'function') {
+        try { sub.onStateExited(); } catch (_) {}
       }
     }
-    
-    if (breakTable && typeof breakTable.onStateExited === 'function') {
-      try {
-        breakTable.onStateExited();
-        logger.debug('CraftWithTable: cleaned up breakTable');
-      } catch (err: any) {
-        logger.warn(`CraftWithTable: error cleaning up breakTable: ${err.message}`);
-      }
-    }
-    
-    if (followDrop && typeof followDrop.onStateExited === 'function') {
-      try {
-        followDrop.onStateExited();
-        logger.debug('CraftWithTable: cleaned up followDrop');
-      } catch (err: any) {
-        logger.warn(`CraftWithTable: error cleaning up followDrop: ${err.message}`);
-      }
-    }
-    
-    try {
-      bot.clearControlStates();
-      logger.debug('CraftWithTable: cleared bot control states');
-    } catch (err: any) {
-      logger.debug(`CraftWithTable: error clearing control states: ${err.message}`);
-    }
+    try { bot.clearControlStates(); } catch (_) {}
   };
-  
+
   return stateMachine;
 };
 

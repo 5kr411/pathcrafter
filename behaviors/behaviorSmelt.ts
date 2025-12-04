@@ -1,26 +1,11 @@
-const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorEquipItem, BehaviorGetClosestEntity, BehaviorFollowEntity } = require('mineflayer-statemachine');
-
+const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEntity, BehaviorFollowEntity } = require('mineflayer-statemachine');
 const minecraftData = require('minecraft-data');
+
 import logger from '../utils/logger';
-import { isPositionNearLiquid } from './behaviorSafeFindBlock';
-import { addStateLogging } from '../utils/stateLogging';
 const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 import { getItemCountInInventory } from '../utils/inventory';
 import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
-
-interface Vec3Like {
-  x: number;
-  y: number;
-  z: number;
-  clone: () => Vec3Like;
-  [key: string]: any;
-}
-
-interface Block {
-  name?: string;
-  [key: string]: any;
-}
 
 type Bot = any;
 
@@ -33,60 +18,6 @@ interface Targets {
 }
 
 function createSmeltState(bot: Bot, targets: Targets): any {
-  const enter = new BehaviorIdle();
-  const findFurnace = new BehaviorIdle();
-  const equipFurnace = new BehaviorEquipItem(bot, { item: null });
-
-  // Add logging to EquipItem
-  addStateLogging(equipFurnace, 'EquipItem', {
-    logEnter: true,
-    getExtraInfo: () => {
-      const item = equipFurnace.targets?.item;
-      return item ? `equipping ${item.name} for smelting` : 'equipping furnace';
-    }
-  });
-
-  const placeFurnaceTargets: { item: any; placedPosition?: Vec3Like; placedConfirmed?: boolean } = { item: null };
-  let placeFurnace: any;
-  try {
-    placeFurnace = createPlaceNearState(bot, placeFurnaceTargets as any);
-  } catch (_) {
-    placeFurnace = { isFinished: () => true };
-  }
-  const smeltRun = new BehaviorIdle();
-  const breakTargets: { position: Vec3Like | null } = { position: null };
-  const breakFurnace = createBreakAtPositionState(bot, breakTargets as any);
-  
-  const COLLECT_TIMEOUT_MS = 7000;
-  const MAX_COLLECT_RETRIES = 2;
-  const FOLLOW_TIMEOUT_MS = 7000;
-  const MAX_FOLLOW_RETRIES = 2;
-  
-  const dropTargets: { entity: any } = { entity: null };
-  const getDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) => 
-    e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'furnace'
-  );
-  addStateLogging(getDrop, 'GetClosestEntity', { logEnter: true, getExtraInfo: () => 'looking for dropped furnace' });
-  
-  const followDrop = new BehaviorFollowEntity(bot, dropTargets);
-  addStateLogging(followDrop, 'FollowEntity', {
-    logEnter: true,
-    getExtraInfo: () => {
-      if (dropTargets.entity) {
-        const pos = dropTargets.entity.position;
-        return `following dropped furnace at (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)}), distance: ${bot.entity?.position?.distanceTo?.(pos)?.toFixed(2) || 'n/a'}m`;
-      }
-      return 'no entity';
-    }
-  });
-  
-  let collectStartTime: number = 0;
-  let followStartTime: number = 0;
-  let collectRetryCount = 0;
-  let followRetryCount = 0;
-  
-  const exit = new BehaviorIdle();
-
   function getMc(): any {
     try {
       return minecraftData(bot.version);
@@ -106,225 +37,159 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     }
   }
 
-  function findNearbyFurnace(maxDistance: number = 6): Block | null {
-    try {
-      const ids = ['furnace', 'lit_furnace']
-        .filter((n) => bot.registry.blocksByName[n] !== undefined)
-        .map((n) => bot.registry.blocksByName[n].id);
-      if (typeof bot.findBlocks === 'function') {
-        const allPositions = bot.findBlocks({ matching: ids, maxDistance, count: 8 }) || [];
-        const positions = allPositions.filter((p: any) => !isPositionNearLiquid(bot, p));
-        for (const p of positions) {
-          try {
-            const b = bot.blockAt(p, false);
-            if (b && (b.name === 'furnace' || b.name === 'lit_furnace')) return b;
-          } catch (_) {}
-        }
-        return null;
-      }
-      return bot.findBlock?.({ matching: ids, maxDistance }) || null;
-    } catch (_) {
-      return null;
-    }
-  }
+  const enter = new BehaviorIdle();
+  const exit = new BehaviorIdle();
+
+  const placeTargets: { item: any; placedPosition?: any; placedConfirmed?: boolean } = {
+    item: null,
+    placedPosition: undefined,
+    placedConfirmed: false
+  };
+  const placeFurnace = createPlaceNearState(bot, placeTargets);
+
+  const smeltRun = new BehaviorIdle();
+
+  const breakTargets: { position: any } = { position: null };
+  const breakFurnace = createBreakAtPositionState(bot, breakTargets);
+
+  const waitForPickup = new BehaviorIdle();
+
+  const dropTargets: { entity: any } = { entity: null };
+  const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) =>
+    e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'furnace'
+  );
+  const followDrop = new BehaviorFollowEntity(bot, dropTargets);
 
   let wantItem: string;
   let wantCount: number;
   let inputItem: string;
   let fuelItem: string;
+  let smeltDone = false;
   let furnaceCountBeforeBreak = 0;
-  const initToFind = new StateTransition({
-    name: 'Smelt: enter -> find',
+  let waitStartTime = 0;
+
+  const hasPickedUpFurnace = () => getItemCountInInventory(bot, 'furnace') > furnaceCountBeforeBreak;
+
+  // enter -> exit (invalid)
+  const enterToExit = new StateTransition({
     parent: enter,
-    child: findFurnace,
-    shouldTransition: () => true,
+    child: exit,
+    name: 'Smelt: enter -> exit (invalid)',
+    shouldTransition: () => !targets.itemName || !targets.inputName,
+    onTransition: () => logger.error('Smelt: Missing itemName or inputName')
+  });
+
+  // enter -> place
+  const enterToPlace = new StateTransition({
+    parent: enter,
+    child: placeFurnace,
+    name: 'Smelt: enter -> place',
+    shouldTransition: () => !!targets.itemName && !!targets.inputName,
     onTransition: () => {
       wantItem = targets.itemName;
       wantCount = Number(targets.amount || 1);
       inputItem = targets.inputName;
       fuelItem = targets.fuelName || 'coal';
-      logger.info(`enter -> find (want ${wantCount} ${wantItem}, input=${inputItem}, fuel=${fuelItem})`);
+      placeTargets.item = bot.inventory.items().find((i: any) => i?.name === 'furnace') || null;
+      placeTargets.placedPosition = undefined;
+      placeTargets.placedConfirmed = false;
+      logger.info(`Smelt: Placing furnace to smelt ${wantCount} ${wantItem} from ${inputItem}`);
     }
   });
 
-  let foundFurnace: Block | null = null;
-  let placedByUs = false;
-  const findToEquip = new StateTransition({
-    name: 'Smelt: find -> equip furnace',
-    parent: findFurnace,
-    child: equipFurnace,
-    shouldTransition: () => {
-      foundFurnace = findNearbyFurnace(6);
-      if (foundFurnace) return false;
-      try {
-        equipFurnace.targets.item =
-          bot.inventory?.items?.().find((it: any) => it && it.name === 'furnace') || null;
-      } catch (_) {}
-      return !!equipFurnace.targets.item;
-    },
-    onTransition: () => {
-      placedByUs = true;
-      logger.debug('find -> equip furnace (no furnace nearby)');
-    }
-  });
-
-  const findToSmelt = new StateTransition({
-    name: 'Smelt: find -> run (already placed)',
-    parent: findFurnace,
-    child: smeltRun,
-    shouldTransition: () => {
-      foundFurnace = findNearbyFurnace(6);
-      return !!foundFurnace;
-    },
-    onTransition: () => {
-      placedByUs = false;
-      logger.debug('find -> run (using existing furnace)');
-    }
-  });
-
-  const findToExit = new StateTransition({
-    name: 'Smelt: find -> exit (no furnace available)',
-    parent: findFurnace,
-    child: exit,
-    shouldTransition: () => {
-      foundFurnace = findNearbyFurnace(6);
-      if (foundFurnace) return false;
-      
-      try {
-        const hasFurnaceInInventory = bot.inventory?.items?.().some((it: any) => it && it.name === 'furnace');
-        return !hasFurnaceInInventory;
-      } catch (_) {
-        return true;
-      }
-    },
-    onTransition: () => {
-      logger.error('find -> exit (no furnace available - cannot smelt without furnace)');
-    }
-  });
-
-  const equipToPlace = new StateTransition({
-    name: 'Smelt: equip -> place',
-    parent: equipFurnace,
-    child: placeFurnace,
-    shouldTransition: () =>
-      (typeof equipFurnace.isFinished === 'function' ? equipFurnace.isFinished() : true) &&
-      !!equipFurnace.targets.item,
-    onTransition: () => {
-      placeFurnaceTargets.item = equipFurnace.targets.item;
-      logger.debug('equip -> place furnace');
-    }
-  });
-
-  const placeToSmelt = new StateTransition({
-    name: 'Smelt: place -> run',
-    parent: placeFurnace,
-    child: smeltRun,
-    shouldTransition: () => {
-      if (typeof placeFurnace.isFinished !== 'function') return true;
-      if (!placeFurnace.isFinished()) return false;
-      // Only transition to run if placement was confirmed successful
-      return !!placeFurnaceTargets.placedConfirmed;
-    },
-    onTransition: () => {
-      try {
-        if (placeFurnaceTargets && placeFurnaceTargets.placedPosition) {
-          breakTargets.position = placeFurnaceTargets.placedPosition.clone();
-          if (placeFurnaceTargets.placedConfirmed) placedByUs = true;
-          logger.debug('place -> run (placed furnace at)', breakTargets.position);
-        }
-      } catch (_) {}
-    }
-  });
-  
-  // Exit if placement failed
-  const placeToExit = new StateTransition({
-    name: 'Smelt: place -> exit',
+  // place -> exit (failed)
+  const placeToExitFailed = new StateTransition({
     parent: placeFurnace,
     child: exit,
+    name: 'Smelt: place -> exit (failed)',
     shouldTransition: () => {
       if (typeof placeFurnace.isFinished !== 'function') return false;
-      if (!placeFurnace.isFinished()) return false;
-      // Exit if placement finished but was not confirmed
-      return !placeFurnaceTargets.placedConfirmed;
+      return placeFurnace.isFinished() && !placeTargets.placedConfirmed;
+    },
+    onTransition: () => logger.error('Smelt: Failed to place furnace')
+  });
+
+  // place -> smelt
+  const placeToSmelt = new StateTransition({
+    parent: placeFurnace,
+    child: smeltRun,
+    name: 'Smelt: place -> smelt',
+    shouldTransition: () => {
+      if (typeof placeFurnace.isFinished !== 'function') return false;
+      return placeFurnace.isFinished() && !!placeTargets.placedConfirmed;
     },
     onTransition: () => {
-      logger.error('Smelt: place -> exit (placement failed or timed out)');
+      smeltDone = false;
+      breakTargets.position = placeTargets.placedPosition;
+      logger.info('Smelt: Furnace placed, starting smelt');
     }
   });
 
-  let smeltDone = false;
-  let smeltSucceeded = false;
-  let breakRecommended = false;
   smeltRun.onStateEntered = async () => {
     try {
       const mc = getMc();
-      let furnaceBlock: Block | null = null;
-      try {
-        if (breakTargets && breakTargets.position) {
-          const maybe = bot.blockAt(breakTargets.position, false);
-          if (maybe && (maybe.name === 'furnace' || maybe.name === 'lit_furnace')) furnaceBlock = maybe;
-        }
-      } catch (_) {}
-      if (!furnaceBlock) furnaceBlock = findNearbyFurnace(6);
-      if (!furnaceBlock) return;
-      
+      const furnaceBlock = placeTargets.placedPosition ? bot.blockAt(placeTargets.placedPosition, false) : null;
+      if (!furnaceBlock) {
+        logger.error('Smelt: Could not find placed furnace');
+        smeltDone = true;
+        return;
+      }
+
       const have0 = getItemCountInInventory(bot, wantItem);
       const outTarget = have0 + Math.max(1, wantCount);
-      
-      const haveInput = inputItem ? getItemCount(inputItem) : 0;
-      const haveFuel = fuelItem ? getItemCount(fuelItem) : 0;
-      
-      logger.info(`run start (have ${have0} ${wantItem}, target ${outTarget}, input: ${haveInput} ${inputItem}, fuel: ${haveFuel} ${fuelItem})`);
-      
-      if (!inputItem || haveInput === 0) {
-        logger.error(`Cannot smelt: no input material (${inputItem}) in inventory`);
-        breakRecommended = placedByUs;
+
+      const haveInput = getItemCount(inputItem);
+      const haveFuel = getItemCount(fuelItem);
+      logger.info(`Smelt: Starting (have ${have0} ${wantItem}, target ${outTarget}, input: ${haveInput} ${inputItem}, fuel: ${haveFuel} ${fuelItem})`);
+
+      if (haveInput === 0) {
+        logger.error(`Smelt: No input material (${inputItem}) in inventory`);
+        smeltDone = true;
         return;
       }
-      
-      if (!fuelItem || haveFuel === 0) {
-        logger.error(`Cannot smelt: no fuel (${fuelItem}) in inventory`);
-        breakRecommended = placedByUs;
+
+      if (haveFuel === 0) {
+        logger.error(`Smelt: No fuel (${fuelItem}) in inventory`);
+        smeltDone = true;
         return;
       }
-      
+
       const furnace = await bot.openFurnace(furnaceBlock);
-      
-      function idOf(name: string): number | undefined {
-        return mc.itemsByName[name]?.id;
-      }
-      function sleep(ms: number): Promise<void> {
-        return new Promise((r) => setTimeout(r, ms));
-      }
+
+      const idOf = (name: string): number | undefined => mc.itemsByName[name]?.id;
+      const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+
       let lastProgress = 0;
       let prevOut = have0;
       let lastActivity = Date.now();
       let lastFuelPut = 0;
       const STALL_TIMEOUT_MS = 20000;
-      // Track fuel locally to avoid duplicate top-ups due to delayed window updates
       let localFuelCount = furnace.fuelItem() ? furnace.fuelItem()!.count || 0 : 0;
       let localOutputTaken = 0;
+
       while (Date.now() - lastActivity < STALL_TIMEOUT_MS) {
         const invDelta = Math.max(0, getItemCount(wantItem) - have0);
         const produced = Math.max(invDelta, localOutputTaken);
         if (have0 + produced >= outTarget) break;
+
         let acted = false;
+
         try {
-          if (inputItem && getItemCount(inputItem) > 0 && !furnace.inputItem()) {
+          if (getItemCount(inputItem) > 0 && !furnace.inputItem()) {
             const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - (have0 + produced)));
             await furnace.putInput(idOf(inputItem)!, null, toPut);
-            logger.debug(`put input x${toPut} ${inputItem}`);
+            logger.debug(`Smelt: put input x${toPut} ${inputItem}`);
             acted = true;
           }
         } catch (err) {
-          logger.warn(`Failed to put input: ${err}`);
+          logger.warn(`Smelt: Failed to put input: ${err}`);
         }
+
         try {
-          if (fuelItem && getItemCount(fuelItem) > 0) {
+          if (getItemCount(fuelItem) > 0) {
             const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
             const remaining = Math.max(0, outTarget - (have0 + produced));
             const desiredUnits = Math.ceil(remaining / perUnit);
-            // Sync local fuel count from furnace when available
             const fuelSlot = furnace.fuelItem();
             const currentUnits = fuelSlot ? fuelSlot.count || 0 : localFuelCount;
             localFuelCount = currentUnits;
@@ -335,13 +200,14 @@ function createSmeltState(bot: Bot, targets: Targets): any {
               await furnace.putFuel(idOf(fuelItem)!, null, topUp);
               localFuelCount += topUp;
               lastFuelPut = now;
-              logger.debug(`put fuel x${topUp} ${fuelItem} (perUnit=${perUnit})`);
+              logger.debug(`Smelt: put fuel x${topUp} ${fuelItem}`);
               acted = true;
             }
           }
         } catch (err) {
-          logger.warn(`Failed to put fuel: ${err}`);
+          logger.warn(`Smelt: Failed to put fuel: ${err}`);
         }
+
         try {
           if (furnace.outputItem()) {
             const outStack = furnace.outputItem();
@@ -354,25 +220,18 @@ function createSmeltState(bot: Bot, targets: Targets): any {
               await sleep(50);
               waited += 50;
             }
-            const estHave = have0 + Math.max(localOutputTaken, Math.max(0, getItemCountInInventory(bot, wantItem) - have0));
-            logger.debug(`took output (have ~${estHave}/${outTarget})`);
+            logger.debug(`Smelt: took output (have ~${have0 + Math.max(localOutputTaken, getItemCount(wantItem) - have0)}/${outTarget})`);
             acted = true;
           }
         } catch (err) {
-          logger.warn(`Failed to take output: ${err}`);
+          logger.warn(`Smelt: Failed to take output: ${err}`);
         }
-        
-        let hasInput = false;
-        let hasOutput = false;
-        try {
-          hasInput = !!furnace.inputItem();
-          hasOutput = !!furnace.outputItem();
-        } catch (err) {
-          logger.warn(`Failed to check furnace state: ${err}`);
-        }
-        
+
+        const hasInput = !!furnace.inputItem();
+        const hasOutput = !!furnace.outputItem();
         const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0;
         const curOut = getItemCountInInventory(bot, wantItem);
+
         if (curOut > prevOut) {
           lastActivity = Date.now();
           prevOut = curOut;
@@ -383,341 +242,167 @@ function createSmeltState(bot: Bot, targets: Targets): any {
         lastProgress = prog;
         await sleep(400);
       }
-      const finalInvDelta = Math.max(0, getItemCountInInventory(bot, wantItem) - have0);
-      const finalProduced = Math.max(finalInvDelta, localOutputTaken);
-      smeltSucceeded = have0 + finalProduced >= outTarget;
-      const preIn = furnace.inputItem();
-      const preOut = furnace.outputItem();
-      const invInputCount = inputItem ? getItemCountInInventory(bot, inputItem) : 0;
-      const furnaceInputCount = preIn ? preIn.count || 0 : 0;
-      const noInputInInv = !inputItem || invInputCount + furnaceInputCount === 0;
-      const noFuelInInv = !fuelItem || getItemCountInInventory(bot, fuelItem) === 0;
-      const furnaceIdle = !preIn && !preOut;
-      // Break if: target reached, or we have no input left, or furnace is idle and we have no fuel left
-      breakRecommended = placedByUs && (smeltSucceeded || noInputInInv || (furnaceIdle && noFuelInInv));
-      try {
-        furnace.close();
-      } catch (_) {}
-      const stalled = !smeltSucceeded;
+
+      try { furnace.close(); } catch (_) {}
+
       const finalHave = getItemCountInInventory(bot, wantItem);
-      const finalEst = have0 + finalProduced;
-      logger.info(
-        `run end (success=${smeltSucceeded}, stalled=${stalled}, have ${finalHave}/${outTarget}, est ${finalEst}/${outTarget})`
-      );
+      logger.info(`Smelt: Complete (have ${finalHave}/${outTarget} ${wantItem})`);
     } catch (err) {
-      logger.error('error during smelt run', err);
-      // Break even on error if we placed the furnace
-      breakRecommended = placedByUs || breakRecommended;
+      logger.error('Smelt: Error during smelt run', err);
     } finally {
       smeltDone = true;
     }
   };
 
-  const runToBreak = new StateTransition({
-    name: 'Smelt: run -> break',
+  // smelt -> break
+  const smeltToBreak = new StateTransition({
     parent: smeltRun,
     child: breakFurnace,
-    shouldTransition: () => smeltDone && breakRecommended,
+    name: 'Smelt: smelt -> break',
+    shouldTransition: () => smeltDone,
     onTransition: () => {
       furnaceCountBeforeBreak = getItemCountInInventory(bot, 'furnace');
-      logger.debug(`run -> break (we placed furnace), have ${furnaceCountBeforeBreak} furnaces before break`);
+      const have = getItemCountInInventory(bot, wantItem);
+      logger.info(`Smelt: Smelting done (${have} ${wantItem}), breaking furnace (had ${furnaceCountBeforeBreak})`);
     }
   });
 
-  // Fallback: If we reached run but no furnace is present nearby, and we have a
-  // furnace item in inventory, go equip/place and then resume.
-  const runToEquipFallback = new StateTransition({
-    name: 'Smelt: run -> equip (fallback, no nearby furnace)',
-    parent: smeltRun,
-    child: equipFurnace,
-    shouldTransition: () => {
-      const nearby = findNearbyFurnace(6);
-      if (nearby) return false;
-      try {
-        equipFurnace.targets.item =
-          bot.inventory?.items?.().find((it: any) => it && it.name === 'furnace') || null;
-      } catch (_) {
-        equipFurnace.targets.item = null;
-      }
-      return !!equipFurnace.targets.item;
-    },
-    onTransition: () => {
-      placedByUs = true;
-      logger.warn('Smelt: fallback to equip furnace (no furnace nearby during run)');
-    }
-  });
-
-  const breakToExitIfPickedUp = new StateTransition({
-    name: 'Smelt: break -> exit (already picked up)',
+  // break -> wait for auto-pickup
+  const breakToWait = new StateTransition({
     parent: breakFurnace,
-    child: exit,
-    shouldTransition: () => {
-      if (!breakFurnace.isFinished()) return false;
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      return currentCount > furnaceCountBeforeBreak;
-    },
-    onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      logger.info(`Smelt: break -> exit (already picked up: ${furnaceCountBeforeBreak} -> ${currentCount})`);
-    }
-  });
-  
-  const breakToGetDrop = new StateTransition({
-    name: 'Smelt: break -> get drop',
-    parent: breakFurnace,
-    child: getDrop,
+    child: waitForPickup,
+    name: 'Smelt: break -> wait',
     shouldTransition: () => breakFurnace.isFinished(),
     onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      logger.info(`Smelt: break -> get drop (had ${furnaceCountBeforeBreak} furnaces before break, now have ${currentCount})`);
-      collectStartTime = Date.now();
-      collectRetryCount = 0;
+      waitStartTime = Date.now();
+      logger.info('Smelt: Furnace broken, waiting for auto-pickup');
     }
   });
-  
-  const getDropToExitIfPickedUp = new StateTransition({
-    name: 'Smelt: get drop -> exit (picked up)',
-    parent: getDrop,
+
+  // wait -> exit (already picked up, after giving drop time to spawn)
+  const waitToExitPickedUp = new StateTransition({
+    parent: waitForPickup,
     child: exit,
-    shouldTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      return currentCount > furnaceCountBeforeBreak;
-    },
+    name: 'Smelt: wait -> exit (picked up)',
+    shouldTransition: () => hasPickedUpFurnace() && Date.now() - waitStartTime > 1000,
     onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      logger.info(`Smelt: get drop -> exit (picked up: ${furnaceCountBeforeBreak} -> ${currentCount})`);
+      const have = getItemCountInInventory(bot, wantItem);
+      logger.info(`Smelt: Auto-picked up furnace, complete (${have} ${wantItem})`);
     }
   });
-  
-  const getDropToFollowDrop = new StateTransition({
-    name: 'Smelt: get drop -> follow drop',
-    parent: getDrop,
+
+  // wait -> findDrop (not picked up after delay for drop to spawn)
+  const waitToFindDrop = new StateTransition({
+    parent: waitForPickup,
+    child: findDrop,
+    name: 'Smelt: wait -> find drop',
+    shouldTransition: () => !hasPickedUpFurnace() && Date.now() - waitStartTime > 1000,
+    onTransition: () => {
+      dropTargets.entity = null;
+      logger.info('Smelt: Not auto-picked up, looking for drop');
+    }
+  });
+
+  // findDrop -> exit (picked up)
+  const findDropToExitPickedUp = new StateTransition({
+    parent: findDrop,
+    child: exit,
+    name: 'Smelt: find drop -> exit (picked up)',
+    shouldTransition: () => hasPickedUpFurnace(),
+    onTransition: () => {
+      const have = getItemCountInInventory(bot, wantItem);
+      logger.info(`Smelt: Picked up furnace, complete (${have} ${wantItem})`);
+    }
+  });
+
+  // findDrop -> followDrop
+  const findDropToFollow = new StateTransition({
+    parent: findDrop,
     child: followDrop,
-    shouldTransition: () => {
-      const elapsed = Date.now() - collectStartTime;
-      if (elapsed > COLLECT_TIMEOUT_MS) return false;
-      return !!dropTargets.entity;
-    },
+    name: 'Smelt: find drop -> follow',
+    shouldTransition: () => !!dropTargets.entity,
     onTransition: () => {
-      const entity = dropTargets.entity;
-      if (entity && entity.position) {
-        logger.info(
-          `Smelt: get drop -> follow drop (x=${entity.position.x}, y=${entity.position.y}, z=${entity.position.z})`
-        );
-        followStartTime = Date.now();
-        followRetryCount = 0;
-      }
-    }
-  });
-  
-  const getDropRetry = new StateTransition({
-    name: 'Smelt: get drop -> get drop (retry)',
-    parent: getDrop,
-    child: getDrop,
-    shouldTransition: () => {
-      const elapsed = Date.now() - collectStartTime;
-      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
-      return timedOut && !dropTargets.entity && collectRetryCount < MAX_COLLECT_RETRIES;
-    },
-    onTransition: () => {
-      collectRetryCount++;
-      logger.info(`Smelt: get drop -> get drop (retry ${collectRetryCount}/${MAX_COLLECT_RETRIES})`);
-      collectStartTime = Date.now();
-    }
-  });
-  
-  const getDropToExit = new StateTransition({
-    name: 'Smelt: get drop -> exit (timeout)',
-    parent: getDrop,
-    child: exit,
-    shouldTransition: () => {
-      const elapsed = Date.now() - collectStartTime;
-      const timedOut = elapsed > COLLECT_TIMEOUT_MS;
-      return timedOut && collectRetryCount >= MAX_COLLECT_RETRIES;
-    },
-    onTransition: () => {
-      logger.info(`Smelt: get drop -> exit (timeout after ${MAX_COLLECT_RETRIES} retries)`);
-    }
-  });
-  
-  const followDropToExitIfPickedUp = new StateTransition({
-    name: 'Smelt: follow drop -> exit (picked up)',
-    parent: followDrop,
-    child: exit,
-    shouldTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      return currentCount > furnaceCountBeforeBreak;
-    },
-    onTransition: () => {
-      const currentCount = getItemCountInInventory(bot, 'furnace');
-      logger.info(`Smelt: follow drop -> exit (picked up: ${furnaceCountBeforeBreak} -> ${currentCount})`);
-    }
-  });
-  
-  const followDropRetry = new StateTransition({
-    name: 'Smelt: follow drop -> get drop (retry)',
-    parent: followDrop,
-    child: getDrop,
-    shouldTransition: () => {
-      const elapsed = Date.now() - followStartTime;
-      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
-      return timedOut && followRetryCount < MAX_FOLLOW_RETRIES;
-    },
-    onTransition: () => {
-      followRetryCount++;
-      logger.info(`Smelt: follow drop -> get drop (retry ${followRetryCount}/${MAX_FOLLOW_RETRIES})`);
-      collectStartTime = Date.now();
-    }
-  });
-  
-  const followDropToExit = new StateTransition({
-    name: 'Smelt: follow drop -> exit (timeout)',
-    parent: followDrop,
-    child: exit,
-    shouldTransition: () => {
-      const elapsed = Date.now() - followStartTime;
-      const timedOut = elapsed > FOLLOW_TIMEOUT_MS;
-      return timedOut && followRetryCount >= MAX_FOLLOW_RETRIES;
-    },
-    onTransition: () => {
-      logger.info(`Smelt: follow drop -> exit (timeout after ${MAX_FOLLOW_RETRIES} retries)`);
-    }
-  });
-  
-  let closeToDropSince: number = 0;
-  const PICKUP_WAIT_MS = 1000;
-  const PICKUP_RANGE = 0.5;
-  
-  const followDropToExit2 = new StateTransition({
-    name: 'Smelt: follow drop -> exit (collected)',
-    parent: followDrop,
-    child: exit,
-    shouldTransition: () => {
-      if (!dropTargets.entity) {
-        const currentCount = getItemCountInInventory(bot, 'furnace');
-        const pickedUp = currentCount > furnaceCountBeforeBreak;
-        if (pickedUp) {
-          logger.info(`Smelt: entity disappeared but we picked it up (${furnaceCountBeforeBreak} -> ${currentCount})`);
-          return true;
-        }
-        logger.warn('Smelt: entity disappeared but inventory did not increase');
-        return false;
-      }
-      
-      const elapsed = Date.now() - followStartTime;
-      if (elapsed > FOLLOW_TIMEOUT_MS) return false;
-      
-      const entity = dropTargets.entity;
-      if (!entity || !entity.position) return false;
-      
-      const dist = bot.entity?.position?.distanceTo?.(entity.position);
-      if (dist == null) return false;
-      
-      if (dist < PICKUP_RANGE) {
-        if (closeToDropSince === 0) {
-          closeToDropSince = Date.now();
-          logger.debug(`Smelt: within pickup range (${dist.toFixed(2)}m), waiting for auto-pickup`);
-        }
-        
-        const waitedEnough = Date.now() - closeToDropSince >= PICKUP_WAIT_MS;
-        if (waitedEnough) {
-          const currentCount = getItemCountInInventory(bot, 'furnace');
-          const pickedUp = currentCount > furnaceCountBeforeBreak;
-          if (pickedUp) {
-            logger.info(`Smelt: picked up furnace after waiting (${furnaceCountBeforeBreak} -> ${currentCount})`);
-            return true;
-          }
-          logger.warn(`Smelt: within range for ${PICKUP_WAIT_MS}ms but inventory did not increase`);
-        }
-      } else {
-        closeToDropSince = 0;
-      }
-      
-      return false;
-    },
-    onTransition: () => {
-      closeToDropSince = 0;
-      logger.info('Smelt: follow drop -> exit (collected)');
+      const pos = dropTargets.entity?.position;
+      logger.info(`Smelt: Found drop at (${pos?.x?.toFixed(1)}, ${pos?.y?.toFixed(1)}, ${pos?.z?.toFixed(1)})`);
     }
   });
 
-  const runToExit = new StateTransition({
-    name: 'Smelt: run -> exit (no break)',
-    parent: smeltRun,
-    child: exit,
-    shouldTransition: () => smeltDone && !breakRecommended,
-    onTransition: () => {
-      logger.debug('run -> exit (did not place furnace)');
-    }
-  });
-
-  const stateMachine = new NestedStateMachine(
-    [
-      initToFind,
-      findToSmelt,
-      findToEquip,
-      findToExit,
-      equipToPlace,
-      placeToSmelt,
-      placeToExit,
-      runToEquipFallback,
-      runToBreak,
-      breakToExitIfPickedUp,
-      breakToGetDrop,
-      getDropToExitIfPickedUp,
-      getDropToFollowDrop,
-      getDropRetry,
-      getDropToExit,
-      followDropToExitIfPickedUp,
-      followDropRetry,
-      followDropToExit,
-      followDropToExit2,
-      runToExit
-    ],
-    enter,
-    exit
-  );
-  
-  stateMachine.onStateExited = function() {
-    logger.debug('Smelt: cleaning up on state exit');
-    
-    if (breakFurnace && typeof breakFurnace.onStateExited === 'function') {
-      try {
-        breakFurnace.onStateExited();
-        logger.debug('Smelt: cleaned up breakFurnace');
-      } catch (err: any) {
-        logger.warn(`Smelt: error cleaning up breakFurnace: ${err.message}`);
-      }
-    }
-    
-    if (placeFurnace && typeof placeFurnace.onStateExited === 'function') {
-      try {
-        placeFurnace.onStateExited();
-        logger.debug('Smelt: cleaned up placeFurnace');
-      } catch (err: any) {
-        logger.warn(`Smelt: error cleaning up placeFurnace: ${err.message}`);
-      }
-    }
-    
-    if (followDrop && typeof followDrop.onStateExited === 'function') {
-      try {
-        followDrop.onStateExited();
-        logger.debug('Smelt: cleaned up followDrop');
-      } catch (err: any) {
-        logger.warn(`Smelt: error cleaning up followDrop: ${err.message}`);
-      }
-    }
-    
-    try {
-      bot.clearControlStates();
-      logger.debug('Smelt: cleared bot control states');
-    } catch (err: any) {
-      logger.debug(`Smelt: error clearing control states: ${err.message}`);
-    }
+  // findDrop -> exit (timeout)
+  let findDropStartTime = 0;
+  const findDropOnEnter = findDrop.onStateEntered;
+  findDrop.onStateEntered = () => {
+    findDropStartTime = Date.now();
+    if (findDropOnEnter) findDropOnEnter();
   };
-  
+  const findDropToExitTimeout = new StateTransition({
+    parent: findDrop,
+    child: exit,
+    name: 'Smelt: find drop -> exit (timeout)',
+    shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 3000,
+    onTransition: () => {
+      const have = getItemCountInInventory(bot, wantItem);
+      logger.warn(`Smelt: Could not find dropped furnace, exiting (${have} ${wantItem})`);
+    }
+  });
+
+  // followDrop -> exit (picked up)
+  const followDropToExitPickedUp = new StateTransition({
+    parent: followDrop,
+    child: exit,
+    name: 'Smelt: follow drop -> exit (picked up)',
+    shouldTransition: () => hasPickedUpFurnace(),
+    onTransition: () => {
+      const have = getItemCountInInventory(bot, wantItem);
+      logger.info(`Smelt: Collected furnace, complete (${have} ${wantItem})`);
+    }
+  });
+
+  // followDrop -> exit (timeout)
+  let followStartTime = 0;
+  const followOnEnter = followDrop.onStateEntered;
+  followDrop.onStateEntered = () => {
+    followStartTime = Date.now();
+    if (followOnEnter) followOnEnter();
+  };
+  const followDropToExitTimeout = new StateTransition({
+    parent: followDrop,
+    child: exit,
+    name: 'Smelt: follow drop -> exit (timeout)',
+    shouldTransition: () => Date.now() - followStartTime > 5000,
+    onTransition: () => {
+      const have = getItemCountInInventory(bot, wantItem);
+      logger.warn(`Smelt: Follow timeout, exiting (${have} ${wantItem})`);
+    }
+  });
+
+  const transitions = [
+    enterToExit,
+    enterToPlace,
+    placeToExitFailed,
+    placeToSmelt,
+    smeltToBreak,
+    breakToWait,
+    waitToExitPickedUp,
+    waitToFindDrop,
+    findDropToExitPickedUp,
+    findDropToFollow,
+    findDropToExitTimeout,
+    followDropToExitPickedUp,
+    followDropToExitTimeout
+  ];
+
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+
+  stateMachine.onStateExited = function () {
+    for (const sub of [placeFurnace, breakFurnace, followDrop]) {
+      if (sub && typeof sub.onStateExited === 'function') {
+        try { sub.onStateExited(); } catch (_) {}
+      }
+    }
+    try { bot.clearControlStates(); } catch (_) {}
+  };
+
   return stateMachine;
 }
 
 export default createSmeltState;
-
