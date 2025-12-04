@@ -10,6 +10,7 @@ import { ReactiveBehaviorExecutorClass } from './collector/reactive_behavior_exe
 import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_behavior';
 import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_defense_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
+import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
 import { BehaviorScheduler } from './collector/behavior_scheduler';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
@@ -94,6 +95,7 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
+  reactiveBehaviorRegistry.register(foodEatingBehavior);
 
   const reactiveBehaviorExecutor = new ReactiveBehaviorExecutorClass(bot, reactiveBehaviorRegistry);
   behaviorScheduler = new BehaviorScheduler(bot, workerManager);
