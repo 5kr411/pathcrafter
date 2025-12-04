@@ -1,11 +1,17 @@
+import {
+  StateTransition,
+  BehaviorIdle,
+  NestedStateMachine,
+  StateBehavior
+} from 'mineflayer-statemachine';
+
 import { ReactiveBehavior, Bot } from './types';
 import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
 import logger from '../../../utils/logger';
 
 const minecraftData = require('minecraft-data');
 
-const EATING_COOLDOWN_MS = 2000;
-const EATING_IN_PROGRESS_COOLDOWN_MS = 500;
+const EATING_COOLDOWN_MS = 3000;
 
 let lastEatAttempt = 0;
 
@@ -203,6 +209,149 @@ function shouldEat(bot: Bot): boolean {
   return bestFood !== null;
 }
 
+function stopBotActions(bot: Bot): void {
+  try {
+    if (typeof (bot as any)?.clearControlStates === 'function') {
+      (bot as any).clearControlStates();
+    }
+  } catch (_) {}
+
+  try {
+    const pathfinder = (bot as any)?.pathfinder;
+    if (pathfinder && typeof pathfinder.stop === 'function') {
+      pathfinder.stop();
+    }
+  } catch (_) {}
+
+  try {
+    if (typeof (bot as any)?.stopDigging === 'function') {
+      (bot as any).stopDigging();
+    }
+  } catch (_) {}
+}
+
+interface EatFoodTargets {
+  food: FoodItem | null;
+  sendChat: ((msg: string) => void) | null;
+}
+
+class BehaviorEatFood implements StateBehavior {
+  public stateName = 'EatFood';
+  public active = false;
+  private finished = false;
+  private success = false;
+
+  constructor(
+    private readonly bot: any,
+    private readonly targets: EatFoodTargets
+  ) {}
+
+  onStateEntered(): void {
+    this.finished = false;
+    this.success = false;
+    this.active = true;
+
+    this.executeEating();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+
+  isFinished(): boolean {
+    return this.finished;
+  }
+
+  wasSuccessful(): boolean {
+    return this.success;
+  }
+
+  private async executeEating(): Promise<void> {
+    const food = this.targets.food;
+    if (!food) {
+      this.finished = true;
+      this.success = false;
+      return;
+    }
+
+    try {
+      await this.bot.equip(food.item, 'hand');
+
+      const heldItem = this.bot?.heldItem;
+      if (!heldItem || heldItem.name !== food.item.name) {
+        logger.debug(`FoodEating: failed to equip ${food.item.name}`);
+        this.finished = true;
+        this.success = false;
+        return;
+      }
+
+      await this.bot.consume();
+
+      logger.info(`FoodEating: ate ${food.item.name}`);
+      if (this.targets.sendChat) {
+        this.targets.sendChat(`ate ${food.item.name}`);
+      }
+
+      this.finished = true;
+      this.success = true;
+    } catch (err: any) {
+      logger.debug(`FoodEating: error eating food - ${err?.message || err}`);
+      this.finished = true;
+      this.success = false;
+    }
+  }
+}
+
+function createFoodEatingState(bot: Bot, targets: EatFoodTargets): any {
+  const enter = new BehaviorIdle();
+  const exit = new BehaviorIdle();
+  const eatFood = new BehaviorEatFood(bot, targets);
+  let reachedExit = false;
+
+  const enterToEat = new StateTransition({
+    parent: enter,
+    child: eatFood,
+    name: 'food-eating: enter -> eat',
+    shouldTransition: () => true,
+    onTransition: () => {
+      logger.debug('FoodEating: starting eat state');
+    }
+  });
+
+  const eatToExit = new StateTransition({
+    parent: eatFood,
+    child: exit,
+    name: 'food-eating: eat -> exit',
+    shouldTransition: () => eatFood.isFinished(),
+    onTransition: () => {
+      reachedExit = true;
+      setCooldown(EATING_COOLDOWN_MS);
+      logger.debug(`FoodEating: eat finished, success=${eatFood.wasSuccessful()}`);
+    }
+  });
+
+  const stateMachine = new NestedStateMachine([enterToEat, eatToExit], enter, exit);
+
+  (stateMachine as any).isFinished = () => reachedExit;
+  (stateMachine as any).wasSuccessful = () => eatFood.wasSuccessful();
+
+  stateMachine.onStateExited = function() {
+    logger.debug('FoodEating: cleaning up on state exit');
+
+    if (eatFood && typeof eatFood.onStateExited === 'function') {
+      try {
+        eatFood.onStateExited();
+      } catch (_) {}
+    }
+
+    try {
+      bot.clearControlStates?.();
+    } catch (_) {}
+  };
+
+  return stateMachine;
+}
+
 export const foodEatingBehavior: ReactiveBehavior = {
   priority: 50,
   name: 'food_eating',
@@ -216,6 +365,9 @@ export const foodEatingBehavior: ReactiveBehavior = {
       ? (bot as any).safeChat.bind(bot)
       : null;
 
+    stopBotActions(bot);
+    setCooldown(EATING_COOLDOWN_MS);
+
     const bestFood = findBestEatableFood(bot);
 
     if (!bestFood) {
@@ -224,38 +376,60 @@ export const foodEatingBehavior: ReactiveBehavior = {
       return null;
     }
 
-    logger.debug(`FoodEating: attempting to eat ${bestFood.item.name} (${bestFood.foodInfo.foodPoints} points, ${bestFood.foodInfo.saturation} saturation)`);
-    setCooldown(EATING_IN_PROGRESS_COOLDOWN_MS);
+    logger.info(`FoodEating: eating ${bestFood.item.name} (${bestFood.foodInfo.foodPoints} points, ${bestFood.foodInfo.saturation} saturation)`);
 
-    try {
-      await (bot as any).equip(bestFood.item, 'hand');
+    const targets: EatFoodTargets = {
+      food: bestFood,
+      sendChat
+    };
 
-      const heldItem = (bot as any)?.heldItem;
-      if (!heldItem || heldItem.name !== bestFood.item.name) {
-        logger.debug(`FoodEating: failed to equip ${bestFood.item.name}`);
-        setCooldown(EATING_COOLDOWN_MS);
-        executor.finish(false);
-        return null;
+    const stateMachine = createFoodEatingState(bot, targets);
+
+    let finished = false;
+    let completionInterval: NodeJS.Timeout | null = null;
+
+    const clearCompletionInterval = () => {
+      if (completionInterval) {
+        clearInterval(completionInterval);
+        completionInterval = null;
       }
+    };
 
-      await (bot as any).consume();
-
-      logger.info(`FoodEating: ate ${bestFood.item.name}`);
-      if (sendChat) {
-        sendChat(`ate ${bestFood.item.name}`);
+    const finishEating = (success: boolean) => {
+      if (finished) {
+        return;
       }
+      finished = true;
+      clearCompletionInterval();
+      executor.finish(success);
+    };
 
-      setCooldown(EATING_COOLDOWN_MS);
-      executor.finish(true);
-      return null;
-    } catch (err: any) {
-      logger.debug(`FoodEating: error eating food - ${err?.message || err}`);
-      setCooldown(EATING_COOLDOWN_MS);
-      executor.finish(false);
-      return null;
-    }
+    const checkCompletion = () => {
+      try {
+        if (typeof (stateMachine as any).isFinished === 'function' && (stateMachine as any).isFinished()) {
+          const success = typeof (stateMachine as any).wasSuccessful === 'function' 
+            ? (stateMachine as any).wasSuccessful() 
+            : true;
+          finishEating(success);
+        }
+      } catch (_) {}
+    };
+
+    completionInterval = setInterval(checkCompletion, 100);
+
+    const originalOnStateExited = stateMachine.onStateExited;
+    stateMachine.onStateExited = function(this: any) {
+      clearCompletionInterval();
+      if (originalOnStateExited) {
+        try {
+          originalOnStateExited.call(this);
+        } catch (_) {}
+      }
+      finishEating(true);
+    };
+
+    return stateMachine;
   },
 
   onDeactivate: () => {}
 };
-
