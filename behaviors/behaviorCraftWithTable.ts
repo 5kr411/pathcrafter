@@ -240,7 +240,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
   // findDrop -> exit (timeout, no drop found)
   let findDropStartTime = 0;
-  const findDropOnEnter = findDrop.onStateEntered;
+  const findDropOnEnter = findDrop.onStateEntered?.bind(findDrop);
   findDrop.onStateEntered = () => {
     findDropStartTime = Date.now();
     if (findDropOnEnter) findDropOnEnter();
@@ -270,7 +270,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
   // followDrop -> exit (timeout)
   let followStartTime = 0;
-  const followOnEnter = followDrop.onStateEntered;
+  const followOnEnter = followDrop.onStateEntered?.bind(followDrop);
   followDrop.onStateEntered = () => {
     followStartTime = Date.now();
     if (followOnEnter) followOnEnter();

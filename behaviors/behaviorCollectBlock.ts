@@ -280,12 +280,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       Array.isArray(entity.metadata);
     if (!isItem) return false;
 
-    const targetPos = targets.blockPosition || targets.position;
+    // Use lastBreakPosition if available, otherwise fall back to blockPosition
+    const targetPos = lastBreakPosition || targets.blockPosition || targets.position;
+    // Use entity.position.distanceTo since targetPos may be a plain object without distanceTo
     const distToMine =
-      targetPos && targetPos.distanceTo ? targetPos.distanceTo(entity.position) : Number.POSITIVE_INFINITY;
+      targetPos && entity.position.distanceTo ? entity.position.distanceTo(targetPos) : Number.POSITIVE_INFINITY;
 
-    // Collect any item within 3 blocks of the mined block
-    const nearMinedPos = distToMine < 3;
+    // Collect any item within DROP_COLLECT_RADIUS blocks of the mined block
+    const nearMinedPos = distToMine < DROP_COLLECT_RADIUS;
     const inBotRange = entity.position.distanceTo(botPos) < 12;
 
     if (nearMinedPos && inBotRange) {
@@ -839,6 +841,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   });
 
   let mineBlockFinishTime: number | undefined;
+  let lastBreakPosition: Vec3Like | null = null;
+  let dropsCollectedThisCycle = 0;
+  let targetCountBeforeFollow = 0;
+  const MAX_DROPS_PER_CYCLE = 8;
+  const DROP_COLLECT_RADIUS = 6;
 
   const mineBlockToFindDrop = new StateTransition({
     parent: mineBlock,
@@ -853,6 +860,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       mineBlockFinishTime = undefined;
+      // Save break position for collecting nearby drops
+      lastBreakPosition = targets.blockPosition ? { ...targets.blockPosition } : null;
+      dropsCollectedThisCycle = 0;
       try {
         const t = targets.blockPosition;
         const type = t ? bot.world?.getBlockType(t) : undefined;
@@ -879,12 +889,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => targets.entity !== null,
     onTransition: () => {
       goToBlockStartTime = Date.now();
+      targetCountBeforeFollow = getItemCountInInventory(bot, targets.itemName);
       try {
         const pos = targets.entity && targets.entity.position;
         const botPos = bot.entity?.position;
         const dist = pos && botPos && pos.distanceTo ? pos.distanceTo(botPos).toFixed(2) : 'n/a';
         const posStr = pos ? `(${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}, ${pos.z.toFixed(2)})` : 'n/a';
-        logger.debug(`find drop -> go to drop at ${posStr} dist ${dist}`);
+        logger.debug(`find drop -> go to drop at ${posStr} dist ${dist} (target count before: ${targetCountBeforeFollow})`);
       } catch (_) {
         logger.debug('find drop -> go to drop');
       }
@@ -895,15 +906,83 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: findDrop,
     child: findBlock,
     name: 'BehaviorCollectBlock: find drop -> find block',
-    shouldTransition: () => targets.entity === null,
+    shouldTransition: () => targets.entity === null && collectedCount() < targets.amount,
     onTransition: () => {
       try {
         const items = Object.values(bot.entities || {}).filter((e) => e.displayName === 'Item');
-        logger.debug('find drop -> find block (no nearby items). Nearby items count=', items.length);
+        logger.debug(`find drop -> find block (no more nearby drops after ${dropsCollectedThisCycle} collected). Nearby items count=${items.length}`);
       } catch (_) {
         logger.debug('find drop -> find block');
       }
       logNearbyItemMetadata('no-match');
+      lastBreakPosition = null;
+      dropsCollectedThisCycle = 0;
+    }
+  });
+
+  const findDropToExit = new StateTransition({
+    parent: findDrop,
+    child: exit,
+    name: 'BehaviorCollectBlock: find drop -> exit (satisfied)',
+    shouldTransition: () => targets.entity === null && collectedCount() >= targets.amount,
+    onTransition: () => {
+      logger.info(`find drop -> exit: collected ${collectedCount()}/${targets.amount} ${targets.itemName} (${dropsCollectedThisCycle} drops this cycle)`);
+      lastBreakPosition = null;
+      dropsCollectedThisCycle = 0;
+    }
+  });
+
+  // Helper to check if we reached the drop
+  const reachedDrop = () => {
+    const dropTimeouts = getDropFollowTimeoutMs();
+    const isValuable = isValuableBlock(targets.blockName);
+    const timeout = isValuable ? dropTimeouts.valuable : dropTimeouts.common;
+    const timeElapsed = Date.now() - goToBlockStartTime;
+    return goToDrop.distanceToTarget() <= 0.75 || timeElapsed > timeout;
+  };
+
+  // Helper to check if target item count increased after following
+  const targetItemIncreased = () => {
+    const currentCount = getItemCountInInventory(bot, targets.itemName);
+    return currentCount > targetCountBeforeFollow;
+  };
+
+  // If target item increased, go straight to find next block (got what we needed from this break)
+  const goToDropToFindBlockGotTarget = new StateTransition({
+    parent: goToDrop,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: go to drop -> find block (got target)',
+    shouldTransition: () => {
+      if (!reachedDrop()) return false;
+      if (collectedCount() >= targets.amount) return false;
+      return targetItemIncreased();
+    },
+    onTransition: () => {
+      dropsCollectedThisCycle++;
+      const currentCount = getItemCountInInventory(bot, targets.itemName);
+      logger.info(`go to drop -> find block (target increased ${targetCountBeforeFollow} -> ${currentCount}, ${dropsCollectedThisCycle} drops this cycle)`);
+      lastBreakPosition = null;
+      dropsCollectedThisCycle = 0;
+    }
+  });
+
+  // After collecting a drop that wasn't target, look for more nearby drops (up to MAX_DROPS_PER_CYCLE)
+  const goToDropToFindMoreDrops = new StateTransition({
+    parent: goToDrop,
+    child: findDrop,
+    name: 'BehaviorCollectBlock: go to drop -> find more drops',
+    shouldTransition: () => {
+      if (!reachedDrop()) return false;
+      if (collectedCount() >= targets.amount) return false;
+      if (targetItemIncreased()) return false; // Don't collect more if we got target
+      
+      // Check if we should collect more drops this cycle
+      return dropsCollectedThisCycle < MAX_DROPS_PER_CYCLE;
+    },
+    onTransition: () => {
+      dropsCollectedThisCycle++;
+      targets.entity = null; // Clear entity so findDrop searches again
+      logger.debug(`go to drop -> find more drops (${dropsCollectedThisCycle}/${MAX_DROPS_PER_CYCLE} this cycle, target didn't increase)`);
     }
   });
 
@@ -912,21 +991,18 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     child: findBlock,
     name: 'BehaviorCollectBlock: go to drop -> find block',
     shouldTransition: () => {
-      const dropTimeouts = getDropFollowTimeoutMs();
-      const isValuable = isValuableBlock(targets.blockName);
-      const timeout = isValuable ? dropTimeouts.valuable : dropTimeouts.common;
-      const timeElapsed = Date.now() - goToBlockStartTime;
-      return (goToDrop.distanceToTarget() <= 0.75 || timeElapsed > timeout) &&
-        collectedCount() < targets.amount;
+      if (!reachedDrop()) return false;
+      if (collectedCount() >= targets.amount) return false;
+      if (targetItemIncreased()) return false; // Handled by goToDropToFindBlockGotTarget
+      
+      // Only go to find block if we've collected enough drops this cycle
+      return dropsCollectedThisCycle >= MAX_DROPS_PER_CYCLE;
     },
     onTransition: () => {
-      const dropTimeouts = getDropFollowTimeoutMs();
-      const isValuable = isValuableBlock(targets.blockName);
-      const timeout = isValuable ? dropTimeouts.valuable : dropTimeouts.common;
-      const timeElapsed = Date.now() - goToBlockStartTime;
-      logger.debug(`go to drop -> find block: ${timeElapsed}ms elapsed (timeout: ${timeout}ms, valuable: ${isValuable})`);
+      logger.info(`go to drop -> find block (collected ${dropsCollectedThisCycle} drops this cycle, target didn't drop)`);
       logger.info(`Blocks collected: ${collectedCount()}/${targets.amount} ${targets.itemName}`);
-      logNearbyItemMetadata('timeout');
+      lastBreakPosition = null;
+      dropsCollectedThisCycle = 0;
     }
   });
 
@@ -965,7 +1041,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     goToBlockToFindBlock,
     mineBlockToFindDrop,
     findDropToGoToDrop,
+    findDropToExit,
     findDropToFindBlock,
+    goToDropToFindBlockGotTarget,
+    goToDropToFindMoreDrops,
     goToDropToFindBlock,
     goToDropToExit,
     goToBlockToExitPathfail
