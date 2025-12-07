@@ -33,6 +33,7 @@ import {
   injectWorkstationDependency
 } from './dependencyInjector';
 import { requiresCraftingTable, getIngredientCounts, hasCircularDependency } from '../utils/recipeUtils';
+import { canObtainFromBlocks } from '../utils/sourceLookup';
 import { findIngredientAlternatives } from '../utils/itemSimilarity';
 import { getSuffixTokenFromName } from '../../utils/items';
 
@@ -155,8 +156,9 @@ function createSingleCraftNode(
   // If any ingredient forms a direct conversion cycle with the result (e.g.,
   // ingot ↔ nugget or ingot ↔ block), only allow this craft path when the
   // cyclic ingredient is already present in inventory in sufficient quantity
-  // for the required number of craftings. This prevents the tree from
-  // introducing circular dependencies as acquisition strategies.
+  // for the required number of craftings, OR can be obtained through mining.
+  // This prevents the tree from introducing circular dependencies as acquisition
+  // strategies, while still allowing cycles that can be broken by mining.
   if (recipe && recipe.result && typeof recipe.result.id === 'number') {
     const resultId = recipe.result.id;
     const ingredientCounts = getIngredientCounts(recipe);
@@ -166,7 +168,11 @@ function createSingleCraftNode(
         const ingredientName = mcData.items[ingredientId]?.name;
         const haveInInventory = ingredientName ? (context.inventory?.get(ingredientName) || 0) : 0;
         const requiredForThisNode = (perCraftCount || 1) * (craftingsNeeded || 1);
-        if (haveInInventory < requiredForThisNode) {
+        
+        // Allow if we have enough in inventory OR if the ingredient can be mined
+        const canMineIngredient = ingredientName ? canObtainFromBlocks(mcData, ingredientName) : false;
+        
+        if (haveInInventory < requiredForThisNode && !canMineIngredient) {
           return; // Drop this craft node to avoid circular acquisition
         }
       }

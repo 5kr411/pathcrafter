@@ -8,9 +8,11 @@ import * as mine from './mine';
 import * as mineAnyOf from './mineAnyOf';
 import * as mineOneOf from './mineOneOf';
 import * as smelt from './smelt';
+import * as hunt from './hunt';
 
 const ACTION_HANDLERS: ActionHandler[] = [
   smelt,
+  hunt, // Hunt actions for mob drops
   craftVariant, // Check for variant crafting first
   craftInventory,
   craftTable,
@@ -55,6 +57,7 @@ export const _internals = {
   computeTargetsForMine: mine.computeTargetsForMine,
   computeTargetsForMineAnyOf: mineAnyOf.computeTargetsForMineAnyOf,
   computeTargetsForMineOneOf: mineOneOf.computeTargetsForMineOneOf,
-  computeTargetsForSmelt: smelt.computeTargetsForSmelt
+  computeTargetsForSmelt: smelt.computeTargetsForSmelt,
+  computeTargetsForHunt: hunt.computeTargetsForHunt
 };
 

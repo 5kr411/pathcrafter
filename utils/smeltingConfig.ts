@@ -8,10 +8,26 @@ import { MinecraftData } from '../action_tree/types';
  * Map output item -> array of valid input items for furnace smelting
  */
 const FURNACE_INPUTS: Record<string, string[]> = {
+  // Ores and materials
   iron_ingot: ['raw_iron'],
   gold_ingot: ['raw_gold'],
   copper_ingot: ['raw_copper'],
-  stone: ['cobblestone']
+  stone: ['cobblestone'],
+  
+  // Cooked meats
+  cooked_beef: ['beef'],
+  cooked_porkchop: ['porkchop'],
+  cooked_mutton: ['mutton'],
+  cooked_chicken: ['chicken'],
+  cooked_rabbit: ['rabbit'],
+  
+  // Cooked fish
+  cooked_salmon: ['salmon'],
+  cooked_cod: ['cod'],
+  
+  // Other food
+  baked_potato: ['potato'],
+  dried_kelp: ['kelp']
 };
 
 /**

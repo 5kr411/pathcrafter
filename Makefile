@@ -1,4 +1,4 @@
-.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield
+.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food
 
 # Build TypeScript sources
 build:
@@ -53,4 +53,7 @@ bot-hunt: build
 
 bot-shield: build
 	node dist/bots/shield_defense.js
+
+bot-food: build
+	node dist/bots/food_collection.js
 

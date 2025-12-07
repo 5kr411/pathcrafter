@@ -15,6 +15,7 @@ import * as genCraftInventory from './craftInventory';
 import * as genCraftTable from './craftTable';
 import * as genCraftVariant from './craftVariant';
 import * as genSmelt from './smelt';
+import * as genHunt from './hunt';
 
 import logger from '../utils/logger';
 
@@ -60,6 +61,15 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
   try {
     if (genSmelt && typeof genSmelt.canHandle === 'function' && genSmelt.canHandle(step)) {
       const s = genSmelt.create(bot, step);
+      if (s) return s;
+    }
+  } catch (_) {
+    // Ignore errors and try next handler
+  }
+
+  try {
+    if (genHunt && typeof genHunt.canHandle === 'function' && genHunt.canHandle(step)) {
+      const s = genHunt.create(bot, step);
       if (s) return s;
     }
   } catch (_) {
