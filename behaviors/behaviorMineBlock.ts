@@ -1,3 +1,5 @@
+import logger from '../utils/logger';
+
 interface Targets {
   position?: any;
   [key: string]: any;
@@ -38,7 +40,8 @@ export class BehaviorMineBlock {
         this.isFinished = true;
       })
       .catch((err: any) => {
-        console.log(err);
+        const errMsg = err?.message || String(err);
+        logger.warn(`BehaviorMineBlock: ${errMsg}`);
         this.isFinished = true;
       });
   }

@@ -50,6 +50,9 @@ const DROP_COLLECT_TIMEOUT = 10000;
 const DROP_COLLECT_MIN_DELAY = 500;
 const DROP_COLLECT_MAX_ATTEMPTS = 10;
 
+let lastDropLogTime = 0;
+const DROP_LOG_INTERVAL_MS = 2000;
+
 /**
  * Finds the closest huntable animal from the bot's entity list
  */
@@ -223,8 +226,8 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   
   addStateLogging(enter, 'HuntForFood:Enter', { logEnter: true });
   addStateLogging(findAnimal, 'HuntForFood:FindAnimal', { logEnter: true });
-  addStateLogging(findDrop, 'HuntForFood:FindDrop', { logEnter: true });
-  addStateLogging(goToDrop, 'HuntForFood:GoToDrop', { logEnter: true });
+  addStateLogging(findDrop, 'HuntForFood:FindDrop', { logEnter: false });
+  addStateLogging(goToDrop, 'HuntForFood:GoToDrop', { logEnter: false });
   addStateLogging(smelting, 'HuntForFood:Smelting', { logEnter: true });
   
   function calculateCurrentFoodPoints(): number {
@@ -352,7 +355,11 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     name: 'HuntForFood: find drop -> go to drop',
     shouldTransition: () => dropTargets.entity !== null,
     onTransition: () => {
-      logger.debug('HuntForFood: found drop, moving to collect');
+      const now = Date.now();
+      if (now - lastDropLogTime >= DROP_LOG_INTERVAL_MS) {
+        logger.debug('HuntForFood: found drop, moving to collect');
+        lastDropLogTime = now;
+      }
     }
   });
   

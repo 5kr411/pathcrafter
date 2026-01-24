@@ -19,10 +19,13 @@ import logger from '../../../utils/logger';
 
 const FOOD_COLLECTION_PRIORITY = 60;
 const DEFAULT_COOLDOWN_MS = 60_000; // 1 minute cooldown after failed collection
+const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000; // Only log "should activate" every 10s
 
 let foodCollectionConfig: FoodCollectionConfig = { ...DEFAULT_FOOD_CONFIG };
 let lastFailedAttempt = 0;
 let cooldownMs = DEFAULT_COOLDOWN_MS;
+let lastShouldActivateLogTime = 0;
+let lastCooldownLogTime = 0;
 
 /**
  * Updates the food collection configuration
@@ -90,16 +93,23 @@ export const foodCollectionBehavior: ReactiveBehavior = {
   shouldActivate: (bot: Bot): boolean => {
     const foodPoints = getBotFoodPoints(bot);
     const threshold = foodCollectionConfig.minFoodThreshold;
+    const now = Date.now();
     
     if (foodPoints < threshold) {
       // Check cooldown
       if (isInCooldown()) {
-        const remaining = getCooldownRemaining();
-        logger.debug(`FoodCollection: in cooldown (${remaining}s remaining)`);
+        if (now - lastCooldownLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+          const remaining = getCooldownRemaining();
+          logger.debug(`FoodCollection: in cooldown (${remaining}s remaining)`);
+          lastCooldownLogTime = now;
+        }
         return false;
       }
       
-      logger.debug(`FoodCollection: should activate - foodPoints=${foodPoints} < threshold=${threshold}`);
+      if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+        logger.debug(`FoodCollection: should activate - foodPoints=${foodPoints} < threshold=${threshold}`);
+        lastShouldActivateLogTime = now;
+      }
       return true;
     }
     
