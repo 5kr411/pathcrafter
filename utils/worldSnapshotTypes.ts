@@ -115,6 +115,12 @@ export interface Bot {
     maxDistance: number;
     count: number;
   }) => Vec3[];
+  findBlocksAsync?: (options: {
+    matching: (block: Block) => boolean;
+    maxDistance: number;
+    count: number;
+    yieldEvery?: number;
+  }) => Promise<Vec3[]>;
   blockAt?: (position: Vec3, extraInfos?: boolean) => Block | null;
 }
 

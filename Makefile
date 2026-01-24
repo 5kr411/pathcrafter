@@ -56,4 +56,3 @@ bot-shield: build
 
 bot-food: build
 	node dist/bots/food_collection.js
-

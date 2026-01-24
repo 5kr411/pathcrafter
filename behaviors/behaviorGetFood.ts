@@ -4,6 +4,7 @@
  * Tries multiple food sources in sequence with fallback:
  * 1. Hunt animals
  * 2. Collect hay bales for bread
+ * 3. Mine melon blocks for melon slices
  * 
  * Wraps the decomposed food collection behaviors.
  */
@@ -25,6 +26,7 @@ import {
 } from '../utils/foodConfig';
 import createHuntForFoodState from './behaviorHuntForFood';
 import createCollectBreadState, { BREAD_HUNGER_POINTS } from './behaviorCollectBread';
+import createCollectMelonState, { MELON_SLICE_HUNGER_POINTS } from './behaviorCollectMelon';
 
 interface Bot {
   version?: string;
@@ -46,8 +48,8 @@ interface GetFoodTargets {
   worldSnapshot?: any;
 }
 
-type FoodSource = 'hunt' | 'bread';
-type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'complete' | 'failed';
+type FoodSource = 'hunt' | 'bread' | 'melon';
+type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'melon' | 'complete' | 'failed';
 
 /**
  * Creates a state machine for acquiring food with fallback strategy
@@ -66,12 +68,14 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const selectSource = new BehaviorIdle();
   const huntingFood = new BehaviorIdle();
   const collectBread = new BehaviorIdle();
+  const collectMelon = new BehaviorIdle();
   const exit = new BehaviorIdle();
   
   addStateLogging(enter, 'GetFood:Enter', { logEnter: true });
   addStateLogging(selectSource, 'GetFood:SelectSource', { logEnter: true });
   addStateLogging(huntingFood, 'GetFood:Hunting', { logEnter: true });
   addStateLogging(collectBread, 'GetFood:Bread', { logEnter: true });
+  addStateLogging(collectMelon, 'GetFood:Melon', { logEnter: true });
   
   function getCurrentFoodPoints(): number {
     const inventory = getInventoryObject(bot);
@@ -146,6 +150,11 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       return 'bread';
     }
     
+    // Try melon
+    if (!triedSources.has('melon')) {
+      return 'melon';
+    }
+    
     // Fallback: try hunting even if no animals visible (bot can roam and find them)
     if (!triedSources.has('hunt')) {
       return 'hunt';
@@ -163,6 +172,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
         return Math.ceil(neededPoints / 8); // ~8 points per cooked meat
       case 'bread':
         return Math.ceil(neededPoints / BREAD_HUNGER_POINTS);
+      case 'melon':
+        return Math.ceil(neededPoints / MELON_SLICE_HUNGER_POINTS);
       default:
         return 1;
     }
@@ -223,6 +234,33 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
         worldSnapshot: targets.worldSnapshot,
         onComplete: (success: boolean, collected: number) => {
           logger.info(`GetFood: bread collection ${success ? 'succeeded' : 'failed'}, collected ${collected}`);
+          currentSubMachine = null;
+          
+          if (getCurrentFoodPoints() >= config.targetFoodPoints) {
+            phase = 'complete';
+          } else {
+            phase = 'selecting';
+          }
+        }
+      });
+    }
+  });
+  
+  const selectToMelon = new StateTransition({
+    parent: selectSource,
+    child: collectMelon,
+    name: 'GetFood: select -> melon',
+    shouldTransition: () => phase === 'melon',
+    onTransition: () => {
+      triedSources.add('melon');
+      const count = calculateNeededCount('melon');
+      logger.info(`GetFood: trying melon collection, need ${count} melon slices`);
+      
+      currentSubMachine = createCollectMelonState(bot, {
+        targetMelonCount: count,
+        worldSnapshot: targets.worldSnapshot,
+        onComplete: (success: boolean, collected: number) => {
+          logger.info(`GetFood: melon collection ${success ? 'succeeded' : 'failed'}, collected ${collected}`);
           currentSubMachine = null;
           
           if (getCurrentFoodPoints() >= config.targetFoodPoints) {
@@ -301,6 +339,32 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     }
   });
   
+  const melonToSelect = new StateTransition({
+    parent: collectMelon,
+    child: selectSource,
+    name: 'GetFood: melon -> select',
+    shouldTransition: () => {
+      if (!currentSubMachine) return phase === 'selecting';
+      const finished = typeof currentSubMachine.isFinished === 'function'
+        ? currentSubMachine.isFinished()
+        : false;
+      return finished && phase === 'selecting';
+    }
+  });
+  
+  const melonToExit = new StateTransition({
+    parent: collectMelon,
+    child: exit,
+    name: 'GetFood: melon -> exit',
+    shouldTransition: () => {
+      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
+      const finished = typeof currentSubMachine.isFinished === 'function'
+        ? currentSubMachine.isFinished()
+        : false;
+      return finished && (phase === 'complete' || phase === 'failed');
+    }
+  });
+  
   // Hook into hunting state to start and tick the sub-machine
   const huntingAsAny = huntingFood as any;
   const originalHuntingEntered = huntingAsAny.onStateEntered;
@@ -333,15 +397,34 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     }
   };
   
+  // Hook into melon state to start and tick the sub-machine
+  const melonAsAny = collectMelon as any;
+  const originalMelonEntered = melonAsAny.onStateEntered;
+  melonAsAny.onStateEntered = function(this: any) {
+    if (originalMelonEntered) originalMelonEntered.call(this);
+    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
+      logger.info('GetFood: starting melon sub-machine');
+      currentSubMachine.onStateEntered();
+    }
+  };
+  melonAsAny.update = function() {
+    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
+      currentSubMachine.update();
+    }
+  };
+  
   const transitions = [
     enterToSelect,
     selectToHunt,
     selectToBread,
+    selectToMelon,
     selectToExit,
     huntToSelect,
     huntToExit,
     breadToSelect,
-    breadToExit
+    breadToExit,
+    melonToSelect,
+    melonToExit
   ];
   
   const stateMachine = new NestedStateMachine(transitions, enter, exit);

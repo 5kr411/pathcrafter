@@ -227,16 +227,29 @@ export async function captureRawWorldSnapshotAsync(bot: Bot, opts: SnapshotOptio
 
   const blockAgg = new Map<string, AggregationRecord>();
 
-  // Single-pass: scan entire radius at once for maximum speed
   const tStart = Date.now();
-  const positions = (bot && typeof bot.findBlocks === 'function')
-    ? bot.findBlocks({ matching, maxDistance: maxRadius, count: maxCount })
-    : [];
-
-  logger.info(`WorldSnapshot: findBlocks(r=${maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
+  let positions: any[] = [];
+  const botAny = bot as any;
+  
+  if (botAny && typeof botAny.findBlocksAsync === 'function') {
+    positions = await botAny.findBlocksAsync({ 
+      matching, 
+      maxDistance: maxRadius, 
+      count: maxCount,
+      yieldEvery: 16
+    });
+    logger.info(`WorldSnapshot: findBlocksAsync(r=${maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
+  } else if (bot && typeof bot.findBlocks === 'function') {
+    positions = bot.findBlocks({ matching, maxDistance: maxRadius, count: maxCount });
+    logger.info(`WorldSnapshot: findBlocks(r=${maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
+  }
 
   const tProcess = Date.now();
-  for (const pos of positions) {
+  const CHUNK_SIZE = 10000;
+  let processed = 0;
+  
+  for (let i = 0; i < positions.length; i++) {
+    const pos = positions[i];
     const blk = bot.blockAt!(pos, false);
     if (!blk) continue;
     if (!includeAir && blk.name === 'air') continue;
@@ -251,6 +264,11 @@ export async function captureRawWorldSnapshotAsync(bot: Bot, opts: SnapshotOptio
     rec.sumDist += d;
     if (d < rec.closest) rec.closest = d;
     blockAgg.set(name, rec);
+    
+    processed++;
+    if (processed % CHUNK_SIZE === 0) {
+      await new Promise(resolve => setImmediate(resolve));
+    }
   }
 
   const totalBlocks = Array.from(blockAgg.values()).reduce((sum, rec) => sum + rec.count, 0);
@@ -484,8 +502,8 @@ export function scanProgressFromState(st: ScanState | null | undefined): number 
 /**
  * Performs one step of incremental scanning
  * 
- * Processes blocks for up to budgetMs milliseconds, then returns.
- * Call repeatedly until it returns true (scan complete).
+ * Uses findBlocksAsync if available to yield during scanning, preventing
+ * server timeout disconnects. Also processes blocks in chunks with yields.
  * 
  * @param st - Scan state (modified in place)
  * @param budgetMs - Time budget in milliseconds (default 20ms)
@@ -494,7 +512,6 @@ export function scanProgressFromState(st: ScanState | null | undefined): number 
 export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 20): Promise<boolean> {
   if (st.done) return true;
 
-  // Single-pass scan: just grab everything at once
   if (st.r === 0) {
     const tStart = Date.now();
     
@@ -508,14 +525,28 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 20): P
       return true;
     };
 
-    const positions = (st.bot && typeof st.bot.findBlocks === 'function')
-      ? st.bot.findBlocks({ matching, maxDistance: st.maxRadius, count: 2147483647 })
-      : [];
-
-    logger.info(`WorldSnapshot: findBlocks(r=${st.maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
+    let positions: any[] = [];
+    const botAny = st.bot as any;
+    
+    if (botAny && typeof botAny.findBlocksAsync === 'function') {
+      positions = await botAny.findBlocksAsync({ 
+        matching, 
+        maxDistance: st.maxRadius, 
+        count: 2147483647,
+        yieldEvery: 16
+      });
+      logger.info(`WorldSnapshot: findBlocksAsync(r=${st.maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
+    } else if (st.bot && typeof st.bot.findBlocks === 'function') {
+      positions = st.bot.findBlocks({ matching, maxDistance: st.maxRadius, count: 2147483647 });
+      logger.info(`WorldSnapshot: findBlocks(r=${st.maxRadius}) found ${positions.length} positions in ${Date.now() - tStart}ms`);
+    }
 
     const tProcess = Date.now();
-    for (const pos of positions) {
+    const CHUNK_SIZE = 10000;
+    let processed = 0;
+    
+    for (let i = 0; i < positions.length; i++) {
+      const pos = positions[i];
       const blk = st.bot.blockAt!(pos, false);
       if (!blk) continue;
       if (!st.includeAir && blk.name === 'air') continue;
@@ -530,6 +561,11 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 20): P
       rec.sumDist += d;
       if (d < rec.closest) rec.closest = d;
       st.blockAgg.set(name, rec);
+      
+      processed++;
+      if (processed % CHUNK_SIZE === 0) {
+        await new Promise(resolve => setImmediate(resolve));
+      }
     }
 
     const totalBlocks = Array.from(st.blockAgg.values()).reduce((sum, rec) => sum + rec.count, 0);

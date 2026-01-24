@@ -129,13 +129,14 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     return breakdown.length > 0 ? breakdown.join(', ') : 'none';
   }
 
-  function evaluateCandidate(blockName: string, required: number): EvaluationResult {
+  async function evaluateCandidateAsync(blockName: string, required: number): Promise<EvaluationResult> {
     try {
-      if (!bot || typeof bot.findBlocks !== 'function')
+      const botAny = bot as any;
+      if (!bot || (typeof bot.findBlocks !== 'function' && typeof botAny.findBlocksAsync !== 'function'))
         return { count: 0, nearest: Number.POSITIVE_INFINITY };
       const radius = (() => {
         try {
-            const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
+          const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
           if (Number.isFinite(r) && r > 0) return r;
         } catch (_) {}
         return 64;
@@ -146,7 +147,14 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
           ? mcData.blocksByName[blockName].id
           : null;
       const matcher = id != null ? id : (b: any) => b && b.name === blockName;
-      const allPositions = bot.findBlocks({ matching: matcher, maxDistance: radius, count: maxCount }) || [];
+      
+      let allPositions: Vec3Like[] = [];
+      if (typeof botAny.findBlocksAsync === 'function') {
+        allPositions = await botAny.findBlocksAsync({ matching: matcher, maxDistance: radius, count: maxCount, yieldEvery: 16 }) || [];
+      } else {
+        allPositions = bot.findBlocks!({ matching: matcher, maxDistance: radius, count: maxCount }) || [];
+      }
+      
       const positions = allPositions.filter((p) => !isPositionNearLiquid(bot, p));
       let near = Number.POSITIVE_INFINITY;
       const center = bot.entity && bot.entity.position ? bot.entity.position : { x: 0, y: 0, z: 0 };
@@ -173,7 +181,26 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     collectBehavior = null;
   }
 
-  function selectBestCandidate(): { blockName: string; itemName: string; amount: number } | null {
+  let selectionInProgress = false;
+  let selectionComplete = false;
+
+  function startSelection(): void {
+    if (selectionInProgress) return;
+    selectionInProgress = true;
+    selectionComplete = false;
+    selection.chosen = null;
+    
+    selectBestCandidateAsync().then(chosen => {
+      if (chosen) selection.chosen = chosen;
+      selectionComplete = true;
+      selectionInProgress = false;
+    }).catch(() => {
+      selectionComplete = true;
+      selectionInProgress = false;
+    });
+  }
+
+  async function selectBestCandidateAsync(): Promise<{ blockName: string; itemName: string; amount: number } | null> {
     const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
     if (list.length === 0) return null;
 
@@ -183,7 +210,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     for (const c of list) {
       if (!c || !c.blockName) continue;
       if (failedBlocks.has(c.blockName)) continue;
-      const evalRes = evaluateCandidate(c.blockName, 1);
+      const evalRes = await evaluateCandidateAsync(c.blockName, 1);
       if (evalRes.count > 0 && evalRes.nearest < bestNear) {
         bestNear = evalRes.nearest;
         best = { ...c, eval: evalRes };
@@ -225,6 +252,8 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       totalRequiredAmount = Number(targets.amount || 1);
       consecutiveFailures = 0;
       failedBlocks.clear();
+      selectionComplete = false;
+      selectionInProgress = false;
       const itemNames = getTrackedItemNames();
       for (const name of itemNames) {
         initialInventoryCounts[name] = getItemCountInInventory(bot, name);
@@ -232,9 +261,8 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       try {
         logger.debug('preparing selection...');
       } catch (_) {}
-      selection.chosen = null;
-      const chosen = selectBestCandidate();
-      if (chosen) selection.chosen = chosen;
+      // Start async selection
+      startSelection();
     }
   });
 
@@ -243,6 +271,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     child: collectBehavior,
     name: 'mine-any-of: prepare -> collect',
     shouldTransition: () => {
+      if (!selectionComplete) return false;
       if (!selection.chosen) return false;
       if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         try {
@@ -278,10 +307,12 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     child: exit,
     name: 'mine-any-of: prepare -> exit (no selection or done)',
     shouldTransition: () => {
-      const noSelection = !selection || !selection.chosen;
       const goalReached = getTotalCollected() >= totalRequiredAmount;
+      if (goalReached) return true;
+      if (!selectionComplete) return false;
+      const noSelection = !selection || !selection.chosen;
       const tooManyFailures = consecutiveFailures >= MAX_CONSECUTIVE_FAILURES;
-      return noSelection || goalReached || tooManyFailures;
+      return noSelection || tooManyFailures;
     },
     onTransition: () => {
       const collected = getTotalCollected();
@@ -339,9 +370,10 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         } catch (_) {}
       }
       
-      selection.chosen = null;
-      const chosen = selectBestCandidate();
-      if (chosen) selection.chosen = chosen;
+      selectionComplete = false;
+      selectionInProgress = false;
+      // Start async selection
+      startSelection();
     }
   });
 
