@@ -1,6 +1,10 @@
 import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
 import { ReactiveBehavior, Bot } from '../../bots/collector/reactive_behaviors/types';
 
+const createState = async () => ({
+  stateMachine: { isFinished: () => true }
+});
+
 describe('unit: ReactiveBehaviorRegistry', () => {
   let registry: ReactiveBehaviorRegistry;
 
@@ -14,7 +18,7 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'test_behavior',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior);
@@ -29,13 +33,13 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'behavior_1',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const behavior2: ReactiveBehavior = {
         name: 'behavior_2',
         priority: 30,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior1);
@@ -50,7 +54,7 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'test_behavior',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior);
@@ -65,7 +69,7 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'test_behavior',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior);
@@ -79,13 +83,13 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'behavior_1',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const behavior2: ReactiveBehavior = {
         name: 'behavior_2',
         priority: 30,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior1);
@@ -103,19 +107,19 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'low',
         priority: 10,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const mediumPriority: ReactiveBehavior = {
         name: 'medium',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const highPriority: ReactiveBehavior = {
         name: 'high',
         priority: 100,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(lowPriority);
@@ -133,19 +137,19 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'b1',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const behavior2: ReactiveBehavior = {
         name: 'b2',
         priority: 100,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const behavior3: ReactiveBehavior = {
         name: 'b3',
         priority: 75,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior1);
@@ -171,13 +175,13 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'b1',
         priority: 100,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const behavior2: ReactiveBehavior = {
         name: 'b2',
         priority: 50,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior1);
@@ -193,7 +197,7 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'active_behavior',
         priority: 100,
         shouldActivate: () => true,
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior);
@@ -208,13 +212,13 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'low',
         priority: 50,
         shouldActivate: () => true,
-        execute: async () => null
+        createState
       };
       const highPriority: ReactiveBehavior = {
         name: 'high',
         priority: 100,
         shouldActivate: () => true,
-        execute: async () => null
+        createState
       };
 
       registry.register(lowPriority);
@@ -231,19 +235,19 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         name: 'inactive_high',
         priority: 100,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
       const active: ReactiveBehavior = {
         name: 'active_medium',
         priority: 50,
         shouldActivate: () => true,
-        execute: async () => null
+        createState
       };
       const inactive2: ReactiveBehavior = {
         name: 'inactive_low',
         priority: 10,
         shouldActivate: () => false,
-        execute: async () => null
+        createState
       };
 
       registry.register(inactive1);
@@ -264,7 +268,7 @@ describe('unit: ReactiveBehaviorRegistry', () => {
           await new Promise(resolve => setTimeout(resolve, 10));
           return true;
         },
-        execute: async () => null
+        createState
       };
 
       registry.register(behavior);
@@ -281,13 +285,13 @@ describe('unit: ReactiveBehaviorRegistry', () => {
         shouldActivate: () => {
           throw new Error('Test error');
         },
-        execute: async () => null
+        createState
       };
       const goodBehavior: ReactiveBehavior = {
         name: 'good_behavior',
         priority: 50,
         shouldActivate: () => true,
-        execute: async () => null
+        createState
       };
 
       const consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
@@ -305,4 +309,3 @@ describe('unit: ReactiveBehaviorRegistry', () => {
     });
   });
 });
-

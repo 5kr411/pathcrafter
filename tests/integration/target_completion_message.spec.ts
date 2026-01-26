@@ -1,22 +1,8 @@
 import { TargetExecutor } from '../../bots/collector/target_executor';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
-import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
-
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
+import { createMockBot, createControlHarness } from '../helpers/schedulerTestUtils';
 
 describe('Target Completion Message Fix', () => {
   let mockBot: any;
-  let mockWorkerManager: TestWorkerManager;
   let mockSafeChat: jest.Mock;
   let targetExecutor: TargetExecutor;
   let chatMessages: string[];
@@ -33,20 +19,19 @@ describe('Target Completion Message Fix', () => {
     mockSafeChat = jest.fn((msg: string) => {
       chatMessages.push(msg);
     });
+    mockBot.safeChat = mockSafeChat;
 
-    const harness = createSchedulerHarness(mockBot);
-    mockWorkerManager = harness.workerManager;
-
-    const reactiveExecutor = new ReactiveBehaviorExecutorClass(mockBot, new ReactiveBehaviorRegistry());
-
-    targetExecutor = new TargetExecutor(mockBot, mockWorkerManager as any, mockSafeChat, {
-      snapshotRadii: [32],
-      snapshotYHalf: null,
-      pruneWithWorld: true,
-      combineSimilarNodes: false,
-      perGenerator: 1,
-      toolDurabilityThreshold: 0.1
-    }, reactiveExecutor, undefined);
+    const harness = createControlHarness(mockBot, {
+      config: {
+        snapshotRadii: [32],
+        snapshotYHalf: null,
+        pruneWithWorld: true,
+        combineSimilarNodes: false,
+        perGenerator: 1,
+        toolDurabilityThreshold: 0.1
+      }
+    });
+    targetExecutor = harness.controlStack.targetLayer;
   });
 
   afterEach(() => {
@@ -124,4 +109,3 @@ describe('Target Completion Message Fix', () => {
     expect(allMessages).not.toContain('plan complete');
   });
 });
-

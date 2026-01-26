@@ -5,12 +5,10 @@ import { Bot, Target, PendingEntry } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext } from './execution_context';
-import { BehaviorScheduler, ScheduledBehavior, BehaviorFrameContext } from './behavior_scheduler';
-import { createTrackedBotStateMachine } from './state_machine_utils';
+import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
 
 const INVENTORY_CHECK_DELAY_MS = 250;
 const MAX_INVENTORY_CHECK_ATTEMPTS = 5;
-const TOOL_REPLACEMENT_PRIORITY = 80;
 
 function countDurableTools(bot: Bot, toolName: string, threshold: number): number {
   let total = 0;
@@ -50,24 +48,29 @@ function countDurableTools(bot: Bot, toolName: string, threshold: number): numbe
   return total;
 }
 
-class ToolReplacementBehavior implements ScheduledBehavior {
-  readonly type = 'tool-replacement';
-  readonly priority = TOOL_REPLACEMENT_PRIORITY;
-  readonly id: string;
-  readonly name: string;
+interface ToolReplacementRequest {
+  toolName: string;
+  resolve: (success: boolean) => void;
+}
 
-  private schedulerContext: BehaviorFrameContext | null = null;
-  private activeStateMachine: any = null;
-  private completionResolver: ((success: boolean) => void) | null = null;
-  private readonly completionPromise: Promise<boolean>;
-  private finished = false;
-  private inventoryCheckTimeout: NodeJS.Timeout | null = null;
-
-  private readonly target: Target;
+class ToolReplacementTask {
   private readonly startInventory: InventoryObject;
+  private readonly target: Target;
   private readonly requiredGain: number;
   private readonly startDurableCount: number;
   private readonly mcVersion: string;
+  private readonly stateMachine: NestedStateMachine;
+
+  private planOutcome: 'pending' | 'execute' | 'success' | 'failure' = 'pending';
+  private planPath: any[] | null = null;
+  private executionDone = false;
+  private validationDone = false;
+  private validationSuccess = false;
+  private finished = false;
+  private success = false;
+  private activePathState: any = null;
+  private validationAttempt = 0;
+  private nextValidationAt = 0;
 
   constructor(
     private readonly bot: Bot,
@@ -81,11 +84,8 @@ class ToolReplacementBehavior implements ScheduledBehavior {
       perGenerator: number;
       toolDurabilityThreshold: number;
     },
-    toolName: string,
-    runId: number
+    toolName: string
   ) {
-    this.id = `tool-replacement-${toolName}-${runId}`;
-    this.name = `ToolReplacement:${toolName}`;
     this.startInventory = getInventoryObject(this.bot);
     const existingCount = this.startInventory[toolName] || 0;
     this.requiredGain = 1;
@@ -93,195 +93,268 @@ class ToolReplacementBehavior implements ScheduledBehavior {
     this.target = { item: toolName, count: desiredTotal };
     this.startDurableCount = countDurableTools(this.bot, toolName, this.config.toolDurabilityThreshold);
     this.mcVersion = this.bot.version || '1.20.1';
-    this.completionPromise = new Promise<boolean>((resolve) => {
-      this.completionResolver = resolve;
-    });
+
+    const enter = new BehaviorIdle();
+    const plan = new ToolPlanState(this);
+    const execute = new ToolExecuteState(this);
+    const validate = new ToolValidateState(this);
+    const success = new ToolResultState(this, true);
+    const failure = new ToolResultState(this, false);
+    const exit = new BehaviorIdle();
+
+    const transitions = [
+      new StateTransition({
+        parent: enter,
+        child: plan,
+        name: 'tool-replace: enter -> plan',
+        shouldTransition: () => true
+      }),
+      new StateTransition({
+        parent: plan,
+        child: execute,
+        name: 'tool-replace: plan -> execute',
+        shouldTransition: () => this.planOutcome === 'execute'
+      }),
+      new StateTransition({
+        parent: plan,
+        child: success,
+        name: 'tool-replace: plan -> success',
+        shouldTransition: () => this.planOutcome === 'success'
+      }),
+      new StateTransition({
+        parent: plan,
+        child: failure,
+        name: 'tool-replace: plan -> failure',
+        shouldTransition: () => this.planOutcome === 'failure'
+      }),
+      new StateTransition({
+        parent: execute,
+        child: validate,
+        name: 'tool-replace: execute -> validate',
+        shouldTransition: () => this.executionDone
+      }),
+      new StateTransition({
+        parent: validate,
+        child: success,
+        name: 'tool-replace: validate -> success',
+        shouldTransition: () => this.validationDone && this.validationSuccess
+      }),
+      new StateTransition({
+        parent: validate,
+        child: failure,
+        name: 'tool-replace: validate -> failure',
+        shouldTransition: () => this.validationDone && !this.validationSuccess
+      }),
+      new StateTransition({
+        parent: success,
+        child: exit,
+        name: 'tool-replace: success -> exit',
+        shouldTransition: () => this.finished
+      }),
+      new StateTransition({
+        parent: failure,
+        child: exit,
+        name: 'tool-replace: failure -> exit',
+        shouldTransition: () => this.finished
+      })
+    ];
+
+    this.stateMachine = new NestedStateMachine(transitions, enter, exit);
+    (this.stateMachine as any).isFinished = () => this.finished;
+    (this.stateMachine as any).wasSuccessful = () => this.success;
   }
 
-  waitForCompletion(): Promise<boolean> {
-    return this.completionPromise;
+  start(): void {
+    if (typeof this.stateMachine.onStateEntered === 'function') {
+      this.stateMachine.onStateEntered();
+    }
+  }
+
+  update(): void {
+    this.stateMachine.update();
   }
 
   isFinished(): boolean {
     return this.finished;
   }
 
-  async abort(): Promise<void> {
-    await this.finish(false);
+  wasSuccessful(): boolean {
+    return this.success;
   }
 
-  async activate(context: BehaviorFrameContext): Promise<void> {
-    this.schedulerContext = context;
-    await this.startPlanning();
+  abort(): void {
+    this.finished = true;
+    this.success = false;
+    this.cleanupPathState();
   }
 
-  async onSuspend(context: BehaviorFrameContext): Promise<void> {
-    try {
-      context.detachStateMachine();
-      this.bot.clearControlStates();
-    } catch (err: any) {
-      logger.debug(`ToolReplacementBehavior: error during suspend - ${err?.message || err}`);
-    }
+  beginPlanning(): void {
+    this.planOutcome = 'pending';
+    this.planPath = null;
+    const plannerId = `tool_replacement_${Date.now()}_${Math.random()}`;
+
+    Promise.resolve()
+      .then(async () => {
+        const inventoryMap = new Map<string, number>(Object.entries(this.startInventory));
+        const result = await captureSnapshotForTarget(
+          this.bot,
+          this.target,
+          inventoryMap,
+          this.config.snapshotRadii,
+          this.config.snapshotYHalf,
+          this.config.pruneWithWorld,
+          this.config.combineSimilarNodes
+        );
+        const snapshot = result.snapshot;
+        this.workerManager.postPlanningRequest(
+          plannerId,
+          this.target,
+          snapshot,
+          this.startInventory,
+          this.mcVersion,
+          this.config.perGenerator,
+          this.config.pruneWithWorld,
+          this.config.combineSimilarNodes,
+          (entry, ranked, ok, error) => {
+            this.handlePlanningResult(entry, ranked, ok, error);
+          }
+        );
+      })
+      .catch((err: any) => {
+        logger.info(`ToolReplacement: snapshot capture failed - ${err?.message || err}`);
+        this.planOutcome = 'failure';
+      });
   }
 
-  async onResume(context: BehaviorFrameContext): Promise<void> {
-    this.schedulerContext = context;
-    this.rebindActiveStateMachine();
-  }
-
-  async onAbort(): Promise<void> {
-    await this.finish(false);
-  }
-
-  async onComplete(): Promise<void> {
-    // No-op; completion handled in finish().
-  }
-
-  private async startPlanning(): Promise<void> {
-    try {
-      const inventoryMap = new Map<string, number>(Object.entries(this.startInventory));
-      const result = await captureSnapshotForTarget(
-        this.bot,
-        this.target,
-        inventoryMap,
-        this.config.snapshotRadii,
-        this.config.snapshotYHalf,
-        this.config.pruneWithWorld,
-        this.config.combineSimilarNodes
-      );
-
-      const snapshot = result.snapshot;
-      const plannerId = `tool_replacement_${Date.now()}_${Math.random()}`;
-
-      if (this.schedulerContext) {
-        this.schedulerContext.attachPlannerHandler(plannerId, (entry, ranked, ok, error) => {
-          this.handlePlanningResult(entry, ranked, ok, error);
-        });
-      }
-
-      this.workerManager.postPlanningRequest(
-        plannerId,
-        this.target,
-        snapshot,
-        this.startInventory,
-        this.mcVersion,
-        this.config.perGenerator,
-        this.config.pruneWithWorld,
-        this.config.combineSimilarNodes,
-        { frameId: this.schedulerContext?.frameId }
-      );
-    } catch (err: any) {
-      logger.info(`ToolReplacementBehavior: snapshot capture failed - ${err?.message || err}`);
-      await this.finish(false);
-    }
-  }
-
-  private handlePlanningResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
-    if (entry?.id && this.schedulerContext) {
-      this.schedulerContext.detachPlannerHandler(entry.id);
-    }
-    if (this.finished) {
-      return;
-    }
-
+  private handlePlanningResult(_entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
     if (!ok) {
       const errorMsg = error ? String(error) : 'unknown error';
-      logger.info(`ToolReplacementBehavior: planning failed - ${errorMsg}`);
-      void this.finish(false);
+      logger.info(`ToolReplacement: planning failed - ${errorMsg}`);
+      this.planOutcome = 'failure';
       return;
     }
 
     if (!Array.isArray(ranked) || ranked.length === 0) {
-      logger.info('ToolReplacementBehavior: planning produced no paths');
-      void this.finish(false);
+      logger.info('ToolReplacement: planning produced no paths');
+      this.planOutcome = 'failure';
       return;
     }
 
     const best = ranked[0];
-    const targetDesc = `${this.target.item} x${this.target.count}`;
-    logger.info(`ToolReplacementBehavior: executing plan with ${best.length} steps for ${targetDesc}`);
+    if (!Array.isArray(best)) {
+      this.planOutcome = 'failure';
+      return;
+    }
 
     if (best.length === 0) {
       if (this.validateSuccess()) {
-        void this.finish(true);
+        this.planOutcome = 'success';
       } else {
-        logger.info('ToolReplacementBehavior: empty plan but requirement not satisfied');
-        void this.finish(false);
+        logger.info('ToolReplacement: empty plan but requirement not satisfied');
+        this.planOutcome = 'failure';
       }
       return;
     }
 
+    this.planPath = best;
+    this.planOutcome = 'execute';
+  }
+
+  beginExecution(): void {
+    if (!this.planPath) {
+      this.executionDone = true;
+      return;
+    }
+
+    const executionContext = createExecutionContext(
+      this.config.toolDurabilityThreshold,
+      undefined,
+      undefined
+    );
+
     try {
-      const executionContext = createExecutionContext(
-        this.config.toolDurabilityThreshold,
-        undefined,
-        undefined
-      );
       const sm = buildStateMachineForPath(
         this.bot,
-        best,
+        this.planPath,
         (success: boolean) => {
-          this.finishExecution(success).catch((err: any) => {
-            logger.debug(`ToolReplacementBehavior: finishExecution error - ${err?.message || err}`);
-          });
+          this.executionDone = true;
+          if (!success) {
+            this.validationSuccess = false;
+          }
         },
         executionContext
       );
-      this.activeStateMachine = sm;
-      this.bindStateMachine();
+      this.activePathState = sm;
     } catch (err: any) {
-      logger.info(`ToolReplacementBehavior: failed to start execution - ${err?.message || err}`);
-      void this.finish(false);
+      logger.info(`ToolReplacement: failed to start execution - ${err?.message || err}`);
+      this.executionDone = true;
     }
   }
 
-  private bindStateMachine(): void {
-    if (!this.schedulerContext || !this.activeStateMachine) {
-      return;
+  updateExecution(): void {
+    if (this.activePathState && typeof this.activePathState.update === 'function') {
+      try {
+        this.activePathState.update();
+      } catch (_) {}
     }
-    const tracked = createTrackedBotStateMachine(this.bot, this.activeStateMachine);
-    this.schedulerContext.attachStateMachine(tracked.botStateMachine, tracked.listener.bind(this.bot));
   }
 
-  private rebindActiveStateMachine(): void {
-    if (!this.schedulerContext || !this.activeStateMachine) {
-      return;
-    }
-    this.bindStateMachine();
+  beginValidation(): void {
+    this.validationAttempt = 0;
+    this.validationDone = false;
+    this.validationSuccess = false;
+    this.nextValidationAt = Date.now();
   }
 
-  private async finishExecution(success: boolean): Promise<void> {
-    logger.info(`ToolReplacementBehavior: finishExecution called (success=${success})`);
-    this.logInventoryState('finishExecution');
-    if (await this.tryFinalizeSuccess()) {
-      if (!success) {
-        logger.warn('ToolReplacementBehavior: execution reported failure but inventory requirement is satisfied');
-      }
+  updateValidation(): void {
+    if (this.validationDone) return;
+    const now = Date.now();
+    if (now < this.nextValidationAt) return;
+
+    this.validationAttempt += 1;
+
+    if (this.validateSuccess()) {
+      this.validationSuccess = true;
+      this.validationDone = true;
       return;
     }
 
-    if (!success) {
-      logger.info('ToolReplacementBehavior: execution reported failure, waiting for inventory confirmation');
-      this.logInventoryState('waiting-after-failure');
-      this.scheduleInventoryValidation(0);
+    if (this.validationAttempt >= MAX_INVENTORY_CHECK_ATTEMPTS) {
+      this.validationSuccess = false;
+      this.validationDone = true;
       return;
     }
 
-    logger.info('ToolReplacementBehavior: awaiting inventory update before finalizing');
-    this.logInventoryState('waiting-after-success');
-    this.scheduleInventoryValidation(0);
+    this.nextValidationAt = now + INVENTORY_CHECK_DELAY_MS;
   }
 
-  private async tryFinalizeSuccess(): Promise<boolean> {
-    const validated = this.validateSuccess();
-    logger.info(`ToolReplacementBehavior: tryFinalizeSuccess validation=${validated}`);
-    if (!validated) {
+  finalizeSuccess(): void {
+    this.success = true;
+    this.finished = true;
+    this.emitSuccessAnnouncement();
+    this.cleanupPathState();
+  }
+
+  finalizeFailure(): void {
+    this.success = false;
+    this.finished = true;
+    this.cleanupPathState();
+  }
+
+  private validateSuccess(): boolean {
+    try {
+      const invNow = getInventoryObject(this.bot);
+      const startCount = this.startInventory[this.target.item] || 0;
+      const currentCount = invNow[this.target.item] || 0;
+      const gained = currentCount - startCount;
+      const durableNow = countDurableTools(this.bot, this.target.item, this.config.toolDurabilityThreshold);
+      const durableGain = durableNow - this.startDurableCount;
+      const gainedSatisfied = this.requiredGain > 0 && gained >= this.requiredGain;
+      const durableSatisfied = durableGain > 0;
+      return gainedSatisfied || durableSatisfied;
+    } catch (_) {
       return false;
     }
-
-    this.emitSuccessAnnouncement();
-    await this.finish(true);
-    return true;
   }
 
   private emitSuccessAnnouncement(): void {
@@ -294,122 +367,113 @@ class ToolReplacementBehavior implements ScheduledBehavior {
     const announcedGain = gained > 0 ? gained : durableGain > 0 ? durableGain : 0;
 
     if (announcedGain > 0) {
-      logger.info(`ToolReplacementBehavior: collected ${this.target.item} x${announcedGain}`);
+      logger.info(`ToolReplacement: collected ${this.target.item} x${announcedGain}`);
       this.safeChat(`collected ${this.target.item} x${announcedGain}`);
     } else {
-      logger.info(`ToolReplacementBehavior: success confirmed but no gain detected for ${this.target.item}`);
+      logger.info(`ToolReplacement: success confirmed but no gain detected for ${this.target.item}`);
     }
   }
 
-  private scheduleInventoryValidation(attempt: number): void {
-    if (attempt >= MAX_INVENTORY_CHECK_ATTEMPTS) {
-      logger.info('ToolReplacementBehavior: inventory update not observed, marking replacement as failed');
-      void this.finish(false);
-      return;
-    }
-
-    if (this.inventoryCheckTimeout) {
-      clearTimeout(this.inventoryCheckTimeout);
-      this.inventoryCheckTimeout = null;
-    }
-
-    logger.info(`ToolReplacementBehavior: scheduling inventory validation attempt ${attempt + 1}/${MAX_INVENTORY_CHECK_ATTEMPTS}`);
-    this.inventoryCheckTimeout = setTimeout(() => {
-      this.inventoryCheckTimeout = null;
-
-      if (this.finished) {
-        logger.info('ToolReplacementBehavior: inventory validation fired but behavior already finished');
-        return;
-      }
-
-      logger.info(`ToolReplacementBehavior: running inventory validation attempt ${attempt + 1}`);
-      this.logInventoryState(`validation-attempt-${attempt + 1}`);
-      if (this.validateSuccess()) {
-        void this.finish(true);
-        return;
-      }
-
-      this.scheduleInventoryValidation(attempt + 1);
-    }, INVENTORY_CHECK_DELAY_MS);
-  }
-
-  private validateSuccess(): boolean {
-    try {
-      const invNow = getInventoryObject(this.bot);
-      const startCount = this.startInventory[this.target.item] || 0;
-      const currentCount = invNow[this.target.item] || 0;
-      const gained = currentCount - startCount;
-      const durableNow = countDurableTools(this.bot, this.target.item, this.config.toolDurabilityThreshold);
-      const durableGain = durableNow - this.startDurableCount;
-      logger.info(
-        `ToolReplacementBehavior: validation for ${this.target.item} - start: ${startCount}, current: ${currentCount}, gained: ${gained}, requiredGain: ${this.requiredGain}, durableGain: ${durableGain}`
-      );
-      const gainedSatisfied = this.requiredGain > 0 && gained >= this.requiredGain;
-      const durableSatisfied = durableGain > 0;
-      return gainedSatisfied || durableSatisfied;
-    } catch (err: any) {
-      logger.debug(`ToolReplacementBehavior: error validating success: ${err?.message || err}`);
-      return false;
-    }
-  }
-
-  private async finish(success: boolean): Promise<void> {
-    if (this.finished) {
-      return;
-    }
-    this.finished = true;
-
-    this.logInventoryState(`finish(${success})`);
-
-    if (this.inventoryCheckTimeout) {
-      clearTimeout(this.inventoryCheckTimeout);
-      this.inventoryCheckTimeout = null;
-    }
-
-    if (this.schedulerContext) {
+  private cleanupPathState(): void {
+    if (this.activePathState && typeof this.activePathState.onStateExited === 'function') {
       try {
-        this.schedulerContext.detachStateMachine();
+        this.activePathState.onStateExited();
       } catch (_) {}
     }
-
-    const context = this.schedulerContext;
-    this.schedulerContext = null;
-    this.activeStateMachine = null;
-
-    if (context) {
-      await context.scheduler.completeFrame(context.frameId, success);
-    }
-
-    if (this.completionResolver) {
-      try {
-        this.completionResolver(success);
-      } catch (err: any) {
-        logger.debug(`ToolReplacementBehavior: error resolving promise: ${err?.message || err}`);
-      }
-      this.completionResolver = null;
-    }
-  }
-
-  private logInventoryState(label: string): void {
-    const targetItem = this.target?.item;
-    const invNow = getInventoryObject(this.bot);
-    const startCount = targetItem ? this.startInventory[targetItem] || 0 : null;
-    const currentCount = targetItem ? invNow[targetItem] || 0 : null;
-    logger.info(
-      `ToolReplacementBehavior: [${label}] target=${targetItem ?? 'none'} start=${startCount ?? 'n/a'} current=${currentCount ?? 'n/a'} requiredGain=${this.requiredGain}`
-    );
+    this.activePathState = null;
   }
 }
 
-export class ToolReplacementExecutor {
-  private runCounter = 0;
+class ToolPlanState implements StateBehavior {
+  public stateName = 'ToolPlan';
+  public active = false;
+
+  constructor(private readonly task: ToolReplacementTask) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.task.beginPlanning();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class ToolExecuteState implements StateBehavior {
+  public stateName = 'ToolExecute';
+  public active = false;
+
+  constructor(private readonly task: ToolReplacementTask) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.task.beginExecution();
+  }
+
+  update(): void {
+    this.task.updateExecution();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class ToolValidateState implements StateBehavior {
+  public stateName = 'ToolValidate';
+  public active = false;
+
+  constructor(private readonly task: ToolReplacementTask) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.task.beginValidation();
+  }
+
+  update(): void {
+    this.task.updateValidation();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class ToolResultState implements StateBehavior {
+  public stateName: string;
+  public active = false;
+
+  constructor(private readonly task: ToolReplacementTask, private readonly success: boolean) {
+    this.stateName = success ? 'ToolSuccess' : 'ToolFailure';
+  }
+
+  onStateEntered(): void {
+    this.active = true;
+    if (this.success) {
+      this.task.finalizeSuccess();
+    } else {
+      this.task.finalizeFailure();
+    }
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+export class ToolReplacementExecutor implements StateBehavior {
+  public stateName = 'ToolReplacementLayer';
+  public active = false;
+
+  private readonly queue: ToolReplacementRequest[] = [];
   private readonly inFlight = new Set<string>();
-  private activeBehavior: ToolReplacementBehavior | null = null;
+  private currentTask: ToolReplacementTask | null = null;
+  private currentRequest: ToolReplacementRequest | null = null;
 
   constructor(
     private readonly bot: Bot,
     private readonly workerManager: WorkerManager,
-    private readonly behaviorScheduler: BehaviorScheduler,
     private readonly safeChat: (msg: string) => void,
     private readonly config: {
       snapshotRadii: number[];
@@ -418,65 +482,105 @@ export class ToolReplacementExecutor {
       combineSimilarNodes: boolean;
       perGenerator: number;
       toolDurabilityThreshold: number;
-    }
+    },
+    private readonly toolsBeingReplaced?: Set<string>
   ) {}
 
-  async executeReplacement(toolName: string): Promise<boolean> {
+  executeReplacement(toolName: string): Promise<boolean> {
     if (!toolName || typeof toolName !== 'string') {
       logger.debug('ToolReplacementExecutor: invalid tool name');
-      return false;
+      return Promise.resolve(false);
     }
 
     if (this.inFlight.has(toolName)) {
       logger.warn('ToolReplacementExecutor: replacement already in progress for tool, rejecting concurrent request');
-      return false;
+      return Promise.resolve(false);
     }
 
     this.inFlight.add(toolName);
-    let behavior: ToolReplacementBehavior | null = null;
-    try {
-      behavior = new ToolReplacementBehavior(
+    if (this.toolsBeingReplaced) {
+      this.toolsBeingReplaced.add(toolName);
+    }
+
+    return new Promise<boolean>((resolve) => {
+      this.queue.push({ toolName, resolve });
+    });
+  }
+
+  hasWork(): boolean {
+    return this.queue.length > 0 || !!this.currentTask;
+  }
+
+  isActive(): boolean {
+    return !!this.currentTask;
+  }
+
+  onStateEntered(): void {
+    this.active = true;
+  }
+
+  onStateExited(): void {
+    this.active = false;
+    this.suspend();
+  }
+
+  update(): void {
+    if (!this.active) return;
+
+    if (!this.currentTask) {
+      const next = this.queue.shift();
+      if (!next) return;
+      this.currentRequest = next;
+      this.currentTask = new ToolReplacementTask(
         this.bot,
         this.workerManager,
         this.safeChat,
         this.config,
-        toolName,
-        ++this.runCounter
+        next.toolName
       );
-      this.activeBehavior = behavior;
+      this.currentTask.start();
+    }
 
-      await this.behaviorScheduler.pushAndActivate(behavior, `tool replacement ${toolName}`);
-      const success = await behavior.waitForCompletion();
-      if (this.activeBehavior === behavior) {
-        this.activeBehavior = null;
-      }
-      return success;
-    } catch (err: any) {
-      logger.info(`ToolReplacementExecutor: replacement orchestration failed - ${err?.message || err}`);
-      if (behavior && !behavior.isFinished()) {
-        await behavior.abort();
-      }
-      if (this.activeBehavior === behavior) {
-        this.activeBehavior = null;
-      }
-      return false;
-    } finally {
-      this.inFlight.delete(toolName);
-      if (this.activeBehavior && this.activeBehavior.isFinished()) {
-        this.activeBehavior = null;
+    if (this.currentTask) {
+      this.currentTask.update();
+      if (this.currentTask.isFinished()) {
+        const success = this.currentTask.wasSuccessful();
+        this.resolveCurrent(success);
       }
     }
-  }
-
-  isActive(): boolean {
-    return !!this.activeBehavior && !this.activeBehavior.isFinished();
   }
 
   stop(): void {
-    if (this.activeBehavior && !this.activeBehavior.isFinished()) {
-      void this.activeBehavior.abort();
+    this.queue.splice(0, this.queue.length);
+    if (this.currentTask) {
+      this.currentTask.abort();
+      this.resolveCurrent(false);
     }
+    this.inFlight.clear();
+  }
+
+  private resolveCurrent(success: boolean): void {
+    if (this.currentRequest) {
+      try {
+        this.currentRequest.resolve(success);
+      } catch (_) {}
+      if (this.toolsBeingReplaced) {
+        this.toolsBeingReplaced.delete(this.currentRequest.toolName);
+      }
+    }
+    this.currentRequest = null;
+    this.currentTask = null;
+  }
+
+  private suspend(): void {
+    try {
+      this.bot.clearControlStates?.();
+    } catch (_) {}
+    try {
+      const pathfinder = (this.bot as any)?.pathfinder;
+      if (pathfinder && typeof pathfinder.stop === 'function') {
+        pathfinder.stop();
+      }
+    } catch (_) {}
   }
 }
-
-

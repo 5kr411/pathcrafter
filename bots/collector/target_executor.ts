@@ -6,9 +6,8 @@ import { Bot, Target, PendingEntry } from './config';
 import { captureSnapshotForTarget } from './snapshot_manager';
 import { WorkerManager } from './worker_manager';
 import { createExecutionContext, ToolIssue } from './execution_context';
-import { ReactiveBehaviorExecutorClass } from './reactive_behavior_executor';
-import { ScheduledBehavior, BehaviorFrameContext } from './behavior_scheduler';
-import { createTrackedBotStateMachine } from './state_machine_utils';
+import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
+import { ToolReplacementExecutor } from './tool_replacement_executor';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -18,18 +17,18 @@ function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
 }
 
-// Wrapper to create BotStateMachine with trackable physics tick listener
-const TARGET_BEHAVIOR_ID = 'collector-target';
 const TARGET_BEHAVIOR_PRIORITY = 10;
-
-type ScheduleFn = (fn: () => void) => void;
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 2000;
+const SKIP_DELAY_MS = 1000;
+const RESTART_DELAY_MS = 3000;
 
 export function createToolIssueHandler(options: {
-  toolReplacementExecutor: { executeReplacement: (toolName: string) => Promise<boolean> } | null | undefined;
+  toolReplacementExecutor?: ToolReplacementExecutor | null;
   toolsBeingReplaced: Set<string>;
   bot: Bot;
   safeChat: (msg: string) => void;
-  schedule?: ScheduleFn;
+  schedule?: (fn: () => void) => void;
 }): (issue: ToolIssue) => void {
   const {
     toolReplacementExecutor,
@@ -41,13 +40,17 @@ export function createToolIssueHandler(options: {
 
   return (issue: ToolIssue) => {
     if (!toolReplacementExecutor) return;
-    
+
     const toolLabel = issue.toolName || 'unknown tool';
     if (toolLabel === 'unknown tool') {
       logInfo('Collector: tool issue received without tool name, ignoring');
       return;
     }
-    
+
+    if (toolsBeingReplaced.has(toolLabel)) {
+      return;
+    }
+
     if (issue.type === 'requirement') {
       logInfo(
         `Collector: missing required tool ${toolLabel}${issue.blockName ? ` for ${issue.blockName}` : ''}`
@@ -55,20 +58,18 @@ export function createToolIssueHandler(options: {
     } else {
       logInfo(`Collector: tool durability low - ${toolLabel}`);
     }
-    
+
     schedule(async () => {
       if (!toolReplacementExecutor || toolsBeingReplaced.has(toolLabel)) {
         return;
       }
-      
+
       if (issue.type === 'requirement') {
         safeChat(`missing tool, acquiring ${toolLabel}`);
       } else {
         safeChat(`tool low, replacing ${toolLabel}`);
       }
-      
-      toolsBeingReplaced.add(toolLabel);
-      
+
       try {
         const invBefore = getInventoryObject(bot);
         logInfo(
@@ -92,29 +93,143 @@ export function createToolIssueHandler(options: {
         }
       } catch (err: any) {
         logInfo(`Collector: tool replacement error - ${err?.message || err}`);
-      } finally {
-        toolsBeingReplaced.delete(toolLabel);
       }
     });
   };
 }
 
-export class TargetExecutor implements ScheduledBehavior {
+class TargetPlanState implements StateBehavior {
+  public stateName = 'TargetPlan';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.beginPlanning();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class TargetExecuteState implements StateBehavior {
+  public stateName = 'TargetExecute';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.beginExecution();
+  }
+
+  update(): void {
+    this.executor.updateExecution();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class TargetSuccessState implements StateBehavior {
+  public stateName = 'TargetSuccess';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.handleTargetSuccess();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class TargetFailureState implements StateBehavior {
+  public stateName = 'TargetFailure';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.handleTargetFailure();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class TargetDelayState implements StateBehavior {
+  public stateName = 'TargetDelay';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.startDelay();
+  }
+
+  update(): void {
+    this.executor.updateDelay();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+class TargetRestartDelayState implements StateBehavior {
+  public stateName = 'TargetRestartDelay';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.beginRestartDelay();
+  }
+
+  update(): void {
+    this.executor.updateRestartDelay();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+}
+
+export class TargetExecutor implements StateBehavior {
+  public stateName = 'TargetLayer';
+  public active = false;
+  public readonly priority = TARGET_BEHAVIOR_PRIORITY;
+
   private sequenceTargets: Target[] = [];
   private sequenceIndex = 0;
   private targetRetryCount = new Map<number, number>();
   private running = false;
   private currentTargetStartInventory: InventoryObject = {};
-  private readonly MAX_RETRIES = 3;
   private activeStateMachine: any = null;
-  private toolsBeingReplaced = new Set<string>();
-  private activeBinding: { botStateMachine: any; listener: (this: Bot) => void } | null = null;
-  readonly id = TARGET_BEHAVIOR_ID;
-  readonly name = 'CollectorTarget';
-  readonly priority = TARGET_BEHAVIOR_PRIORITY;
-  readonly type = 'collection';
-  private schedulerContext: BehaviorFrameContext | null = null;
-  private frameId: string | null = null;
+  private toolsBeingReplaced: Set<string>;
+
+  private flowMachine: NestedStateMachine;
+  private flowStarted = false;
+
+  private planningOutcome: 'idle' | 'pending' | 'execute' | 'success' | 'failure' = 'idle';
+  private planPath: any[] | null = null;
+  private planningId: string | null = null;
+  private executionDone = false;
+  private executionSuccess = false;
+  private successHandled = false;
+  private forceFailure = false;
+  private failureHandled = false;
+  private delayUntil = 0;
+  private delayReady = false;
+  private restartPending = false;
+  private restartReady = false;
+  private restartDelayUntil = 0;
+  private stopRequested = false;
 
   constructor(
     private bot: Bot,
@@ -128,49 +243,140 @@ export class TargetExecutor implements ScheduledBehavior {
       perGenerator: number;
       toolDurabilityThreshold: number;
     },
-    private reactiveBehaviorExecutor?: ReactiveBehaviorExecutorClass,
-    private toolReplacementExecutor?: any
-  ) {}
+    private toolReplacementExecutor?: ToolReplacementExecutor,
+    toolsBeingReplaced?: Set<string>
+  ) {
+    this.toolsBeingReplaced = toolsBeingReplaced ?? new Set<string>();
+    const idle = new BehaviorIdle();
+    const plan = new TargetPlanState(this);
+    const execute = new TargetExecuteState(this);
+    const success = new TargetSuccessState(this);
+    const failure = new TargetFailureState(this);
+    const delay = new TargetDelayState(this);
+    const restartDelay = new TargetRestartDelayState(this);
 
-  async activate(context: BehaviorFrameContext): Promise<void> {
-    this.schedulerContext = context;
-    this.frameId = context.frameId;
-    if (this.activeStateMachine) {
-      this.rebindActiveStateMachine();
-      return;
-    }
-    if (!this.running) {
-      await this.startNextTarget();
-    }
+    const transitions: StateTransition[] = [
+      new StateTransition({
+        parent: idle,
+        child: restartDelay,
+        name: 'target: idle -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: idle,
+        child: plan,
+        name: 'target: idle -> plan',
+        shouldTransition: () => this.shouldPlan()
+      }),
+      new StateTransition({
+        parent: plan,
+        child: restartDelay,
+        name: 'target: plan -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: plan,
+        child: idle,
+        name: 'target: plan -> idle (stop)',
+        shouldTransition: () => this.stopRequested
+      }),
+      new StateTransition({
+        parent: plan,
+        child: execute,
+        name: 'target: plan -> execute',
+        shouldTransition: () => this.planningOutcome === 'execute'
+      }),
+      new StateTransition({
+        parent: plan,
+        child: success,
+        name: 'target: plan -> success',
+        shouldTransition: () => this.planningOutcome === 'success'
+      }),
+      new StateTransition({
+        parent: plan,
+        child: failure,
+        name: 'target: plan -> failure',
+        shouldTransition: () => this.planningOutcome === 'failure'
+      }),
+      new StateTransition({
+        parent: execute,
+        child: restartDelay,
+        name: 'target: execute -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: execute,
+        child: idle,
+        name: 'target: execute -> idle (stop)',
+        shouldTransition: () => this.stopRequested
+      }),
+      new StateTransition({
+        parent: execute,
+        child: success,
+        name: 'target: execute -> success',
+        shouldTransition: () => this.executionDone && this.executionSuccess
+      }),
+      new StateTransition({
+        parent: execute,
+        child: failure,
+        name: 'target: execute -> failure',
+        shouldTransition: () => this.executionDone && !this.executionSuccess
+      }),
+      new StateTransition({
+        parent: success,
+        child: restartDelay,
+        name: 'target: success -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: success,
+        child: failure,
+        name: 'target: success -> failure',
+        shouldTransition: () => this.forceFailure
+      }),
+      new StateTransition({
+        parent: success,
+        child: idle,
+        name: 'target: success -> idle',
+        shouldTransition: () => this.successHandled && !this.forceFailure
+      }),
+      new StateTransition({
+        parent: failure,
+        child: restartDelay,
+        name: 'target: failure -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: failure,
+        child: delay,
+        name: 'target: failure -> delay',
+        shouldTransition: () => this.failureHandled
+      }),
+      new StateTransition({
+        parent: delay,
+        child: restartDelay,
+        name: 'target: delay -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: delay,
+        child: idle,
+        name: 'target: delay -> idle',
+        shouldTransition: () => this.delayReady
+      }),
+      new StateTransition({
+        parent: restartDelay,
+        child: idle,
+        name: 'target: restart -> idle',
+        shouldTransition: () => this.restartReady
+      })
+    ];
+
+    this.flowMachine = new NestedStateMachine(transitions, idle, null as any);
   }
 
-  async onSuspend(_context: BehaviorFrameContext): Promise<void> {
-    try {
-      if (this.schedulerContext) {
-        this.schedulerContext.detachStateMachine();
-      }
-      if (this.activeBinding) {
-        this.activeBinding = null;
-      }
-      this.bot.clearControlStates();
-      logDebug('Collector: cleared bot control states during scheduler suspend');
-    } catch (err: any) {
-      logDebug(`Collector: error during scheduler suspend: ${err?.message || err}`);
-    }
-  }
-
-  async onResume(context: BehaviorFrameContext): Promise<void> {
-    this.schedulerContext = context;
-    this.frameId = context.frameId;
-    this.rebindActiveStateMachine();
-  }
-
-  async onAbort(_context: BehaviorFrameContext): Promise<void> {
-    this.stop();
-  }
-
-  async onComplete(): Promise<void> {
-    // Target executor does not perform additional completion work here.
+  hasWork(): boolean {
+    return this.running && this.sequenceTargets.length > 0;
   }
 
   isRunning(): boolean {
@@ -187,164 +393,102 @@ export class TargetExecutor implements ScheduledBehavior {
     return this.sequenceTargets;
   }
 
-  private rebindActiveStateMachine(): void {
-    if (!this.schedulerContext || !this.activeStateMachine) {
-      return;
+  startNextTarget(): Promise<void> {
+    if (!Array.isArray(this.sequenceTargets) || this.sequenceTargets.length === 0) {
+      logDebug('Collector: no targets in sequence');
+      return Promise.resolve();
     }
-    const tracked = createTrackedBotStateMachine(this.bot, this.activeStateMachine);
-    this.activeBinding = tracked;
-    this.schedulerContext.attachStateMachine(tracked.botStateMachine, tracked.listener.bind(this.bot));
+    this.running = true;
+    return Promise.resolve();
+  }
+
+  onStateEntered(): void {
+    this.active = true;
+    if (!this.flowStarted) {
+      this.flowStarted = true;
+      this.flowMachine.onStateEntered();
+    }
+  }
+
+  update(): void {
+    if (!this.active) return;
+    if (!this.flowStarted) {
+      this.flowStarted = true;
+      this.flowMachine.onStateEntered();
+    }
+    this.flowMachine.update();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+    this.suspend();
   }
 
   resetAndRestart(): void {
     logInfo('Collector: resetting all targets and restarting from beginning');
-    this.running = false;
-    if (this.schedulerContext) {
-      this.schedulerContext.detachStateMachine();
-    }
-    
-    if (this.reactiveBehaviorExecutor) {
-      try {
-        this.reactiveBehaviorExecutor.stop();
-        logDebug('Collector: stopped reactive behavior executor during reset');
-      } catch (err: any) {
-        logDebug(`Collector: error stopping reactive behavior executor during reset: ${err?.message || err}`);
-      }
-    }
-    
-    if (this.toolReplacementExecutor && this.toolReplacementExecutor.isActive && this.toolReplacementExecutor.isActive()) {
-      try {
-        this.toolReplacementExecutor.stop();
-        logDebug('Collector: stopped tool replacement executor during reset');
-      } catch (err: any) {
-        logDebug(`Collector: error stopping tool replacement executor during reset: ${err?.message || err}`);
-      }
-    }
-    
-    this.toolsBeingReplaced.clear();
-    
-    if (this.activeStateMachine) {
-      try {
-        if (typeof this.activeStateMachine.onStateExited === 'function') {
-          this.activeStateMachine.onStateExited();
-        }
-      } catch (_) {}
-      this.activeStateMachine = null;
-    }
-    
-    try {
-      this.bot.clearControlStates();
-    } catch (_) {}
-    
-    this.workerManager.clearPending();
     const hasQueuedTargets = Array.isArray(this.sequenceTargets) && this.sequenceTargets.length > 0;
-    this.sequenceIndex = 0;
-    this.targetRetryCount.clear();
-    
+
     if (!hasQueuedTargets) {
       this.safeChat('death detected but no queued targets to restart');
       return;
     }
 
+    this.running = true;
+    this.sequenceIndex = 0;
+    this.targetRetryCount.clear();
+    this.restartPending = true;
+    this.restartReady = false;
+    this.restartDelayUntil = Date.now() + RESTART_DELAY_MS;
+    this.clearActiveState();
     this.safeChat('death detected, restarting all targets');
-
-    setTimeout(() => {
-      try {
-        this.startNextTarget().catch(() => {});
-      } catch (_) {}
-    }, 3000);
   }
 
   stop(): void {
     logInfo('Collector: stopping execution');
     this.running = false;
-    if (this.schedulerContext) {
-      this.schedulerContext.detachStateMachine();
-    }
-    
-    if (this.reactiveBehaviorExecutor) {
-      try {
-        this.reactiveBehaviorExecutor.stop();
-        logDebug('Collector: stopped reactive behavior executor');
-      } catch (err: any) {
-        logDebug(`Collector: error stopping reactive behavior executor: ${err.message || err}`);
-      }
-    }
-    
-    if (this.toolReplacementExecutor && this.toolReplacementExecutor.isActive && this.toolReplacementExecutor.isActive()) {
-      try {
-        this.toolReplacementExecutor.stop();
-        logDebug('Collector: stopped tool replacement executor');
-      } catch (err: any) {
-        logDebug(`Collector: error stopping tool replacement executor: ${err.message || err}`);
-      }
-    }
-    
-    this.toolsBeingReplaced.clear();
-    
-    if (this.activeStateMachine) {
-      try {
-        if (typeof this.activeStateMachine.onStateExited === 'function') {
-          logDebug('Collector: calling onStateExited on nested state machine');
-          this.activeStateMachine.onStateExited();
-        }
-      } catch (err: any) {
-        logDebug(`Collector: error calling onStateExited: ${err.message || err}`);
-      }
-      this.activeStateMachine = null;
-    }
-    
-    try {
-      this.bot.clearControlStates();
-      logDebug('Collector: cleared bot control states');
-    } catch (err: any) {
-      logDebug(`Collector: error clearing control states: ${err.message || err}`);
-    }
-    
-    this.workerManager.clearPending();
     this.sequenceTargets = [];
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
-    this.toolsBeingReplaced.clear();
+    this.clearActiveState();
+    this.stopRequested = true;
     this.safeChat('stopped');
   }
 
-  async startNextTarget(): Promise<void> {
-    if (this.running) {
-      logDebug('Collector: startNextTarget called but already running');
+  beginPlanning(): void {
+    this.stopRequested = false;
+    this.forceFailure = false;
+    this.successHandled = false;
+    this.failureHandled = false;
+    this.delayReady = false;
+    this.executionDone = false;
+    this.executionSuccess = false;
+    this.planPath = null;
+    this.planningOutcome = 'pending';
+
+    if (!this.running) {
+      this.planningOutcome = 'idle';
       return;
     }
+
     if (!Array.isArray(this.sequenceTargets) || this.sequenceTargets.length === 0) {
-      logDebug('Collector: no targets in sequence');
+      this.planningOutcome = 'idle';
       return;
     }
+
     if (this.sequenceIndex >= this.sequenceTargets.length) {
-      logInfo('Collector: all targets complete');
-      this.safeChat('all targets complete');
-      
-      this.running = false;
-      
-      try {
-        this.bot.clearControlStates();
-        logDebug('Collector: cleared bot control states');
-      } catch (err: any) {
-        logDebug(`Collector: error clearing control states: ${err.message || err}`);
-      }
-      
-      this.sequenceTargets = [];
-      this.sequenceIndex = 0;
-      this.targetRetryCount.clear();
+      this.completeAllTargets();
+      this.planningOutcome = 'idle';
       return;
     }
 
     const target = this.sequenceTargets[this.sequenceIndex];
     const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 0;
-    
+
     if (retryCount > 0) {
       logInfo(
-        `Collector: retrying target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${target.item} x${target.count} (attempt ${retryCount + 1}/${this.MAX_RETRIES})`
+        `Collector: retrying target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${target.item} x${target.count} (attempt ${retryCount + 1}/${MAX_RETRIES})`
       );
-      this.safeChat(`retrying ${target.item} x${target.count} (attempt ${retryCount + 1}/${this.MAX_RETRIES})`);
+      this.safeChat(`retrying ${target.item} x${target.count} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
     } else {
       logInfo(
         `Collector: starting target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${target.item} x${target.count}`
@@ -355,83 +499,78 @@ export class TargetExecutor implements ScheduledBehavior {
     this.currentTargetStartInventory = { ...invObj };
     const inventoryMap = new Map(Object.entries(invObj));
 
-    try {
-      const result = await captureSnapshotForTarget(
-        this.bot,
-        target,
-        inventoryMap,
-        this.config.snapshotRadii,
-        this.config.snapshotYHalf,
-        this.config.pruneWithWorld,
-        this.config.combineSimilarNodes
-      );
+    const planningId = `target_${Date.now()}_${Math.random()}`;
+    this.planningId = planningId;
 
-      const snapshot = result.snapshot;
-      const version = this.bot.version || '1.20.1';
-      const id = `${Date.now()}_${Math.random()}`;
-      logDebug(`Collector: creating planning job with id ${id}`);
-      logDebug(`Collector: snapshot has radius=${snapshot.radius}, block types=${Object.keys(snapshot.blocks || {}).length}`);
-      if (!snapshot.radius || !Number.isFinite(snapshot.radius)) {
-        logger.info(`Collector: WARNING - snapshot radius is ${snapshot.radius}, distance filtering may not work correctly!`);
-      }
+    Promise.resolve()
+      .then(async () => {
+        const result = await captureSnapshotForTarget(
+          this.bot,
+          target,
+          inventoryMap,
+          this.config.snapshotRadii,
+          this.config.snapshotYHalf,
+          this.config.pruneWithWorld,
+          this.config.combineSimilarNodes
+        );
 
-      this.running = true;
-      if (this.schedulerContext) {
-        this.schedulerContext.attachPlannerHandler(id, (pending, rankedResult, okResult, errResult) => {
-          this.handlePlanningResult(pending, rankedResult, okResult, errResult);
-        });
-      }
-      this.workerManager.postPlanningRequest(
-        id,
-        target,
-        snapshot,
-        invObj,
-        version,
-        this.config.perGenerator,
-        this.config.pruneWithWorld,
-        this.config.combineSimilarNodes,
-        { frameId: this.frameId ?? undefined }
-      );
-    } catch (err: any) {
-      logInfo(`Collector: snapshot capture failed - ${err.message || err}`);
-      this.safeChat('snapshot capture failed');
-      this.running = false;
-      this.handleTargetFailure();
-    }
+        const snapshot = result.snapshot;
+        const version = this.bot.version || '1.20.1';
+        logDebug(`Collector: creating planning job with id ${planningId}`);
+        logDebug(`Collector: snapshot has radius=${snapshot.radius}, block types=${Object.keys(snapshot.blocks || {}).length}`);
+        if (!snapshot.radius || !Number.isFinite(snapshot.radius)) {
+          logger.info(`Collector: WARNING - snapshot radius is ${snapshot.radius}, distance filtering may not work correctly!`);
+        }
+
+        this.workerManager.postPlanningRequest(
+          planningId,
+          target,
+          snapshot,
+          invObj,
+          version,
+          this.config.perGenerator,
+          this.config.pruneWithWorld,
+          this.config.combineSimilarNodes,
+          (entry, ranked, ok, error) => {
+            this.handlePlanningResult(entry, ranked, ok, error);
+          }
+        );
+      })
+      .catch((err: any) => {
+        logInfo(`Collector: snapshot capture failed - ${err?.message || err}`);
+        this.safeChat('snapshot capture failed');
+        this.planningOutcome = 'failure';
+      });
   }
 
-  handlePlanningResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
-    if (entry?.id && this.schedulerContext) {
-      this.schedulerContext.detachPlannerHandler(entry.id);
-    }
-    if (!ok) {
-      this.running = false;
-      const errorMsg = error ? String(error) : 'unknown error';
-      logger.info(`Collector: planning failed - ${errorMsg}`);
-      this.safeChat('planning failed');
-      this.handleTargetFailure();
+  private handlePlanningResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
+    if (!entry?.id || entry.id !== this.planningId) {
       return;
     }
 
-    if (ranked.length === 0) {
-      try {
-        const target = entry && entry.target ? entry.target : null;
-        const invNow = getInventoryObject(this.bot);
-        let have = 0;
-        if (target && target.item) {
-          const name = String(target.item);
-          have = invNow[name] || 0;
-        }
-        if (target && Number.isFinite(target.count) && have >= target.count) {
-          this.running = false;
-          this.safeChat('target already satisfied');
-          this.handleTargetSuccess();
-          return;
-        }
-      } catch (_) {}
-      this.running = false;
+    if (!ok) {
+      const errorMsg = error ? String(error) : 'unknown error';
+      logger.info(`Collector: planning failed - ${errorMsg}`);
+      this.safeChat('planning failed');
+      this.planningOutcome = 'failure';
+      return;
+    }
+
+    if (!Array.isArray(ranked) || ranked.length === 0) {
+      const target = entry && entry.target ? entry.target : null;
+      const invNow = getInventoryObject(this.bot);
+      let have = 0;
+      if (target && target.item) {
+        const name = String(target.item);
+        have = invNow[name] || 0;
+      }
+      if (target && Number.isFinite(target.count) && have >= target.count) {
+        this.safeChat('target already satisfied');
+        this.planningOutcome = 'success';
+        return;
+      }
       this.safeChat('no viable paths found');
-      this.handleTargetFailure();
+      this.planningOutcome = 'failure';
       return;
     }
 
@@ -439,7 +578,7 @@ export class TargetExecutor implements ScheduledBehavior {
     const target = entry && entry.target ? entry.target : null;
     const targetDesc = target ? `${target.item} x${target.count}` : 'unknown target';
     logInfo(`Collector: executing plan with ${best.length} steps for ${targetDesc}`);
-    
+
     if (best.length === 0) {
       const invNow = getInventoryObject(this.bot);
       let have = 0;
@@ -447,20 +586,15 @@ export class TargetExecutor implements ScheduledBehavior {
         have = invNow[target.item] || 0;
       }
       if (target && Number.isFinite(target.count) && have >= target.count) {
-        this.running = false;
         logInfo(`Collector: empty plan but target already satisfied (have ${have}, need ${target.count})`);
         this.safeChat('target already satisfied');
-        this.targetRetryCount.delete(this.sequenceIndex);
-        this.sequenceIndex++;
-        try {
-          this.startNextTarget();
-        } catch (_) {}
+        this.planningOutcome = 'success';
         return;
       }
     }
-    
+
     this.safeChat(`executing plan with ${best.length} steps for ${targetDesc}`);
-    
+
     try {
       const resolved = best.map((s: any) => s);
       logger.info('Collector: selected path (resolved):');
@@ -470,7 +604,22 @@ export class TargetExecutor implements ScheduledBehavior {
         logger.info(JSON.stringify(resolved));
       }
     } catch (_) {}
-    
+
+    this.planPath = best;
+    this.planningOutcome = 'execute';
+  }
+
+  beginExecution(): void {
+    this.executionDone = false;
+    this.executionSuccess = false;
+    this.clearActiveState();
+
+    if (!this.planPath || this.planPath.length === 0) {
+      this.executionDone = true;
+      this.executionSuccess = false;
+      return;
+    }
+
     const executionContext = createExecutionContext(
       this.config.toolDurabilityThreshold,
       createToolIssueHandler({
@@ -481,52 +630,40 @@ export class TargetExecutor implements ScheduledBehavior {
       }),
       this.toolsBeingReplaced
     );
-    
+
     const sm = buildStateMachineForPath(
       this.bot,
-      best,
+      this.planPath,
       (success: boolean) => {
-        this.running = false;
-        this.activeStateMachine = null;
-        this.activeBinding = null;
-        if (this.schedulerContext) {
-          this.schedulerContext.detachStateMachine();
-        }
-        if (success) {
-          this.handleTargetSuccess();
-        } else {
-          this.safeChat('plan failed');
-          this.handleTargetFailure();
-        }
+        this.executionDone = true;
+        this.executionSuccess = success;
       },
       executionContext
     );
+
     this.activeStateMachine = sm;
-    const tracked = createTrackedBotStateMachine(this.bot, sm);
-    this.activeBinding = tracked;
-    if (this.schedulerContext) {
-      this.schedulerContext.attachStateMachine(tracked.botStateMachine, tracked.listener.bind(this.bot));
+    if (this.activeStateMachine && typeof this.activeStateMachine.onStateEntered === 'function') {
+      try {
+        this.activeStateMachine.onStateEntered();
+      } catch (_) {}
     }
   }
 
-  private validateTargetSuccess(): boolean {
-    const target = this.sequenceTargets[this.sequenceIndex];
-    if (!target) return false;
-
-    const invNow = getInventoryObject(this.bot);
-    const startCount = this.currentTargetStartInventory[target.item] || 0;
-    const currentCount = invNow[target.item] || 0;
-    const gained = currentCount - startCount;
-
-    logDebug(`Collector: validating target ${target.item} - start: ${startCount}, current: ${currentCount}, gained: ${gained}, needed: ${target.count}`);
-
-    return gained >= target.count;
+  updateExecution(): void {
+    if (this.activeStateMachine && typeof this.activeStateMachine.update === 'function') {
+      try {
+        this.activeStateMachine.update();
+      } catch (_) {}
+    }
   }
 
-  private handleTargetSuccess(): void {
+  handleTargetSuccess(): void {
+    this.successHandled = true;
+    this.forceFailure = false;
+
     if (!this.validateTargetSuccess()) {
       logInfo('Collector: target validation failed, treating as failure');
-      this.handleTargetFailure();
+      this.forceFailure = true;
       return;
     }
 
@@ -539,35 +676,116 @@ export class TargetExecutor implements ScheduledBehavior {
 
     this.targetRetryCount.delete(this.sequenceIndex);
     this.sequenceIndex++;
-    
+
+    if (this.sequenceIndex >= this.sequenceTargets.length) {
+      this.completeAllTargets();
+    }
+  }
+
+  handleTargetFailure(): void {
+    this.failureHandled = true;
+    const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 0;
+
+    if (retryCount < MAX_RETRIES - 1) {
+      this.targetRetryCount.set(this.sequenceIndex, retryCount + 1);
+      logInfo(`Collector: will retry target ${this.sequenceIndex + 1} (${retryCount + 1} retries so far)`);
+      this.delayUntil = Date.now() + RETRY_DELAY_MS;
+      return;
+    }
+
+    logInfo(`Collector: target ${this.sequenceIndex + 1} failed after ${MAX_RETRIES} attempts, moving to next target`);
+    this.safeChat(`target failed after ${MAX_RETRIES} attempts, moving on`);
+    this.targetRetryCount.delete(this.sequenceIndex);
+    this.sequenceIndex++;
+    this.delayUntil = Date.now() + SKIP_DELAY_MS;
+
+    if (this.sequenceIndex >= this.sequenceTargets.length) {
+      this.completeAllTargets();
+    }
+  }
+
+  startDelay(): void {
+    this.delayReady = false;
+  }
+
+  updateDelay(): void {
+    if (this.delayReady) return;
+    if (Date.now() >= this.delayUntil) {
+      this.delayReady = true;
+    }
+  }
+
+  beginRestartDelay(): void {
+    this.restartReady = false;
+  }
+
+  updateRestartDelay(): void {
+    if (this.restartReady) return;
+    if (Date.now() >= this.restartDelayUntil) {
+      this.restartPending = false;
+      this.restartReady = true;
+    }
+  }
+
+  private shouldPlan(): boolean {
+    if (!this.running) return false;
+    if (!Array.isArray(this.sequenceTargets) || this.sequenceTargets.length === 0) return false;
+    if (this.sequenceIndex >= this.sequenceTargets.length) return false;
+    if (this.planningOutcome === 'pending') return false;
+    return true;
+  }
+
+  private validateTargetSuccess(): boolean {
+    const target = this.sequenceTargets[this.sequenceIndex];
+    if (!target) return false;
+
+    const invNow = getInventoryObject(this.bot);
+    const startCount = this.currentTargetStartInventory[target.item] || 0;
+    const currentCount = invNow[target.item] || 0;
+    const gained = currentCount - startCount;
+    const needed = Number.isFinite(target.count) ? target.count : 0;
+
+    logDebug(
+      `Collector: validating target ${target.item} - start: ${startCount}, current: ${currentCount}, gained: ${gained}, needed: ${target.count}`
+    );
+
+    if (needed <= 0) return true;
+    if (currentCount >= needed) return true;
+    return gained >= needed;
+  }
+
+  private completeAllTargets(): void {
+    logInfo('Collector: all targets complete');
+    this.safeChat('all targets complete');
+    this.running = false;
+    this.sequenceTargets = [];
+    this.sequenceIndex = 0;
+    this.targetRetryCount.clear();
     try {
-      this.startNextTarget();
+      this.bot.clearControlStates();
+      logDebug('Collector: cleared bot control states');
     } catch (_) {}
   }
 
-  private handleTargetFailure(): void {
-    const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 0;
-    
-    if (retryCount < this.MAX_RETRIES - 1) {
-      this.targetRetryCount.set(this.sequenceIndex, retryCount + 1);
-      logInfo(`Collector: will retry target ${this.sequenceIndex + 1} (${retryCount + 1} retries so far)`);
-      
-      setTimeout(() => {
-        try {
-          this.startNextTarget();
-        } catch (_) {}
-      }, 2000);
-    } else {
-      logInfo(`Collector: target ${this.sequenceIndex + 1} failed after ${this.MAX_RETRIES} attempts, moving to next target`);
-      this.safeChat(`target failed after ${this.MAX_RETRIES} attempts, moving on`);
-      this.targetRetryCount.delete(this.sequenceIndex);
-      this.sequenceIndex++;
-      
-      setTimeout(() => {
-        try {
-          this.startNextTarget();
-        } catch (_) {}
-      }, 1000);
+  private clearActiveState(): void {
+    if (this.activeStateMachine && typeof this.activeStateMachine.onStateExited === 'function') {
+      try {
+        this.activeStateMachine.onStateExited();
+      } catch (_) {}
     }
+    this.activeStateMachine = null;
+  }
+
+  private suspend(): void {
+    try {
+      this.bot.clearControlStates();
+      logDebug('Collector: cleared bot control states during suspend');
+    } catch (_) {}
+    try {
+      const pathfinder = (this.bot as any)?.pathfinder;
+      if (pathfinder && typeof pathfinder.stop === 'function') {
+        pathfinder.stop();
+      }
+    } catch (_) {}
   }
 }

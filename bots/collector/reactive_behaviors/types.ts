@@ -15,15 +15,18 @@ export interface Bot {
   [key: string]: any;
 }
 
+export type ReactiveBehaviorStopReason = 'completed' | 'aborted' | 'preempted';
+
+export interface ReactiveBehaviorState {
+  stateMachine: any;
+  isFinished?: () => boolean;
+  wasSuccessful?: () => boolean;
+  onStop?: (reason: ReactiveBehaviorStopReason) => void;
+}
+
 export interface ReactiveBehavior {
   priority: number;
   name: string;
   shouldActivate: (bot: Bot) => Promise<boolean> | boolean;
-  execute: (bot: Bot, executor: ReactiveBehaviorExecutor) => Promise<any>;
-  onDeactivate?: () => void;
+  createState: (bot: Bot) => Promise<ReactiveBehaviorState | null> | ReactiveBehaviorState | null;
 }
-
-export interface ReactiveBehaviorExecutor {
-  finish(success: boolean): void;
-}
-

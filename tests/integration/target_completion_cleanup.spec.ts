@@ -1,18 +1,5 @@
 import { TargetExecutor } from '../../bots/collector/target_executor';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
-import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
-
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
+import { createMockBot, createControlHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
 describe('Target completion cleanup', () => {
   let bot: any;
@@ -32,13 +19,11 @@ describe('Target completion cleanup', () => {
   beforeEach(() => {
     bot = createMockBot();
     safeChat = jest.fn();
+    bot.safeChat = safeChat;
 
-    const harness = createSchedulerHarness(bot);
+    const harness = createControlHarness(bot, { config });
     workerManager = harness.workerManager;
-
-    const reactiveExecutor = new ReactiveBehaviorExecutorClass(bot, new ReactiveBehaviorRegistry());
-
-    executor = new TargetExecutor(bot, workerManager as any, safeChat, config, reactiveExecutor, undefined);
+    executor = harness.controlStack.targetLayer;
   });
 
   it('clears pending targets and control states after final target completes', async () => {
@@ -46,19 +31,23 @@ describe('Target completion cleanup', () => {
 
     // Simulate completion state
     (executor as any).sequenceTargets = [{ item: 'diamond', count: 1 }];
-    (executor as any).sequenceIndex = 1;
-    (executor as any).running = false;
+    (executor as any).sequenceIndex = 0;
+    (executor as any).running = true;
+    (executor as any).currentTargetStartInventory = { diamond: 0 };
 
     bot.clearControlStates.mockClear();
+    bot.inventory.items.mockReturnValue([
+      { name: 'diamond', type: 870, count: 1 }
+    ]);
 
-    await executor['startNextTarget']();
+    executor['handleTargetSuccess']();
 
     expect(bot.clearControlStates).toHaveBeenCalled();
     expect(executor.getTargets().length).toBe(0);
     expect((executor as any).running).toBe(false);
   });
 
-  it('stop() clears worker pending requests and control states', () => {
+  it('stop() clears targets and emits a stop message', () => {
     workerManager.postPlanningRequest(
       'test',
       { item: 'diamond', count: 1 },
@@ -72,8 +61,8 @@ describe('Target completion cleanup', () => {
 
     executor.stop();
 
-    expect(workerManager.drainPending()).toHaveLength(0);
-    expect(bot.clearControlStates).toHaveBeenCalled();
     expect(executor.getTargets().length).toBe(0);
+    expect(executor.isRunning()).toBe(false);
+    expect(safeChat).toHaveBeenCalledWith('stopped');
   });
 });

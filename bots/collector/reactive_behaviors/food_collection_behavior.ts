@@ -5,8 +5,7 @@
  * when supplies run low. Uses behaviorGetFood for the actual collection.
  */
 
-import { ReactiveBehavior, Bot } from './types';
-import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
+import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { getInventoryObject } from '../../../utils/inventory';
 import {
   calculateFoodPointsInInventory,
@@ -121,7 +120,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
     return false;
   },
   
-  execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
+  createState: async (bot: Bot) => {
     const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
       ? (bot as any).safeChat.bind(bot)
       : null;
@@ -145,90 +144,63 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       } catch (err: any) {
         logger.debug(`FoodCollection: snapshot capture failed - ${err?.message || err}`);
       }
-      
-      let finished = false;
+
       const startFoodPoints = currentFoodPoints;
-      
-      const handleCompletion = (success: boolean) => {
-        if (finished) return;
-        finished = true;
-        
-        const newFoodPoints = getBotFoodPoints(bot);
-        const gainedFood = newFoodPoints > startFoodPoints;
-        
-        // If we didn't gain any food, start cooldown to avoid infinite retries
-        if (!gainedFood && newFoodPoints < foodCollectionConfig.minFoodThreshold) {
+      let outcome: { success: boolean; gainedFood: boolean; endFoodPoints: number } | null = null;
+
+      const stateMachine = createGetFoodState(bot as any, {
+        targetFoodPoints: foodCollectionConfig.targetFoodPoints,
+        minFoodThreshold: foodCollectionConfig.minFoodThreshold,
+        worldSnapshot
+      });
+
+      const computeOutcome = () => {
+        if (outcome) {
+          return outcome;
+        }
+        const endFoodPoints = getBotFoodPoints(bot);
+        const gainedFood = endFoodPoints > startFoodPoints;
+        let success = gainedFood;
+        if (typeof (stateMachine as any)?.wasSuccessful === 'function') {
+          try {
+            success = success || !!(stateMachine as any).wasSuccessful();
+          } catch (_) {}
+        }
+        outcome = { success, gainedFood, endFoodPoints };
+        return outcome;
+      };
+
+      const finalizeCompletion = () => {
+        const { gainedFood, endFoodPoints } = computeOutcome();
+        if (!gainedFood && endFoodPoints < foodCollectionConfig.minFoodThreshold) {
           lastFailedAttempt = Date.now();
           logger.info(`FoodCollection: no food gained, starting ${cooldownMs / 1000}s cooldown`);
           if (sendChat) {
             sendChat(`no food sources found, cooling down for ${cooldownMs / 1000}s`);
           }
         } else {
-          // Successfully got food, reset cooldown
           lastFailedAttempt = 0;
           if (sendChat) {
-            sendChat(`food collection complete (${newFoodPoints} points)`);
+            sendChat(`food collection complete (${endFoodPoints} points)`);
           }
         }
-        
-        executor.finish(success || gainedFood);
       };
-      
-      const stateMachine = createGetFoodState(bot as any, {
-        targetFoodPoints: foodCollectionConfig.targetFoodPoints,
-        minFoodThreshold: foodCollectionConfig.minFoodThreshold,
-        worldSnapshot,
-        onComplete: handleCompletion
-      });
-      
-      // Set up completion check interval
-      let completionInterval: NodeJS.Timeout | null = null;
-      
-      const clearCompletionInterval = () => {
-        if (completionInterval) {
-          clearInterval(completionInterval);
-          completionInterval = null;
-        }
-      };
-      
-      const checkCompletion = () => {
-        try {
-          if (typeof (stateMachine as any).isFinished === 'function' && (stateMachine as any).isFinished()) {
-            clearCompletionInterval();
-            if (!finished) {
-              const success = typeof (stateMachine as any).wasSuccessful === 'function' 
-                ? (stateMachine as any).wasSuccessful() 
-                : true;
-              handleCompletion(success);
-            }
+
+      return {
+        stateMachine,
+        isFinished: () => (typeof (stateMachine as any).isFinished === 'function' ? (stateMachine as any).isFinished() : false),
+        wasSuccessful: () => computeOutcome().success,
+        onStop: (reason: ReactiveBehaviorStopReason) => {
+          if (reason === 'completed') {
+            finalizeCompletion();
+          } else {
+            logger.debug(`FoodCollection: stopped (${reason})`);
           }
-        } catch (_) {}
-      };
-      
-      completionInterval = setInterval(checkCompletion, 100);
-      
-      const originalOnStateExited = stateMachine.onStateExited;
-      stateMachine.onStateExited = function(this: any) {
-        clearCompletionInterval();
-        if (originalOnStateExited) {
-          try {
-            originalOnStateExited.call(this);
-          } catch (_) {}
-        }
-        if (!finished) {
-          handleCompletion(false);
         }
       };
-      
-      return stateMachine;
     } catch (err: any) {
       logger.info(`FoodCollection: failed to create state machine - ${err?.message || err}`);
-      executor.finish(false);
       return null;
     }
-  },
-  
-  onDeactivate: () => {
-    logger.debug('FoodCollection: deactivated');
   }
 };

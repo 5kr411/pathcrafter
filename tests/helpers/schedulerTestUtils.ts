@@ -1,6 +1,7 @@
 import { EventEmitter } from 'events';
-import { BehaviorScheduler } from '../../bots/collector/behavior_scheduler';
 import { PendingEntry, Snapshot, Target } from '../../bots/collector/config';
+import { CollectorControlStack } from '../../bots/collector/control_stack';
+import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
 
 export interface PlanningRecord {
   id: string;
@@ -12,12 +13,7 @@ export interface PlanningRecord {
 type PlannerHandler = (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void;
 
 export class TestWorkerManager {
-  private scheduler: BehaviorScheduler | null = null;
   private readonly pending = new Map<string, { entry: PendingEntry; handler?: PlannerHandler }>();
-
-  setScheduler(scheduler: BehaviorScheduler): void {
-    this.scheduler = scheduler;
-  }
 
   postPlanningRequest(
     id: string,
@@ -36,21 +32,18 @@ export class TestWorkerManager {
         }
   ): void {
     let handler: PlannerHandler | undefined;
-    let frameId: string | undefined;
 
     if (typeof handlerOrOptions === 'function') {
       handler = handlerOrOptions;
     } else if (handlerOrOptions && typeof handlerOrOptions === 'object') {
       handler = handlerOrOptions.handler;
-      frameId = handlerOrOptions.frameId;
     }
 
     const entry: PendingEntry = {
       id,
       target,
       snapshot,
-      handler,
-      frameId
+      handler
     };
 
     this.pending.set(id, { entry, handler });
@@ -64,16 +57,11 @@ export class TestWorkerManager {
     this.pending.delete(id);
 
     const { entry, handler } = record;
-    if (handler) {
-      handler(entry, ranked, ok, error);
-      return;
+    if (!handler) {
+      throw new Error(`No handler registered for planning request ${id}`);
     }
 
-    if (!this.scheduler) {
-      throw new Error('Scheduler not attached to TestWorkerManager');
-    }
-
-    this.scheduler.handlePlannerResult(entry, ranked, ok, error, id);
+    handler(entry, ranked, ok, error);
   }
 
   clearPending(): void {
@@ -122,6 +110,9 @@ export function createMockBot(): any {
   bot.chat = jest.fn();
   bot.safeChat = jest.fn();
   bot.blockAt = jest.fn().mockReturnValue(null);
+  bot.pathfinder = {
+    stop: jest.fn()
+  };
   bot.getEquipmentDestSlot = jest.fn((slot: string) => {
     switch (slot) {
       case 'head':
@@ -141,10 +132,38 @@ export function createMockBot(): any {
   return bot;
 }
 
-export function createSchedulerHarness(bot: any): { scheduler: BehaviorScheduler; workerManager: TestWorkerManager } {
+export function createControlHarness(
+  bot: any,
+  options?: {
+    reactiveRegistry?: ReactiveBehaviorRegistry;
+    config?: {
+      snapshotRadii: number[];
+      snapshotYHalf: number | null;
+      pruneWithWorld: boolean;
+      combineSimilarNodes: boolean;
+      perGenerator: number;
+      toolDurabilityThreshold: number;
+    };
+  }
+): { controlStack: CollectorControlStack; workerManager: TestWorkerManager; registry: ReactiveBehaviorRegistry } {
   const workerManager = new TestWorkerManager();
-  const scheduler = new BehaviorScheduler(bot, workerManager as any);
-  workerManager.setScheduler(scheduler);
-  return { scheduler, workerManager };
-}
+  const registry = options?.reactiveRegistry ?? new ReactiveBehaviorRegistry();
+  const config = options?.config ?? {
+    snapshotRadii: [32],
+    snapshotYHalf: null,
+    pruneWithWorld: true,
+    combineSimilarNodes: false,
+    perGenerator: 1,
+    toolDurabilityThreshold: 0.3
+  };
 
+  const controlStack = new CollectorControlStack(
+    bot,
+    workerManager as any,
+    bot.safeChat ?? (() => {}),
+    config,
+    registry
+  );
+
+  return { controlStack, workerManager, registry };
+}

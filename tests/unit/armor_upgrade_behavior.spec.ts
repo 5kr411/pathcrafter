@@ -118,6 +118,11 @@ jest.mock('mineflayer-statemachine', () => {
       this.current = null;
     }
 
+    isFinished(): boolean {
+      if (!this.exit) return false;
+      return this.current === this.exit;
+    }
+
     private advance(): void {
       let transitioned = true;
       while (transitioned) {
@@ -180,6 +185,24 @@ const flush = async (): Promise<void> => {
     await new Promise((resolve) => setTimeout(resolve, 80));
   }
   await Promise.resolve();
+};
+
+const runStateMachineToCompletion = async (state: any, maxSteps: number = 6): Promise<void> => {
+  const machine = state?.stateMachine;
+  if (!machine) return;
+  if (typeof machine.onStateEntered === 'function') {
+    machine.onStateEntered();
+  }
+  for (let i = 0; i < maxSteps; i += 1) {
+    if (typeof machine.isFinished === 'function' && machine.isFinished()) {
+      break;
+    }
+    if (typeof machine.update === 'function') {
+      machine.update();
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await flush();
+  }
 };
 
 function createBot(options: {
@@ -278,17 +301,14 @@ describe('unit: armor_upgrade_behavior', () => {
       return Promise.resolve();
     });
 
-    const finish = jest.fn();
-    const result = await armorUpgradeBehavior.execute(bot, { finish });
-    expect(result).toBeNull();
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
 
-    await flush();
-    await flush();
-    await flush();
+    await runStateMachineToCompletion(state);
 
     expect(bot.unequip).toHaveBeenCalledWith('head');
     expect(bot.equip).toHaveBeenCalledWith(ironHelmet, 'head');
-    expect(finish).toHaveBeenCalledWith(true);
+    expect(state?.wasSuccessful?.()).toBe(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped iron_helmet');
   });
 
@@ -345,15 +365,13 @@ describe('unit: armor_upgrade_behavior', () => {
 
     expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
 
-    const finish = jest.fn();
-    await armorUpgradeBehavior.execute(bot, { finish });
-    await flush();
-    await flush();
-    await flush();
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
+    await runStateMachineToCompletion(state);
 
     expect(bot.unequip).toHaveBeenCalledWith('torso');
     expect(bot.equip).toHaveBeenCalledWith(diamondChestplateFresh, 'torso');
-    expect(finish).toHaveBeenCalledWith(true);
+    expect(state?.wasSuccessful?.()).toBe(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped diamond_chestplate');
   });
 
@@ -405,10 +423,10 @@ describe('unit: armor_upgrade_behavior', () => {
 
     expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
 
-    const finish = jest.fn();
-    await armorUpgradeBehavior.execute(bot, { finish });
-    await flush();
-    expect(finish).toHaveBeenCalledWith(true);
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
+    await runStateMachineToCompletion(state);
+    expect(state?.wasSuccessful?.()).toBe(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped diamond_helmet');
 
     bot._inventoryItems = [netheriteHelmet];
@@ -460,15 +478,13 @@ describe('unit: armor_upgrade_behavior', () => {
 
     expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
 
-    const finish = jest.fn();
-    await armorUpgradeBehavior.execute(bot, { finish });
-    await flush();
-    await flush();
-    await flush();
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
+    await runStateMachineToCompletion(state);
 
     expect(bot.unequip).toHaveBeenCalledWith('head');
     expect(bot.equip).toHaveBeenCalledWith(netheriteHelmet, 'head');
-    expect(finish).toHaveBeenCalledWith(true);
+    expect(state?.wasSuccessful?.()).toBe(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped netherite_helmet');
   });
 
@@ -497,14 +513,12 @@ describe('unit: armor_upgrade_behavior', () => {
 
     expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
 
-    const finish = jest.fn();
-    await armorUpgradeBehavior.execute(bot, { finish });
-    await flush();
-    await flush();
-    await flush();
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
+    await runStateMachineToCompletion(state);
 
     expect(bot.equip).toHaveBeenCalledWith(shield, 'off-hand');
-    expect(finish).toHaveBeenCalledWith(true);
+    expect(state?.wasSuccessful?.()).toBe(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped shield');
   });
 
@@ -560,14 +574,12 @@ describe('unit: armor_upgrade_behavior', () => {
 
     expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
 
-    const finish = jest.fn();
-    await armorUpgradeBehavior.execute(bot, { finish });
-    await flush();
-    await flush();
-    await flush();
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
+    await runStateMachineToCompletion(state);
 
     expect(bot.equip).toHaveBeenCalledWith(ironHelmet, 'head');
-    expect(finish).toHaveBeenCalledWith(true);
+    expect(state?.wasSuccessful?.()).toBe(true);
     expect(bot.safeChat).toHaveBeenCalledWith('equipped iron_helmet');
   });
 
@@ -599,10 +611,10 @@ describe('unit: armor_upgrade_behavior', () => {
 
     expect(armorUpgradeBehavior.shouldActivate(bot)).toBe(true);
 
-    const finish = jest.fn();
-    await armorUpgradeBehavior.execute(bot, { finish });
-    await flush();
-    expect(finish).toHaveBeenCalledWith(true);
+    const state = await armorUpgradeBehavior.createState(bot);
+    expect(state).not.toBeNull();
+    await runStateMachineToCompletion(state);
+    expect(state?.wasSuccessful?.()).toBe(true);
 
     bot._inventoryItems = [{ ...shield }];
     bot.inventory.items = jest.fn(() => bot._inventoryItems);
@@ -617,5 +629,3 @@ describe('unit: armor_upgrade_behavior', () => {
     jest.useRealTimers();
   });
 });
-
-

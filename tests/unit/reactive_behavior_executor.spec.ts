@@ -1,7 +1,6 @@
-import { BehaviorScheduler } from '../../bots/collector/behavior_scheduler';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
+import { ReactiveBehaviorManager } from '../../bots/collector/reactive_behavior_manager';
 import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { createMockBot, createSchedulerHarness } from '../helpers/schedulerTestUtils';
+import { createMockBot } from '../helpers/schedulerTestUtils';
 
 jest.mock('mineflayer-statemachine', () => ({
   BotStateMachine: jest.fn((_bot: any, machine: any) => {
@@ -14,96 +13,146 @@ jest.mock('mineflayer-statemachine', () => ({
   })
 }));
 
-describe('unit: ReactiveBehaviorExecutorClass', () => {
+describe('unit: ReactiveBehaviorManager', () => {
   const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
   let bot: any;
   let registry: ReactiveBehaviorRegistry;
-  let executor: ReactiveBehaviorExecutorClass;
-  let scheduler: BehaviorScheduler;
+  let manager: ReactiveBehaviorManager;
 
   beforeEach(() => {
     bot = createMockBot();
     registry = new ReactiveBehaviorRegistry();
-    executor = new ReactiveBehaviorExecutorClass(bot, registry);
-    const harness = createSchedulerHarness(bot);
-    scheduler = harness.scheduler;
+    manager = new ReactiveBehaviorManager(bot, registry);
+    manager.onStateEntered();
   });
 
-  test('createScheduledRun returns run and marks executor active', async () => {
-    const behavior = {
+  afterEach(() => {
+    manager.onStateExited();
+  });
+
+  test('starts and completes a reactive run', async () => {
+    let updates = 0;
+    let finished = false;
+
+    registry.register({
       name: 'reactive-test',
       priority: 100,
-      async execute(_bot: any, exec: { finish: (success: boolean) => void }) {
-        exec.finish(true);
-        return null;
+      shouldActivate: () => true,
+      createState: async () => {
+        const stateMachine: any = {
+          update: () => {
+            updates += 1;
+            if (updates >= 2) {
+              finished = true;
+            }
+          },
+          onStateEntered: jest.fn(),
+          onStateExited: jest.fn(),
+          transitions: [],
+          states: [],
+          isFinished: () => finished,
+          wasSuccessful: () => true
+        };
+        return { stateMachine };
       }
-    };
+    });
 
-    const run = await executor.createScheduledRun(behavior);
-    expect(run).not.toBeNull();
-    expect(executor.isActive()).toBe(true);
+    manager.update();
+    await flush();
+    manager.update();
+    await flush();
 
-    scheduler.pushBehavior(run!);
-    await scheduler.activateTop();
+    expect(manager.isActive()).toBe(true);
 
-    await run!.waitForCompletion();
-    expect(executor.isActive()).toBe(false);
+    manager.update();
+    manager.update();
+    await flush();
+    manager.update();
+
+    expect(manager.isActive()).toBe(false);
+    expect(updates).toBeGreaterThan(0);
   });
 
-  test('rejects concurrent runs while one is active', async () => {
-    const blockingBehavior = {
-      name: 'blocker',
-      priority: 100,
-      async execute(_bot: any, _exec: { finish: (success: boolean) => void }) {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        _exec.finish(true);
-        return null;
-      }
-    };
+  test('preempts lower priority behaviors', async () => {
+    const stopReasons: string[] = [];
+    let lowUpdates = 0;
+    let highUpdates = 0;
+    let highActive = false;
 
-    const run = await executor.createScheduledRun(blockingBehavior);
-    expect(run).not.toBeNull();
-
-    scheduler.pushBehavior(run!);
-    void scheduler.activateTop();
-
-    const rejected = await executor.createScheduledRun(blockingBehavior);
-    expect(rejected).toBeNull();
-
-    await run!.waitForCompletion();
-    expect(executor.isActive()).toBe(false);
-  });
-
-  test('stop aborts the current run', async () => {
-    let finished = false;
-    const behavior = {
-      name: 'abort-test',
-      priority: 100,
-      async execute(_bot: any, _exec: { finish: (success: boolean) => void }) {
+    registry.register({
+      name: 'low',
+      priority: 50,
+      shouldActivate: () => true,
+      createState: async () => {
+        let finished = false;
+        const stateMachine: any = {
+          update: () => {
+            lowUpdates += 1;
+          },
+          onStateEntered: jest.fn(),
+          onStateExited: jest.fn(),
+          transitions: [],
+          states: [],
+          isFinished: () => finished,
+          wasSuccessful: () => true
+        };
         return {
-          update() {
-            // no-op
+          stateMachine,
+          onStop: (reason) => {
+            stopReasons.push(reason);
+            finished = true;
           }
         };
       }
-    };
-
-    const run = await executor.createScheduledRun(behavior);
-    expect(run).not.toBeNull();
-
-    scheduler.pushBehavior(run!);
-    await scheduler.activateTop();
-
-    const completion = run!.waitForCompletion().then((result) => {
-      finished = result;
     });
 
-    executor.stop();
-    await flush();
-    await completion;
+    registry.register({
+      name: 'high',
+      priority: 100,
+      shouldActivate: () => highActive,
+      createState: async () => {
+        let ticks = 0;
+        let finished = false;
+        const stateMachine: any = {
+          update: () => {
+            highUpdates += 1;
+            ticks += 1;
+            if (ticks >= 2) {
+              finished = true;
+            }
+          },
+          onStateEntered: jest.fn(),
+          onStateExited: jest.fn(),
+          transitions: [],
+          states: [],
+          isFinished: () => finished,
+          wasSuccessful: () => true
+        };
+        return { stateMachine };
+      }
+    });
 
-    expect(finished).toBe(false);
-    expect(executor.isActive()).toBe(false);
+    manager.update();
+    await flush();
+    manager.update();
+    await flush();
+    manager.update();
+    expect(lowUpdates).toBeGreaterThan(0);
+
+    highActive = true;
+    manager.update();
+    await flush();
+    manager.update();
+    await flush();
+
+    for (let i = 0; i < 4 && highUpdates === 0; i += 1) {
+      manager.update();
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
+
+    expect(stopReasons).toContain('preempted');
+    expect(highUpdates).toBeGreaterThan(0);
   });
 });

@@ -1,9 +1,10 @@
 import { EventEmitter } from 'events';
-import { BehaviorScheduler, ScheduledBehavior } from '../../bots/collector/behavior_scheduler';
 import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
 import { TestWorkerManager } from './schedulerTestUtils';
 import { createFakeBot } from '../utils/fakeBot';
+import { getFoodHungerPoints } from '../../utils/foodConfig';
+import { CollectorControlStack } from '../../bots/collector/control_stack';
+import { ReactiveBehaviorManager } from '../../bots/collector/reactive_behavior_manager';
 
 export interface SimulatedBotOptions {
   position?: { x: number; y: number; z: number };
@@ -93,10 +94,54 @@ export function createSimulatedBot(options: SimulatedBotOptions = {}): any {
     stop: jest.fn()
   };
 
+  bot.heldItem = null;
+  bot.equip = jest.fn(async (item: any, destination: string) => {
+    if (destination === 'hand') {
+      bot.heldItem = item;
+      return;
+    }
+
+    if (typeof bot.getEquipmentDestSlot === 'function') {
+      const slotIndex = bot.getEquipmentDestSlot(destination);
+      if (Number.isInteger(slotIndex)) {
+        bot.inventory.slots[slotIndex] = item;
+      }
+    }
+  });
+
+  bot.unequip = jest.fn(async (slot: string) => {
+    if (typeof bot.getEquipmentDestSlot !== 'function') return;
+    const slotIndex = bot.getEquipmentDestSlot(slot);
+    if (!Number.isInteger(slotIndex)) return;
+    const removed = bot.inventory.slots[slotIndex] ?? null;
+    bot.inventory.slots[slotIndex] = null;
+    if (!removed) return;
+    const emptyIndex = bot.inventory.slots.findIndex((item: any, index: number) => item == null && index !== slotIndex);
+    if (emptyIndex >= 0) {
+      bot.inventory.slots[emptyIndex] = removed;
+    }
+  });
+
   bot.attack = jest.fn();
   bot.activateItem = jest.fn();
   bot.deactivateItem = jest.fn();
-  bot.consume = jest.fn(async () => {});
+  bot.consume = jest.fn(async () => {
+    const held = bot.heldItem;
+    if (!held || typeof held.name !== 'string') return;
+    const points = getFoodHungerPoints(held.name);
+    if (!Number.isFinite(points) || points <= 0) return;
+    bot.food = Math.min(20, (bot.food ?? 0) + points);
+  });
+
+  if (bot.pathfinder) {
+    bot.pathfinder.stop = jest.fn();
+  } else {
+    bot.pathfinder = {
+      stop: jest.fn()
+    };
+  }
+
+  bot.stopDigging = jest.fn();
 
   if (!bot.off && typeof bot.removeListener === 'function') {
     bot.off = bot.removeListener.bind(bot);
@@ -158,45 +203,43 @@ export class SimulatedClock {
 export class ReactiveTestHarness {
   readonly bot: any;
   readonly workerManager: TestWorkerManager;
-  readonly scheduler: BehaviorScheduler;
   readonly registry: ReactiveBehaviorRegistry;
-  readonly executor: ReactiveBehaviorExecutorClass;
+  readonly controlStack: CollectorControlStack;
   readonly clock: SimulatedClock;
 
-  constructor(options?: { bot?: any; tickMs?: number; pollIntervalMs?: number }) {
+  constructor(options?: { bot?: any; tickMs?: number }) {
     this.bot = options?.bot ?? createSimulatedBot();
     this.workerManager = new TestWorkerManager();
-    this.scheduler = new BehaviorScheduler(this.bot, this.workerManager as any, {
-      pollIntervalMs: options?.pollIntervalMs
-    });
-    this.workerManager.setScheduler(this.scheduler);
     this.registry = new ReactiveBehaviorRegistry();
-    this.executor = new ReactiveBehaviorExecutorClass(this.bot, this.registry);
+    this.controlStack = new CollectorControlStack(
+      this.bot,
+      this.workerManager as any,
+      this.bot.safeChat ?? (() => {}),
+      {
+        snapshotRadii: [32],
+        snapshotYHalf: null,
+        pruneWithWorld: true,
+        combineSimilarNodes: false,
+        perGenerator: 1,
+        toolDurabilityThreshold: 0.3
+      },
+      this.registry
+    );
+    this.controlStack.start();
+    this.controlStack.reactiveLayer.setEnabled(false);
     this.clock = new SimulatedClock(this.bot, options?.tickMs ?? 50, 0);
   }
 
+  get manager(): ReactiveBehaviorManager {
+    return this.controlStack.reactiveLayer;
+  }
+
   enableReactivePolling(): void {
-    this.scheduler.setReactivePoller(async () => {
-      const behavior = await this.registry.findActiveBehavior(this.bot);
-      if (!behavior) return;
-      const run = await this.executor.createScheduledRun(behavior);
-      if (!run) return;
-      try {
-        await this.scheduler.pushAndActivate(run, `reactive ${behavior.name || 'unknown'}`);
-        await run.waitForCompletion();
-      } catch (_) {
-      }
-    });
+    this.controlStack.reactiveLayer.setEnabled(true);
   }
 
   disableReactivePolling(): void {
-    this.scheduler.setReactivePoller(null);
-  }
-
-  async startBehavior(behavior: ScheduledBehavior): Promise<string> {
-    const frameId = this.scheduler.pushBehavior(behavior);
-    await this.scheduler.activateTop();
-    return frameId;
+    this.controlStack.reactiveLayer.setEnabled(false);
   }
 
   async tick(count: number = 1): Promise<void> {

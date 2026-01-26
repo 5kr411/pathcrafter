@@ -1,5 +1,5 @@
-import { ReactiveBehavior, Bot } from './types';
-import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
+import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
+import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import logger from '../../../utils/logger';
 
 type ArmorSlot = 'head' | 'torso' | 'legs' | 'feet';
@@ -228,6 +228,142 @@ function shouldEquipShield(bot: Bot): any | null {
   return findShieldInInventory(bot);
 }
 
+interface EquipAttempt {
+  slot: EquipSlot;
+  item: any;
+  label: string;
+}
+
+class BehaviorEquipSlot implements StateBehavior {
+  public stateName = 'EquipSlot';
+  public active = false;
+  private finished = false;
+  private success = false;
+  private verifyTimer: NodeJS.Timeout | null = null;
+
+  constructor(
+    private readonly bot: Bot,
+    private readonly attempt: EquipAttempt,
+    private readonly sendChat: ((msg: string) => void) | null,
+    private readonly verify: () => boolean
+  ) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.finished = false;
+    this.success = false;
+    this.startEquip();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+    this.clearTimer();
+  }
+
+  isFinished(): boolean {
+    return this.finished;
+  }
+
+  wasSuccessful(): boolean {
+    return this.success;
+  }
+
+  markPreempted(): void {
+    if (!this.finished) {
+      setSlotCooldown(this.attempt.slot, SLOT_RETRY_COOLDOWN_MS);
+      this.clearTimer();
+      this.finished = true;
+      this.success = false;
+    }
+  }
+
+  private clearTimer(): void {
+    if (this.verifyTimer) {
+      clearTimeout(this.verifyTimer);
+      this.verifyTimer = null;
+    }
+  }
+
+  private finish(success: boolean): void {
+    if (this.finished) {
+      return;
+    }
+    this.finished = true;
+    this.success = success;
+    setSlotCooldown(this.attempt.slot, success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
+    if (success && this.sendChat) {
+      this.sendChat(`equipped ${this.attempt.label}`);
+    }
+  }
+
+  private async startEquip(): Promise<void> {
+    setSlotCooldown(this.attempt.slot, SLOT_IN_PROGRESS_COOLDOWN_MS);
+
+    try {
+      if (this.attempt.slot !== 'off-hand') {
+        const oldArmor = getEquippedItem(this.bot, this.attempt.slot as ArmorSlot);
+        if (oldArmor && typeof (this.bot as any)?.unequip === 'function') {
+          logger.debug(`ArmorUpgrade: unequipping old armor ${oldArmor.name}`);
+          await (this.bot as any).unequip(this.attempt.slot);
+        }
+      }
+
+      logger.debug(`ArmorUpgrade: equipping ${this.attempt.item.name} to ${this.attempt.slot}`);
+      await (this.bot as any).equip(this.attempt.item, this.attempt.slot);
+
+      this.verifyTimer = setTimeout(() => {
+        const success = this.verify();
+        logger.debug(`ArmorUpgrade: equip verification slot=${this.attempt.slot} success=${success}`);
+        this.finish(success);
+      }, 100);
+    } catch (err: any) {
+      logger.debug('ArmorUpgrade: equip error', { error: String(err) });
+      this.finish(false);
+    }
+  }
+}
+
+function createEquipState(
+  bot: Bot,
+  attempt: EquipAttempt,
+  sendChat: ((msg: string) => void) | null,
+  verify: () => boolean
+): {
+  stateMachine: any;
+  wasSuccessful: () => boolean;
+  onStop: (reason: ReactiveBehaviorStopReason) => void;
+} {
+  const enter = new BehaviorIdle();
+  const exit = new BehaviorIdle();
+  const equip = new BehaviorEquipSlot(bot, attempt, sendChat, verify);
+
+  const enterToEquip = new StateTransition({
+    parent: enter,
+    child: equip,
+    name: 'armor-upgrade: enter -> equip',
+    shouldTransition: () => true
+  });
+
+  const equipToExit = new StateTransition({
+    parent: equip,
+    child: exit,
+    name: 'armor-upgrade: equip -> exit',
+    shouldTransition: () => equip.isFinished()
+  });
+
+  const stateMachine = new NestedStateMachine([enterToEquip, equipToExit], enter, exit);
+
+  return {
+    stateMachine,
+    wasSuccessful: () => equip.wasSuccessful(),
+    onStop: (reason: ReactiveBehaviorStopReason) => {
+      if (reason !== 'completed') {
+        equip.markPreempted();
+      }
+    }
+  };
+}
+
 export const armorUpgradeBehavior: ReactiveBehavior = {
   priority: 80,
   name: 'armor_upgrade',
@@ -248,7 +384,7 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
     return false;
   },
 
-  execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
+  createState: async (bot: Bot): Promise<any> => {
     const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
       ? (bot as any).safeChat.bind(bot)
       : null;
@@ -259,76 +395,36 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
       const currentScore = equipped ? evaluateArmor(bot, equipped)?.score : 0;
       logger.debug(`ArmorUpgrade: attempting upgrade slot=${armorCandidate.slot} current=${equipped?.name || 'none'}(${currentScore}) -> target=${armorCandidate.item.name}(${armorCandidate.score}) improvement=${armorCandidate.improvement}`);
 
-      setSlotCooldown(armorCandidate.slot, SLOT_IN_PROGRESS_COOLDOWN_MS);
+      const attempt: EquipAttempt = {
+        slot: armorCandidate.slot,
+        item: armorCandidate.item,
+        label: armorCandidate.item.name
+      };
 
-      try {
-        const oldArmor = getEquippedItem(bot, armorCandidate.slot);
-        if (oldArmor && typeof (bot as any)?.unequip === 'function') {
-          logger.debug(`ArmorUpgrade: unequipping old armor ${oldArmor.name}`);
-          await (bot as any).unequip(armorCandidate.slot);
-        }
-        
-        logger.debug(`ArmorUpgrade: equipping new armor ${armorCandidate.item.name}`);
-        await (bot as any).equip(armorCandidate.item, armorCandidate.slot);
-        
-        setTimeout(() => {
-          const nowEquipped = getEquippedItem(bot, armorCandidate.slot);
-          const success = nowEquipped?.name === armorCandidate.item.name;
-          
-          logger.debug(`ArmorUpgrade: direct equip result slot=${armorCandidate.slot} expected=${armorCandidate.item.name} nowEquipped=${nowEquipped?.name || 'none'} success=${success}`);
-          
-          setSlotCooldown(armorCandidate.slot, success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
-          if (success && sendChat) {
-            sendChat(`equipped ${armorCandidate.item.name}`);
-          }
-          executor.finish(success);
-        }, 100);
-        
-        return null;
-      } catch (err: any) {
-        logger.debug(`ArmorUpgrade: equip error`, { error: String(err) });
-        setSlotCooldown(armorCandidate.slot, SLOT_RETRY_COOLDOWN_MS);
-        executor.finish(false);
-        return null;
-      }
+      const verify = () => {
+        const nowEquipped = getEquippedItem(bot, armorCandidate.slot);
+        return nowEquipped?.name === armorCandidate.item.name;
+      };
+
+      return createEquipState(bot, attempt, sendChat, verify);
     }
 
     if (!isSlotCooling('off-hand')) {
       const shieldItem = shouldEquipShield(bot);
       if (shieldItem) {
         logger.debug(`ArmorUpgrade: attempting to equip shield in off-hand`);
-        setSlotCooldown('off-hand', SLOT_IN_PROGRESS_COOLDOWN_MS);
+        const attempt: EquipAttempt = {
+          slot: 'off-hand',
+          item: shieldItem,
+          label: 'shield'
+        };
 
-        try {
-          await (bot as any).equip(shieldItem, 'off-hand');
-
-          setTimeout(() => {
-            const success = hasShieldInOffhand(bot);
-            logger.debug(`ArmorUpgrade: shield equip result success=${success}`);
-
-            setSlotCooldown('off-hand', success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
-            if (success && sendChat) {
-              sendChat('equipped shield');
-            }
-            executor.finish(success);
-          }, 100);
-
-          return null;
-        } catch (err: any) {
-          logger.debug(`ArmorUpgrade: shield equip error`, { error: String(err) });
-          setSlotCooldown('off-hand', SLOT_RETRY_COOLDOWN_MS);
-          executor.finish(false);
-          return null;
-        }
+        const verify = () => hasShieldInOffhand(bot);
+        return createEquipState(bot, attempt, sendChat, verify);
       }
     }
 
-    executor.finish(false);
     return null;
-  },
-
-  onDeactivate: () => {
   }
 };
-
 

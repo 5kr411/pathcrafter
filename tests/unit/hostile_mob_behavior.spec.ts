@@ -246,8 +246,8 @@ describe('unit: hostile_mob_behavior', () => {
     });
   });
 
-  describe('execute', () => {
-    test('returns null and finishes when no hostile mob found', async () => {
+  describe('createState', () => {
+    test('returns null when no hostile mob found', async () => {
       const bot = {
         version: '1.20.1',
         entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 10 } },
@@ -257,14 +257,10 @@ describe('unit: hostile_mob_behavior', () => {
         safeChat: jest.fn(),
         chat: jest.fn()
       };
-      const executor = {
-        finish: jest.fn()
-      };
 
-      const result = await hostileMobBehavior.execute(bot, executor);
+      const result = await hostileMobBehavior.createState(bot);
       
       expect(result).toBeNull();
-      expect(executor.finish).toHaveBeenCalledWith(false);
     });
 
     test('announces combat start and completion via safeChat', async () => {
@@ -293,18 +289,14 @@ describe('unit: hostile_mob_behavior', () => {
         chat: jest.fn()
       };
 
-      const executor = {
-        finish: jest.fn()
-      };
+      const result = await hostileMobBehavior.createState(bot);
 
-      const result = await hostileMobBehavior.execute(bot, executor);
-
-      expect(result).toBe(machine);
+      expect(result?.stateMachine).toBe(machine);
       expect(bot.safeChat).toHaveBeenCalledWith('fighting Zombie');
 
       jest.runOnlyPendingTimers();
 
-      expect(executor.finish).toHaveBeenCalledWith(true);
+      result?.onStop?.('completed');
       expect(bot.safeChat).toHaveBeenCalledWith('done fighting Zombie');
 
       jest.useRealTimers();
@@ -320,9 +312,8 @@ describe('unit: hostile_mob_behavior', () => {
       expect(hostileMobBehavior.priority).toBe(100);
     });
 
-    test('has onDeactivate function', () => {
-      expect(typeof hostileMobBehavior.onDeactivate).toBe('function');
+    test('has createState function', () => {
+      expect(typeof hostileMobBehavior.createState).toBe('function');
     });
   });
 });
-

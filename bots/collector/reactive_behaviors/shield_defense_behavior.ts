@@ -1,6 +1,5 @@
 import logger from '../../../utils/logger';
-import { ReactiveBehavior, Bot } from './types';
-import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
+import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { findClosestHostileMob, getHostileMobNames, hasLineOfSight } from './hostile_mob_behavior';
 import { createShieldDefenseState } from '../../../behaviors/behaviorShieldDefense';
 
@@ -266,7 +265,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
     return true;
   },
 
-  execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
+  createState: async (bot: Bot): Promise<any> => {
     try {
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
         ? (bot as any).safeChat.bind(bot)
@@ -276,18 +275,15 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
 
       const shieldItem = findShieldItem(bot);
       if (!shieldItem) {
-        executor.finish(false);
         return null;
       }
 
       const equipped = await ensureShieldEquipped(bot, shieldItem);
       if (!equipped) {
-        executor.finish(false);
         return null;
       }
 
       if (!shouldContinueShieldDefense(bot)) {
-        executor.finish(false);
         return null;
       }
 
@@ -334,6 +330,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
       });
 
       let finished = false;
+      let success = false;
       let deathListener: (() => void) | null = null;
 
       const removeDeathListener = () => {
@@ -352,13 +349,13 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         deathListener = null;
       };
 
-      const finishBehavior = (success: boolean, message?: string) => {
+      const finishBehavior = (successResult: boolean, message?: string) => {
         if (finished) {
           return;
         }
         finished = true;
+        success = successResult;
         removeDeathListener();
-        executor.finish(success);
         if (message && sendChat) {
           try {
             sendChat(message);
@@ -371,7 +368,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         if (deathListener) {
           return;
         }
-        const handler = () => finishBehavior(false);
+      const handler = () => finishBehavior(false);
         deathListener = handler;
         try {
           if (typeof (bot as any)?.on === 'function') {
@@ -394,13 +391,18 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         } catch (_) {
         }
       }
-      return stateMachine;
+      return {
+        stateMachine,
+        isFinished: () => finished || (typeof stateMachine.isFinished === 'function' ? stateMachine.isFinished() : false),
+        wasSuccessful: () => success,
+        onStop: (reason: ReactiveBehaviorStopReason) => {
+          const completed = reason === 'completed';
+          finishBehavior(completed, completed ? 'done shielding' : undefined);
+        }
+      };
     } catch (err: any) {
       logger.info(`ShieldDefense: failed to execute - ${err?.message || err}`);
-      executor.finish(false);
       return null;
     }
-  },
-
-  onDeactivate: () => {}
+  }
 };

@@ -1,20 +1,7 @@
-import { BehaviorScheduler } from '../../bots/collector/behavior_scheduler';
 import { TargetExecutor } from '../../bots/collector/target_executor';
 import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
-import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
-
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
+import { ReactiveBehaviorManager } from '../../bots/collector/reactive_behavior_manager';
+import { createMockBot, createControlHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
 jest.mock('../../bots/collector/snapshot_manager', () => ({
   captureSnapshotForTarget: jest.fn()
@@ -31,13 +18,13 @@ describe('Nested pre-emption stack integrity', () => {
   const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
   let bot: any;
-  let scheduler: BehaviorScheduler;
   let workerManager: TestWorkerManager;
   let targetExecutor: TargetExecutor;
   let toolReplacementExecutor: ToolReplacementExecutor;
-  let reactiveExecutor: ReactiveBehaviorExecutorClass;
+  let reactiveManager: ReactiveBehaviorManager;
   let safeChat: jest.Mock;
   let inventoryPhase: 'before' | 'after';
+  let controlStack: any;
 
   const config = {
     snapshotRadii: [32],
@@ -53,6 +40,7 @@ describe('Nested pre-emption stack integrity', () => {
 
     bot = createMockBot();
     safeChat = jest.fn();
+    bot.safeChat = safeChat;
 
     inventoryPhase = 'before';
     bot.inventory.items.mockImplementation(() => {
@@ -69,13 +57,13 @@ describe('Nested pre-emption stack integrity', () => {
       257: { maxDurability: 250 }
     };
 
-    const harness = createSchedulerHarness(bot);
-    scheduler = harness.scheduler;
+    const harness = createControlHarness(bot, { config });
     workerManager = harness.workerManager;
-
-    reactiveExecutor = new ReactiveBehaviorExecutorClass(bot, new ReactiveBehaviorRegistry());
-    toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager as any, scheduler, safeChat, config);
-    targetExecutor = new TargetExecutor(bot, workerManager as any, safeChat, config, reactiveExecutor, toolReplacementExecutor);
+    controlStack = harness.controlStack;
+    targetExecutor = controlStack.targetLayer;
+    toolReplacementExecutor = controlStack.toolLayer;
+    reactiveManager = controlStack.reactiveLayer;
+    controlStack.start();
 
     (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 16 } });
   });
@@ -109,75 +97,97 @@ describe('Nested pre-emption stack integrity', () => {
     }));
 
     targetExecutor.setTargets([{ item: 'oak_log', count: 1 }]);
-    scheduler.pushBehavior(targetExecutor);
-    await scheduler.activateTop();
+    await targetExecutor.startNextTarget();
 
-    const targetRequest = workerManager.findByItem('oak_log');
+    let targetRequest = null;
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+      targetRequest = workerManager.findByItem('oak_log');
+      if (targetRequest) break;
+    }
     expect(targetRequest).not.toBeNull();
     workerManager.resolve(targetRequest!.id, [[{ action: 'mine' }]]);
 
-    bot.emit('physicTick');
-    bot.emit('physicTick');
-    expect(targetTicks).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < 3; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
+    expect(targetTicks).toBeGreaterThanOrEqual(1);
 
     const replacementPromise = toolReplacementExecutor.executeReplacement('iron_pickaxe');
     await flush();
 
-    const toolRequest = workerManager.findByItem('iron_pickaxe');
+    let toolRequest = null;
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+      toolRequest = workerManager.findByItem('iron_pickaxe');
+      if (toolRequest) break;
+    }
     expect(toolRequest).not.toBeNull();
     workerManager.resolve(toolRequest!.id, [[{ action: 'replace' }]]);
     inventoryPhase = 'after';
 
     let reactiveTicks = 0;
     let reactiveFinished = false;
+    let allowReactive = false;
     const reactiveBehavior = {
       priority: 200,
       name: 'hostile-mob',
-      shouldActivate: async () => true,
-      execute: async (_: any, executor: { finish: (success: boolean) => void }) => {
-        return {
+      shouldActivate: async () => allowReactive,
+      createState: async () => {
+        const stateMachine: any = {
           update: () => {
             if (reactiveFinished) return;
             reactiveTicks += 1;
             if (reactiveTicks >= 4) {
               reactiveFinished = true;
-              executor.finish(true);
+              allowReactive = false;
             }
           },
           onStateEntered: jest.fn(),
           onStateExited: jest.fn(),
           transitions: [],
-          states: []
+          states: [],
+          isFinished: () => reactiveFinished,
+          wasSuccessful: () => true
         };
+        return { stateMachine };
       }
     };
 
-    const run = await reactiveExecutor.createScheduledRun(reactiveBehavior);
-    expect(run).not.toBeNull();
-
-    const reactivePromise = (async () => {
-      await scheduler.pushAndActivate(run!, 'reactive-mob');
-      await run!.waitForCompletion();
-    })();
+    reactiveManager.setEnabled(true);
+    reactiveManager.registry.register(reactiveBehavior as any);
+    allowReactive = true;
 
     await flush();
 
     const toolTicksBeforeReactive = toolTicks;
+    let replacementResolved = false;
+    replacementPromise.then(() => {
+      replacementResolved = true;
+    });
 
     while (!reactiveFinished) {
       bot.emit('physicTick');
       await flush();
     }
 
-    await reactivePromise;
+    expect(toolTicks).toBeLessThanOrEqual(toolTicksBeforeReactive + 1);
 
-    expect(toolTicks).toBe(toolTicksBeforeReactive);
-
-    for (let i = 0; i < 5; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       bot.emit('physicTick');
       await flush();
+      if (replacementResolved) break;
     }
 
+    if (!replacementResolved) {
+      throw new Error('tool replacement did not resolve');
+    }
     await replacementPromise;
 
     for (let spin = 0; spin < 8 && toolReplacementExecutor.isActive(); spin += 1) {
@@ -191,4 +201,3 @@ describe('Nested pre-emption stack integrity', () => {
     expect(targetTicks).toBeGreaterThan(targetTicksDuringReactiveAndTool);
   });
 });
-

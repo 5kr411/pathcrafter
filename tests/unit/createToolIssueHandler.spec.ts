@@ -1,5 +1,6 @@
 import { createToolIssueHandler } from '../../bots/collector/target_executor';
 import { ToolIssue } from '../../bots/collector/execution_context';
+import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
 
 describe('createToolIssueHandler', () => {
   const baseBot = { inventory: { items: () => [] } } as any;
@@ -19,7 +20,7 @@ describe('createToolIssueHandler', () => {
     const scheduler = makeScheduler();
 
     const handler = createToolIssueHandler({
-      toolReplacementExecutor: { executeReplacement },
+      toolReplacementExecutor: { executeReplacement } as unknown as ToolReplacementExecutor,
       toolsBeingReplaced,
       bot: baseBot,
       safeChat,
@@ -49,7 +50,7 @@ describe('createToolIssueHandler', () => {
     const scheduler = makeScheduler();
 
     const handler = createToolIssueHandler({
-      toolReplacementExecutor: { executeReplacement },
+      toolReplacementExecutor: { executeReplacement } as unknown as ToolReplacementExecutor,
       toolsBeingReplaced,
       bot: baseBot,
       safeChat,
@@ -78,7 +79,7 @@ describe('createToolIssueHandler', () => {
     const scheduler = makeScheduler();
 
     const handler = createToolIssueHandler({
-      toolReplacementExecutor: { executeReplacement },
+      toolReplacementExecutor: { executeReplacement } as unknown as ToolReplacementExecutor,
       toolsBeingReplaced,
       bot: baseBot,
       safeChat,

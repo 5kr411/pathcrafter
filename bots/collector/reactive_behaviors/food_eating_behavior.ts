@@ -6,7 +6,6 @@ import {
 } from 'mineflayer-statemachine';
 
 import { ReactiveBehavior, Bot } from './types';
-import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
 import logger from '../../../utils/logger';
 
 const minecraftData = require('minecraft-data');
@@ -360,7 +359,7 @@ export const foodEatingBehavior: ReactiveBehavior = {
     return shouldEat(bot);
   },
 
-  execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
+  createState: async (bot: Bot) => {
     const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
       ? (bot as any).safeChat.bind(bot)
       : null;
@@ -372,7 +371,6 @@ export const foodEatingBehavior: ReactiveBehavior = {
 
     if (!bestFood) {
       logger.debug('FoodEating: no suitable food found');
-      executor.finish(false);
       return null;
     }
 
@@ -385,51 +383,10 @@ export const foodEatingBehavior: ReactiveBehavior = {
 
     const stateMachine = createFoodEatingState(bot, targets);
 
-    let finished = false;
-    let completionInterval: NodeJS.Timeout | null = null;
-
-    const clearCompletionInterval = () => {
-      if (completionInterval) {
-        clearInterval(completionInterval);
-        completionInterval = null;
-      }
+    return {
+      stateMachine,
+      isFinished: () => (typeof (stateMachine as any).isFinished === 'function' ? (stateMachine as any).isFinished() : false),
+      wasSuccessful: () => (typeof (stateMachine as any).wasSuccessful === 'function' ? (stateMachine as any).wasSuccessful() : true)
     };
-
-    const finishEating = (success: boolean) => {
-      if (finished) {
-        return;
-      }
-      finished = true;
-      clearCompletionInterval();
-      executor.finish(success);
-    };
-
-    const checkCompletion = () => {
-      try {
-        if (typeof (stateMachine as any).isFinished === 'function' && (stateMachine as any).isFinished()) {
-          const success = typeof (stateMachine as any).wasSuccessful === 'function' 
-            ? (stateMachine as any).wasSuccessful() 
-            : true;
-          finishEating(success);
-        }
-      } catch (_) {}
-    };
-
-    completionInterval = setInterval(checkCompletion, 100);
-
-    const originalOnStateExited = stateMachine.onStateExited;
-    stateMachine.onStateExited = function(this: any) {
-      clearCompletionInterval();
-      if (originalOnStateExited) {
-        try {
-          originalOnStateExited.call(this);
-        } catch (_) {}
-      }
-      finishEating(true);
-    };
-
-    return stateMachine;
-  },
-
-  onDeactivate: () => {}
+  }
 };

@@ -1,16 +1,5 @@
 import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
-
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
+import { createMockBot, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
 jest.mock('../../bots/collector/snapshot_manager', () => ({
   captureSnapshotForTarget: jest.fn()
@@ -44,15 +33,15 @@ async function runReplacementScenario(scenario: ReplacementScenario): Promise<{ 
   const chatMessages: string[] = [];
   const bot = createMockBot();
   let currentInventory = scenario.startInventory;
+  const realDateNow = Date.now;
+  let fakeNow = realDateNow();
 
   bot.inventory.items.mockImplementation(() => currentInventory);
   bot.registry.items = {
     871: { maxDurability: 1561 }
   };
 
-  const harness = createSchedulerHarness(bot);
-  const scheduler = harness.scheduler;
-  const workerManager: TestWorkerManager = harness.workerManager;
+  const workerManager: TestWorkerManager = new TestWorkerManager();
 
   (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 32 } });
 
@@ -68,10 +57,17 @@ async function runReplacementScenario(scenario: ReplacementScenario): Promise<{ 
     };
   });
 
-  const executor = new ToolReplacementExecutor(bot, workerManager as any, scheduler, (msg: string) => chatMessages.push(msg), config);
+  const executor = new ToolReplacementExecutor(bot, workerManager as any, (msg: string) => chatMessages.push(msg), config);
+  executor.onStateEntered();
 
   const resultPromise = executor.executeReplacement('diamond_pickaxe');
   await flush();
+
+  for (let i = 0; i < 3; i += 1) {
+    executor.update();
+    // eslint-disable-next-line no-await-in-loop
+    await flush();
+  }
 
   const request = workerManager.findByItem('diamond_pickaxe');
   expect(request).not.toBeNull();
@@ -79,10 +75,20 @@ async function runReplacementScenario(scenario: ReplacementScenario): Promise<{ 
   currentInventory = scenario.endInventory;
   workerManager.resolve(request!.id, [[{ action: 'mock-step' }]]);
 
-  await flush();
-  const result = await resultPromise;
+  Date.now = () => fakeNow;
+  try {
+    for (let i = 0; i < 10; i += 1) {
+      fakeNow += 300;
+      executor.update();
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
 
-  return { messages: chatMessages, result };
+    const result = await resultPromise;
+    return { messages: chatMessages, result };
+  } finally {
+    Date.now = realDateNow;
+  }
 }
 
 describe('Tool Replacement Completion Messaging', () => {
@@ -142,4 +148,3 @@ describe('Tool Replacement Completion Messaging', () => {
     expect(messages).toContain('collected diamond_pickaxe x1');
   });
 });
-

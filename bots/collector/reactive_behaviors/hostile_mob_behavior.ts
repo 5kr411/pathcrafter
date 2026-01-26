@@ -1,5 +1,4 @@
-import { ReactiveBehavior, Bot } from './types';
-import { ReactiveBehaviorExecutor } from '../reactive_behavior_executor';
+import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import createHuntEntityState from '../../../behaviors/behaviorHuntEntity';
 import { Vec3 } from 'vec3';
 const minecraftData = require('minecraft-data');
@@ -203,11 +202,10 @@ export const hostileMobBehavior: ReactiveBehavior = {
     return hostileMob !== null;
   },
 
-  execute: async (bot: Bot, executor: ReactiveBehaviorExecutor): Promise<any> => {
+  createState: async (bot: Bot): Promise<any> => {
     const hostileMob = findClosestHostileMob(bot, 32);
     
     if (!hostileMob) {
-      executor.finish(false);
       return null;
     }
 
@@ -246,54 +244,27 @@ export const hostileMobBehavior: ReactiveBehavior = {
 
     const stateMachine = createHuntEntityState(bot, targets);
 
-    let completionInterval: NodeJS.Timeout | null = null;
-    const clearCompletionInterval = () => {
-      if (completionInterval) {
-        clearInterval(completionInterval);
-        completionInterval = null;
-      }
-    };
-
-    const finishFight = (success: boolean) => {
+    const finishFight = (success: boolean, reason: ReactiveBehaviorStopReason) => {
       if (fightFinished) {
         return;
       }
       fightFinished = true;
-      clearCompletionInterval();
       if (startAnnounced) {
-        sendChat(`${success ? 'done fighting' : 'stopped fighting'} ${mobLabel}`);
+        const verb = success ? 'done fighting' : reason === 'preempted' ? 'pausing fight' : 'stopped fighting';
+        sendChat(`${verb} ${mobLabel}`);
       }
-      executor.finish(success);
     };
 
     announceStart();
-    
-    const checkCompletion = () => {
-      try {
-        if (typeof stateMachine.isFinished === 'function' && stateMachine.isFinished()) {
-          finishFight(true);
-        }
-      } catch (err) {
+
+    return {
+      stateMachine,
+      isFinished: () => (typeof stateMachine.isFinished === 'function' ? stateMachine.isFinished() : false),
+      wasSuccessful: () => true,
+      onStop: (reason: ReactiveBehaviorStopReason) => {
+        const success = reason === 'completed';
+        finishFight(success, reason);
       }
     };
-
-    completionInterval = setInterval(checkCompletion, 100);
-
-    const originalOnStateExited = stateMachine.onStateExited;
-    stateMachine.onStateExited = function() {
-      clearCompletionInterval();
-      if (originalOnStateExited) {
-        try {
-          originalOnStateExited.call(this);
-        } catch (_) {}
-      }
-      finishFight(true);
-    };
-
-    return stateMachine;
-  },
-
-  onDeactivate: () => {
   }
 };
-

@@ -1,16 +1,5 @@
 import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
-
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
+import { createMockBot, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
 jest.mock('../../bots/collector/snapshot_manager', () => ({
   captureSnapshotForTarget: jest.fn()
@@ -39,7 +28,7 @@ describe('ToolReplacementExecutor routing', () => {
     jest.clearAllMocks();
   });
 
-  it('announces replacement success after planner result routes back through the scheduler', async () => {
+  it('announces replacement success after planner result returns', async () => {
     (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 32 } });
     (buildStateMachineForPath as jest.Mock).mockImplementation(
       (_bot: any, _path: any[], onFinished: (success: boolean) => void) => {
@@ -74,14 +63,18 @@ describe('ToolReplacementExecutor routing', () => {
     const chatMessages: string[] = [];
     const safeChat = (msg: string) => chatMessages.push(msg);
 
-    const harness = createSchedulerHarness(bot);
-    const scheduler = harness.scheduler;
-    const workerManager: TestWorkerManager = harness.workerManager;
-
-    const executor = new ToolReplacementExecutor(bot, workerManager as any, scheduler, safeChat, config);
+    const workerManager: TestWorkerManager = new TestWorkerManager();
+    const executor = new ToolReplacementExecutor(bot, workerManager as any, safeChat, config);
+    executor.onStateEntered();
 
     const promise = executor.executeReplacement('diamond_pickaxe');
     await flush();
+
+    for (let i = 0; i < 3; i += 1) {
+      executor.update();
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
 
     const request = workerManager.findByItem('diamond_pickaxe');
     expect(request).not.toBeNull();
@@ -89,10 +82,13 @@ describe('ToolReplacementExecutor routing', () => {
     inventoryPhase = 'after';
     workerManager.resolve(request!.id, [[{ action: 'mine', what: 'oak_log', count: 2 }]]);
 
-    await flush();
+    for (let i = 0; i < 10; i += 1) {
+      executor.update();
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
     await expect(promise).resolves.toBe(true);
 
     expect(chatMessages).toContain('collected diamond_pickaxe x1');
   });
 });
-

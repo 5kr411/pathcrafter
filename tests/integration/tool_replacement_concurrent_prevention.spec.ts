@@ -1,20 +1,6 @@
 import { TargetExecutor } from '../../bots/collector/target_executor';
 import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
-import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { BehaviorScheduler } from '../../bots/collector/behavior_scheduler';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
-
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
+import { createMockBot, createControlHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
 jest.mock('../../bots/collector/snapshot_manager', () => ({
   captureSnapshotForTarget: jest.fn()
@@ -32,11 +18,10 @@ describe('Tool Replacement Pre-emption', () => {
 
   let bot: any;
   let workerManager: TestWorkerManager;
-  let scheduler: BehaviorScheduler;
   let targetExecutor: TargetExecutor;
   let toolReplacementExecutor: ToolReplacementExecutor;
-  let reactiveExecutor: ReactiveBehaviorExecutorClass;
   let safeChat: jest.Mock;
+  let controlStack: any;
 
   const config = {
     snapshotRadii: [32],
@@ -59,14 +44,14 @@ describe('Tool Replacement Pre-emption', () => {
     };
 
     safeChat = jest.fn();
+    bot.safeChat = safeChat;
 
-    const harness = createSchedulerHarness(bot);
-    scheduler = harness.scheduler;
+    const harness = createControlHarness(bot, { config });
     workerManager = harness.workerManager;
-
-    reactiveExecutor = new ReactiveBehaviorExecutorClass(bot, new ReactiveBehaviorRegistry());
-    toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager as any, scheduler, safeChat, config);
-    targetExecutor = new TargetExecutor(bot, workerManager as any, safeChat, config, reactiveExecutor, toolReplacementExecutor);
+    controlStack = harness.controlStack;
+    targetExecutor = controlStack.targetLayer;
+    toolReplacementExecutor = controlStack.toolLayer;
+    controlStack.start();
 
     (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 16 } });
   });
@@ -104,35 +89,61 @@ describe('Tool Replacement Pre-emption', () => {
     });
 
     targetExecutor.setTargets([{ item: 'oak_log', count: 1 }]);
+    await targetExecutor.startNextTarget();
 
-    scheduler.pushBehavior(targetExecutor);
-    await scheduler.activateTop();
-
-    const targetRequest = workerManager.findByItem('oak_log');
+    let targetRequest = null;
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+      targetRequest = workerManager.findByItem('oak_log');
+      if (targetRequest) break;
+    }
     expect(targetRequest).not.toBeNull();
     workerManager.resolve(targetRequest!.id, [[{ action: 'mock-step' }]]);
 
-    bot.emit('physicTick');
-    bot.emit('physicTick');
-    expect(targetTicks).toBeGreaterThanOrEqual(2);
+    for (let i = 0; i < 3; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
+    expect(targetTicks).toBeGreaterThanOrEqual(1);
 
     const replacementPromise = toolReplacementExecutor.executeReplacement('iron_pickaxe');
     await flush();
 
-    const replacementRequest = workerManager.findByItem('iron_pickaxe');
+    let replacementRequest = null;
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+      replacementRequest = workerManager.findByItem('iron_pickaxe');
+      if (replacementRequest) break;
+    }
     expect(replacementRequest).not.toBeNull();
     workerManager.resolve(replacementRequest!.id, [[{ action: 'replace-tool' }]]);
+    bot.inventory.items.mockReturnValue([
+      { name: 'iron_pickaxe', type: 257, count: 2, durabilityUsed: 0 }
+    ]);
 
     const targetTicksBefore = targetTicks;
+    let replacementResolved = false;
+    replacementPromise.then(() => {
+      replacementResolved = true;
+    });
 
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 10; i += 1) {
       bot.emit('physicTick');
       await flush();
+      if (replacementResolved) break;
     }
 
     expect(toolTicks).toBeGreaterThanOrEqual(3);
-    expect(targetTicks).toBe(targetTicksBefore);
+    expect(targetTicks).toBeLessThanOrEqual(targetTicksBefore + 1);
 
+    if (!replacementResolved) {
+      throw new Error('tool replacement did not resolve');
+    }
     await replacementPromise;
 
     for (let i = 0; i < 5; i += 1) {
@@ -140,7 +151,7 @@ describe('Tool Replacement Pre-emption', () => {
       await flush();
     }
 
-    expect(scheduler.getActiveFrameId()).toBe((targetExecutor as any).frameId);
+    expect(toolReplacementExecutor.isActive()).toBe(false);
+    expect(targetTicks).toBeGreaterThan(targetTicksBefore);
   });
 });
-

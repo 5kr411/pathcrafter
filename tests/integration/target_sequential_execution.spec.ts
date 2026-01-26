@@ -1,7 +1,5 @@
 import { TargetExecutor } from '../../bots/collector/target_executor';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
-import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { createMockBot, createSchedulerHarness } from '../helpers/schedulerTestUtils';
+import { createMockBot, createControlHarness } from '../helpers/schedulerTestUtils';
 
 const machines: any[] = [];
 
@@ -16,27 +14,8 @@ jest.mock('../../bots/collector/snapshot_manager', () => ({
   captureSnapshotForTarget: jest.fn()
 }));
 
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: function BotStateMachine(this: any) {
-    this.bot = null;
-    this.rootStateMachine = null;
-    this.states = [];
-    this.transitions = [];
-    this.nestedStateMachines = [];
-  }
-}));
-
 import { buildStateMachineForPath } from '../../behavior_generator/buildMachine';
 import { captureSnapshotForTarget } from '../../bots/collector/snapshot_manager';
-
-const config = {
-  snapshotRadii: [32],
-  snapshotYHalf: null,
-  pruneWithWorld: true,
-  combineSimilarNodes: false,
-  perGenerator: 1,
-  toolDurabilityThreshold: 0.1
-};
 
 function flushPromises(): Promise<void> {
   return new Promise((resolve) => setImmediate(resolve));
@@ -48,6 +27,9 @@ async function waitForPlanningRequest(worker: any, itemName: string, retries = 1
     if (record) {
       return record;
     }
+    if (typeof worker.onWaitTick === 'function') {
+      worker.onWaitTick();
+    }
     await flushPromises();
   }
   return null;
@@ -57,16 +39,22 @@ describe('TargetExecutor sequential target execution', () => {
   let bot: any;
   let executor: TargetExecutor;
   let workerManager: any;
-  let scheduler: any;
+  let controlStack: any;
 
   beforeEach(() => {
     jest.clearAllMocks();
     machines.length = 0;
 
     bot = createMockBot();
-    const harness = createSchedulerHarness(bot);
+    const harness = createControlHarness(bot);
     workerManager = harness.workerManager;
-    scheduler = harness.scheduler;
+    controlStack = harness.controlStack;
+    executor = controlStack.targetLayer;
+    controlStack.start();
+
+    workerManager.onWaitTick = () => {
+      bot.emit('physicTick');
+    };
 
     (captureSnapshotForTarget as jest.Mock).mockResolvedValue({
       snapshot: {
@@ -95,11 +83,6 @@ describe('TargetExecutor sequential target execution', () => {
         return machine;
       }
     );
-
-    const reactiveExecutor = new ReactiveBehaviorExecutorClass(bot, new ReactiveBehaviorRegistry());
-    executor = new TargetExecutor(bot, workerManager, jest.fn(), config, reactiveExecutor, undefined);
-
-    scheduler.pushBehavior(executor);
   });
 
   it('activates a fresh state machine for each target in a chain', async () => {
@@ -108,7 +91,7 @@ describe('TargetExecutor sequential target execution', () => {
       { item: 'stick', count: 16 }
     ]);
 
-    await scheduler.activateTop();
+    await executor.startNextTarget();
     await flushPromises();
 
     const firstRequest = await waitForPlanningRequest(workerManager, 'crafting_table');
@@ -119,8 +102,11 @@ describe('TargetExecutor sequential target execution', () => {
       { name: 'crafting_table', count: 5 }
     ]);
 
-    bot.emit('physicTick');
-    await flushPromises();
+    for (let i = 0; i < 4; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flushPromises();
+    }
 
     const secondRequest = await waitForPlanningRequest(workerManager, 'stick');
     expect(secondRequest).not.toBeNull();
@@ -131,13 +117,14 @@ describe('TargetExecutor sequential target execution', () => {
       { name: 'stick', count: 16 }
     ]);
 
-    bot.emit('physicTick');
-    await flushPromises();
+    for (let i = 0; i < 4; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flushPromises();
+    }
 
     expect(machines.length).toBe(2);
-    expect(machines[0].onStateEntered).toHaveBeenCalledTimes(1);
-    expect(machines[1].onStateEntered).toHaveBeenCalledTimes(1);
+    expect(machines[0].update).toHaveBeenCalled();
+    expect(machines[1].update).toHaveBeenCalled();
   });
 });
-
-

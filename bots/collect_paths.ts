@@ -2,17 +2,14 @@ const mineflayer = require('mineflayer');
 
 import { getConfig } from './collector/config';
 import { WorkerManager } from './collector/worker_manager';
-import { TargetExecutor } from './collector/target_executor';
-import { ToolReplacementExecutor } from './collector/tool_replacement_executor';
 import { CommandHandler } from './collector/command_handler';
 import { ReactiveBehaviorRegistry } from './collector/reactive_behavior_registry';
-import { ReactiveBehaviorExecutorClass } from './collector/reactive_behavior_executor';
 import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_behavior';
 import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_defense_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
 import { foodCollectionBehavior } from './collector/reactive_behaviors/food_collection_behavior';
-import { BehaviorScheduler } from './collector/behavior_scheduler';
+import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { installExplosionSanitizer } from '../utils/explosionSanitizer';
@@ -62,13 +59,10 @@ bot.once('spawn', () => {
 
   (bot as any).safeChat = safeChat;
 
-  let connected = true;
   bot.on('kicked', (reason: string) => {
-    connected = false;
     logger.info('Collector: kicked', reason);
   });
   bot.on('end', () => {
-    connected = false;
     logger.info('Collector: connection ended');
   });
   bot.on('error', (err: any) => {
@@ -77,17 +71,9 @@ bot.once('spawn', () => {
 
   safeChat('collector ready');
 
-  let behaviorScheduler: BehaviorScheduler | null = null;
-  let executor: TargetExecutor;
-
   const workerManager = new WorkerManager(
-    (entry, ranked, ok, error, plannerId) => {
-      if (!connected) return;
-      if (behaviorScheduler) {
-        behaviorScheduler.handlePlannerResult(entry, ranked, ok, error, plannerId);
-      } else if (executor) {
-        executor.handlePlanningResult(entry, ranked, ok, error);
-      }
+    () => {
+      // Planning handlers are passed per request; ignore fallback results.
     },
     () => {}
   );
@@ -99,49 +85,22 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(foodCollectionBehavior);
   reactiveBehaviorRegistry.register(foodEatingBehavior);
 
-  const reactiveBehaviorExecutor = new ReactiveBehaviorExecutorClass(bot, reactiveBehaviorRegistry);
-  behaviorScheduler = new BehaviorScheduler(bot, workerManager);
-  
-  const toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager, behaviorScheduler, safeChat, {
-    snapshotRadii: config.snapshotRadii,
-    snapshotYHalf: config.snapshotYHalf,
-    pruneWithWorld: config.pruneWithWorld,
-    combineSimilarNodes: config.combineSimilarNodes,
-    perGenerator: config.perGenerator,
-    toolDurabilityThreshold: config.toolDurabilityThreshold
-  });
-
-  executor = new TargetExecutor(bot, workerManager, safeChat, {
-    snapshotRadii: config.snapshotRadii,
-    snapshotYHalf: config.snapshotYHalf,
-    pruneWithWorld: config.pruneWithWorld,
-    combineSimilarNodes: config.combineSimilarNodes,
-    perGenerator: config.perGenerator,
-    toolDurabilityThreshold: config.toolDurabilityThreshold
-  }, reactiveBehaviorExecutor, toolReplacementExecutor);
-
-  behaviorScheduler.pushBehavior(executor);
-  behaviorScheduler.activateTop().catch(() => {});
-
-  behaviorScheduler.setReactivePoller(async () => {
-    if (!reactiveBehaviorExecutor) {
-      return;
-    }
-    const behavior = await reactiveBehaviorExecutor.registry.findActiveBehavior(bot);
-    if (!behavior) {
-      return;
-    }
-    const run = await reactiveBehaviorExecutor.createScheduledRun(behavior);
-    if (!run) {
-      return;
-    }
-    try {
-      await behaviorScheduler.pushAndActivate(run, `reactive ${behavior.name || 'unknown'}`);
-      await run.waitForCompletion();
-    } catch (err: any) {
-      logger.info(`Collector: reactive behavior orchestration error - ${err?.message || err}`);
-    }
-  });
+  const controlStack = new CollectorControlStack(
+    bot,
+    workerManager,
+    safeChat,
+    {
+      snapshotRadii: config.snapshotRadii,
+      snapshotYHalf: config.snapshotYHalf,
+      pruneWithWorld: config.pruneWithWorld,
+      combineSimilarNodes: config.combineSimilarNodes,
+      perGenerator: config.perGenerator,
+      toolDurabilityThreshold: config.toolDurabilityThreshold
+    },
+    reactiveBehaviorRegistry
+  );
+  controlStack.start();
+  const executor = controlStack.targetLayer;
 
   bot.on('death', () => {
     logger.info('Collector: bot died, resetting and retrying all targets');
@@ -152,6 +111,7 @@ bot.once('spawn', () => {
 
   bot.on('end', () => {
     workerManager.terminate();
+    controlStack.stop();
   });
 
   const commandHandler = new CommandHandler(bot, executor, safeChat);

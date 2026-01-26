@@ -1,63 +1,75 @@
-import { EventEmitter } from 'events';
-import { ScheduledBehavior } from '../../bots/collector/behavior_scheduler';
-import { createTrackedBotStateMachine } from '../../bots/collector/state_machine_utils';
 import { ReactiveTestHarness } from '../helpers/reactiveTestHarness';
 
-function createTickingBehavior(bot: any, ticks: { count: number }, name: string): ScheduledBehavior {
-  const stateMachine = new EventEmitter() as any;
-  stateMachine.update = () => {
-    ticks.count += 1;
-  };
-  stateMachine.onStateEntered = jest.fn();
-  stateMachine.onStateExited = jest.fn();
-  stateMachine.transitions = [];
-  stateMachine.states = [];
+jest.mock('../../bots/collector/snapshot_manager', () => ({
+  captureSnapshotForTarget: jest.fn()
+}));
 
-  const tracked = createTrackedBotStateMachine(bot, stateMachine);
-  const listener = tracked.listener.bind(bot);
+jest.mock('../../behavior_generator/buildMachine', () => ({
+  buildStateMachineForPath: jest.fn(),
+  _internals: {
+    logActionPath: jest.fn()
+  }
+}));
 
-  return {
-    id: `test-${name}`,
-    name,
-    type: 'test',
-    priority: 10,
-    activate: async (context) => {
-      context.attachStateMachine(tracked.botStateMachine, listener);
-    },
-    onSuspend: async (context) => {
-      context.detachStateMachine();
-    },
-    onResume: async (context) => {
-      context.attachStateMachine(tracked.botStateMachine, listener);
-    },
-    onAbort: async (context) => {
-      context.detachStateMachine();
+const { captureSnapshotForTarget } = require('../../bots/collector/snapshot_manager');
+const { buildStateMachineForPath } = require('../../behavior_generator/buildMachine');
+
+async function flushMicrotasks(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
+}
+
+async function waitForPlanningRequest(harness: ReactiveTestHarness, itemName: string, retries = 10): Promise<any> {
+  for (let i = 0; i < retries; i += 1) {
+    const record = harness.workerManager.findByItem(itemName);
+    if (record) {
+      return record;
     }
-  };
+    // eslint-disable-next-line no-await-in-loop
+    await harness.tick(1);
+  }
+  return null;
 }
 
 describe('integration: reactive runtime simulation', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(0);
+    jest.clearAllMocks();
   });
 
   afterEach(() => {
     jest.useRealTimers();
   });
 
-  it('suspends and resumes the base behavior around reactive execution', async () => {
-    const harness = new ReactiveTestHarness({ pollIntervalMs: 100, tickMs: 50 });
+  it('suspends and resumes the base target around reactive execution', async () => {
+    (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 16 } });
+
+    const baseTicks = { count: 0 };
+    (buildStateMachineForPath as jest.Mock).mockImplementation(() => ({
+      update: jest.fn(() => {
+        baseTicks.count += 1;
+      }),
+      onStateEntered: jest.fn(),
+      onStateExited: jest.fn(),
+      transitions: [],
+      states: []
+    }));
+
+    const harness = new ReactiveTestHarness();
 
     try {
-      const baseTicks = { count: 0 };
-      const baseBehavior = createTickingBehavior(harness.bot, baseTicks, 'base');
+      const targetExecutor = harness.controlStack.targetLayer;
+      targetExecutor.setTargets([{ item: 'oak_log', count: 1 }]);
+      await targetExecutor.startNextTarget();
+      await flushMicrotasks();
 
-      await harness.startBehavior(baseBehavior);
-      harness.enableReactivePolling();
+      const request = await waitForPlanningRequest(harness, 'oak_log');
+      expect(request).not.toBeNull();
+      harness.workerManager.resolve(request!.id, [[{ action: 'mine', what: 'oak_log' }]]);
 
-      await harness.tick(4);
-      expect(baseTicks.count).toBeGreaterThanOrEqual(4);
+      await harness.tick(2);
+      await harness.waitFor(() => baseTicks.count > 0, 1000);
 
       let allowReactive = false;
       let reactiveTicks = 0;
@@ -67,30 +79,34 @@ describe('integration: reactive runtime simulation', () => {
         name: 'reactive-test',
         priority: 100,
         shouldActivate: () => allowReactive,
-        execute: async (_bot: any, executor: { finish: (success: boolean) => void }) => {
-          const stateMachine = new EventEmitter() as any;
-          stateMachine.update = () => {
-            if (reactiveFinished) return;
-            reactiveTicks += 1;
-            if (reactiveTicks >= 6) {
-              reactiveFinished = true;
-              allowReactive = false;
-              executor.finish(true);
-            }
+        createState: async () => {
+          const stateMachine: any = {
+            update: () => {
+              if (reactiveFinished) return;
+              reactiveTicks += 1;
+              if (reactiveTicks >= 6) {
+                reactiveFinished = true;
+                allowReactive = false;
+              }
+            },
+            onStateEntered: jest.fn(),
+            onStateExited: jest.fn(),
+            transitions: [],
+            states: [],
+            isFinished: () => reactiveFinished,
+            wasSuccessful: () => true
           };
-          stateMachine.onStateEntered = jest.fn();
-          stateMachine.onStateExited = jest.fn();
-          stateMachine.transitions = [];
-          stateMachine.states = [];
-          return stateMachine;
+          return { stateMachine };
         }
       });
 
+      harness.enableReactivePolling();
       allowReactive = true;
-      await harness.waitFor(() => harness.executor.isActive(), 1000);
+
+      await harness.waitFor(() => harness.manager.isActive(), 1000);
       const ticksAtReactiveStart = baseTicks.count;
 
-      await harness.waitFor(() => !harness.executor.isActive(), 2000);
+      await harness.waitFor(() => !harness.manager.isActive(), 2000);
 
       expect(reactiveTicks).toBeGreaterThanOrEqual(6);
       expect(baseTicks.count).toBe(ticksAtReactiveStart);
@@ -102,13 +118,9 @@ describe('integration: reactive runtime simulation', () => {
   });
 
   it('prevents overlapping reactive runs during continuous activation', async () => {
-    const harness = new ReactiveTestHarness({ pollIntervalMs: 100, tickMs: 50 });
+    const harness = new ReactiveTestHarness();
 
     try {
-      const baseTicks = { count: 0 };
-      const baseBehavior = createTickingBehavior(harness.bot, baseTicks, 'base');
-      await harness.startBehavior(baseBehavior);
-
       let activeRuns = 0;
       let maxActive = 0;
       let runCount = 0;
@@ -118,26 +130,30 @@ describe('integration: reactive runtime simulation', () => {
         name: 'reactive-repeat',
         priority: 90,
         shouldActivate: () => true,
-        execute: async (_bot: any, executor: { finish: (success: boolean) => void }) => {
+        createState: async () => {
           runCount += 1;
           activeRuns += 1;
           if (activeRuns > maxActive) maxActive = activeRuns;
 
-          const stateMachine = new EventEmitter() as any;
-          stateMachine.update = () => {
-            reactiveTicks += 1;
+          let finished = false;
+          const stateMachine: any = {
+            update: () => {
+              reactiveTicks += 1;
+            },
+            onStateEntered: jest.fn(),
+            onStateExited: jest.fn(),
+            transitions: [],
+            states: [],
+            isFinished: () => finished,
+            wasSuccessful: () => true
           };
-          stateMachine.onStateEntered = jest.fn();
-          stateMachine.onStateExited = jest.fn();
-          stateMachine.transitions = [];
-          stateMachine.states = [];
 
           setTimeout(() => {
+            finished = true;
             activeRuns -= 1;
-            executor.finish(true);
           }, 250);
 
-          return stateMachine;
+          return { stateMachine };
         }
       });
 

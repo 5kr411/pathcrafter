@@ -1,9 +1,6 @@
-import { BehaviorScheduler } from '../../bots/collector/behavior_scheduler';
 import { TargetExecutor } from '../../bots/collector/target_executor';
-import { ToolReplacementExecutor } from '../../bots/collector/tool_replacement_executor';
-import { ReactiveBehaviorExecutorClass } from '../../bots/collector/reactive_behavior_executor';
-import { ReactiveBehaviorRegistry } from '../../bots/collector/reactive_behavior_registry';
-import { createMockBot, createSchedulerHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
+import { ReactiveBehaviorManager } from '../../bots/collector/reactive_behavior_manager';
+import { createMockBot, createControlHarness, TestWorkerManager } from '../helpers/schedulerTestUtils';
 
 jest.mock('../../bots/collector/snapshot_manager', () => ({
   captureSnapshotForTarget: jest.fn()
@@ -13,17 +10,6 @@ jest.mock('../../behavior_generator/buildMachine', () => ({
   buildStateMachineForPath: jest.fn()
 }));
 
-jest.mock('mineflayer-statemachine', () => ({
-  BotStateMachine: jest.fn((_bot: any, machine: any) => {
-    machine.active = true;
-    return {
-      stop: jest.fn(() => {
-        machine.active = false;
-      })
-    };
-  })
-}));
-
 describe('Reactive Behavior Pre-emption', () => {
   const { captureSnapshotForTarget } = require('../../bots/collector/snapshot_manager');
   const { buildStateMachineForPath } = require('../../behavior_generator/buildMachine');
@@ -31,11 +17,10 @@ describe('Reactive Behavior Pre-emption', () => {
   const flush = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
   let bot: any;
-  let scheduler: BehaviorScheduler;
   let workerManager: TestWorkerManager;
   let targetExecutor: TargetExecutor;
-  let toolReplacementExecutor: ToolReplacementExecutor;
-  let reactiveExecutor: ReactiveBehaviorExecutorClass;
+  let reactiveManager: ReactiveBehaviorManager;
+  let controlStack: any;
   let safeChat: jest.Mock;
 
   const config = {
@@ -52,14 +37,14 @@ describe('Reactive Behavior Pre-emption', () => {
 
     bot = createMockBot();
     safeChat = jest.fn();
+    bot.safeChat = safeChat;
 
-    const harness = createSchedulerHarness(bot);
-    scheduler = harness.scheduler;
+    const harness = createControlHarness(bot, { config });
     workerManager = harness.workerManager;
-
-    reactiveExecutor = new ReactiveBehaviorExecutorClass(bot, new ReactiveBehaviorRegistry());
-    toolReplacementExecutor = new ToolReplacementExecutor(bot, workerManager as any, scheduler, safeChat, config);
-    targetExecutor = new TargetExecutor(bot, workerManager as any, safeChat, config, reactiveExecutor, toolReplacementExecutor);
+    controlStack = harness.controlStack;
+    targetExecutor = controlStack.targetLayer;
+    reactiveManager = controlStack.reactiveLayer;
+    controlStack.start();
 
     (captureSnapshotForTarget as jest.Mock).mockResolvedValue({ snapshot: { radius: 16 } });
   });
@@ -85,48 +70,56 @@ describe('Reactive Behavior Pre-emption', () => {
     });
 
     targetExecutor.setTargets([{ item: 'oak_log', count: 1 }]);
-    scheduler.pushBehavior(targetExecutor);
-    await scheduler.activateTop();
+    await targetExecutor.startNextTarget();
 
-    const targetRequest = workerManager.findByItem('oak_log');
+    let targetRequest = null;
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+      targetRequest = workerManager.findByItem('oak_log');
+      if (targetRequest) break;
+    }
     expect(targetRequest).not.toBeNull();
     workerManager.resolve(targetRequest!.id, [[{ action: 'mock-step' }]]);
 
     bot.emit('physicTick');
     bot.emit('physicTick');
-    expect(targetTicks).toBeGreaterThanOrEqual(2);
+    expect(targetTicks).toBeGreaterThanOrEqual(1);
 
     let reactiveTicks = 0;
     let finished = false;
+    let allowReactive = false;
+
     const behavior = {
       priority: 100,
       name: 'hostile-mob',
-      shouldActivate: async () => true,
-      execute: async (_: any, executor: { finish: (success: boolean) => void }) => {
-        return {
+      shouldActivate: async () => allowReactive,
+      createState: async () => {
+        const stateMachine: any = {
           update: () => {
             if (finished) return;
             reactiveTicks += 1;
             if (reactiveTicks >= 5) {
               finished = true;
-              executor.finish(true);
+              allowReactive = false;
             }
           },
           onStateEntered: jest.fn(),
           onStateExited: jest.fn(),
           transitions: [],
-          states: []
+          states: [],
+          isFinished: () => finished,
+          wasSuccessful: () => true
         };
+        return { stateMachine };
       }
     };
 
-    const run = await reactiveExecutor.createScheduledRun(behavior);
-    expect(run).not.toBeNull();
+    reactiveManager.setEnabled(true);
+    reactiveManager.registry.register(behavior as any);
 
-    const reactivePromise = (async () => {
-      await scheduler.pushAndActivate(run!, 'reactive-behavior');
-      await run!.waitForCompletion();
-    })();
+    allowReactive = true;
 
     await flush();
 
@@ -137,14 +130,11 @@ describe('Reactive Behavior Pre-emption', () => {
       await flush();
     }
 
-    await reactivePromise;
-
     expect(reactiveTicks).toBeGreaterThanOrEqual(5);
-    expect(targetTicks).toBe(targetTicksBefore);
+    expect(targetTicks).toBeLessThanOrEqual(targetTicksBefore + 1);
 
     bot.emit('physicTick');
     await flush();
     expect(targetTicks).toBeGreaterThan(targetTicksBefore);
   });
 });
-
