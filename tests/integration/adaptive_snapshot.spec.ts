@@ -68,6 +68,24 @@ describe('integration: adaptive snapshot with progressive radii', () => {
     };
   }
 
+  function createMinimalBot() {
+    const position = {
+      x: 0,
+      y: 64,
+      z: 0,
+      floored: function() { return this; }
+    };
+
+    return {
+      version: '1.20.1',
+      game: { dimension: 'overworld' },
+      entity: { position },
+      entities: {},
+      findBlocks: jest.fn(() => []),
+      blockAt: jest.fn((pos: any) => ({ name: 'stone', position: pos }))
+    };
+  }
+
   test('progressively increases radius when small radius lacks resources', async () => {
     // Create a snapshot where oak_log is at distance 20
     const restrictedSnapshot = {
@@ -191,5 +209,44 @@ describe('integration: adaptive snapshot with progressive radii', () => {
     expect(result.radiusUsed).toBe(16);
     expect(result.snapshot).toBeDefined();
   }, 30000);
-});
 
+  test('reuses cached snapshot when position unchanged and fresh', async () => {
+    const bot = createMinimalBot();
+    const radii = [8];
+
+    await captureAdaptiveSnapshot(bot as any, { radii });
+    const callsAfterFirst = (bot as any).findBlocks.mock.calls.length;
+
+    await captureAdaptiveSnapshot(bot as any, { radii });
+    const callsAfterSecond = (bot as any).findBlocks.mock.calls.length;
+
+    expect(callsAfterSecond).toBe(callsAfterFirst);
+  }, 30000);
+
+  test('invalidates cache when stale or moved', async () => {
+    const bot = createMinimalBot() as any;
+    const radii = [8];
+
+    const dateNow = jest.spyOn(Date, 'now');
+    let now = 0;
+    dateNow.mockImplementation(() => now);
+
+    try {
+      await captureAdaptiveSnapshot(bot, { radii });
+      const callsAfterFirst = bot.findBlocks.mock.calls.length;
+
+      now = 31000;
+      await captureAdaptiveSnapshot(bot, { radii });
+      const callsAfterStale = bot.findBlocks.mock.calls.length;
+      expect(callsAfterStale).toBeGreaterThan(callsAfterFirst);
+
+      now += 1000;
+      bot.entity.position.x += 5;
+      await captureAdaptiveSnapshot(bot, { radii });
+      const callsAfterMove = bot.findBlocks.mock.calls.length;
+      expect(callsAfterMove).toBeGreaterThan(callsAfterStale);
+    } finally {
+      dateNow.mockRestore();
+    }
+  }, 30000);
+});
