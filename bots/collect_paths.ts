@@ -8,7 +8,7 @@ import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_b
 import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_defense_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
-import { foodCollectionBehavior } from './collector/reactive_behaviors/food_collection_behavior';
+import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
 import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
@@ -79,6 +79,7 @@ bot.once('spawn', () => {
   );
 
   const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
+  setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 40 });
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);

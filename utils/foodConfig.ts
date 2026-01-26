@@ -37,14 +37,25 @@ export interface FoodSmeltMapping {
  * Food collection configuration
  */
 export interface FoodCollectionConfig {
-  minFoodThreshold: number;
+  /**
+   * Inventory food points threshold that triggers collection.
+   */
+  triggerFoodPoints: number;
+  /**
+   * Inventory food points target to collect up to.
+   */
   targetFoodPoints: number;
+  /**
+   * Backwards-compatible alias for triggerFoodPoints.
+   */
+  minFoodThreshold?: number;
 }
 
 /**
  * Default food collection configuration
  */
 export const DEFAULT_FOOD_CONFIG: FoodCollectionConfig = {
+  triggerFoodPoints: 20,
   minFoodThreshold: 20,
   targetFoodPoints: 40
 };
@@ -321,4 +332,3 @@ export function getEntityForFoodDrop(rawFoodItem: string): string | null {
   const animal = HUNTABLE_ANIMALS.find(a => a.drops.includes(rawFoodItem));
   return animal?.entity || null;
 }
-

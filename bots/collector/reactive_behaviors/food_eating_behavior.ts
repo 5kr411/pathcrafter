@@ -10,9 +10,13 @@ import logger from '../../../utils/logger';
 
 const minecraftData = require('minecraft-data');
 
-const EATING_COOLDOWN_MS = 3000;
+const EATING_SUCCESS_COOLDOWN_MS = 3000;
+const EATING_FAILURE_BASE_COOLDOWN_MS = 15000;
+const EATING_FAILURE_MAX_COOLDOWN_MS = 60000;
 
 let lastEatAttempt = 0;
+let consecutiveEatFailures = 0;
+let lastFailureHunger: number | null = null;
 
 function isOnCooldown(): boolean {
   return Date.now() < lastEatAttempt;
@@ -24,6 +28,8 @@ function setCooldown(durationMs: number): void {
 
 export function resetFoodEatingCooldown(): void {
   lastEatAttempt = 0;
+  consecutiveEatFailures = 0;
+  lastFailureHunger = null;
 }
 
 interface FoodInfo {
@@ -200,6 +206,11 @@ function shouldEat(bot: Bot): boolean {
     return false;
   }
 
+  if (lastFailureHunger != null && getBotFood(bot) !== lastFailureHunger) {
+    consecutiveEatFailures = 0;
+    lastFailureHunger = null;
+  }
+
   if (isFullHunger(bot)) {
     return false;
   }
@@ -324,8 +335,21 @@ function createFoodEatingState(bot: Bot, targets: EatFoodTargets): any {
     shouldTransition: () => eatFood.isFinished(),
     onTransition: () => {
       reachedExit = true;
-      setCooldown(EATING_COOLDOWN_MS);
-      logger.debug(`FoodEating: eat finished, success=${eatFood.wasSuccessful()}`);
+      const success = eatFood.wasSuccessful();
+      if (success) {
+        consecutiveEatFailures = 0;
+        lastFailureHunger = null;
+        setCooldown(EATING_SUCCESS_COOLDOWN_MS);
+      } else {
+        consecutiveEatFailures = Math.min(consecutiveEatFailures + 1, 8);
+        lastFailureHunger = getBotFood(bot);
+        const cooldownMs = Math.min(
+          EATING_FAILURE_BASE_COOLDOWN_MS * Math.pow(2, Math.max(0, consecutiveEatFailures - 1)),
+          EATING_FAILURE_MAX_COOLDOWN_MS
+        );
+        setCooldown(cooldownMs);
+      }
+      logger.debug(`FoodEating: eat finished, success=${success}`);
     }
   });
 
@@ -365,7 +389,7 @@ export const foodEatingBehavior: ReactiveBehavior = {
       : null;
 
     stopBotActions(bot);
-    setCooldown(EATING_COOLDOWN_MS);
+    setCooldown(EATING_SUCCESS_COOLDOWN_MS);
 
     const bestFood = findBestEatableFood(bot);
 

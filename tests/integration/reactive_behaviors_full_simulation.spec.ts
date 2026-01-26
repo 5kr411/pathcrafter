@@ -312,7 +312,7 @@ describe('integration: full reactive behavior simulation', () => {
   });
 
   it('collects food when inventory is low and resumes base behavior', async () => {
-    setFoodCollectionConfig({ minFoodThreshold: 4, targetFoodPoints: 6 });
+    setFoodCollectionConfig({ triggerFoodPoints: 4, targetFoodPoints: 6 });
     captureAdaptiveSnapshot.mockResolvedValue({ snapshot: { radius: 16 } });
 
     const slots = new Array(46).fill(null);
@@ -366,7 +366,7 @@ describe('integration: full reactive behavior simulation', () => {
   });
 
   it('honors cooldown when food collection fails to find food', async () => {
-    setFoodCollectionConfig({ minFoodThreshold: 4, targetFoodPoints: 6 });
+    setFoodCollectionConfig({ triggerFoodPoints: 4, targetFoodPoints: 6 });
     setFoodCollectionCooldown(300);
     captureAdaptiveSnapshot.mockResolvedValue({ snapshot: { radius: 16 } });
 
@@ -412,6 +412,91 @@ describe('integration: full reactive behavior simulation', () => {
     expect(foodCollectionBehavior.shouldActivate(bot)).toBe(true);
   });
 
+  it('applies cooldown when food gained but still below trigger threshold', async () => {
+    setFoodCollectionConfig({ triggerFoodPoints: 10, targetFoodPoints: 20 });
+    setFoodCollectionCooldown(300);
+    captureAdaptiveSnapshot.mockResolvedValue({ snapshot: { radius: 16 } });
+
+    const slots = new Array(46).fill(null);
+    const bot = createSimulatedBot({ inventory: { slots } });
+
+    createGetFoodState.mockImplementation(() => {
+      const stateMachine: any = {
+        update: () => {
+          stateMachine._ticks = (stateMachine._ticks ?? 0) + 1;
+          if (stateMachine._ticks === 1) {
+            bot.inventory.slots[9] = { name: 'bread', count: 1 };
+          }
+          if (stateMachine._ticks >= 2) {
+            stateMachine._finished = true;
+          }
+        },
+        isFinished: () => !!stateMachine._finished,
+        wasSuccessful: () => true,
+        onStateEntered: jest.fn(),
+        onStateExited: jest.fn(),
+        transitions: [],
+        states: []
+      };
+      return stateMachine;
+    });
+
+    const harness = new ReactiveTestHarness({ bot, tickMs: 50 });
+    const stateDef = await foodCollectionBehavior.createState(bot);
+    expect(stateDef).not.toBeNull();
+
+    const stateMachine = stateDef!.stateMachine;
+    if (stateMachine && typeof stateMachine.onStateEntered === 'function') {
+      stateMachine.onStateEntered();
+    }
+
+    for (let i = 0; i < 3; i += 1) {
+      stateMachine.update();
+    }
+
+    await harness.advance(50);
+    stateDef!.onStop?.('completed');
+    expect(foodCollectionBehavior.shouldActivate(bot)).toBe(false);
+
+    await harness.advance(400);
+    expect(foodCollectionBehavior.shouldActivate(bot)).toBe(true);
+  });
+
+  it('uses separate trigger and target thresholds for food collection', async () => {
+    setFoodCollectionConfig({ triggerFoodPoints: 10, targetFoodPoints: 20 });
+    captureAdaptiveSnapshot.mockResolvedValue({ snapshot: { radius: 16 } });
+
+    const items = [
+      { name: 'bread', count: 1 },
+      { name: 'apple', count: 1 }
+    ]; // 5 + 4 = 9
+    const bot = createSimulatedBot({ inventory: { items } });
+
+    expect(await Promise.resolve(foodCollectionBehavior.shouldActivate(bot))).toBe(true);
+
+    items.push({ name: 'bread', count: 1 }); // +5 -> 14
+    bot.inventory.items = jest.fn().mockReturnValue(items);
+
+    expect(await Promise.resolve(foodCollectionBehavior.shouldActivate(bot))).toBe(false);
+
+    createGetFoodState.mockImplementation(() => ({
+      update: jest.fn(),
+      isFinished: () => true,
+      wasSuccessful: () => true,
+      onStateEntered: jest.fn(),
+      onStateExited: jest.fn(),
+      transitions: [],
+      states: []
+    }));
+
+    const stateDef = await foodCollectionBehavior.createState(bot);
+    expect(stateDef).not.toBeNull();
+    expect(createGetFoodState).toHaveBeenCalled();
+    const args = createGetFoodState.mock.calls[0][1];
+    expect(args.targetFoodPoints).toBe(20);
+    expect(args.minFoodThreshold).toBe(10);
+  });
+
   it('eats food, stops current actions, and resumes base behavior', async () => {
     const slots = new Array(46).fill(null);
     slots[9] = { name: 'bread', count: 1 };
@@ -449,8 +534,38 @@ describe('integration: full reactive behavior simulation', () => {
     }
   });
 
+  it('backs off after eating timeouts to avoid repeated attempts', async () => {
+    const slots = new Array(46).fill(null);
+    slots[9] = { name: 'porkchop', count: 1 };
+
+    const bot = createSimulatedBot({ inventory: { slots }, food: 15 });
+    bot.consume = jest.fn(async () => {
+      throw new Error('Promise timed out.');
+    });
+
+    const harness = new ReactiveTestHarness({ bot, tickMs: 50 });
+    const baseTicks = { count: 0 };
+    await setupBaseTarget(harness, baseTicks);
+
+    expect(await Promise.resolve(foodEatingBehavior.shouldActivate(bot))).toBe(true);
+
+    harness.registry.register(foodEatingBehavior);
+    harness.enableReactivePolling();
+
+    try {
+      await harness.waitFor(() => bot.consume.mock.calls.length > 0, 1000);
+      await harness.waitFor(() => !harness.manager.isActive(), 2000);
+
+      const callsAfterFirst = bot.consume.mock.calls.length;
+      await harness.advance(10000);
+      expect(bot.consume.mock.calls.length).toBe(callsAfterFirst);
+    } finally {
+      harness.disableReactivePolling();
+    }
+  });
+
   it('preempts lower priority food collection with shield defense and returns to food collection', async () => {
-    setFoodCollectionConfig({ minFoodThreshold: 4, targetFoodPoints: 6 });
+    setFoodCollectionConfig({ triggerFoodPoints: 4, targetFoodPoints: 6 });
     captureAdaptiveSnapshot.mockResolvedValue({ snapshot: { radius: 16 } });
 
     const slots = new Array(46).fill(null);

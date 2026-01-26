@@ -26,11 +26,29 @@ let cooldownMs = DEFAULT_COOLDOWN_MS;
 let lastShouldActivateLogTime = 0;
 let lastCooldownLogTime = 0;
 
+function getTriggerThreshold(): number {
+  const trigger = Number(foodCollectionConfig.triggerFoodPoints);
+  if (Number.isFinite(trigger)) {
+    return trigger;
+  }
+  const legacy = Number(foodCollectionConfig.minFoodThreshold);
+  if (Number.isFinite(legacy)) {
+    return legacy;
+  }
+  return DEFAULT_FOOD_CONFIG.triggerFoodPoints;
+}
+
 /**
  * Updates the food collection configuration
  */
 export function setFoodCollectionConfig(config: Partial<FoodCollectionConfig>): void {
   foodCollectionConfig = { ...foodCollectionConfig, ...config };
+  if (
+    Number.isFinite(config.minFoodThreshold) &&
+    !Number.isFinite(config.triggerFoodPoints as number)
+  ) {
+    foodCollectionConfig.triggerFoodPoints = Number(config.minFoodThreshold);
+  }
 }
 
 /**
@@ -91,7 +109,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
   
   shouldActivate: (bot: Bot): boolean => {
     const foodPoints = getBotFoodPoints(bot);
-    const threshold = foodCollectionConfig.minFoodThreshold;
+    const threshold = getTriggerThreshold();
     const now = Date.now();
     
     if (foodPoints < threshold) {
@@ -150,7 +168,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
 
       const stateMachine = createGetFoodState(bot as any, {
         targetFoodPoints: foodCollectionConfig.targetFoodPoints,
-        minFoodThreshold: foodCollectionConfig.minFoodThreshold,
+        minFoodThreshold: getTriggerThreshold(),
         worldSnapshot
       });
 
@@ -172,8 +190,16 @@ export const foodCollectionBehavior: ReactiveBehavior = {
 
       const finalizeCompletion = () => {
         const { gainedFood, endFoodPoints } = computeOutcome();
-        if (!gainedFood && endFoodPoints < foodCollectionConfig.minFoodThreshold) {
+        const belowTrigger = endFoodPoints < getTriggerThreshold();
+        if (belowTrigger) {
           lastFailedAttempt = Date.now();
+          if (gainedFood) {
+            logger.info(`FoodCollection: still below trigger (${endFoodPoints} points), starting ${cooldownMs / 1000}s cooldown`);
+            if (sendChat) {
+              sendChat(`still low on food (${endFoodPoints} points), cooling down for ${cooldownMs / 1000}s`);
+            }
+            return;
+          }
           logger.info(`FoodCollection: no food gained, starting ${cooldownMs / 1000}s cooldown`);
           if (sendChat) {
             sendChat(`no food sources found, cooling down for ${cooldownMs / 1000}s`);
