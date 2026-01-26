@@ -133,6 +133,30 @@ export function areItemsSimilar(mcData: MinecraftData, item1: string, item2: str
   return similar1.includes(item2);
 }
 
+import { SECONDARY_BLOCK_TO_ITEMS, SECONDARY_BLOCK_DROPS } from './sourceLookup';
+
+/**
+ * Gets blocks that drop the same secondary items as the given block.
+ * Built dynamically from SECONDARY_BLOCK_DROPS configuration.
+ */
+function getSecondaryBlockGroup(blockName: string): string[] | null {
+  const items = SECONDARY_BLOCK_TO_ITEMS[blockName];
+  if (!items || items.length === 0) return null;
+  
+  // Find all blocks that drop any of the same items
+  const relatedBlocks = new Set<string>();
+  for (const item of items) {
+    const drops = SECONDARY_BLOCK_DROPS[item];
+    if (drops) {
+      for (const drop of drops) {
+        relatedBlocks.add(drop.block);
+      }
+    }
+  }
+  
+  return relatedBlocks.size > 0 ? Array.from(relatedBlocks) : null;
+}
+
 /**
  * Finds all blocks that drop the same item as the given block
  * 
@@ -153,6 +177,12 @@ export function areItemsSimilar(mcData: MinecraftData, item1: string, item2: str
  * ```
  */
 export function findBlocksWithSameDrop(mcData: MinecraftData, blockName: string): string[] {
+  // Check for secondary block drops (blocks with special mechanics)
+  const secondaryGroup = getSecondaryBlockGroup(blockName);
+  if (secondaryGroup) {
+    return secondaryGroup;
+  }
+  
   // Find the block by name
   let targetBlock = null;
   for (const block of Object.values(mcData.blocks)) {

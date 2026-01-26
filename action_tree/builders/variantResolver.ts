@@ -118,6 +118,8 @@ export function addVariantConstraint(
   }
 }
 
+import { SECONDARY_BLOCK_TO_ITEMS } from '../utils/sourceLookup';
+
 /**
  * Determines which target items can be obtained from available blocks
  */
@@ -129,6 +131,17 @@ export function determineTargetItemsFromBlocks(
   const filteredTargetItems = new Set<string>();
   
   for (const blockName of blocks) {
+    // Check secondary block drops configuration (blocks with special mechanics)
+    const secondaryItems = SECONDARY_BLOCK_TO_ITEMS[blockName];
+    if (secondaryItems) {
+      for (const item of secondaryItems) {
+        if (possibleTargets.includes(item)) {
+          filteredTargetItems.add(item);
+        }
+      }
+    }
+    
+    // Check standard drops from minecraft-data
     const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
     if (block && (block as any).drops) {
       (block as any).drops.forEach((dropId: number) => {

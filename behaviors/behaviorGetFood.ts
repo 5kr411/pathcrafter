@@ -27,6 +27,7 @@ import {
 import createHuntForFoodState from './behaviorHuntForFood';
 import createCollectBreadState, { BREAD_HUNGER_POINTS } from './behaviorCollectBread';
 import createCollectMelonState, { MELON_SLICE_HUNGER_POINTS } from './behaviorCollectMelon';
+import createCollectBerriesState, { BERRY_HUNGER_POINTS } from './behaviorCollectBerries';
 
 interface Bot {
   version?: string;
@@ -48,14 +49,15 @@ interface GetFoodTargets {
   worldSnapshot?: any;
 }
 
-type FoodSource = 'hunt' | 'bread' | 'melon';
-type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'melon' | 'complete' | 'failed';
+type FoodSource = 'hunt' | 'bread' | 'berries' | 'melon';
+type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'berries' | 'melon' | 'complete' | 'failed';
 
 /**
  * Creates a state machine for acquiring food with fallback strategy
  */
 function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const config: FoodCollectionConfig = {
+    triggerFoodPoints: targets.minFoodThreshold ?? DEFAULT_FOOD_CONFIG.triggerFoodPoints,
     minFoodThreshold: targets.minFoodThreshold ?? DEFAULT_FOOD_CONFIG.minFoodThreshold,
     targetFoodPoints: targets.targetFoodPoints ?? DEFAULT_FOOD_CONFIG.targetFoodPoints
   };
@@ -68,6 +70,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const selectSource = new BehaviorIdle();
   const huntingFood = new BehaviorIdle();
   const collectBread = new BehaviorIdle();
+  const collectBerries = new BehaviorIdle();
   const collectMelon = new BehaviorIdle();
   const exit = new BehaviorIdle();
   
@@ -75,6 +78,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   addStateLogging(selectSource, 'GetFood:SelectSource', { logEnter: true });
   addStateLogging(huntingFood, 'GetFood:Hunting', { logEnter: true });
   addStateLogging(collectBread, 'GetFood:Bread', { logEnter: true });
+  addStateLogging(collectBerries, 'GetFood:Berries', { logEnter: true });
   addStateLogging(collectMelon, 'GetFood:Melon', { logEnter: true });
   
   function getCurrentFoodPoints(): number {
@@ -150,6 +154,11 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       return 'bread';
     }
     
+    // Try berries
+    if (!triedSources.has('berries')) {
+      return 'berries';
+    }
+
     // Try melon
     if (!triedSources.has('melon')) {
       return 'melon';
@@ -172,6 +181,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
         return Math.ceil(neededPoints / 8); // ~8 points per cooked meat
       case 'bread':
         return Math.ceil(neededPoints / BREAD_HUNGER_POINTS);
+      case 'berries':
+        return Math.ceil(neededPoints / BERRY_HUNGER_POINTS);
       case 'melon':
         return Math.ceil(neededPoints / MELON_SLICE_HUNGER_POINTS);
       default:
@@ -272,6 +283,34 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       });
     }
   });
+
+  const selectToBerries = new StateTransition({
+    parent: selectSource,
+    child: collectBerries,
+    name: 'GetFood: select -> berries',
+    shouldTransition: () => phase === 'berries',
+    onTransition: () => {
+      triedSources.add('berries');
+      const count = calculateNeededCount('berries');
+      logger.info(`GetFood: trying berries collection, need ${count} berries`);
+
+      currentSubMachine = createCollectBerriesState(bot, {
+        targetBerryCount: count,
+        worldSnapshot: targets.worldSnapshot,
+        requireIronForGlow: true,
+        onComplete: (success: boolean, collected: number, itemName: string | null) => {
+          logger.info(`GetFood: berries collection ${success ? 'succeeded' : 'failed'}, collected ${collected} ${itemName || 'berries'}`);
+          currentSubMachine = null;
+
+          if (getCurrentFoodPoints() >= config.targetFoodPoints) {
+            phase = 'complete';
+          } else {
+            phase = 'selecting';
+          }
+        }
+      });
+    }
+  });
   
   const selectToExit = new StateTransition({
     parent: selectSource,
@@ -338,6 +377,32 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       return finished && (phase === 'complete' || phase === 'failed');
     }
   });
+
+  const berriesToSelect = new StateTransition({
+    parent: collectBerries,
+    child: selectSource,
+    name: 'GetFood: berries -> select',
+    shouldTransition: () => {
+      if (!currentSubMachine) return phase === 'selecting';
+      const finished = typeof currentSubMachine.isFinished === 'function'
+        ? currentSubMachine.isFinished()
+        : false;
+      return finished && phase === 'selecting';
+    }
+  });
+
+  const berriesToExit = new StateTransition({
+    parent: collectBerries,
+    child: exit,
+    name: 'GetFood: berries -> exit',
+    shouldTransition: () => {
+      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
+      const finished = typeof currentSubMachine.isFinished === 'function'
+        ? currentSubMachine.isFinished()
+        : false;
+      return finished && (phase === 'complete' || phase === 'failed');
+    }
+  });
   
   const melonToSelect = new StateTransition({
     parent: collectMelon,
@@ -396,6 +461,22 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       currentSubMachine.update();
     }
   };
+
+  // Hook into berries state to start and tick the sub-machine
+  const berriesAsAny = collectBerries as any;
+  const originalBerriesEntered = berriesAsAny.onStateEntered;
+  berriesAsAny.onStateEntered = function(this: any) {
+    if (originalBerriesEntered) originalBerriesEntered.call(this);
+    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
+      logger.info('GetFood: starting berries sub-machine');
+      currentSubMachine.onStateEntered();
+    }
+  };
+  berriesAsAny.update = function() {
+    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
+      currentSubMachine.update();
+    }
+  };
   
   // Hook into melon state to start and tick the sub-machine
   const melonAsAny = collectMelon as any;
@@ -417,12 +498,15 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     enterToSelect,
     selectToHunt,
     selectToBread,
+    selectToBerries,
     selectToMelon,
     selectToExit,
     huntToSelect,
     huntToExit,
     breadToSelect,
     breadToExit,
+    berriesToSelect,
+    berriesToExit,
     melonToSelect,
     melonToExit
   ];

@@ -156,7 +156,9 @@ export const PREFERRED_FOOD_TARGETS: string[] = [
   'cooked_cod',
   'bread',
   'baked_potato',
-  'dried_kelp'
+  'dried_kelp',
+  'sweet_berries',
+  'glow_berries'
 ];
 
 /**

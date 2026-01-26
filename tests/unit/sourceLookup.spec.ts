@@ -8,8 +8,11 @@ import {
   getAllSourcesForItem, 
   canObtainFromBlocks, 
   canObtainFromMobs, 
-  getBestToolForBlock 
+  getBestToolForBlock,
+  getExpectedBlocksForItem,
+  SECONDARY_BLOCK_DROPS
 } from '../../action_tree/utils/sourceLookup';
+import { determineTargetItemsFromBlocks } from '../../action_tree/builders/variantResolver';
 
 describe('sourceLookup', () => {
   const mockMcData = {
@@ -92,6 +95,89 @@ describe('sourceLookup', () => {
     test('returns empty array for non-existent items', () => {
       const sources = findBlocksThatDrop(mockMcData, 'nonexistent_item');
       expect(sources).toHaveLength(0);
+    });
+  });
+
+  describe('findBlocksThatDrop - secondary block drops', () => {
+    const realMcData = require('minecraft-data')('1.20.1');
+
+    test('finds sweet_berry_bush for sweet_berries', () => {
+      const sources = findBlocksThatDrop(realMcData, 'sweet_berries');
+      expect(sources).toHaveLength(1);
+      expect(sources[0].block).toBe('sweet_berry_bush');
+      expect(sources[0].tool).toBe('any');
+    });
+
+    test('finds cave_vines blocks for glow_berries', () => {
+      const sources = findBlocksThatDrop(realMcData, 'glow_berries');
+      expect(sources).toHaveLength(2);
+      expect(sources.map(s => s.block)).toContain('cave_vines');
+      expect(sources.map(s => s.block)).toContain('cave_vines_plant');
+      expect(sources.every(s => s.tool === 'any')).toBe(true);
+    });
+
+    test('finds gravel for flint (probabilistic drop)', () => {
+      const sources = findBlocksThatDrop(realMcData, 'flint');
+      expect(sources).toHaveLength(1);
+      expect(sources[0].block).toBe('gravel');
+      expect(sources[0].tool).toBe('any');
+    });
+
+    test('finds grass for wheat_seeds (probabilistic drop)', () => {
+      const sources = findBlocksThatDrop(realMcData, 'wheat_seeds');
+      // Includes grass from secondary drops and wheat from minecraft-data
+      expect(sources.map(s => s.block)).toContain('grass');
+      expect(sources.map(s => s.block)).toContain('wheat');
+    });
+  });
+
+  describe('getExpectedBlocksForItem', () => {
+    test('calculates expected blocks for probabilistic drops', () => {
+      // Flint has 10% drop rate, so need ~10 gravel per flint
+      const blocksFor10Flint = getExpectedBlocksForItem('flint', 10);
+      expect(blocksFor10Flint).toBe(100);
+    });
+
+    test('calculates expected blocks for guaranteed drops with multiple drops per block', () => {
+      // Sweet berries average 2.5 per bush
+      const blocksFor10Berries = getExpectedBlocksForItem('sweet_berries', 10);
+      expect(blocksFor10Berries).toBe(4); // ceil(10 / 2.5) = 4
+    });
+
+    test('returns null for items not in secondary drops', () => {
+      const result = getExpectedBlocksForItem('diamond', 5);
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('SECONDARY_BLOCK_DROPS configuration', () => {
+    test('has required fields for all entries', () => {
+      for (const [_itemName, drops] of Object.entries(SECONDARY_BLOCK_DROPS)) {
+        expect(drops.length).toBeGreaterThan(0);
+        for (const drop of drops) {
+          expect(drop.block).toBeDefined();
+          expect(drop.tool).toBeDefined();
+          expect(typeof drop.dropChance).toBe('number');
+          expect(drop.dropChance).toBeGreaterThan(0);
+          expect(drop.dropChance).toBeLessThanOrEqual(1);
+          expect(typeof drop.avgDropsPerBlock).toBe('number');
+          expect(drop.avgDropsPerBlock).toBeGreaterThan(0);
+          expect(drop.reason).toBeDefined();
+        }
+      }
+    });
+
+    test('flint config has correct drop chance', () => {
+      const flintDrops = SECONDARY_BLOCK_DROPS['flint'];
+      expect(flintDrops).toBeDefined();
+      expect(flintDrops[0].dropChance).toBe(0.1);
+    });
+
+    test('sweet_berries config has higher drop rate', () => {
+      const berryDrops = SECONDARY_BLOCK_DROPS['sweet_berries'];
+      expect(berryDrops).toBeDefined();
+      expect(berryDrops[0].dropChance).toBe(1.0);
+      expect(berryDrops[0].avgDropsPerBlock).toBe(2.5);
     });
   });
 
@@ -190,5 +276,98 @@ describe('sourceLookup', () => {
       const tool = getBestToolForBlock(mockMcData, 'nonexistent_block');
       expect(tool).toBe('any');
     });
+  });
+});
+
+describe('determineTargetItemsFromBlocks - secondary block drops', () => {
+  const realMcData = require('minecraft-data')('1.20.1');
+
+  test('maps sweet_berry_bush to sweet_berries', () => {
+    const targets = determineTargetItemsFromBlocks(
+      realMcData,
+      ['sweet_berry_bush'],
+      ['sweet_berries']
+    );
+    expect(targets).toContain('sweet_berries');
+  });
+
+  test('maps cave_vines to glow_berries', () => {
+    const targets = determineTargetItemsFromBlocks(
+      realMcData,
+      ['cave_vines'],
+      ['glow_berries']
+    );
+    expect(targets).toContain('glow_berries');
+  });
+
+  test('maps cave_vines_plant to glow_berries', () => {
+    const targets = determineTargetItemsFromBlocks(
+      realMcData,
+      ['cave_vines_plant'],
+      ['glow_berries']
+    );
+    expect(targets).toContain('glow_berries');
+  });
+
+  test('maps gravel to flint', () => {
+    const targets = determineTargetItemsFromBlocks(
+      realMcData,
+      ['gravel'],
+      ['flint']
+    );
+    expect(targets).toContain('flint');
+  });
+
+  test('still works for regular blocks like melon', () => {
+    const targets = determineTargetItemsFromBlocks(
+      realMcData,
+      ['melon'],
+      ['melon_slice']
+    );
+    expect(targets).toContain('melon_slice');
+  });
+});
+
+describe('planner integration - secondary block drops', () => {
+  const realMcData = require('minecraft-data')('1.20.1');
+  const { plan } = require('../../planner');
+
+  test('creates valid path for flint from gravel', () => {
+    const tree = plan(realMcData, 'flint', 5, {
+      inventory: new Map(),
+      log: false,
+      pruneWithWorld: false,
+      combineSimilarNodes: true
+    });
+
+    expect(tree).toBeDefined();
+    expect(tree.children?.variants?.length).toBeGreaterThan(0);
+    
+    const mineGroup = tree.children.variants[0].value;
+    expect(mineGroup.action).toBe('mine');
+    
+    // The leaf node should have gravel as the block to mine
+    const mineLeaf = mineGroup.children?.variants?.[0]?.value;
+    expect(mineLeaf?.what?.variants?.[0]?.value).toBe('gravel');
+    expect(mineLeaf?.targetItem?.variants?.[0]?.value).toBe('flint');
+  });
+
+  test('creates valid path for sweet_berries from bush', () => {
+    const tree = plan(realMcData, 'sweet_berries', 5, {
+      inventory: new Map(),
+      log: false,
+      pruneWithWorld: false,
+      combineSimilarNodes: true
+    });
+
+    expect(tree).toBeDefined();
+    expect(tree.children?.variants?.length).toBeGreaterThan(0);
+    
+    const mineGroup = tree.children.variants[0].value;
+    expect(mineGroup.action).toBe('mine');
+    
+    const mineLeaf = mineGroup.children?.variants?.[0]?.value;
+    expect(mineLeaf?.what?.variants?.[0]?.value).toBe('sweet_berry_bush');
+    expect(mineLeaf?.targetItem?.variants?.[0]?.value).toBe('sweet_berries');
   });
 });
