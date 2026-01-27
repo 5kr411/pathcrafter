@@ -47,8 +47,8 @@ type Phase = 'init' | 'hunting' | 'collecting_drops' | 'smelting' | 'complete' |
 
 const DROP_COLLECT_RADIUS = 8;
 const DROP_COLLECT_TIMEOUT = 10000;
-const DROP_COLLECT_MIN_DELAY = 500;
 const DROP_COLLECT_MAX_ATTEMPTS = 10;
+const DROP_PICKUP_WAIT_TIME = 1500;
 
 let lastDropLogTime = 0;
 const DROP_LOG_INTERVAL_MS = 2000;
@@ -158,13 +158,13 @@ function isActualDroppedItem(entity: any): boolean {
 function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   let phase: Phase = 'init';
   let startFoodPoints = 0;
+  let startRawMeatCounts: Map<string, number> = new Map();
   let huntedAnimalType: string | null = null;
   let rawMeatItem: string | null = null;
   let cookedMeatItem: string | null = null;
   let killPosition: any = null;
   let dropCollectStartTime = 0;
   let attemptedDropIds = new Set<number>();
-  let lastDropAttemptTime = 0;
   let dropAttemptCount = 0;
   
   // Shared targets for drop collection
@@ -240,8 +240,34 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     return total;
   }
   
+  function captureStartRawMeatCounts(): void {
+    startRawMeatCounts.clear();
+    for (const animal of HUNTABLE_ANIMALS) {
+      const rawItem = animal.drops[0];
+      const count = getItemCountInInventory(bot, rawItem);
+      startRawMeatCounts.set(rawItem, count);
+    }
+  }
+  
+  function getRawMeatGained(): number {
+    let gained = 0;
+    for (const animal of HUNTABLE_ANIMALS) {
+      const rawItem = animal.drops[0];
+      const startCount = startRawMeatCounts.get(rawItem) || 0;
+      const currentCount = getItemCountInInventory(bot, rawItem);
+      const delta = currentCount - startCount;
+      if (delta > 0) {
+        gained += delta * getFoodHungerPoints(rawItem);
+      }
+    }
+    return gained;
+  }
+  
   function getFoodGained(): number {
-    return calculateCurrentFoodPoints() - startFoodPoints;
+    const pointsGained = calculateCurrentFoodPoints() - startFoodPoints;
+    const rawMeatGained = getRawMeatGained();
+    // Return the higher of the two - sometimes food points don't capture raw meat correctly
+    return Math.max(pointsGained, rawMeatGained);
   }
   
   function isDropCollectTimedOut(): boolean {
@@ -258,6 +284,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     onTransition: () => {
       phase = 'init';
       startFoodPoints = calculateCurrentFoodPoints();
+      captureStartRawMeatCounts();
       logger.info(`HuntForFood: starting, current food points = ${startFoodPoints}`);
     }
   });
@@ -340,7 +367,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
       dropCollectStartTime = Date.now();
       dropTargets.entity = null;
       attemptedDropIds.clear();
-      lastDropAttemptTime = 0;
       dropAttemptCount = 0;
       if (bot.entity?.position) {
         killPosition = bot.entity.position.clone?.() || { ...bot.entity.position };
@@ -398,29 +424,62 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
   });
   
+  let reachedDropTime = 0;
+  let waitingForPickup = false;
+  
   const goToDropToFindDrop = new StateTransition({
     parent: goToDrop,
     child: findDrop,
     name: 'HuntForFood: go to drop -> find drop (collected, look for more)',
     shouldTransition: () => {
       const dist = goToDrop.distanceToTarget?.() ?? 999;
-      const collected = dist <= 1.0;
-      if (!collected) return false;
-      if (isDropCollectTimedOut()) return false;
-      if (dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS) return false;
+      const closeEnough = dist <= 2.0;
       
-      const timeSinceLastAttempt = Date.now() - lastDropAttemptTime;
-      return timeSinceLastAttempt >= DROP_COLLECT_MIN_DELAY;
+      if (!closeEnough) {
+        waitingForPickup = false;
+        reachedDropTime = 0;
+        return false;
+      }
+      
+      // Start waiting for pickup when we first get close
+      if (!waitingForPickup) {
+        waitingForPickup = true;
+        reachedDropTime = Date.now();
+        return false;
+      }
+      
+      if (isDropCollectTimedOut()) return true;
+      if (dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS) return true;
+      
+      // Check if the drop entity still exists (if it despawned, we picked it up)
+      const entityId = dropTargets.entity?.id;
+      const entityStillExists = entityId !== undefined && bot.entities && bot.entities[entityId];
+      
+      if (!entityStillExists) {
+        // Entity despawned - we picked it up!
+        logger.debug(`HuntForFood: picked up drop (entity ${entityId} despawned)`);
+        return true;
+      }
+      
+      // Wait for pickup, but don't wait forever
+      const waitTime = Date.now() - reachedDropTime;
+      if (waitTime >= DROP_PICKUP_WAIT_TIME) {
+        // Waited long enough, entity didn't despawn - move on
+        logger.debug(`HuntForFood: drop pickup timeout after ${waitTime}ms, moving on`);
+        return true;
+      }
+      
+      return false;
     },
     onTransition: () => {
       dropAttemptCount++;
-      lastDropAttemptTime = Date.now();
+      waitingForPickup = false;
+      reachedDropTime = 0;
       
       // Mark this entity as attempted so we don't try it again
       const entityId = dropTargets.entity?.id;
       if (entityId !== undefined) {
         attemptedDropIds.add(entityId);
-        logger.debug(`HuntForFood: marked entity ${entityId} as attempted (attempt ${dropAttemptCount}/${DROP_COLLECT_MAX_ATTEMPTS})`);
       }
       dropTargets.entity = null;
     }
@@ -467,7 +526,9 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     
     if (toSmelt) {
       const cookedItem = getCookedVariant(toSmelt.rawItem);
-      logger.info(`HuntForFood: collected ${toSmelt.count}x ${toSmelt.rawItem}, smelting -> ${cookedItem}`);
+      const startCount = startRawMeatCounts.get(toSmelt.rawItem) || 0;
+      const collectedThisHunt = toSmelt.count - startCount;
+      logger.info(`HuntForFood: have ${toSmelt.count}x ${toSmelt.rawItem} (collected ${collectedThisHunt} this hunt), smelting -> ${cookedItem}`);
       
       if (cookedItem) {
         const hasFurnace = getItemCountInInventory(bot, 'furnace') > 0;

@@ -266,20 +266,18 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
       const stateMachine = buildStateMachineForPath(
         bot,
         path,
-        (success: boolean) => {
+        (_success: boolean) => {
           stateMachineFinished = true;
           const endCookedCount = getItemCountInInventory(bot as any, cookedName);
           const smelted = endCookedCount - startCookedCount;
-          outcome = { success, smelted };
+          outcome = { success: smelted > 0, smelted };
           
-          if (success) {
+          if (smelted > 0) {
             logger.info(`FoodSmelting: complete, smelted ${smelted}x ${cookedName}`);
             lastFailedAttempt = 0;
           } else {
-            logger.info(`FoodSmelting: failed, smelted ${smelted}x ${cookedName}`);
-            if (smelted === 0) {
-              lastFailedAttempt = Date.now();
-            }
+            logger.info(`FoodSmelting: failed to smelt ${cookedName} (execution failed)`);
+            lastFailedAttempt = Date.now();
           }
         }
       );
