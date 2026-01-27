@@ -80,7 +80,7 @@ bot.once('spawn', () => {
   );
 
   const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
-  setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 40 });
+  setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 60 });
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);

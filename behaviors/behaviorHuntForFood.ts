@@ -15,6 +15,9 @@ const {
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
+import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import { plan as planner, _internals as plannerInternals } from '../planner';
+import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
 import {
   HUNTABLE_ANIMALS,
   getCookedVariant,
@@ -23,6 +26,7 @@ import {
 import createHuntEntityState from './behaviorHuntEntity';
 import createSmeltState from './behaviorSmelt';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
+const minecraftData = require('minecraft-data');
 
 interface Bot {
   version?: string;
@@ -44,11 +48,13 @@ interface HuntForFoodTargets {
 }
 
 type Phase = 'init' | 'hunting' | 'collecting_drops' | 'smelting' | 'complete' | 'failed';
+type WeaponPhase = 'init' | 'planning' | 'executing' | 'done' | 'skipped';
 
 const DROP_COLLECT_RADIUS = 8;
 const DROP_COLLECT_TIMEOUT = 10000;
 const DROP_COLLECT_MAX_ATTEMPTS = 10;
 const DROP_PICKUP_WAIT_TIME = 1500;
+const WEAPON_SNAPSHOT_RADII = [32, 64, 96, 128];
 
 let lastDropLogTime = 0;
 const DROP_LOG_INTERVAL_MS = 2000;
@@ -166,6 +172,9 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   let dropCollectStartTime = 0;
   let attemptedDropIds = new Set<number>();
   let dropAttemptCount = 0;
+  let weaponPhase: WeaponPhase = 'init';
+  let weaponPath: any[] | null = null;
+  let weaponStateMachine: any = null;
   
   // Shared targets for drop collection
   const dropTargets: any = {
@@ -192,6 +201,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   let smeltStateMachine: any = null;
   
   const enter = new BehaviorIdle();
+  const prepareWeapon = new BehaviorIdle();
   const findAnimal = new BehaviorIdle();
   const smelting = new BehaviorIdle();
   const exit = new BehaviorIdle();
@@ -225,6 +235,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   const goToDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
   
   addStateLogging(enter, 'HuntForFood:Enter', { logEnter: true });
+  addStateLogging(prepareWeapon, 'HuntForFood:PrepareWeapon', { logEnter: true });
   addStateLogging(findAnimal, 'HuntForFood:FindAnimal', { logEnter: true });
   addStateLogging(findDrop, 'HuntForFood:FindDrop', { logEnter: false });
   addStateLogging(goToDrop, 'HuntForFood:GoToDrop', { logEnter: false });
@@ -269,6 +280,107 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     // Return the higher of the two - sometimes food points don't capture raw meat correctly
     return Math.max(pointsGained, rawMeatGained);
   }
+
+  function hasSwordInInventory(): boolean {
+    const inventory = getInventoryObject(bot);
+    return Object.entries(inventory).some(([name, count]) => {
+      if (!name.endsWith('_sword')) return false;
+      return (count || 0) > 0;
+    });
+  }
+
+  async function tryPlanWeaponWithSnapshot(snapshot: any): Promise<any[] | null> {
+    try {
+      const inventory = getInventoryObject(bot);
+      const inventoryMap = new Map(Object.entries(inventory));
+      const version = bot.version || '1.20.1';
+      const mcData = minecraftData(version);
+
+      const tree = planner(mcData, 'wooden_sword', 1, {
+        inventory: inventoryMap,
+        log: false,
+        pruneWithWorld: !!snapshot,
+        combineSimilarNodes: true,
+        worldSnapshot: snapshot
+      });
+
+      if (!tree) return null;
+
+      const { enumerateActionPathsGenerator } = plannerInternals;
+      const iter = enumerateActionPathsGenerator(tree, { inventory });
+
+      for (const path of iter) {
+        if (path && path.length > 0) {
+          return path;
+        }
+      }
+
+      return null;
+    } catch (err: any) {
+      logger.debug(`HuntForFood: weapon planning error - ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  async function captureWeaponSnapshotWithValidation(): Promise<any> {
+    const inventory = getInventoryObject(bot);
+    const inventoryMap = new Map(Object.entries(inventory));
+    const version = bot.version || '1.20.1';
+    const mcData = minecraftData(version);
+
+    const validator = async (snapshot: any): Promise<boolean> => {
+      try {
+        const tree = planner(mcData, 'wooden_sword', 1, {
+          inventory: new Map(inventoryMap),
+          log: false,
+          pruneWithWorld: true,
+          combineSimilarNodes: true,
+          worldSnapshot: snapshot
+        });
+
+        if (!tree) {
+          logger.debug(`HuntForFood: weapon validator - no tree at radius ${snapshot.radius}`);
+          return false;
+        }
+
+        const { enumerateActionPathsGenerator } = plannerInternals;
+        const iter = enumerateActionPathsGenerator(tree, { inventory });
+
+        for (const path of iter) {
+          if (path && path.length > 0) {
+            logger.debug(`HuntForFood: weapon validator - found valid path at radius ${snapshot.radius}`);
+            return true;
+          }
+        }
+
+        logger.debug(`HuntForFood: weapon validator - no paths at radius ${snapshot.radius}`);
+        return false;
+      } catch (err: any) {
+        logger.debug(`HuntForFood: weapon validator error - ${err?.message || err}`);
+        return false;
+      }
+    };
+
+    try {
+      logger.info(`HuntForFood: capturing weapon snapshot with radii ${JSON.stringify(WEAPON_SNAPSHOT_RADII)}`);
+      const result = await captureAdaptiveSnapshot(bot, {
+        radii: WEAPON_SNAPSHOT_RADII,
+        validator,
+        onProgress: (msg: string) => logger.debug(`HuntForFood: ${msg}`)
+      });
+      logger.info(`HuntForFood: weapon snapshot captured at radius ${result.radiusUsed} after ${result.attemptsCount} attempts`);
+      return result.snapshot;
+    } catch (err: any) {
+      logger.info(`HuntForFood: weapon snapshot capture failed - ${err?.message || err}`);
+      return null;
+    }
+  }
+
+  async function generateWeaponPlan(): Promise<any[] | null> {
+    const snapshot = await captureWeaponSnapshotWithValidation();
+    if (!snapshot) return null;
+    return tryPlanWeaponWithSnapshot(snapshot);
+  }
   
   function isDropCollectTimedOut(): boolean {
     return Date.now() - dropCollectStartTime > DROP_COLLECT_TIMEOUT;
@@ -276,16 +388,32 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   
   // Transitions
   
-  const enterToFindAnimal = new StateTransition({
+  const enterToPrepareWeapon = new StateTransition({
     parent: enter,
-    child: findAnimal,
-    name: 'HuntForFood: enter -> find animal',
+    child: prepareWeapon,
+    name: 'HuntForFood: enter -> prepare weapon',
     shouldTransition: () => true,
     onTransition: () => {
       phase = 'init';
+      weaponPhase = 'init';
+      weaponPath = null;
+      weaponStateMachine = null;
       startFoodPoints = calculateCurrentFoodPoints();
       captureStartRawMeatCounts();
       logger.info(`HuntForFood: starting, current food points = ${startFoodPoints}`);
+    }
+  });
+
+  const prepareWeaponToFindAnimal = new StateTransition({
+    parent: prepareWeapon,
+    child: findAnimal,
+    name: 'HuntForFood: prepare weapon -> find animal',
+    shouldTransition: () => {
+      if (weaponPhase === 'skipped' || weaponPhase === 'done') return true;
+      if (weaponPhase === 'executing' && weaponStateMachine && typeof weaponStateMachine.isFinished === 'function') {
+        return weaponStateMachine.isFinished();
+      }
+      return false;
     }
   });
   
@@ -611,7 +739,8 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   };
   
   const transitions = [
-    enterToFindAnimal,
+    enterToPrepareWeapon,
+    prepareWeaponToFindAnimal,
     findAnimalToHunting,
     findAnimalToExit,
     huntingToSmelting,  // Fast path: drops auto-collected
@@ -626,6 +755,55 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   ];
   
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
+
+  const prepareWeaponAsAny = prepareWeapon as any;
+  const originalPrepareWeaponEntered = prepareWeaponAsAny.onStateEntered;
+  prepareWeaponAsAny.onStateEntered = async function(this: any) {
+    if (originalPrepareWeaponEntered) originalPrepareWeaponEntered.call(this);
+
+    weaponPhase = 'init';
+    weaponPath = null;
+    weaponStateMachine = null;
+
+    if (hasSwordInInventory()) {
+      logger.info('HuntForFood: sword already in inventory, skipping weapon craft');
+      weaponPhase = 'skipped';
+      return;
+    }
+
+    weaponPhase = 'planning';
+    logger.info('HuntForFood: no sword in inventory, attempting to craft wooden_sword');
+
+    weaponPath = await generateWeaponPlan();
+
+    if (weaponPath && weaponPath.length > 0) {
+      weaponStateMachine = buildStateMachineForPath(bot, weaponPath, (success: boolean) => {
+        weaponPhase = 'done';
+        logger.info(`HuntForFood: wooden_sword ${success ? 'crafted' : 'craft failed'}, continuing hunt`);
+        weaponStateMachine = null;
+        weaponPath = null;
+      });
+      weaponPhase = 'executing';
+      if (weaponStateMachine && typeof weaponStateMachine.onStateEntered === 'function') {
+        logger.info('HuntForFood: starting weapon path sub-machine');
+        weaponStateMachine.onStateEntered();
+      }
+    } else {
+      logger.info('HuntForFood: no viable path for wooden_sword, continuing without weapon');
+      weaponPhase = 'skipped';
+    }
+  };
+  prepareWeaponAsAny.update = function() {
+    const currentWeaponMachine = weaponStateMachine;
+    if (currentWeaponMachine && typeof currentWeaponMachine.update === 'function') {
+      currentWeaponMachine.update();
+      if (typeof currentWeaponMachine.isFinished === 'function' && currentWeaponMachine.isFinished()) {
+        weaponPhase = 'done';
+        weaponStateMachine = null;
+        weaponPath = null;
+      }
+    }
+  };
   
   let reachedExit = false;
   (stateMachine as any).isFinished = () => reachedExit;
@@ -646,7 +824,10 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   
   stateMachine.onStateExited = function() {
     logger.debug('HuntForFood: cleaning up');
-    
+
+    if (weaponStateMachine && typeof weaponStateMachine.onStateExited === 'function') {
+      try { weaponStateMachine.onStateExited(); } catch (_) {}
+    }
     if (huntStateMachine && typeof huntStateMachine.onStateExited === 'function') {
       try { huntStateMachine.onStateExited(); } catch (_) {}
     }
