@@ -65,6 +65,9 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   let phase: Phase = 'init';
   let triedSources = new Set<FoodSource>();
   let currentSubMachine: any = null;
+  let huntAttempts = 0;
+  let lastHuntGainedFood = false;
+  const MAX_HUNT_ATTEMPTS = 10;
   
   const enter = new BehaviorIdle();
   const selectSource = new BehaviorIdle();
@@ -142,13 +145,18 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   function selectNextSource(): FoodSource | null {
     const animalsNearby = hasAnimalsNearby();
     
-    logger.debug(`GetFood: selectNextSource - animalsNearby=${animalsNearby}, tried=${Array.from(triedSources).join(',')}`);
+    logger.debug(`GetFood: selectNextSource - animalsNearby=${animalsNearby}, huntAttempts=${huntAttempts}, lastHuntGained=${lastHuntGainedFood}, tried=${Array.from(triedSources).join(',')}`);
     
-    // If animals are nearby, hunt first (quick win)
-    if (!triedSources.has('hunt') && animalsNearby) {
-      return 'hunt';
+    // Priority 1: Always try hunting first - animals may spawn/appear later
+    // Keep hunting if animals are nearby and under max attempts
+    if (huntAttempts < MAX_HUNT_ATTEMPTS) {
+      // First attempt or animals are nearby - go hunt
+      if (huntAttempts === 0 || animalsNearby) {
+        return 'hunt';
+      }
     }
     
+    // Priority 2: Block-based food sources (only after hunting is exhausted)
     // Try bread
     if (!triedSources.has('bread')) {
       return 'bread';
@@ -164,11 +172,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       return 'melon';
     }
     
-    // Fallback: try hunting even if no animals visible (bot can roam and find them)
-    if (!triedSources.has('hunt')) {
-      return 'hunt';
-    }
-    
+    // All sources exhausted
     return null;
   }
   
@@ -200,6 +204,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     onTransition: () => {
       phase = 'init';
       triedSources.clear();
+      huntAttempts = 0;
+      lastHuntGainedFood = false;
       logger.info(`GetFood: starting, current food = ${getCurrentFoodPoints()}, target = ${config.targetFoodPoints}`);
     }
   });
@@ -210,14 +216,21 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     name: 'GetFood: select -> hunting',
     shouldTransition: () => phase === 'hunt',
     onTransition: () => {
-      triedSources.add('hunt');
+      huntAttempts++;
       const count = calculateNeededCount('hunt');
-      logger.info(`GetFood: trying hunting, need ~${count} animals`);
+      logger.info(`GetFood: trying hunting (attempt ${huntAttempts}/${MAX_HUNT_ATTEMPTS}), need ~${count} animals`);
       
       currentSubMachine = createHuntForFoodState(bot, {
         targetFoodPoints: config.targetFoodPoints,
         onComplete: (success: boolean, foodGained: number) => {
           logger.info(`GetFood: hunting ${success ? 'succeeded' : 'failed'}, gained ${foodGained} points`);
+          lastHuntGainedFood = foodGained > 0;
+          
+          // If hunt was successful, reset attempt counter to allow more hunts
+          if (foodGained > 0) {
+            huntAttempts = 0;
+          }
+          
           currentSubMachine = null;
           
           if (getCurrentFoodPoints() >= config.targetFoodPoints) {
