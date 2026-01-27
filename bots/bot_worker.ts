@@ -6,11 +6,11 @@ const {
   StateTransition,
   BotStateMachine,
   BehaviorIdle,
-  BehaviorFollowEntity,
   BehaviorLookAtEntity,
   BehaviorGetClosestEntity,
   NestedStateMachine
 } = require('mineflayer-statemachine');
+import { BehaviorSafeFollowEntity } from '../behaviors/behaviorSafeFollowEntity';
 
 globalSettings.debugMode = false;
 
@@ -29,7 +29,7 @@ bot.once('spawn', () => {
 
   const idleState = new BehaviorIdle();
   const lookAtPlayersState = new BehaviorLookAtEntity(bot, targets);
-  const followPlayer = new BehaviorFollowEntity(bot, targets);
+  const followPlayer = new BehaviorSafeFollowEntity(bot, targets);
   followPlayer.movements.allowFreeMotion = true;
   bot.pathfinder.searchRadius = 32;
 

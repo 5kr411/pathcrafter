@@ -1,4 +1,4 @@
-const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEntity, BehaviorFollowEntity } = require('mineflayer-statemachine');
+const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEntity } = require('mineflayer-statemachine');
 const minecraftData = require('minecraft-data');
 
 import logger from '../utils/logger';
@@ -6,6 +6,7 @@ const { getSmeltsPerUnitForFuel } = require('../utils/smeltingConfig');
 import { getItemCountInInventory } from '../utils/inventory';
 import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
+import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 
 type Bot = any;
 
@@ -58,7 +59,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
   const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) =>
     e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'furnace'
   );
-  const followDrop = new BehaviorFollowEntity(bot, dropTargets);
+  const followDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
 
   let wantItem: string;
   let wantCount: number;

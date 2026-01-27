@@ -9,7 +9,6 @@ const {
   StateTransition,
   BehaviorIdle,
   BehaviorGetClosestEntity,
-  BehaviorFollowEntity,
   NestedStateMachine
 } = require('mineflayer-statemachine');
 
@@ -23,6 +22,7 @@ import {
 } from '../utils/foodConfig';
 import createHuntEntityState from './behaviorHuntEntity';
 import createSmeltState from './behaviorSmelt';
+import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 
 interface Bot {
   version?: string;
@@ -222,7 +222,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     return false;
   });
   
-  const goToDrop = new BehaviorFollowEntity(bot, dropTargets);
+  const goToDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
   
   addStateLogging(enter, 'HuntForFood:Enter', { logEnter: true });
   addStateLogging(findAnimal, 'HuntForFood:FindAnimal', { logEnter: true });
@@ -379,7 +379,17 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     parent: findDrop,
     child: goToDrop,
     name: 'HuntForFood: find drop -> go to drop',
-    shouldTransition: () => dropTargets.entity !== null,
+    shouldTransition: () => {
+      if (!dropTargets.entity) return false;
+      // Verify entity ID exists and entity is still tracked
+      const entityId = dropTargets.entity.id;
+      if (entityId === undefined) return false;
+      if (!bot.entities || !bot.entities[entityId]) {
+        dropTargets.entity = null;
+        return false;
+      }
+      return true;
+    },
     onTransition: () => {
       const now = Date.now();
       if (now - lastDropLogTime >= DROP_LOG_INTERVAL_MS) {
@@ -432,6 +442,23 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     child: findDrop,
     name: 'HuntForFood: go to drop -> find drop (collected, look for more)',
     shouldTransition: () => {
+      // Check if entity is valid first - if not, wait a bit before transitioning
+      const entityId = dropTargets.entity?.id;
+      if (entityId === undefined) {
+        // Entity was never valid or already cleared - need a cooldown to prevent spam
+        if (!waitingForPickup) {
+          waitingForPickup = true;
+          reachedDropTime = Date.now();
+          return false;
+        }
+        const waitTime = Date.now() - reachedDropTime;
+        if (waitTime < DROP_PICKUP_WAIT_TIME) {
+          return false;
+        }
+        logger.debug('HuntForFood: no valid drop entity, moving on');
+        return true;
+      }
+      
       const dist = goToDrop.distanceToTarget?.() ?? 999;
       const closeEnough = dist <= 2.0;
       
@@ -452,8 +479,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
       if (dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS) return true;
       
       // Check if the drop entity still exists (if it despawned, we picked it up)
-      const entityId = dropTargets.entity?.id;
-      const entityStillExists = entityId !== undefined && bot.entities && bot.entities[entityId];
+      const entityStillExists = bot.entities && bot.entities[entityId];
       
       if (!entityStillExists) {
         // Entity despawned - we picked it up!

@@ -68,6 +68,9 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   let huntAttempts = 0;
   let lastHuntGainedFood = false;
   const MAX_HUNT_ATTEMPTS = 10;
+  let berryAttempts = 0;
+  let lastBerryGainedFood = false;
+  const MAX_BERRY_ATTEMPTS = 5;
   
   const enter = new BehaviorIdle();
   const selectSource = new BehaviorIdle();
@@ -142,10 +145,23 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     return false;
   }
   
+  function hasBerryBushesNearby(): boolean {
+    // Check world snapshot for berry bushes
+    if (targets.worldSnapshot?.blockCounts) {
+      const counts = targets.worldSnapshot.blockCounts;
+      if ((counts['sweet_berry_bush']?.count || 0) > 0) return true;
+      if ((counts['cave_vines']?.count || 0) > 0) return true;
+      if ((counts['cave_vines_plant']?.count || 0) > 0) return true;
+    }
+    // Fallback: assume berries might be around on first attempt
+    return berryAttempts === 0;
+  }
+  
   function selectNextSource(): FoodSource | null {
     const animalsNearby = hasAnimalsNearby();
+    const berriesNearby = hasBerryBushesNearby();
     
-    logger.debug(`GetFood: selectNextSource - animalsNearby=${animalsNearby}, huntAttempts=${huntAttempts}, lastHuntGained=${lastHuntGainedFood}, tried=${Array.from(triedSources).join(',')}`);
+    logger.debug(`GetFood: selectNextSource - animalsNearby=${animalsNearby}, berriesNearby=${berriesNearby}, huntAttempts=${huntAttempts}, lastHuntGained=${lastHuntGainedFood}, berryAttempts=${berryAttempts}, lastBerryGained=${lastBerryGainedFood}`);
     
     // Priority 1: Always try hunting first - animals may spawn/appear later
     // Keep hunting if animals are nearby and under max attempts
@@ -162,9 +178,11 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       return 'bread';
     }
     
-    // Try berries
-    if (!triedSources.has('berries')) {
-      return 'berries';
+    // Try berries - allow multiple attempts if berries are nearby
+    if (berryAttempts < MAX_BERRY_ATTEMPTS) {
+      if (berryAttempts === 0 || (berriesNearby && lastBerryGainedFood)) {
+        return 'berries';
+      }
     }
 
     // Try melon
@@ -206,6 +224,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       triedSources.clear();
       huntAttempts = 0;
       lastHuntGainedFood = false;
+      berryAttempts = 0;
+      lastBerryGainedFood = false;
       logger.info(`GetFood: starting, current food = ${getCurrentFoodPoints()}, target = ${config.targetFoodPoints}`);
     }
   });
@@ -303,9 +323,9 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     name: 'GetFood: select -> berries',
     shouldTransition: () => phase === 'berries',
     onTransition: () => {
-      triedSources.add('berries');
+      berryAttempts++;
       const count = calculateNeededCount('berries');
-      logger.info(`GetFood: trying berries collection, need ${count} berries`);
+      logger.info(`GetFood: trying berries collection (attempt ${berryAttempts}/${MAX_BERRY_ATTEMPTS}), need ${count} berries`);
 
       currentSubMachine = createCollectBerriesState(bot, {
         targetBerryCount: count,
@@ -313,6 +333,13 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
         requireIronForGlow: true,
         onComplete: (success: boolean, collected: number, itemName: string | null) => {
           logger.info(`GetFood: berries collection ${success ? 'succeeded' : 'failed'}, collected ${collected} ${itemName || 'berries'}`);
+          lastBerryGainedFood = collected > 0;
+          
+          // Reset attempts if we gained food to allow continued collection
+          if (collected > 0) {
+            berryAttempts = 0;
+          }
+          
           currentSubMachine = null;
 
           if (getCurrentFoodPoints() >= config.targetFoodPoints) {

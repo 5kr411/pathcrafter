@@ -1,7 +1,6 @@
 const {
   StateTransition,
   BehaviorIdle,
-  BehaviorFollowEntity,
   BehaviorGetClosestEntity,
   NestedStateMachine
 } = require('mineflayer-statemachine');
@@ -9,6 +8,7 @@ const {
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import createAttackEntityState from './behaviorAttackEntity';
+import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 
 interface Bot {
   version?: string;
@@ -145,7 +145,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
   });
 
   // Follow entity until within attack range
-  const followEntity = new BehaviorFollowEntity(bot, targets);
+  const followEntity = new BehaviorSafeFollowEntity(bot, targets);
   followEntity.followDistance = Math.max(0.2, DEFAULT_ATTACK_RANGE - 0.4);
   
   // Configure follow to stop at ATTACK_RANGE distance

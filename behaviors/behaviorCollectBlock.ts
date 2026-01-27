@@ -3,7 +3,6 @@ const { parentPort, workerData, isMainThread } = require('worker_threads');
 const {
   StateTransition,
   BehaviorIdle,
-  BehaviorFollowEntity,
   BehaviorGetClosestEntity,
   NestedStateMachine,
   BehaviorFindBlock,
@@ -12,6 +11,7 @@ const {
 
 import { BehaviorMineBlock } from './behaviorMineBlock';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
+import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 import createBreakBlockOnlyState, { BreakBlockTargets } from './behaviorBreakBlockOnly';
 
 import { getItemCountInInventory } from '../utils/inventory';
@@ -329,7 +329,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     getExtraInfo: () => `looking for dropped ${targets.itemName}`
   });
 
-  const goToDrop = new BehaviorFollowEntity(bot, targets);
+  const goToDrop = new BehaviorSafeFollowEntity(bot, targets);
 
   // Add logging to FollowEntity
   addStateLogging(goToDrop, 'FollowEntity', {
