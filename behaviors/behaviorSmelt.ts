@@ -166,6 +166,8 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       const STALL_TIMEOUT_MS = 20000;
       let localFuelCount = furnace.fuelItem() ? furnace.fuelItem()!.count || 0 : 0;
       let localOutputTaken = 0;
+      let fuelPutFailures = 0;
+      const MAX_FUEL_FAILURES = 3;
 
       while (Date.now() - lastActivity < STALL_TIMEOUT_MS) {
         const invDelta = Math.max(0, getItemCount(wantItem) - have0);
@@ -185,27 +187,38 @@ function createSmeltState(bot: Bot, targets: Targets): any {
           logger.warn(`Smelt: Failed to put input: ${err}`);
         }
 
-        try {
-          if (getItemCount(fuelItem) > 0) {
-            const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
-            const remaining = Math.max(0, outTarget - (have0 + produced));
-            const desiredUnits = Math.ceil(remaining / perUnit);
-            const fuelSlot = furnace.fuelItem();
-            const currentUnits = fuelSlot ? fuelSlot.count || 0 : localFuelCount;
+        if (fuelPutFailures < MAX_FUEL_FAILURES && getItemCount(fuelItem) > 0) {
+          const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
+          const remaining = Math.max(0, outTarget - (have0 + produced));
+          const desiredUnits = Math.ceil(remaining / perUnit);
+          const fuelSlot = furnace.fuelItem();
+          const currentUnits = fuelSlot ? fuelSlot.count || 0 : 0;
+          if (fuelSlot) {
             localFuelCount = currentUnits;
-            const available = getItemCount(fuelItem);
-            const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits));
-            const now = Date.now();
-            if (topUp > 0 && now - lastFuelPut > 800) {
+          }
+          const available = getItemCount(fuelItem);
+          const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits));
+          const now = Date.now();
+          const fuelProgress = (furnace as any).fuel ?? 0;
+          const isBurning = fuelProgress > 0;
+          
+          if (topUp > 0 && now - lastFuelPut > 800 && !isBurning) {
+            try {
               await furnace.putFuel(idOf(fuelItem)!, null, topUp);
               localFuelCount += topUp;
               lastFuelPut = now;
+              fuelPutFailures = 0;
               logger.debug(`Smelt: put fuel x${topUp} ${fuelItem}`);
               acted = true;
+            } catch (err) {
+              fuelPutFailures++;
+              if (fuelPutFailures >= MAX_FUEL_FAILURES) {
+                logger.warn(`Smelt: Giving up on fuel after ${fuelPutFailures} failures: ${err}`);
+              } else {
+                logger.debug(`Smelt: Failed to put fuel (attempt ${fuelPutFailures}): ${err}`);
+              }
             }
           }
-        } catch (err) {
-          logger.warn(`Smelt: Failed to put fuel: ${err}`);
         }
 
         try {
