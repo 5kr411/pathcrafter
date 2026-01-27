@@ -9,6 +9,7 @@ import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_def
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
 import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
+import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
 import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
@@ -85,6 +86,7 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
   reactiveBehaviorRegistry.register(foodCollectionBehavior);
   reactiveBehaviorRegistry.register(foodEatingBehavior);
+  reactiveBehaviorRegistry.register(foodSmeltingBehavior);
 
   const controlStack = new CollectorControlStack(
     bot,
