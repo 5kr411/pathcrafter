@@ -117,7 +117,11 @@ class FoodSourceTracker {
     if (attempts === 0) {
       return true;
     }
-    
+
+    if (config.entityBased) {
+      return hasSourceNearby;
+    }
+
     return hasSourceNearby && this.lastGained(source);
   }
   

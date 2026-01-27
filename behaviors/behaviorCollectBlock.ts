@@ -186,9 +186,18 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
 
   function getDroppedItemInfo(entity: Entity): { name: string | null; count: number } {
+    try {
+      const dropped = typeof (entity as any)?.getDroppedItem === 'function'
+        ? (entity as any).getDroppedItem()
+        : null;
+      if (dropped) {
+        return { name: dropped.name || null, count: Number(dropped.count || 1) || 1 };
+      }
+    } catch (_) {}
+
     // Mineflayer encodes dropped item stack in metadata index 7 for item entities
     try {
-      const meta = Array.isArray(entity?.metadata) ? entity.metadata[7] : null;
+      const meta = Array.isArray(entity?.metadata) ? (entity.metadata[7] || entity.metadata[8]) : null;
       if (meta && meta.itemId !== undefined) {
         const itemId = meta.itemId;
         const itemName = mcData.items?.[itemId]?.name || null;
@@ -273,11 +282,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity: Entity) => {
     const botPos = bot.entity?.position;
     if (!botPos || !entity.position?.distanceTo) return false;
+    const dropInfo = getDroppedItemInfo(entity);
     const isItem =
       entity.displayName === 'Item' ||
       entity.name === 'item' ||
-      entity.type === 'object' ||
-      Array.isArray(entity.metadata);
+      !!dropInfo.name;
     if (!isItem) return false;
 
     // Use lastBreakPosition if available, otherwise fall back to blockPosition
@@ -291,7 +300,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     const inBotRange = entity.position.distanceTo(botPos) < 12;
 
     if (nearMinedPos && inBotRange) {
-      const dropInfo = getDroppedItemInfo(entity);
       logger.debug(
         `Found drop near mined block (${targetPos?.x},${targetPos?.y},${targetPos?.z}): metaName=${dropInfo.name}, count=${dropInfo.count}, distToMine=${distToMine.toFixed(
           2

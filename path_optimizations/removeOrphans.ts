@@ -2,56 +2,65 @@ import { ActionPath, ActionStep } from '../action_tree/types';
 import { getSmeltsPerUnitForFuel } from '../utils/smeltingConfig';
 
 /**
- * Gets the output item and count from a step
+ * Gets all possible output items and per-step counts from a step.
+ * Returns a map of item -> perStepCount.
  */
-function getStepOutput(step: ActionStep): { item: string; perStepCount: number } | null {
+function getStepOutputs(step: ActionStep): Map<string, number> {
+  const outputs = new Map<string, number>();
+
+  const addOutput = (item: string | undefined, perStepCount: number) => {
+    if (!item) return;
+    const existing = outputs.get(item) || 0;
+    outputs.set(item, Math.max(existing, perStepCount));
+  };
+
   if (step.action === 'craft') {
-    const result = step.result?.variants?.[0]?.value;
-    if (result && typeof result === 'object' && 'item' in result) {
-      return {
-        item: result.item,
-        perStepCount: result.perCraftCount || 1
-      };
+    const variants = step.result?.variants || [];
+    for (const variant of variants) {
+      const value: any = variant?.value;
+      const item = typeof value === 'object' && value ? value.item : (typeof value === 'string' ? value : undefined);
+      const perStepCount = typeof value === 'object' && value ? (value.perCraftCount || 1) : 1;
+      if (item) {
+        addOutput(item, perStepCount);
+      }
     }
   }
-  
+
   if (step.action === 'smelt') {
-    const result = step.result?.variants?.[0]?.value;
-    if (result && typeof result === 'object' && 'item' in result) {
-      return {
-        item: result.item,
-        perStepCount: result.perSmelt || 1
-      };
+    const variants = step.result?.variants || [];
+    for (const variant of variants) {
+      const value: any = variant?.value;
+      const item = typeof value === 'object' && value ? value.item : (typeof value === 'string' ? value : undefined);
+      const perStepCount = typeof value === 'object' && value ? (value.perSmelt || 1) : 1;
+      if (item) {
+        addOutput(item, perStepCount);
+      }
     }
   }
-  
+
   if (step.action === 'mine' || step.action === 'hunt') {
-    const targetItem = (step as any).targetItem?.variants?.[0]?.value;
-    if (targetItem) {
-      if (typeof targetItem === 'object' && 'item' in targetItem) {
-        return {
-          item: targetItem.item,
-          perStepCount: 1
-        };
-      }
-      if (typeof targetItem === 'string') {
-        return {
-          item: targetItem,
-          perStepCount: 1
-        };
+    const targetItems = (step as any).targetItem?.variants || [];
+    for (const variant of targetItems) {
+      const value: any = variant?.value;
+      const item = typeof value === 'object' && value ? value.item : (typeof value === 'string' ? value : undefined);
+      if (item) {
+        addOutput(item, 1);
       }
     }
-    
-    const what = step.what?.variants?.[0]?.value;
-    if (what && typeof what === 'string') {
-      return {
-        item: what,
-        perStepCount: 1
-      };
+
+    if (outputs.size === 0) {
+      const whatVariants = step.what?.variants || [];
+      for (const variant of whatVariants) {
+        const value: any = variant?.value;
+        const item = typeof value === 'string' ? value : (typeof value === 'object' && value ? value.item : undefined);
+        if (item) {
+          addOutput(item, 1);
+        }
+      }
     }
   }
-  
-  return null;
+
+  return outputs;
 }
 
 /**
@@ -64,26 +73,44 @@ function addInputsToDemand(step: ActionStep, demand: Map<string, number>, stepCo
       demand.set('crafting_table', Math.max((demand.get('crafting_table') || 0), 1));
     }
     
-    const ingredients = step.ingredients?.variants?.[0]?.value;
-    if (Array.isArray(ingredients)) {
+    const ingredientVariants = step.ingredients?.variants || [];
+    const maxPerCraftByItem = new Map<string, number>();
+    for (const variant of ingredientVariants) {
+      const ingredients = Array.isArray(variant?.value) ? variant.value : [];
       for (const ing of ingredients) {
         if (ing && typeof ing === 'object' && 'item' in ing) {
           const perCraftCount = ing.perCraftCount || 1;
-          const totalNeeded = perCraftCount * stepCount;
-          demand.set(ing.item, (demand.get(ing.item) || 0) + totalNeeded);
+          const existing = maxPerCraftByItem.get(ing.item) || 0;
+          if (perCraftCount > existing) {
+            maxPerCraftByItem.set(ing.item, perCraftCount);
+          }
         }
       }
+    }
+    for (const [item, perCraftCount] of maxPerCraftByItem.entries()) {
+      const totalNeeded = perCraftCount * stepCount;
+      demand.set(item, (demand.get(item) || 0) + totalNeeded);
     }
   }
   
   if (step.action === 'smelt') {
     demand.set('furnace', Math.max((demand.get('furnace') || 0), 1));
     
-    const input = step.input?.variants?.[0]?.value;
-    if (input && typeof input === 'object' && 'item' in input) {
-      const perSmelt = input.perSmelt || 1;
+    const inputVariants = step.input?.variants || [];
+    const maxPerSmeltByItem = new Map<string, number>();
+    for (const variant of inputVariants) {
+      const value: any = variant?.value;
+      if (value && typeof value === 'object' && 'item' in value) {
+        const perSmelt = value.perSmelt || 1;
+        const existing = maxPerSmeltByItem.get(value.item) || 0;
+        if (perSmelt > existing) {
+          maxPerSmeltByItem.set(value.item, perSmelt);
+        }
+      }
+    }
+    for (const [item, perSmelt] of maxPerSmeltByItem.entries()) {
       const totalNeeded = perSmelt * stepCount;
-      demand.set(input.item, (demand.get(input.item) || 0) + totalNeeded);
+      demand.set(item, (demand.get(item) || 0) + totalNeeded);
     }
     
     const fuel = step.fuel?.variants?.[0]?.value;
@@ -151,36 +178,48 @@ export function removeOrphanedIngredientsInPath(path: ActionPath): ActionPath {
     const step = path[i];
     if (!step) continue;
     
-    const output = getStepOutput(step);
+    const outputs = getStepOutputs(step);
     
-    if (!output) {
+    if (outputs.size === 0) {
       adjustedPath.unshift(step);
       continue;
     }
     
-    const needed = demand.get(output.item) || 0;
-    const perStepCount = output.perStepCount;
-    const currentCount = step.count || 1;
+    const outputItems = Array.from(outputs.keys());
+    const demandedItems = outputItems.filter(item => (demand.get(item) || 0) > 0);
     
-    if (needed === 0) {
+    if (demandedItems.length === 0) {
       continue;
     }
     
-    const stepsNeeded = Math.ceil(needed / perStepCount);
-    const adjustedCount = Math.min(currentCount, stepsNeeded);
-    
-    if (adjustedCount > 0) {
-      const adjustedStep = adjustedCount === currentCount 
-        ? step 
-        : { ...step, count: adjustedCount };
+    const currentCount = step.count || 1;
+
+    // If output is unambiguous, adjust counts and reduce demand.
+    if (outputItems.length === 1 && demandedItems.length === 1) {
+      const outputItem = outputItems[0];
+      const perStepCount = outputs.get(outputItem) || 1;
+      const needed = demand.get(outputItem) || 0;
+      const stepsNeeded = Math.ceil(needed / perStepCount);
+      const adjustedCount = Math.min(currentCount, stepsNeeded);
       
-      adjustedPath.unshift(adjustedStep);
-      
-      const consumed = Math.min(adjustedCount * perStepCount, needed);
-      demand.set(output.item, Math.max(0, needed - consumed));
-      
-      addInputsToDemand(adjustedStep, demand, adjustedCount);
+      if (adjustedCount > 0) {
+        const adjustedStep = adjustedCount === currentCount 
+          ? step 
+          : { ...step, count: adjustedCount };
+        
+        adjustedPath.unshift(adjustedStep);
+        
+        const consumed = Math.min(adjustedCount * perStepCount, needed);
+        demand.set(outputItem, Math.max(0, needed - consumed));
+        
+        addInputsToDemand(adjustedStep, demand, adjustedCount);
+      }
+      continue;
     }
+
+    // Ambiguous outputs: keep step but do not reduce demand (conservative).
+    adjustedPath.unshift(step);
+    addInputsToDemand(step, demand, currentCount);
   }
   
   adjustedPath.push(path[lastStepIndex]);
@@ -198,4 +237,3 @@ export function removeOrphanedIngredientsInPaths(paths: ActionPath[]): ActionPat
   if (!Array.isArray(paths)) return paths;
   return paths.map(p => removeOrphanedIngredientsInPath(p));
 }
-

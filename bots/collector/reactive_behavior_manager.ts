@@ -150,6 +150,11 @@ export class ReactiveBehaviorManager {
 
   hasWork(): boolean {
     if (!this.enabled) return false;
+    if (this.currentRun && this.currentRun.isFinished()) {
+      this.currentRun = null;
+      // Clear stale candidate so we re-evaluate after completion.
+      this.candidate = null;
+    }
     this.kickoffEvaluation();
     return !!this.currentRun || !!this.pendingBehavior || !!this.candidate || this.starting;
   }
@@ -192,6 +197,8 @@ export class ReactiveBehaviorManager {
       this.currentRun.update();
       if (this.currentRun.isFinished()) {
         this.currentRun = null;
+        // Clear any stale candidate so we re-evaluate after state changes (e.g., cooldowns).
+        this.candidate = null;
       }
     }
 
@@ -243,6 +250,8 @@ export class ReactiveBehaviorManager {
       .then((state) => {
         if (!state || !state.stateMachine) {
           logger.info(`ReactiveBehaviorManager: behavior ${behavior?.name || 'unknown'} returned no state`);
+          this.candidate = null;
+          this.pendingBehavior = null;
           return null;
         }
         return state;
@@ -255,6 +264,8 @@ export class ReactiveBehaviorManager {
       })
       .catch((err: any) => {
         logger.info(`ReactiveBehaviorManager: failed to start behavior - ${err?.message || err}`);
+        this.candidate = null;
+        this.pendingBehavior = null;
       })
       .finally(() => {
         this.starting = false;

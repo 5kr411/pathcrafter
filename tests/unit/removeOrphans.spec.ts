@@ -9,6 +9,55 @@ function createVariantGroup<T>(value: T) {
 }
 
 describe('removeOrphanedIngredients', () => {
+  test('keeps ingredient crafts when craft step has multiple ingredient variants', () => {
+    const path: ActionPath = [
+      {
+        action: 'mine',
+        variantMode: 'one_of',
+        what: createVariantGroup('oak_log'),
+        count: 1,
+        targetItem: createVariantGroup('oak_log'),
+        tool: createVariantGroup('hand')
+      } as ActionStep,
+      {
+        action: 'craft',
+        variantMode: 'one_of',
+        what: createVariantGroup('inventory'),
+        count: 1,
+        ingredients: createVariantGroup([{ item: 'oak_log', perCraftCount: 1 }]),
+        result: createVariantGroup({ item: 'oak_planks', perCraftCount: 4 })
+      } as ActionStep,
+      {
+        action: 'craft',
+        variantMode: 'one_of',
+        what: createVariantGroup('inventory'),
+        count: 1,
+        ingredients: {
+          mode: 'one_of',
+          variants: [
+            { value: [{ item: 'spruce_planks', perCraftCount: 2 }] },
+            { value: [{ item: 'oak_planks', perCraftCount: 2 }] }
+          ]
+        },
+        result: createVariantGroup({ item: 'stick', perCraftCount: 4 })
+      } as ActionStep
+    ];
+
+    const result = removeOrphanedIngredientsInPath(path);
+
+    const plankCraft = result.find(s =>
+      s.action === 'craft' &&
+      s.result?.variants?.[0]?.value?.item === 'oak_planks'
+    );
+    expect(plankCraft).toBeDefined();
+
+    const logMining = result.find(s =>
+      s.action === 'mine' &&
+      s.targetItem?.variants?.[0]?.value === 'oak_log'
+    );
+    expect(logMining).toBeDefined();
+  });
+
   test('preserves fuel for smelting steps', () => {
     const path: ActionPath = [
       {
@@ -260,4 +309,3 @@ describe('removeOrphanedIngredients', () => {
     expect(result[0].count).toBe(1);
   });
 });
-

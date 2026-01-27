@@ -144,6 +144,11 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       : null;
     
     const currentFoodPoints = getBotFoodPoints(bot);
+    if (isInCooldown()) {
+      const remaining = getCooldownRemaining();
+      logger.debug(`FoodCollection: skipping start (cooldown ${remaining}s remaining)`);
+      return null;
+    }
     logger.info(`FoodCollection: starting - current food points = ${currentFoodPoints}`);
     
     if (sendChat) {
