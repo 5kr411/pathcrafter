@@ -46,18 +46,34 @@ interface Targets {
 const FAILED_TARGET_COOLDOWN = 10000; // 10 seconds before retrying a failed target
 const failedTargets = new Map<number, number>(); // entityId -> failedTime
 
-function isRecentlyFailedTarget(entity: Entity | null | undefined): boolean {
-  if (!entity) return false;
-  const entityId = (entity as any)?.id;
-  if (entityId === undefined || entityId === null) return false;
-  const failedTime = failedTargets.get(entityId);
-  if (failedTime === undefined) return false;
-  const timeSinceFailure = Date.now() - failedTime;
-  if (timeSinceFailure >= FAILED_TARGET_COOLDOWN) {
-    failedTargets.delete(entityId);
-    return false;
+function resolveEntityId(entityOrId: Entity | number | null | undefined): number | null {
+  if (typeof entityOrId === 'number') {
+    return entityOrId;
   }
-  return true;
+  const entityId = (entityOrId as any)?.id;
+  if (typeof entityId !== 'number') return null;
+  return entityId;
+}
+
+function getFailedTargetCooldownRemainingMs(entityOrId: Entity | number | null | undefined): number {
+  const entityId = resolveEntityId(entityOrId);
+  if (entityId === null) return 0;
+  const failedTime = failedTargets.get(entityId);
+  if (failedTime === undefined) return 0;
+  const remaining = FAILED_TARGET_COOLDOWN - (Date.now() - failedTime);
+  if (remaining <= 0) {
+    failedTargets.delete(entityId);
+    return 0;
+  }
+  return remaining;
+}
+
+export function getFailedTargetCooldownRemaining(entityOrId: Entity | number | null | undefined): number {
+  return getFailedTargetCooldownRemainingMs(entityOrId);
+}
+
+function isRecentlyFailedTarget(entity: Entity | null | undefined): boolean {
+  return getFailedTargetCooldownRemainingMs(entity) > 0;
 }
 
 function markTargetAsFailed(entity: Entity | null | undefined): void {
@@ -224,8 +240,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       const entityId = (targets.entity as any)?.id;
-      const failedTime = failedTargets.get(entityId) || 0;
-      const cooldownRemaining = Math.max(0, FAILED_TARGET_COOLDOWN - (Date.now() - failedTime));
+      const cooldownRemaining = getFailedTargetCooldownRemaining(targets.entity);
       logger.info(`BehaviorHuntEntity: skipping unreachable target ${entityId}, cooldown ${(cooldownRemaining / 1000).toFixed(1)}s remaining`);
       targets.entity = null;
     }

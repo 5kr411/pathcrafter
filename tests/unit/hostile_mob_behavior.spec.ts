@@ -2,7 +2,8 @@ import { getCachedMcData } from '../testHelpers';
 
 jest.mock('../../behaviors/behaviorHuntEntity', () => ({
   __esModule: true,
-  default: jest.fn()
+  default: jest.fn(),
+  getFailedTargetCooldownRemaining: jest.fn(() => 0)
 }));
 
 describe('unit: hostile_mob_behavior', () => {

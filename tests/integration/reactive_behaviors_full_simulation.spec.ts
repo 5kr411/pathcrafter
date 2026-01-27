@@ -13,7 +13,8 @@ import { foodEatingBehavior, resetFoodEatingCooldown } from '../../bots/collecto
 
 jest.mock('../../behaviors/behaviorHuntEntity', () => ({
   __esModule: true,
-  default: jest.fn()
+  default: jest.fn(),
+  getFailedTargetCooldownRemaining: jest.fn(() => 0)
 }));
 
 jest.mock('../../behaviors/behaviorGetFood', () => ({

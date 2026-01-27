@@ -52,6 +52,84 @@ interface GetFoodTargets {
 type FoodSource = 'hunt' | 'bread' | 'berries' | 'melon';
 type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'berries' | 'melon' | 'complete' | 'failed';
 
+interface FoodSourceConfig {
+  priority: number;
+  maxAttempts: number;
+  blockTypes: string[];
+  entityBased: boolean;
+}
+
+const FOOD_SOURCE_CONFIGS: Record<FoodSource, FoodSourceConfig> = {
+  hunt: { priority: 1, maxAttempts: 10, blockTypes: [], entityBased: true },
+  bread: { priority: 2, maxAttempts: 5, blockTypes: ['hay_block'], entityBased: false },
+  berries: { priority: 3, maxAttempts: 5, blockTypes: ['sweet_berry_bush', 'cave_vines', 'cave_vines_plant'], entityBased: false },
+  melon: { priority: 4, maxAttempts: 5, blockTypes: ['melon'], entityBased: false },
+};
+
+class FoodSourceTracker {
+  private attempts: Map<FoodSource, number> = new Map();
+  private lastGainedFood: Map<FoodSource, boolean> = new Map();
+  
+  constructor() {
+    this.reset();
+  }
+  
+  reset(): void {
+    for (const source of Object.keys(FOOD_SOURCE_CONFIGS) as FoodSource[]) {
+      this.attempts.set(source, 0);
+      this.lastGainedFood.set(source, false);
+    }
+  }
+  
+  getAttempts(source: FoodSource): number {
+    return this.attempts.get(source) || 0;
+  }
+  
+  incrementAttempts(source: FoodSource): number {
+    const current = this.getAttempts(source);
+    this.attempts.set(source, current + 1);
+    return current + 1;
+  }
+  
+  resetAttempts(source: FoodSource): void {
+    this.attempts.set(source, 0);
+  }
+  
+  setGainedFood(source: FoodSource, gained: boolean): void {
+    this.lastGainedFood.set(source, gained);
+    if (gained) {
+      this.resetAttempts(source);
+    }
+  }
+  
+  lastGained(source: FoodSource): boolean {
+    return this.lastGainedFood.get(source) || false;
+  }
+  
+  canRetry(source: FoodSource, hasSourceNearby: boolean): boolean {
+    const config = FOOD_SOURCE_CONFIGS[source];
+    const attempts = this.getAttempts(source);
+    
+    if (attempts >= config.maxAttempts) {
+      return false;
+    }
+    
+    if (attempts === 0) {
+      return true;
+    }
+    
+    return hasSourceNearby && this.lastGained(source);
+  }
+  
+  getDebugState(): string {
+    const parts: string[] = [];
+    for (const source of Object.keys(FOOD_SOURCE_CONFIGS) as FoodSource[]) {
+      parts.push(`${source}:${this.getAttempts(source)}/${FOOD_SOURCE_CONFIGS[source].maxAttempts}`);
+    }
+    return parts.join(', ');
+  }
+}
+
 /**
  * Creates a state machine for acquiring food with fallback strategy
  */
@@ -63,14 +141,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   };
   
   let phase: Phase = 'init';
-  let triedSources = new Set<FoodSource>();
   let currentSubMachine: any = null;
-  let huntAttempts = 0;
-  let lastHuntGainedFood = false;
-  const MAX_HUNT_ATTEMPTS = 10;
-  let berryAttempts = 0;
-  let lastBerryGainedFood = false;
-  const MAX_BERRY_ATTEMPTS = 5;
+  const tracker = new FoodSourceTracker();
   
   const enter = new BehaviorIdle();
   const selectSource = new BehaviorIdle();
@@ -145,52 +217,49 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     return false;
   }
   
-  function hasBerryBushesNearby(): boolean {
-    // Check world snapshot for berry bushes
-    if (targets.worldSnapshot?.blockCounts) {
-      const counts = targets.worldSnapshot.blockCounts;
-      if ((counts['sweet_berry_bush']?.count || 0) > 0) return true;
-      if ((counts['cave_vines']?.count || 0) > 0) return true;
-      if ((counts['cave_vines_plant']?.count || 0) > 0) return true;
+  function hasBlocksNearby(blockTypes: string[]): boolean {
+    if (!targets.worldSnapshot?.blockCounts) {
+      return false;
     }
-    // Fallback: assume berries might be around on first attempt
-    return berryAttempts === 0;
+    const counts = targets.worldSnapshot.blockCounts;
+    for (const blockType of blockTypes) {
+      if ((counts[blockType]?.count || 0) > 0) {
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  function hasSourceNearby(source: FoodSource): boolean {
+    const sourceConfig = FOOD_SOURCE_CONFIGS[source];
+    
+    if (sourceConfig.entityBased) {
+      return hasAnimalsNearby();
+    }
+    
+    if (sourceConfig.blockTypes.length > 0) {
+      return hasBlocksNearby(sourceConfig.blockTypes);
+    }
+    
+    return false;
   }
   
   function selectNextSource(): FoodSource | null {
-    const animalsNearby = hasAnimalsNearby();
-    const berriesNearby = hasBerryBushesNearby();
+    logger.debug(`GetFood: selectNextSource - tracker state: ${tracker.getDebugState()}`);
     
-    logger.debug(`GetFood: selectNextSource - animalsNearby=${animalsNearby}, berriesNearby=${berriesNearby}, huntAttempts=${huntAttempts}, lastHuntGained=${lastHuntGainedFood}, berryAttempts=${berryAttempts}, lastBerryGained=${lastBerryGainedFood}`);
+    const sources: FoodSource[] = ['hunt', 'bread', 'berries', 'melon'];
     
-    // Priority 1: Always try hunting first - animals may spawn/appear later
-    // Keep hunting if animals are nearby and under max attempts
-    if (huntAttempts < MAX_HUNT_ATTEMPTS) {
-      // First attempt or animals are nearby - go hunt
-      if (huntAttempts === 0 || animalsNearby) {
-        return 'hunt';
+    for (const source of sources) {
+      const nearby = hasSourceNearby(source);
+      const canRetry = tracker.canRetry(source, nearby);
+      
+      logger.debug(`GetFood: checking ${source} - nearby=${nearby}, canRetry=${canRetry}`);
+      
+      if (canRetry) {
+        return source;
       }
     }
     
-    // Priority 2: Block-based food sources (only after hunting is exhausted)
-    // Try bread
-    if (!triedSources.has('bread')) {
-      return 'bread';
-    }
-    
-    // Try berries - allow multiple attempts if berries are nearby
-    if (berryAttempts < MAX_BERRY_ATTEMPTS) {
-      if (berryAttempts === 0 || (berriesNearby && lastBerryGainedFood)) {
-        return 'berries';
-      }
-    }
-
-    // Try melon
-    if (!triedSources.has('melon')) {
-      return 'melon';
-    }
-    
-    // All sources exhausted
     return null;
   }
   
@@ -221,11 +290,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     shouldTransition: () => true,
     onTransition: () => {
       phase = 'init';
-      triedSources.clear();
-      huntAttempts = 0;
-      lastHuntGainedFood = false;
-      berryAttempts = 0;
-      lastBerryGainedFood = false;
+      tracker.reset();
       logger.info(`GetFood: starting, current food = ${getCurrentFoodPoints()}, target = ${config.targetFoodPoints}`);
     }
   });
@@ -236,20 +301,16 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     name: 'GetFood: select -> hunting',
     shouldTransition: () => phase === 'hunt',
     onTransition: () => {
-      huntAttempts++;
+      const attempts = tracker.incrementAttempts('hunt');
+      const maxAttempts = FOOD_SOURCE_CONFIGS.hunt.maxAttempts;
       const count = calculateNeededCount('hunt');
-      logger.info(`GetFood: trying hunting (attempt ${huntAttempts}/${MAX_HUNT_ATTEMPTS}), need ~${count} animals`);
+      logger.info(`GetFood: trying hunting (attempt ${attempts}/${maxAttempts}), need ~${count} animals`);
       
       currentSubMachine = createHuntForFoodState(bot, {
         targetFoodPoints: config.targetFoodPoints,
         onComplete: (success: boolean, foodGained: number) => {
           logger.info(`GetFood: hunting ${success ? 'succeeded' : 'failed'}, gained ${foodGained} points`);
-          lastHuntGainedFood = foodGained > 0;
-          
-          // If hunt was successful, reset attempt counter to allow more hunts
-          if (foodGained > 0) {
-            huntAttempts = 0;
-          }
+          tracker.setGainedFood('hunt', foodGained > 0);
           
           currentSubMachine = null;
           
@@ -269,15 +330,18 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     name: 'GetFood: select -> bread',
     shouldTransition: () => phase === 'bread',
     onTransition: () => {
-      triedSources.add('bread');
+      const attempts = tracker.incrementAttempts('bread');
+      const maxAttempts = FOOD_SOURCE_CONFIGS.bread.maxAttempts;
       const count = calculateNeededCount('bread');
-      logger.info(`GetFood: trying bread collection, need ${count} bread`);
+      logger.info(`GetFood: trying bread collection (attempt ${attempts}/${maxAttempts}), need ${count} bread`);
       
       currentSubMachine = createCollectBreadState(bot, {
         targetBreadCount: count,
         worldSnapshot: targets.worldSnapshot,
         onComplete: (success: boolean, collected: number) => {
           logger.info(`GetFood: bread collection ${success ? 'succeeded' : 'failed'}, collected ${collected}`);
+          tracker.setGainedFood('bread', collected > 0);
+          
           currentSubMachine = null;
           
           if (getCurrentFoodPoints() >= config.targetFoodPoints) {
@@ -296,15 +360,18 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     name: 'GetFood: select -> melon',
     shouldTransition: () => phase === 'melon',
     onTransition: () => {
-      triedSources.add('melon');
+      const attempts = tracker.incrementAttempts('melon');
+      const maxAttempts = FOOD_SOURCE_CONFIGS.melon.maxAttempts;
       const count = calculateNeededCount('melon');
-      logger.info(`GetFood: trying melon collection, need ${count} melon slices`);
+      logger.info(`GetFood: trying melon collection (attempt ${attempts}/${maxAttempts}), need ${count} melon slices`);
       
       currentSubMachine = createCollectMelonState(bot, {
         targetMelonCount: count,
         worldSnapshot: targets.worldSnapshot,
         onComplete: (success: boolean, collected: number) => {
           logger.info(`GetFood: melon collection ${success ? 'succeeded' : 'failed'}, collected ${collected}`);
+          tracker.setGainedFood('melon', collected > 0);
+          
           currentSubMachine = null;
           
           if (getCurrentFoodPoints() >= config.targetFoodPoints) {
@@ -323,9 +390,10 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     name: 'GetFood: select -> berries',
     shouldTransition: () => phase === 'berries',
     onTransition: () => {
-      berryAttempts++;
+      const attempts = tracker.incrementAttempts('berries');
+      const maxAttempts = FOOD_SOURCE_CONFIGS.berries.maxAttempts;
       const count = calculateNeededCount('berries');
-      logger.info(`GetFood: trying berries collection (attempt ${berryAttempts}/${MAX_BERRY_ATTEMPTS}), need ${count} berries`);
+      logger.info(`GetFood: trying berries collection (attempt ${attempts}/${maxAttempts}), need ${count} berries`);
 
       currentSubMachine = createCollectBerriesState(bot, {
         targetBerryCount: count,
@@ -333,12 +401,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
         requireIronForGlow: true,
         onComplete: (success: boolean, collected: number, itemName: string | null) => {
           logger.info(`GetFood: berries collection ${success ? 'succeeded' : 'failed'}, collected ${collected} ${itemName || 'berries'}`);
-          lastBerryGainedFood = collected > 0;
-          
-          // Reset attempts if we gained food to allow continued collection
-          if (collected > 0) {
-            berryAttempts = 0;
-          }
+          tracker.setGainedFood('berries', collected > 0);
           
           currentSubMachine = null;
 

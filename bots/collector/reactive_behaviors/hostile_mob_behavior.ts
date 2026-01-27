@@ -1,5 +1,5 @@
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
-import createHuntEntityState from '../../../behaviors/behaviorHuntEntity';
+import createHuntEntityState, { getFailedTargetCooldownRemaining } from '../../../behaviors/behaviorHuntEntity';
 import { Vec3 } from 'vec3';
 const minecraftData = require('minecraft-data');
 
@@ -157,7 +157,12 @@ export function getHostileMobNames(mcData: any): Set<string> {
   return hostileMobs;
 }
 
-export function findClosestHostileMob(bot: Bot, maxDistance: number = 16, requireLineOfSight: boolean = true): any | null {
+export function findClosestHostileMob(
+  bot: Bot,
+  maxDistance: number = 16,
+  requireLineOfSight: boolean = true,
+  predicate?: (entity: any) => boolean
+): any | null {
   if (!bot.entities) return null;
 
   const mcData = minecraftData(bot.version);
@@ -182,6 +187,8 @@ export function findClosestHostileMob(bot: Bot, maxDistance: number = 16, requir
     const distance = botPos.distanceTo(entity.position);
     if (distance > maxDistance) continue;
 
+    if (predicate && !predicate(entity)) continue;
+
     if (requireLineOfSight && !hasLineOfSight(bot, entity)) continue;
 
     if (distance < closestDistance) {
@@ -198,12 +205,22 @@ export const hostileMobBehavior: ReactiveBehavior = {
   name: 'hostile_mob_combat',
 
   shouldActivate: (bot: Bot): boolean => {
-    const hostileMob = findClosestHostileMob(bot, 16);
+    const hostileMob = findClosestHostileMob(
+      bot,
+      16,
+      true,
+      (entity) => getFailedTargetCooldownRemaining(entity) <= 0
+    );
     return hostileMob !== null;
   },
 
   createState: async (bot: Bot): Promise<any> => {
-    const hostileMob = findClosestHostileMob(bot, 32);
+    const hostileMob = findClosestHostileMob(
+      bot,
+      32,
+      true,
+      (entity) => getFailedTargetCooldownRemaining(entity) <= 0
+    );
     
     if (!hostileMob) {
       return null;
