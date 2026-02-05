@@ -55,12 +55,13 @@ type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'berries' | 'melon' | 'co
 interface FoodSourceConfig {
   priority: number;
   maxAttempts: number;
+  maxAttemptsWithoutGain?: number;
   blockTypes: string[];
   entityBased: boolean;
 }
 
 const FOOD_SOURCE_CONFIGS: Record<FoodSource, FoodSourceConfig> = {
-  hunt: { priority: 1, maxAttempts: 10, blockTypes: [], entityBased: true },
+  hunt: { priority: 1, maxAttempts: 10, maxAttemptsWithoutGain: 3, blockTypes: [], entityBased: true },
   bread: { priority: 2, maxAttempts: 5, blockTypes: ['hay_block'], entityBased: false },
   berries: { priority: 3, maxAttempts: 5, blockTypes: ['sweet_berry_bush', 'cave_vines', 'cave_vines_plant'], entityBased: false },
   melon: { priority: 4, maxAttempts: 5, blockTypes: ['melon'], entityBased: false },
@@ -119,7 +120,12 @@ class FoodSourceTracker {
     }
 
     if (config.entityBased) {
-      return hasSourceNearby;
+      if (!hasSourceNearby) return false;
+      const maxWithoutGain = config.maxAttemptsWithoutGain;
+      if (maxWithoutGain != null && !this.lastGained(source) && attempts >= maxWithoutGain) {
+        return false;
+      }
+      return true;
     }
 
     return hasSourceNearby && this.lastGained(source);

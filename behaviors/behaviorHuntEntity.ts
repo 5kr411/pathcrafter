@@ -8,6 +8,7 @@ const {
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { BehaviorPvpAttack } from './behaviorPvpAttack';
+import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 
 interface Bot {
   entity?: {
@@ -40,6 +41,7 @@ interface Targets {
   detectionRange?: number;
   attackRange?: number;
   followRange?: number;
+  pvpApproachRange?: number;
   [key: string]: any;
 }
 
@@ -90,8 +92,10 @@ function markTargetAsFailed(entity: Entity | null | undefined): void {
  */
 function createHuntEntityState(bot: Bot, targets: Targets): any {
   const HUNT_TIMEOUT = 60000; // 1 minute
+  const PVP_APPROACH_RANGE = targets.pvpApproachRange ?? 16;
   let huntStartTime = 0;
   let huntTimeoutId: NodeJS.Timeout | null = null;
+  let huntTimedOut = false;
   let targetEntity: Entity | null | undefined = null;
   let handleEntityGone: ((entity: any) => void) | null = null;
   let pvpAttackState: BehaviorPvpAttack | null = null;
@@ -110,6 +114,9 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     logEnter: true,
     getExtraInfo: () => 'searching for target entity'
   });
+
+  const approachTarget = new BehaviorSafeFollowEntity(bot, targets);
+  approachTarget.followDistance = PVP_APPROACH_RANGE;
 
   pvpAttackState = new BehaviorPvpAttack(bot, targets, {
     attackRange: targets.attackRange ?? 3.0,
@@ -169,12 +176,27 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
 
   const startHuntTimeout = () => {
     clearHuntTimeout();
+    huntTimedOut = false;
     huntTimeoutId = setTimeout(() => {
+      huntTimedOut = true;
       logger.info('BehaviorHuntEntity: hunt timed out after 1 minute');
       if (pvpAttackState) {
         pvpAttackState.forceStop();
       }
     }, HUNT_TIMEOUT);
+  };
+
+  const getDistanceToTarget = (): number => {
+    const botPos = bot.entity?.position;
+    const targetPos = targets.entity?.position;
+    if (!botPos || !targetPos) return Number.POSITIVE_INFINITY;
+    if (typeof targetPos.distanceTo === 'function') {
+      return targetPos.distanceTo(botPos);
+    }
+    const dx = (targetPos.x ?? 0) - (botPos.x ?? 0);
+    const dy = (targetPos.y ?? 0) - (botPos.y ?? 0);
+    const dz = (targetPos.z ?? 0) - (botPos.z ?? 0);
+    return Math.sqrt(dx * dx + dy * dy + dz * dz);
   };
 
   const enterToFind = new StateTransition({
@@ -189,10 +211,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const enterToPvpAttack = new StateTransition({
+  const enterToApproach = new StateTransition({
     parent: enter,
-    child: pvpAttackState,
-    name: 'BehaviorHuntEntity: enter -> pvp attack',
+    child: approachTarget,
+    name: 'BehaviorHuntEntity: enter -> approach',
     shouldTransition: () => {
       if (!targets.entity) return false;
       if (isRecentlyFailedTarget(targets.entity)) {
@@ -205,14 +227,14 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       huntStartTime = Date.now();
       startHuntTimeout();
       setupEntityTracking();
-      logger.info('BehaviorHuntEntity: entity provided, starting pvp attack');
+      logger.info(`BehaviorHuntEntity: entity provided, approaching to ${PVP_APPROACH_RANGE} blocks`);
     }
   });
 
   const findToPvpAttack = new StateTransition({
     parent: findEntity,
-    child: pvpAttackState,
-    name: 'BehaviorHuntEntity: find -> pvp attack',
+    child: approachTarget,
+    name: 'BehaviorHuntEntity: find -> approach',
     shouldTransition: () => {
       if (targets.entity === null) return false;
       if (isRecentlyFailedTarget(targets.entity)) {
@@ -226,7 +248,33 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       setupEntityTracking();
-      logger.info('BehaviorHuntEntity: entity found, starting pvp attack');
+      logger.info(`BehaviorHuntEntity: entity found, approaching to ${PVP_APPROACH_RANGE} blocks`);
+    }
+  });
+
+  const approachToPvpAttack = new StateTransition({
+    parent: approachTarget,
+    child: pvpAttackState,
+    name: 'BehaviorHuntEntity: approach -> pvp attack',
+    shouldTransition: () => {
+      if (huntTimedOut) return false;
+      if (!targets.entity) return false;
+      if (isRecentlyFailedTarget(targets.entity)) {
+        logger.debug(`BehaviorHuntEntity: skipping recently failed target ${(targets.entity as any)?.id}`);
+        return false;
+      }
+      const dist = getDistanceToTarget();
+      if (dist <= PVP_APPROACH_RANGE) {
+        return true;
+      }
+      if (typeof approachTarget.isFinished === 'function') {
+        return approachTarget.isFinished();
+      }
+      return false;
+    },
+    onTransition: () => {
+      setupEntityTracking();
+      logger.info('BehaviorHuntEntity: within approach range, starting pvp attack');
     }
   });
 
@@ -260,6 +308,51 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       clearHuntTimeout();
       cleanupEntityTracking();
       logger.info('BehaviorHuntEntity: no entity found, exiting');
+    }
+  });
+
+  const findToExitTimeout = new StateTransition({
+    parent: findEntity,
+    child: exit,
+    name: 'BehaviorHuntEntity: find -> exit (timeout)',
+    shouldTransition: () => huntTimedOut,
+    onTransition: () => {
+      clearHuntTimeout();
+      cleanupEntityTracking();
+      logger.info('BehaviorHuntEntity: timed out while searching, exiting');
+    }
+  });
+
+  const approachToExitNoTarget = new StateTransition({
+    parent: approachTarget,
+    child: exit,
+    name: 'BehaviorHuntEntity: approach -> exit (target lost)',
+    shouldTransition: () => {
+      if (!targets.entity) return true;
+      const entityId = (targets.entity as any)?.id;
+      if (entityId === undefined) return false;
+      return !bot.entities || !bot.entities[entityId];
+    },
+    onTransition: () => {
+      clearHuntTimeout();
+      cleanupEntityTracking();
+      logger.info('BehaviorHuntEntity: target lost while approaching, exiting');
+      targets.entity = null;
+    }
+  });
+
+  const approachToExitTimeout = new StateTransition({
+    parent: approachTarget,
+    child: exit,
+    name: 'BehaviorHuntEntity: approach -> exit (timeout)',
+    shouldTransition: () => huntTimedOut,
+    onTransition: () => {
+      clearHuntTimeout();
+      cleanupEntityTracking();
+      if (targetEntity) {
+        markTargetAsFailed(targetEntity);
+      }
+      logger.info('BehaviorHuntEntity: timed out while approaching, exiting');
     }
   });
 
@@ -306,10 +399,14 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   const transitions = [
     enterToExitFailedTarget,
     enterToFind,
-    enterToPvpAttack,
+    enterToApproach,
     findToExitFailedTarget,
     findToPvpAttack,
     findToExit,
+    findToExitTimeout,
+    approachToExitNoTarget,
+    approachToExitTimeout,
+    approachToPvpAttack,
     pvpAttackToExit
   ];
 

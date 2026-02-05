@@ -26,6 +26,14 @@ import {
 import createHuntEntityState from './behaviorHuntEntity';
 import createSmeltState from './behaviorSmelt';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
+import {
+  countRawMeatInInventory,
+  evaluateHuntDropCandidate,
+  findClosestHuntableAnimal,
+  getRawMeatDrop,
+  hasSwordInInventory,
+  isDropCollectTimedOut
+} from './huntForFoodHelpers';
 const minecraftData = require('minecraft-data');
 
 interface Bot {
@@ -58,105 +66,6 @@ const WEAPON_SNAPSHOT_RADII = [32, 64, 96, 128];
 
 let lastDropLogTime = 0;
 const DROP_LOG_INTERVAL_MS = 2000;
-
-/**
- * Finds the closest huntable animal from the bot's entity list
- */
-function findClosestHuntableAnimal(bot: Bot, filter?: string[]): { entity: any; animalType: string } | null {
-  if (!bot.entities || !bot.entity?.position) return null;
-  
-  const validAnimals = filter?.length 
-    ? HUNTABLE_ANIMALS.filter(a => filter.includes(a.entity))
-    : HUNTABLE_ANIMALS;
-  
-  const animalNames = new Set(validAnimals.map(a => a.entity));
-  
-  let closest: any = null;
-  let closestDist = Infinity;
-  let closestType = '';
-  
-  for (const entity of Object.values(bot.entities)) {
-    if (!entity || !entity.position) continue;
-    const name = (entity.name || '').toLowerCase();
-    
-    if (!animalNames.has(name)) continue;
-    
-    if (typeof entity.isAlive === 'function' && !entity.isAlive()) continue;
-    if (typeof entity.health === 'number' && entity.health <= 0) continue;
-    
-    const dist = bot.entity.position.distanceTo(entity.position);
-    if (dist < closestDist) {
-      closest = entity;
-      closestDist = dist;
-      closestType = name;
-    }
-  }
-  
-  return closest ? { entity: closest, animalType: closestType } : null;
-}
-
-/**
- * Gets the raw meat drop for an animal type
- */
-function getRawMeatDrop(animalType: string): string | null {
-  const animal = HUNTABLE_ANIMALS.find(a => a.entity === animalType);
-  return animal?.drops[0] || null;
-}
-
-/**
- * Counts raw meat items that can be cooked in inventory
- */
-function countRawMeatInInventory(bot: Bot): { rawItem: string; count: number }[] {
-  const inventory = getInventoryObject(bot);
-  const rawMeats: { rawItem: string; count: number }[] = [];
-  
-  for (const animal of HUNTABLE_ANIMALS) {
-    const rawItem = animal.drops[0];
-    const count = inventory[rawItem] || 0;
-    if (count > 0) {
-      rawMeats.push({ rawItem, count });
-    }
-  }
-  
-  return rawMeats;
-}
-
-/**
- * Gets item info from a dropped item entity
- */
-function getDroppedItemInfo(entity: any): { name: string | null; count: number } {
-  // Check if entity has getDroppedItem method (mineflayer's way)
-  if (typeof entity.getDroppedItem === 'function') {
-    const item = entity.getDroppedItem();
-    if (item) {
-      return { name: item.name, count: item.count || 1 };
-    }
-  }
-  
-  // Fallback: check metadata for item data
-  if (Array.isArray(entity.metadata)) {
-    const itemMeta = entity.metadata[7] || entity.metadata[8];
-    if (itemMeta && typeof itemMeta === 'object' && itemMeta.itemId !== undefined) {
-      return {
-        name: itemMeta.name || `item_${itemMeta.itemId}`,
-        count: itemMeta.itemCount || 1
-      };
-    }
-  }
-  return { name: null, count: 0 };
-}
-
-function isActualDroppedItem(entity: any): boolean {
-  // Primary check: mineflayer names dropped items 'item'
-  if (entity.name === 'item') return true;
-  
-  // Secondary check: has getDroppedItem method and it returns something
-  if (typeof entity.getDroppedItem === 'function' && entity.getDroppedItem()) return true;
-  
-  // Don't use broad checks like entity.type === 'object' or Array.isArray(entity.metadata)
-  // These match mobs, XP orbs, and other non-item entities
-  return false;
-}
 
 /**
  * Creates a state machine for hunting animals and cooking the meat
@@ -209,27 +118,21 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   // Drop collection states
   const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (entity: any) => {
     const botPos = bot.entity?.position;
-    if (!botPos || !entity.position?.distanceTo) return false;
-    
-    // Skip entities we've already attempted to collect
-    if (entity.id && attemptedDropIds.has(entity.id)) return false;
-    
-    // Use strict check for dropped items - avoids matching mobs/XP orbs
-    if (!isActualDroppedItem(entity)) return false;
-    
-    // Check if near kill position
-    const distToKill = killPosition && entity.position.distanceTo 
-      ? entity.position.distanceTo(killPosition) 
-      : Number.POSITIVE_INFINITY;
-    const nearKillPos = distToKill < DROP_COLLECT_RADIUS;
-    const inBotRange = entity.position.distanceTo(botPos) < 16;
-    
-    if (nearKillPos && inBotRange) {
-      const dropInfo = getDroppedItemInfo(entity);
-      logger.debug(`HuntForFood: found drop near kill position: ${dropInfo.name} x${dropInfo.count}, dist=${distToKill.toFixed(2)}`);
-      return true;
-    }
-    return false;
+    const result = evaluateHuntDropCandidate({
+      entity,
+      botPos,
+      killPosition,
+      attemptedDropIds,
+      dropCollectRadius: DROP_COLLECT_RADIUS,
+      botRange: 16
+    });
+
+    if (!result.ok) return false;
+
+    logger.debug(
+      `HuntForFood: found drop near kill position: ${result.dropInfo.name} x${result.dropInfo.count}, dist=${result.distToKill.toFixed(2)}`
+    );
+    return true;
   });
   
   const goToDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
@@ -273,20 +176,30 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
     return gained;
   }
+
+  function getRawMeatCollectedCount(): number {
+    let collected = 0;
+    for (const animal of HUNTABLE_ANIMALS) {
+      const rawItem = animal.drops[0];
+      const startCount = startRawMeatCounts.get(rawItem) || 0;
+      const currentCount = getItemCountInInventory(bot, rawItem);
+      const delta = currentCount - startCount;
+      if (delta > 0) {
+        collected += delta;
+      }
+    }
+    return collected;
+  }
+
+  function hasCollectedRawMeat(): boolean {
+    return getRawMeatCollectedCount() > 0;
+  }
   
   function getFoodGained(): number {
     const pointsGained = calculateCurrentFoodPoints() - startFoodPoints;
     const rawMeatGained = getRawMeatGained();
     // Return the higher of the two - sometimes food points don't capture raw meat correctly
     return Math.max(pointsGained, rawMeatGained);
-  }
-
-  function hasSwordInInventory(): boolean {
-    const inventory = getInventoryObject(bot);
-    return Object.entries(inventory).some(([name, count]) => {
-      if (!name.endsWith('_sword')) return false;
-      return (count || 0) > 0;
-    });
   }
 
   async function tryPlanWeaponWithSnapshot(snapshot: any): Promise<any[] | null> {
@@ -380,10 +293,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     const snapshot = await captureWeaponSnapshotWithValidation();
     if (!snapshot) return null;
     return tryPlanWeaponWithSnapshot(snapshot);
-  }
-  
-  function isDropCollectTimedOut(): boolean {
-    return Date.now() - dropCollectStartTime > DROP_COLLECT_TIMEOUT;
   }
   
   // Transitions
@@ -534,8 +443,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     shouldTransition: () => {
       // No drop found, timed out, or max attempts reached
       if (dropTargets.entity === null || shouldStopDropCollection()) {
-        const rawMeats = countRawMeatInInventory(bot);
-        return rawMeats.length > 0;
+        return hasCollectedRawMeat();
       }
       return false;
     },
@@ -551,14 +459,13 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     name: 'HuntForFood: find drop -> exit (no drops, no meat)',
     shouldTransition: () => {
       if (dropTargets.entity === null || shouldStopDropCollection()) {
-        const rawMeats = countRawMeatInInventory(bot);
-        return rawMeats.length === 0;
+        return !hasCollectedRawMeat();
       }
       return false;
     },
     onTransition: () => {
       phase = 'failed';
-      logger.info(`HuntForFood: no drops found (attempts=${dropAttemptCount}) and no raw meat in inventory`);
+      logger.info(`HuntForFood: no drops found (attempts=${dropAttemptCount}) and no raw meat collected`);
     }
   });
   
@@ -603,7 +510,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
         return false;
       }
       
-      if (isDropCollectTimedOut()) return true;
+      if (isDropCollectTimedOut(dropCollectStartTime, Date.now(), DROP_COLLECT_TIMEOUT)) return true;
       if (dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS) return true;
       
       // Check if the drop entity still exists (if it despawned, we picked it up)
@@ -640,7 +547,10 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   });
   
   function shouldStopDropCollection(): boolean {
-    return isDropCollectTimedOut() || dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS;
+    return (
+      isDropCollectTimedOut(dropCollectStartTime, Date.now(), DROP_COLLECT_TIMEOUT) ||
+      dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS
+    );
   }
   
   const goToDropToSmelting = new StateTransition({
@@ -649,8 +559,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     name: 'HuntForFood: go to drop -> smelting (done collecting)',
     shouldTransition: () => {
       if (!shouldStopDropCollection()) return false;
-      const rawMeats = countRawMeatInInventory(bot);
-      return rawMeats.length > 0;
+      return hasCollectedRawMeat();
     },
     onTransition: () => {
       logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}), proceeding to smelt`);
@@ -664,18 +573,17 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     name: 'HuntForFood: go to drop -> exit (done, no meat)',
     shouldTransition: () => {
       if (!shouldStopDropCollection()) return false;
-      const rawMeats = countRawMeatInInventory(bot);
-      return rawMeats.length === 0;
+      return !hasCollectedRawMeat();
     },
     onTransition: () => {
       phase = 'failed';
-      logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}) with no raw meat`);
+      logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}) with no raw meat collected`);
     }
   });
   
   function setupSmelting(): void {
     phase = 'smelting';
-    const rawMeats = countRawMeatInInventory(bot);
+    const rawMeats = countRawMeatInInventory(getInventoryObject(bot));
     const toSmelt = rawMeats[0];
     
     if (toSmelt) {
@@ -765,7 +673,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     weaponPath = null;
     weaponStateMachine = null;
 
-    if (hasSwordInInventory()) {
+    if (hasSwordInInventory(getInventoryObject(bot))) {
       logger.info('HuntForFood: sword already in inventory, skipping weapon craft');
       weaponPhase = 'skipped';
       return;

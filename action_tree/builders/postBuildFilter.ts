@@ -18,6 +18,73 @@ interface AvailableItems {
   families: Set<string>;
 }
 
+function getVariantItemName(variant: any): string | null {
+  if (!variant) return null;
+  const value = variant.value;
+  if (typeof value === 'string') return value;
+  return value?.item || null;
+}
+
+function addAvailableItem(
+  available: AvailableItems,
+  itemName: string | null,
+  options?: { includeFamily?: boolean }
+): void {
+  if (!itemName) return;
+  available.exactItems.add(itemName);
+  if (options?.includeFamily === false) return;
+  if (isCombinableFamily(itemName)) {
+    const family = getFamilyFromName(itemName);
+    if (family) {
+      available.families.add(family);
+    }
+  }
+}
+
+function isIngredientAvailable(
+  ingredient: any,
+  available: AvailableItems,
+  inventory?: Map<string, number>,
+  requiredCount?: number
+): boolean {
+  if (!ingredient?.item) return true;
+
+  if (available.exactItems.has(ingredient.item)) {
+    return true;
+  }
+
+  if (isCombinableFamily(ingredient.item)) {
+    const family = getFamilyFromName(ingredient.item);
+    if (family && available.families.has(family)) {
+      return true;
+    }
+  }
+
+  if (inventory && requiredCount !== undefined) {
+    const availableInInventory = inventory.get(ingredient.item) || 0;
+    if (availableInInventory >= requiredCount) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function isIngredientVariantAvailable(
+  ingredientVariant: any,
+  available: AvailableItems,
+  options?: { inventory?: Map<string, number>; requiredCountMultiplier?: number }
+): boolean {
+  const ingredients = ingredientVariant?.value || [];
+  return ingredients.every((ingredient: any) => {
+    const requiredCount =
+      options?.requiredCountMultiplier != null
+        ? (ingredient?.perCraftCount || 1) * options.requiredCountMultiplier
+        : undefined;
+    return isIngredientAvailable(ingredient, available, options?.inventory, requiredCount);
+  });
+}
+
 /**
  * Applies post-build filtering to craft nodes in the tree
  * Runs multiple passes until convergence (no more changes)
@@ -159,14 +226,7 @@ function filterSingleCraftNode(
           if (!itemName) continue;
           const have = inv.get(itemName) || 0;
           if (have > 0) {
-            available.exactItems.add(itemName);
-            // Also add family for combinable items
-            if (isCombinableFamily(itemName)) {
-              const family = getFamilyFromName(itemName);
-              if (family) {
-                available.families.add(family);
-              }
-            }
+            addAvailableItem(available, itemName);
           }
         }
       }
@@ -191,24 +251,8 @@ function filterSingleCraftNode(
   const sameLength = resultCount === ingCount;
 
   // Helper to check if an ingredient variant is fully available
-  const isIngredientVariantAvailable = (ingredientVariant: any): boolean => {
-    const ingredients = ingredientVariant?.value || [];
-    return ingredients.every((ingredient: any) => {
-      if (!ingredient?.item) return true;
-
-      if (available.exactItems.has(ingredient.item)) {
-        return true;
-      }
-
-      if (isCombinableFamily(ingredient.item)) {
-        const family = getFamilyFromName(ingredient.item);
-        if (family && available.families.has(family)) {
-          return true;
-        }
-      }
-
-      return false;
-    });
+  const isIngredientVariantAvailableLocal = (ingredientVariant: any): boolean => {
+    return isIngredientVariantAvailable(ingredientVariant, available);
   };
 
   if (sameLength) {
@@ -217,7 +261,7 @@ function filterSingleCraftNode(
       (_resultVariant: any, index: number) => {
         const ingredientVariant = craftNode.ingredients.variants[index];
         if (!ingredientVariant) return true;
-        return isIngredientVariantAvailable(ingredientVariant);
+        return isIngredientVariantAvailableLocal(ingredientVariant);
       }
     );
 
@@ -239,7 +283,9 @@ function filterSingleCraftNode(
 
   // Mismatch in counts (e.g., single result with many ingredient alternatives):
   // Keep the result if ANY ingredient variant is available. Prune unavailable ingredient variants.
-  const availableIngredientVariants = (craftNode.ingredients.variants || []).filter(isIngredientVariantAvailable);
+  const availableIngredientVariants = (craftNode.ingredients.variants || []).filter(
+    isIngredientVariantAvailableLocal
+  );
   if (availableIngredientVariants.length > 0) {
     const ingredientChanged = availableIngredientVariants.length !== ingCount;
     craftNode.ingredients.variants = availableIngredientVariants;
@@ -313,19 +359,11 @@ function collectAvailableItems(
       
       if (inv && node.what.variants) {
         for (const variant of node.what.variants) {
-          const itemName = typeof variant.value === 'string' 
-            ? variant.value 
-            : variant.value?.item;
+          const itemName = getVariantItemName(variant);
           // Accept count=0 too, because tree builder may have already deducted from inventory
           if (itemName && inv.has(itemName)) {
             // This variant IS in inventory (or was deducted from it)
-            available.exactItems.add(itemName);
-            if (isCombinableFamily(itemName)) {
-              const family = getFamilyFromName(itemName);
-              if (family) {
-                available.families.add(family);
-              }
-            }
+            addAvailableItem(available, itemName);
             foundInInventory = true;
           }
         }
@@ -333,12 +371,7 @@ function collectAvailableItems(
       
       // Fallback: if we couldn't determine from inventory, use first variant
       if (!foundInInventory && node.what.variants.length > 0) {
-        const rootItem = typeof node.what.variants[0].value === 'string' 
-          ? node.what.variants[0].value 
-          : node.what.variants[0].value?.item;
-        if (rootItem) {
-          available.exactItems.add(rootItem);
-        }
+        addAvailableItem(available, getVariantItemName(node.what.variants[0]), { includeFamily: false });
       }
     }
   }
@@ -356,22 +389,14 @@ function collectAvailableItems(
   if (node.action === 'mine') {
     const targetItems = (node.targetItem?.variants || node.what?.variants || []);
     for (const variant of targetItems) {
-      const itemName =
-        typeof variant.value === 'string' ? variant.value : variant.value?.item;
-      if (itemName) {
-        available.exactItems.add(itemName);
-      }
+      addAvailableItem(available, getVariantItemName(variant), { includeFamily: false });
     }
   }
 
   // Hunt nodes: collect drops (exact items only, not families)
   if (node.action === 'hunt' && node.what && node.what.variants) {
     for (const variant of node.what.variants) {
-      const itemName =
-        typeof variant.value === 'string' ? variant.value : variant.value?.item;
-      if (itemName) {
-        available.exactItems.add(itemName);
-      }
+      addAvailableItem(available, getVariantItemName(variant), { includeFamily: false });
     }
   }
 
@@ -388,17 +413,8 @@ function collectAvailableItems(
     const ingCount = node.ingredients.variants.length;
     const sameLength = resultCount === ingCount;
 
-    const isIngredientVariantAvailable = (ingredientVariant: any): boolean => {
-      const ingredients = ingredientVariant?.value || [];
-      return ingredients.every((ingredient: any) => {
-        if (!ingredient?.item) return true;
-        if (available.exactItems.has(ingredient.item)) return true;
-        if (isCombinableFamily(ingredient.item)) {
-          const family = getFamilyFromName(ingredient.item);
-          if (family && available.families.has(family)) return true;
-        }
-        return false;
-      });
+    const isIngredientVariantAvailableLocal = (ingredientVariant: any): boolean => {
+      return isIngredientVariantAvailable(ingredientVariant, available);
     };
 
     if (sameLength) {
@@ -406,33 +422,15 @@ function collectAvailableItems(
         const resultVariant = node.result.variants[i];
         const ingredientVariant = node.ingredients.variants[i];
         if (!ingredientVariant) continue;
-        if (!isIngredientVariantAvailable(ingredientVariant)) continue;
-        const itemName = resultVariant.value?.item || resultVariant.value;
-        if (itemName) {
-          available.exactItems.add(itemName);
-          if (isCombinableFamily(itemName)) {
-            const family = getFamilyFromName(itemName);
-            if (family) {
-              available.families.add(family);
-            }
-          }
-        }
+        if (!isIngredientVariantAvailableLocal(ingredientVariant)) continue;
+        addAvailableItem(available, getVariantItemName(resultVariant));
       }
     } else {
       // When counts differ, if ANY ingredient alternative is available, mark ALL results obtainable
-      const anyAvailable = node.ingredients.variants.some(isIngredientVariantAvailable);
+      const anyAvailable = node.ingredients.variants.some(isIngredientVariantAvailableLocal);
       if (anyAvailable) {
         for (const resultVariant of node.result.variants) {
-          const itemName = resultVariant.value?.item || resultVariant.value;
-          if (itemName) {
-            available.exactItems.add(itemName);
-            if (isCombinableFamily(itemName)) {
-              const family = getFamilyFromName(itemName);
-              if (family) {
-                available.families.add(family);
-              }
-            }
-          }
+          addAvailableItem(available, getVariantItemName(resultVariant));
         }
       }
     }
@@ -464,16 +462,7 @@ function collectAvailableItems(
         (isCombinableFamily(inputItem) && getFamilyFromName(inputItem) && available.families.has(getFamilyFromName(inputItem)!));
       
       if (inputAvailable) {
-        const itemName = resultVariant.value?.item || resultVariant.value;
-        if (itemName) {
-          available.exactItems.add(itemName);
-          if (isCombinableFamily(itemName)) {
-            const family = getFamilyFromName(itemName);
-            if (family) {
-              available.families.add(family);
-            }
-          }
-        }
+        addAvailableItem(available, getVariantItemName(resultVariant));
       }
     }
   }
@@ -509,13 +498,7 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
   if (context.inventory) {
     for (const [itemName, count] of context.inventory.entries()) {
       if (count > 0) {
-        available.exactItems.add(itemName);
-        if (isCombinableFamily(itemName)) {
-          const family = getFamilyFromName(itemName);
-          if (family) {
-            available.families.add(family);
-          }
-        }
+        addAvailableItem(available, itemName);
       }
     }
   }
@@ -532,19 +515,11 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
       
       if (inv && childNode.what?.variants) {
         for (const variant of childNode.what.variants) {
-          const itemName = typeof variant.value === 'string'
-            ? variant.value
-            : variant.value?.item;
+          const itemName = getVariantItemName(variant);
           // Accept count=0 too, because tree builder may have already deducted from inventory
           if (itemName && inv.has(itemName)) {
             // This variant IS in inventory
-            available.exactItems.add(itemName);
-            if (isCombinableFamily(itemName)) {
-              const family = getFamilyFromName(itemName);
-              if (family) {
-                available.families.add(family);
-              }
-            }
+            addAvailableItem(available, itemName);
             foundInInventory = true;
           }
         }
@@ -552,12 +527,7 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
       
       // Fallback: if we couldn't determine from inventory, use first variant
       if (!foundInInventory && childNode.what?.variants?.length > 0) {
-        const itemName = typeof childNode.what.variants[0].value === 'string'
-          ? childNode.what.variants[0].value
-          : childNode.what.variants[0].value?.item;
-        if (itemName) {
-          available.exactItems.add(itemName);
-        }
+        addAvailableItem(available, getVariantItemName(childNode.what.variants[0]), { includeFamily: false });
       }
     }
     collectAvailableItems(childNode, available);
@@ -567,23 +537,11 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
   const ingCount = (node.ingredients.variants || []).length;
   const sameLength = resultCount === ingCount;
 
-  const isIngredientVariantAvailable = (ingredientVariant: any): boolean => {
-    const ingredients = ingredientVariant?.value || [];
-    return ingredients.every((ingredient: any) => {
-      if (!ingredient?.item) return true;
-
-      const isAvailableExact = available.exactItems.has(ingredient.item);
-      const isAvailableFamily = isCombinableFamily(ingredient.item) &&
-                                getFamilyFromName(ingredient.item) &&
-                                available.families.has(getFamilyFromName(ingredient.item)!);
-
-      if (isAvailableExact || isAvailableFamily) return true;
-
-      // Check if this ingredient is available in current inventory in sufficient quantity
-      // This handles the case where the tree builder deducted some but left enough for crafting
-      const requiredCount = (ingredient.perCraftCount || 1) * (node.count || 1);
-      const availableInInventory = context.inventory?.get(ingredient.item) || 0;
-      return availableInInventory >= requiredCount;
+  const isIngredientVariantAvailableLocal = (ingredientVariant: any): boolean => {
+    const requiredCountMultiplier = node.count || 1;
+    return isIngredientVariantAvailable(ingredientVariant, available, {
+      inventory: context.inventory,
+      requiredCountMultiplier
     });
   };
 
@@ -591,7 +549,7 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     const validVariantIndices: Set<number> = new Set();
     for (let i = 0; i < node.ingredients.variants.length; i++) {
       const ingredientVariant = node.ingredients.variants[i];
-      if (isIngredientVariantAvailable(ingredientVariant)) {
+      if (isIngredientVariantAvailableLocal(ingredientVariant)) {
         validVariantIndices.add(i);
       }
     }
@@ -606,7 +564,9 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     }
   } else {
     // Length mismatch: keep results if any ingredient alternative is available; prune ingredient variants to available ones
-    const availableIngredientVariants = (node.ingredients.variants || []).filter(isIngredientVariantAvailable);
+    const availableIngredientVariants = (node.ingredients.variants || []).filter(
+      isIngredientVariantAvailableLocal
+    );
     if (availableIngredientVariants.length === 0) {
       node.result.variants = [];
       node.ingredients.variants = [];
@@ -632,4 +592,3 @@ function pruneDeadBranches(node: any): void {
     pruneDeadBranches(child.value);
   }
 }
-

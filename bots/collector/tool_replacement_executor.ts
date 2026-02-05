@@ -285,6 +285,11 @@ class ToolReplacementTask {
         executionContext
       );
       this.activePathState = sm;
+      if (this.activePathState && typeof this.activePathState.onStateEntered === 'function') {
+        try {
+          this.activePathState.onStateEntered();
+        } catch (_) {}
+      }
     } catch (err: any) {
       logger.info(`ToolReplacement: failed to start execution - ${err?.message || err}`);
       this.executionDone = true;

@@ -5,21 +5,17 @@ import {
   WorldSnapshot,
   SnapshotOptions,
   ScanState,
-  AggregationRecord,
-  ResourceStats
+  AggregationRecord
 } from './worldSnapshotTypes';
+import {
+  buildResourceStats,
+  collectBlockAggregates,
+  collectEntityStats,
+  dist,
+  updateAggregation
+} from './worldSnapshotHelpers';
 const minecraftData = require('minecraft-data');
 import logger from './logger';
-
-/**
- * Calculates Euclidean distance between two 3D points
- */
-function dist(ax: number, ay: number, az: number, bx: number, by: number, bz: number): number {
-  const dx = ax - bx;
-  const dy = ay - by;
-  const dz = az - bz;
-  return Math.sqrt(dx * dx + dy * dy + dz * dz);
-}
 
 /**
  * Captures a summarized snapshot of world data near the bot
@@ -86,59 +82,17 @@ export function captureRawWorldSnapshot(bot: Bot, opts: SnapshotOptions = {}): W
     : [];
 
   // Aggregate block statistics by name
-  const blockAgg = new Map<string, AggregationRecord>();
-  for (const pos of positions) {
-    const blk = bot.blockAt!(pos, false);
-    if (!blk) continue;
-    if (!includeAir && blk.name === 'air') continue;
-    const name = blk.name;
-    if (!name) continue;
-
-    const d = dist(cx, cy, cz, pos.x, pos.y, pos.z);
-    const rec = blockAgg.get(name) || { count: 0, sumDist: 0, closest: Infinity };
-    rec.count += 1;
-    rec.sumDist += d;
-    if (d < rec.closest) rec.closest = d;
-    blockAgg.set(name, rec);
-  }
-
-  const blockStats: { [name: string]: ResourceStats } = {};
-  for (const [name, rec] of blockAgg.entries()) {
-    const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
-    blockStats[name] = {
-      count: rec.count,
-      closestDistance: rec.closest === Infinity ? null : rec.closest,
-      averageDistance: avg
-    };
-  }
+  const blockAgg = collectBlockAggregates({
+    bot,
+    positions,
+    includeAir,
+    center: { x: cx, y: cy, z: cz },
+    maxRadius: maxDistance
+  });
+  const blockStats = buildResourceStats(blockAgg);
 
   // Aggregate entity statistics by preferred name
-  const entityAgg = new Map<string, AggregationRecord>();
-  if (bot && bot.entities) {
-    for (const key in bot.entities) {
-      const e = bot.entities[key];
-      if (!e || !e.position) continue;
-      const n = e.name || e.type || e.kind;
-      if (!n) continue;
-
-      const d = dist(cx, cy, cz, e.position.x, e.position.y, e.position.z);
-      const rec = entityAgg.get(n) || { count: 0, sumDist: 0, closest: Infinity };
-      rec.count += 1;
-      rec.sumDist += d;
-      if (d < rec.closest) rec.closest = d;
-      entityAgg.set(n, rec);
-    }
-  }
-
-  const entityStats: { [name: string]: ResourceStats } = {};
-  for (const [name, rec] of entityAgg.entries()) {
-    const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
-    entityStats[name] = {
-      count: rec.count,
-      closestDistance: rec.closest === Infinity ? null : rec.closest,
-      averageDistance: avg
-    };
-  }
+  const entityStats = collectEntityStats(bot, { x: cx, y: cy, z: cz });
 
   return {
     version,
@@ -259,11 +213,7 @@ export async function captureRawWorldSnapshotAsync(bot: Bot, opts: SnapshotOptio
     const d = dist(cx, cy, cz, pos.x, pos.y, pos.z);
     if (d > maxRadius) continue;
 
-    const rec = blockAgg.get(name) || { count: 0, sumDist: 0, closest: Infinity };
-    rec.count += 1;
-    rec.sumDist += d;
-    if (d < rec.closest) rec.closest = d;
-    blockAgg.set(name, rec);
+    updateAggregation(blockAgg, name, d);
     
     processed++;
     if (processed % CHUNK_SIZE === 0) {
@@ -277,43 +227,10 @@ export async function captureRawWorldSnapshotAsync(bot: Bot, opts: SnapshotOptio
   // Yield control briefly
   await new Promise(resolve => setImmediate(resolve));
 
-  const blockStats: { [name: string]: ResourceStats } = {};
-  for (const [name, rec] of blockAgg.entries()) {
-    const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
-    blockStats[name] = {
-      count: rec.count,
-      closestDistance: rec.closest === Infinity ? null : rec.closest,
-      averageDistance: avg
-    };
-  }
+  const blockStats = buildResourceStats(blockAgg);
 
   // Entities are inexpensive; do once
-  const entityAgg = new Map<string, AggregationRecord>();
-  if (bot && bot.entities) {
-    for (const key in bot.entities) {
-      const e = bot.entities[key];
-      if (!e || !e.position) continue;
-      const n = e.name || e.type || e.kind;
-      if (!n) continue;
-
-      const d = dist(cx, cy, cz, e.position.x, e.position.y, e.position.z);
-      const rec = entityAgg.get(n) || { count: 0, sumDist: 0, closest: Infinity };
-      rec.count += 1;
-      rec.sumDist += d;
-      if (d < rec.closest) rec.closest = d;
-      entityAgg.set(n, rec);
-    }
-  }
-
-  const entityStats: { [name: string]: ResourceStats } = {};
-  for (const [name, rec] of entityAgg.entries()) {
-    const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
-    entityStats[name] = {
-      count: rec.count,
-      closestDistance: rec.closest === Infinity ? null : rec.closest,
-      averageDistance: avg
-    };
-  }
+  const entityStats = collectEntityStats(bot, { x: cx, y: cy, z: cz });
 
   return {
     version,
@@ -400,45 +317,8 @@ export function beginSnapshotScan(bot: Bot, opts: SnapshotOptions = {}): ScanSta
  * @returns World snapshot from current state
  */
 export function snapshotFromState(st: ScanState): WorldSnapshot {
-  const blockStats: { [name: string]: ResourceStats } = {};
-  for (const [name, rec] of st.blockAgg.entries()) {
-    const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
-    blockStats[name] = {
-      count: rec.count,
-      closestDistance: rec.closest === Infinity ? null : rec.closest,
-      averageDistance: avg
-    };
-  }
-
-  // Track entities with intermediate aggregation structure
-  const entityAggTemp = new Map<string, { count: number; sumDist: number; closest: number | null }>();
-  if (st.bot && st.bot.entities) {
-    for (const key in st.bot.entities) {
-      const e = st.bot.entities[key];
-      if (!e || !e.position) continue;
-      const n = e.name || e.type || e.kind;
-      if (!n) continue;
-
-      const d = dist(st.center.cx, st.center.cy, st.center.cz, e.position.x, e.position.y, e.position.z);
-      const rec = entityAggTemp.get(n) || { count: 0, sumDist: 0, closest: null };
-      rec.count += 1;
-      rec.sumDist += d;
-      if (rec.closest == null || d < rec.closest) {
-        rec.closest = d;
-      }
-      entityAggTemp.set(n, rec);
-    }
-  }
-
-  const entityStats: { [name: string]: ResourceStats } = {};
-  for (const [name, rec] of entityAggTemp.entries()) {
-    const avg = rec.count > 0 ? rec.sumDist / rec.count : 0;
-    entityStats[name] = {
-      count: rec.count,
-      closestDistance: rec.closest,
-      averageDistance: avg
-    };
-  }
+  const blockStats = buildResourceStats(st.blockAgg);
+  const entityStats = collectEntityStats(st.bot, { x: st.center.cx, y: st.center.cy, z: st.center.cz });
 
   return {
     version: st.bot && st.bot.version ? st.bot.version : '1.20.1',
@@ -556,11 +436,7 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 20): P
       const d = dist(st.center.cx, st.center.cy, st.center.cz, pos.x, pos.y, pos.z);
       if (d > st.maxRadius) continue;
 
-      const rec = st.blockAgg.get(name) || { count: 0, sumDist: 0, closest: Infinity };
-      rec.count += 1;
-      rec.sumDist += d;
-      if (d < rec.closest) rec.closest = d;
-      st.blockAgg.set(name, rec);
+      updateAggregation(st.blockAgg, name, d);
       
       processed++;
       if (processed % CHUNK_SIZE === 0) {

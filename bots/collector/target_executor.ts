@@ -8,6 +8,7 @@ import { WorkerManager } from './worker_manager';
 import { createExecutionContext, ToolIssue } from './execution_context';
 import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
 import { ToolReplacementExecutor } from './tool_replacement_executor';
+import { isDelayReady, resolveTargetFailure } from './targetExecutorHelpers';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -686,10 +687,20 @@ export class TargetExecutor implements StateBehavior {
     this.failureHandled = true;
     const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 0;
 
-    if (retryCount < MAX_RETRIES - 1) {
-      this.targetRetryCount.set(this.sequenceIndex, retryCount + 1);
-      logInfo(`Collector: will retry target ${this.sequenceIndex + 1} (${retryCount + 1} retries so far)`);
-      this.delayUntil = Date.now() + RETRY_DELAY_MS;
+    const resolution = resolveTargetFailure({
+      retryCount,
+      maxRetries: MAX_RETRIES,
+      now: Date.now(),
+      retryDelayMs: RETRY_DELAY_MS,
+      skipDelayMs: SKIP_DELAY_MS
+    });
+
+    if (resolution.action === 'retry') {
+      this.targetRetryCount.set(this.sequenceIndex, resolution.nextRetryCount);
+      logInfo(
+        `Collector: will retry target ${this.sequenceIndex + 1} (${resolution.nextRetryCount} retries so far)`
+      );
+      this.delayUntil = resolution.delayUntil;
       return;
     }
 
@@ -697,7 +708,7 @@ export class TargetExecutor implements StateBehavior {
     this.safeChat(`target failed after ${MAX_RETRIES} attempts, moving on`);
     this.targetRetryCount.delete(this.sequenceIndex);
     this.sequenceIndex++;
-    this.delayUntil = Date.now() + SKIP_DELAY_MS;
+    this.delayUntil = resolution.delayUntil;
 
     if (this.sequenceIndex >= this.sequenceTargets.length) {
       this.completeAllTargets();
@@ -710,9 +721,7 @@ export class TargetExecutor implements StateBehavior {
 
   updateDelay(): void {
     if (this.delayReady) return;
-    if (Date.now() >= this.delayUntil) {
-      this.delayReady = true;
-    }
+    this.delayReady = isDelayReady(Date.now(), this.delayUntil);
   }
 
   beginRestartDelay(): void {
@@ -721,7 +730,7 @@ export class TargetExecutor implements StateBehavior {
 
   updateRestartDelay(): void {
     if (this.restartReady) return;
-    if (Date.now() >= this.restartDelayUntil) {
+    if (isDelayReady(Date.now(), this.restartDelayUntil)) {
       this.restartPending = false;
       this.restartReady = true;
     }

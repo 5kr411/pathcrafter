@@ -23,6 +23,7 @@ import createSafeFindBlockState from './behaviorSafeFindBlock';
 import { canSeeTargetBlock, findObstructingBlock } from '../utils/raycasting';
 import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 import { getDropFollowTimeoutMs } from '../bots/collector/config';
+import { getHarvestToolNames, inventoryItemsToMap, isDropEntityCandidate } from './collectBlockHelpers';
 
 const minecraftData = require('minecraft-data');
 
@@ -127,34 +128,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     logger.debug(`resetBaseline: currentBlockCount set to ${currentBlockCount} for ${targets.itemName}`);
   }
 
-  function inventoryAsMap(): Map<string, number> {
-    const out = new Map<string, number>();
-    try {
-      const items = bot.inventory?.items?.() || [];
-      for (const item of items) {
-        if (!item || !item.name) continue;
-        const count = Number.isFinite(item.count) ? item.count! : 1;
-        if (!count || count <= 0) continue;
-        out.set(item.name, (out.get(item.name) || 0) + count);
-      }
-    } catch (_) {}
-    return out;
-  }
-
-  function getHarvestToolNames(block: Block | null | undefined, fallbackName?: string): string[] {
-    const harvestTools =
-      block?.harvestTools ||
-      (fallbackName ? mcData.blocksByName[fallbackName]?.harvestTools : undefined);
-    if (!harvestTools) return [];
-
-    return Object.keys(harvestTools)
-      .map((id) => {
-        const toolId = Number(id);
-        return mcData.items[toolId]?.name;
-      })
-      .filter((n): n is string => !!n);
-  }
-
   function checkToolRequirement(): { ok: boolean; requiredTool?: string; blockName?: string } {
     const pos = targets.blockPosition || targets.position;
     let block: Block | null | undefined = null;
@@ -166,7 +139,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
 
     const blockName = block?.name || targets.blockName;
-    const possibleTools = getHarvestToolNames(block, blockName);
+    const possibleTools = getHarvestToolNames(block, mcData, blockName);
     if (possibleTools.length === 0) {
       return { ok: true, blockName };
     }
@@ -177,36 +150,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return { ok: true, blockName };
     }
 
-    const inv = inventoryAsMap();
+    const inv = inventoryItemsToMap(bot.inventory?.items?.());
     const hasTool = hasEqualOrBetterTool(inv, requiredTool);
 
     return { ok: hasTool, requiredTool, blockName };
   }
 
   const enter = new BehaviorIdle();
-
-  function getDroppedItemInfo(entity: Entity): { name: string | null; count: number } {
-    try {
-      const dropped = typeof (entity as any)?.getDroppedItem === 'function'
-        ? (entity as any).getDroppedItem()
-        : null;
-      if (dropped) {
-        return { name: dropped.name || null, count: Number(dropped.count || 1) || 1 };
-      }
-    } catch (_) {}
-
-    // Mineflayer encodes dropped item stack in metadata index 7 for item entities
-    try {
-      const meta = Array.isArray(entity?.metadata) ? (entity.metadata[7] || entity.metadata[8]) : null;
-      if (meta && meta.itemId !== undefined) {
-        const itemId = meta.itemId;
-        const itemName = mcData.items?.[itemId]?.name || null;
-        const count = Number(meta.itemCount || meta.count || 1) || 1;
-        return { name: itemName, count };
-      }
-    } catch (_) {}
-    return { name: null, count: 0 };
-  }
 
   // Prefer safe find behavior which avoids looping over repeated positions
   let createSafeFind: any | null = null;
@@ -281,27 +231,19 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const findDrop = new BehaviorGetClosestEntity(bot, targets, (entity: Entity) => {
     const botPos = bot.entity?.position;
-    if (!botPos || !entity.position?.distanceTo) return false;
-    const dropInfo = getDroppedItemInfo(entity);
-    const isItem =
-      entity.displayName === 'Item' ||
-      entity.name === 'item' ||
-      !!dropInfo.name;
-    if (!isItem) return false;
+    const targetPos = lastBreakPosition || targets.blockPosition || targets.position || null;
+    const { ok, dropInfo, distToTarget } = isDropEntityCandidate({
+      entity,
+      botPos,
+      targetPos,
+      mcData,
+      dropCollectRadius: DROP_COLLECT_RADIUS,
+      botRange: 12
+    });
 
-    // Use lastBreakPosition if available, otherwise fall back to blockPosition
-    const targetPos = lastBreakPosition || targets.blockPosition || targets.position;
-    // Use entity.position.distanceTo since targetPos may be a plain object without distanceTo
-    const distToMine =
-      targetPos && entity.position.distanceTo ? entity.position.distanceTo(targetPos) : Number.POSITIVE_INFINITY;
-
-    // Collect any item within DROP_COLLECT_RADIUS blocks of the mined block
-    const nearMinedPos = distToMine < DROP_COLLECT_RADIUS;
-    const inBotRange = entity.position.distanceTo(botPos) < 12;
-
-    if (nearMinedPos && inBotRange) {
+    if (ok) {
       logger.debug(
-        `Found drop near mined block (${targetPos?.x},${targetPos?.y},${targetPos?.z}): metaName=${dropInfo.name}, count=${dropInfo.count}, distToMine=${distToMine.toFixed(
+        `Found drop near mined block (${targetPos?.x},${targetPos?.y},${targetPos?.z}): metaName=${dropInfo.name}, count=${dropInfo.count}, distToMine=${distToTarget.toFixed(
           2
         )}`
       );
