@@ -1,5 +1,7 @@
 const { BehaviorFollowEntity, BehaviorMoveTo } = require('mineflayer-statemachine');
+const Vec3 = require('vec3').Vec3;
 import logger from '../utils/logger';
+import { BehaviorMineBlock } from './behaviorMineBlock';
 
 interface Vec3Like {
   x: number;
@@ -38,6 +40,9 @@ export class BehaviorSafeFollowEntity {
   private unstickTarget: Vec3Like | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
   private allowUnstick: boolean = true;
+  private allowBlockBreak: boolean = true;
+  private miningHitboxBlock: boolean = false;
+  private mineBehavior: any = null;
   private savedEntity: Entity | null = null;
 
   constructor(bot: Bot, targets: any) {
@@ -88,6 +93,15 @@ export class BehaviorSafeFollowEntity {
     this.moveTo = null;
     this.savedEntity = null;
     this.allowUnstick = this.targets?.disableSmartMoveUnstick !== true;
+    const explicitBreak = this.targets?.allowBlockBreakWhileFollowing;
+    if (explicitBreak === true || explicitBreak === false) {
+      this.allowBlockBreak = explicitBreak;
+    } else {
+      const canDig = this.followEntity?.movements?.canDig;
+      this.allowBlockBreak = canDig !== false;
+    }
+    this.miningHitboxBlock = false;
+    this.mineBehavior = null;
 
     if (this.targets) {
       if (typeof this.targets.smartMoveStuckCount === 'number') {
@@ -126,6 +140,8 @@ export class BehaviorSafeFollowEntity {
     this.isStuck = false;
     this.isUnsticking = false;
     this.allowUnstick = true;
+    this.allowBlockBreak = true;
+    this.miningHitboxBlock = false;
     this.savedEntity = null;
 
     if (this.targets) {
@@ -140,6 +156,11 @@ export class BehaviorSafeFollowEntity {
     if (this.moveTo && this.moveTo.onStateExited) {
       this.moveTo.onStateExited();
       this.moveTo = null;
+    }
+
+    if (this.mineBehavior && this.mineBehavior.onStateExited) {
+      this.mineBehavior.onStateExited();
+      this.mineBehavior = null;
     }
 
     if (this.followEntity.onStateExited) {
@@ -179,11 +200,102 @@ export class BehaviorSafeFollowEntity {
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
 
+  private findBlockInHitbox(): { block: any; position: Vec3Like } | null {
+    if (!this.allowBlockBreak) return null;
+    if (!this.bot.entity?.position) return null;
+
+    const botPos = this.bot.entity.position;
+    const feetX = Math.floor(botPos.x);
+    const feetY = Math.floor(botPos.y);
+    const feetZ = Math.floor(botPos.z);
+
+    const positions = [
+      new Vec3(feetX, feetY, feetZ),
+      new Vec3(feetX, feetY + 1, feetZ)
+    ];
+
+    for (const pos of positions) {
+      try {
+        if (!this.bot.blockAt) continue;
+        const block = this.bot.blockAt(pos, false);
+        if (!block || block.type === 0) continue;
+        if (this.bot.canDigBlock && !this.bot.canDigBlock(block)) continue;
+        logger.debug(
+          `BehaviorSafeFollowEntity: Found block ${block.name} in hitbox at (${pos.x}, ${pos.y}, ${pos.z})`
+        );
+        return { block, position: pos };
+      } catch (err: any) {
+        logger.debug(
+          `BehaviorSafeFollowEntity: Error checking block in hitbox at (${pos.x}, ${pos.y}, ${pos.z}): ${err.message}`
+        );
+      }
+    }
+
+    return null;
+  }
+
+  private startMiningHitboxBlock(): void {
+    if (!this.allowBlockBreak) return;
+    const blockInfo = this.findBlockInHitbox();
+
+    if (!blockInfo) {
+      this.miningHitboxBlock = false;
+      return;
+    }
+
+    logger.warn(
+      `BehaviorSafeFollowEntity: Found block in hitbox: ${blockInfo.block.name} at (${blockInfo.position.x}, ${blockInfo.position.y}, ${blockInfo.position.z}). Mining it...`
+    );
+
+    this.miningHitboxBlock = true;
+    const mineTargets = { position: blockInfo.position };
+    this.mineBehavior = new BehaviorMineBlock(this.bot, mineTargets);
+
+    if (this.mineBehavior.onStateEntered) {
+      this.mineBehavior.onStateEntered();
+    }
+  }
+
+  private checkMiningProgress(): boolean {
+    if (!this.miningHitboxBlock || !this.mineBehavior) return false;
+
+    if (this.mineBehavior.isFinished) {
+      logger.info('BehaviorSafeFollowEntity: Finished mining block from hitbox');
+
+      if (this.mineBehavior.onStateExited) {
+        this.mineBehavior.onStateExited();
+      }
+
+      this.mineBehavior = null;
+      this.miningHitboxBlock = false;
+
+      const nextBlock = this.findBlockInHitbox();
+      if (nextBlock) {
+        logger.debug('BehaviorSafeFollowEntity: Found another block in hitbox, mining it...');
+        this.startMiningHitboxBlock();
+        return true;
+      }
+
+      return false;
+    }
+
+    return true;
+  }
+
   private checkIfStuck(): void {
     this.recordCurrentPosition();
     
     const currentPos = this.bot.entity?.position;
     if (!currentPos) return;
+
+    if (this.miningHitboxBlock) {
+      const stillMining = this.checkMiningProgress();
+      if (!stillMining) {
+        logger.info('BehaviorSafeFollowEntity: Completed mining blocks from hitbox, resuming follow check');
+        this.positionHistory = [];
+      }
+      return;
+    }
     
     if (this.positionHistory.length > 0) {
       const oldestInHistory = this.positionHistory[0];
@@ -228,8 +340,14 @@ export class BehaviorSafeFollowEntity {
         
         if (distanceMoved < 2) {
           logger.warn(`BehaviorSafeFollowEntity: Still stuck while unsticking! Moved only ${distanceMoved.toFixed(2)} blocks.`);
-          this.positionHistory = [];
-          this.initiateUnstick();
+          const blockInHitbox = this.findBlockInHitbox();
+          if (blockInHitbox) {
+            logger.info('BehaviorSafeFollowEntity: Found blocks in hitbox while unsticking, mining them first');
+            this.startMiningHitboxBlock();
+          } else {
+            this.positionHistory = [];
+            this.initiateUnstick();
+          }
         }
       }
       return;
@@ -268,7 +386,11 @@ export class BehaviorSafeFollowEntity {
         this.targets.smartMoveStuckCount = prevCount + 1;
       }
 
-      if (this.allowUnstick) {
+      const blockInHitbox = this.findBlockInHitbox();
+      if (blockInHitbox) {
+        logger.info('BehaviorSafeFollowEntity: Found blocks in hitbox, mining them first');
+        this.startMiningHitboxBlock();
+      } else if (this.allowUnstick) {
         this.initiateUnstick();
       } else {
         logger.debug('BehaviorSafeFollowEntity: Unstick suppressed for current targets');
