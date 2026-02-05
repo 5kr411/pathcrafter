@@ -1,6 +1,7 @@
 const { BehaviorFollowEntity, BehaviorMoveTo } = require('mineflayer-statemachine');
 const Vec3 = require('vec3').Vec3;
 import logger from '../utils/logger';
+import { getStuckDetectionWindowMs } from '../utils/movementConfig';
 import { BehaviorMineBlock } from './behaviorMineBlock';
 
 interface Vec3Like {
@@ -186,8 +187,10 @@ export class BehaviorSafeFollowEntity {
       timestamp: now
     });
 
-    const twentyOneSecondsAgo = now - 21000;
-    this.positionHistory = this.positionHistory.filter(record => record.timestamp >= twentyOneSecondsAgo);
+    const windowMs = getStuckDetectionWindowMs();
+    const historyWindowMs = windowMs + 2000;
+    const cutoff = now - historyWindowMs;
+    this.positionHistory = this.positionHistory.filter(record => record.timestamp >= cutoff);
   }
 
   private getDistanceBetween(pos1: Vec3Like, pos2: Vec3Like): number {
@@ -198,6 +201,16 @@ export class BehaviorSafeFollowEntity {
     const dy = pos2.y - pos1.y;
     const dz = pos2.z - pos1.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
+  private isSolidMineableBlock(block: any): boolean {
+    if (!block) return false;
+    if (block.type === 0) return false;
+    if (block.transparent) return false;
+    if (block.boundingBox && block.boundingBox !== 'block') return false;
+    const name = String(block.name || '').toLowerCase();
+    if (name.includes('water') || name.includes('lava')) return false;
+    return true;
   }
 
   private findBlockInHitbox(): { block: any; position: Vec3Like } | null {
@@ -218,7 +231,7 @@ export class BehaviorSafeFollowEntity {
       try {
         if (!this.bot.blockAt) continue;
         const block = this.bot.blockAt(pos, false);
-        if (!block || block.type === 0) continue;
+        if (!this.isSolidMineableBlock(block)) continue;
         if (this.bot.canDigBlock && !this.bot.canDigBlock(block)) continue;
         logger.debug(
           `BehaviorSafeFollowEntity: Found block ${block.name} in hitbox at (${pos.x}, ${pos.y}, ${pos.z})`
@@ -335,7 +348,8 @@ export class BehaviorSafeFollowEntity {
       const now = Date.now();
       const timespan = now - oldestRecord.timestamp;
 
-      if (timespan >= 20000) {
+      const windowMs = getStuckDetectionWindowMs();
+      if (timespan >= windowMs) {
         const distanceMoved = this.getDistanceBetween(oldestRecord.position, currentPos);
         
         if (distanceMoved < 2) {
@@ -369,7 +383,8 @@ export class BehaviorSafeFollowEntity {
     const now = Date.now();
     const timespan = now - oldestRecord.timestamp;
 
-    if (timespan < 20000) {
+    const windowMs = getStuckDetectionWindowMs();
+    if (timespan < windowMs) {
       return;
     }
 

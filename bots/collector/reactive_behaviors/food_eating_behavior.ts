@@ -376,7 +376,7 @@ function createFoodEatingState(bot: Bot, targets: EatFoodTargets): any {
 }
 
 export const foodEatingBehavior: ReactiveBehavior = {
-  priority: 50,
+  priority: 60,
   name: 'food_eating',
 
   shouldActivate: (bot: Bot): boolean => {

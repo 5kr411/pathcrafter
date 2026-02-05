@@ -16,7 +16,7 @@ import { captureAdaptiveSnapshot } from '../../../utils/adaptiveSnapshot';
 import createGetFoodState from '../../../behaviors/behaviorGetFood';
 import logger from '../../../utils/logger';
 
-const FOOD_COLLECTION_PRIORITY = 60;
+const FOOD_COLLECTION_PRIORITY = 50;
 const DEFAULT_COOLDOWN_MS = 60_000; // 1 minute cooldown after failed collection
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000; // Only log "should activate" every 10s
 
