@@ -157,6 +157,20 @@ export function getHostileMobNames(mcData: any): Set<string> {
   return hostileMobs;
 }
 
+const SKELETON_VARIANT_NAMES = new Set(['skeleton', 'stray', 'bogged', 'parched']);
+
+export function isRangedHostile(entity: any): boolean {
+  const name = String(entity?.name || entity?.displayName || '').toLowerCase();
+  if (SKELETON_VARIANT_NAMES.has(name)) {
+    return true;
+  }
+  if (name === 'drowned') {
+    const heldItem = entity?.heldItem ?? entity?.equipment?.[0];
+    return heldItem?.name === 'trident';
+  }
+  return false;
+}
+
 export function findClosestHostileMob(
   bot: Bot,
   maxDistance: number = 16,

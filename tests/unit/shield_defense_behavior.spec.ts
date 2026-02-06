@@ -50,11 +50,13 @@ jest.mock('mineflayer-statemachine', () => {
   };
 });
 
+const actualHostileMobModule = jest.requireActual('../../bots/collector/reactive_behaviors/hostile_mob_behavior');
 jest.mock('../../bots/collector/reactive_behaviors/hostile_mob_behavior', () => ({
   __esModule: true,
   findClosestHostileMob: jest.fn(() => null),
   getHostileMobNames: jest.fn(() => new Set(['zombie', 'creeper'])),
-  hasLineOfSight: jest.fn(() => true)
+  hasLineOfSight: jest.fn(() => true),
+  isRangedHostile: actualHostileMobModule.isRangedHostile
 }));
 
 describe('unit: shield_defense_behavior', () => {
@@ -169,15 +171,79 @@ describe('unit: shield_defense_behavior', () => {
       expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(false);
     });
 
-    test('returns true when below half health even without creeper', () => {
+    test('returns true when below half health and melee hostile within 8 blocks', () => {
       const bot = createShieldBot({ health: 8, maxHealth: 20 });
-      hostilesModule.findClosestHostileMob.mockReturnValueOnce({ name: 'zombie' });
+      hostilesModule.findClosestHostileMob
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce({ name: 'zombie' });
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('returns false when below half health and melee hostile beyond 8 blocks', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce(null);
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(false);
+    });
+
+    test('returns true when below half health and skeleton variant within 16 blocks', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob
+        .mockReturnValueOnce({ name: 'skeleton' });
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('returns true when below half health and stray within 16 blocks', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob
+        .mockReturnValueOnce({ name: 'stray' });
       expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
     });
 
     test('returns true when creeper within range despite full health', () => {
       const bot = createShieldBot({ health: 20, maxHealth: 20, creeperDistance: 4 });
       expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('passes isRangedHostile predicate for ranged hostile check', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob.mockReturnValue(null);
+      shieldDefenseBehavior.shouldActivate(bot);
+
+      const firstCall = hostilesModule.findClosestHostileMob.mock.calls[0];
+      expect(firstCall[1]).toBe(16);
+      expect(typeof firstCall[3]).toBe('function');
+      const predicate = firstCall[3];
+
+      expect(predicate({ name: 'skeleton' })).toBe(true);
+      expect(predicate({ name: 'stray' })).toBe(true);
+      expect(predicate({ name: 'bogged' })).toBe(true);
+      expect(predicate({ name: 'parched' })).toBe(true);
+      expect(predicate({ name: 'zombie' })).toBe(false);
+      expect(predicate({ name: 'drowned' })).toBe(false);
+      expect(predicate({ name: 'drowned', heldItem: { name: 'trident' } })).toBe(true);
+      expect(predicate({ name: 'drowned', heldItem: { name: 'fishing_rod' } })).toBe(false);
+      expect(predicate({ name: 'drowned', equipment: [{ name: 'trident' }] })).toBe(true);
+
+      const secondCall = hostilesModule.findClosestHostileMob.mock.calls[1];
+      expect(secondCall[1]).toBe(8);
+      expect(secondCall[3]).toBeUndefined();
+    });
+
+    test('returns true when below half health and drowned with trident within 16 blocks', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob
+        .mockReturnValueOnce({ name: 'drowned', heldItem: { name: 'trident' } });
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('returns false when below half health and drowned without trident beyond 8 blocks', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20 });
+      hostilesModule.findClosestHostileMob
+        .mockReturnValueOnce(null)
+        .mockReturnValueOnce(null);
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(false);
     });
   });
 });

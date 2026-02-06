@@ -1,6 +1,6 @@
 import logger from '../../../utils/logger';
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
-import { findClosestHostileMob, getHostileMobNames, hasLineOfSight } from './hostile_mob_behavior';
+import { findClosestHostileMob, getHostileMobNames, hasLineOfSight, isRangedHostile } from './hostile_mob_behavior';
 import { createShieldDefenseState } from '../../../behaviors/behaviorShieldDefense';
 
 const minecraftData = require('minecraft-data');
@@ -11,7 +11,9 @@ const minecraftData = require('minecraft-data');
 const SHIELD_HOLD_DURATION_MS = 5000;
 const CREEPER_TRIGGER_RADIUS = 8;
 const CREEPER_REACQUIRE_RADIUS = 8;
-const HOSTILE_SEARCH_RADIUS = 32;
+const RANGED_HOSTILE_SEARCH_RADIUS = 16;
+const MELEE_HOSTILE_SEARCH_RADIUS = 8;
+
 
 function getInventoryItems(bot: Bot): any[] {
   const inventory: any = (bot as any)?.inventory;
@@ -123,11 +125,16 @@ export function shouldContinueShieldDefense(bot: Bot): boolean {
     return false;
   }
 
-  const nearbyHostile = findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS, true);
-  if (!nearbyHostile) {
+  const skeletonThreat = findClosestHostileMob(bot, RANGED_HOSTILE_SEARCH_RADIUS, true, isRangedHostile);
+  if (skeletonThreat) {
+    return true;
+  }
+
+  const meleeHostile = findClosestHostileMob(bot, MELEE_HOSTILE_SEARCH_RADIUS, true);
+  if (!meleeHostile) {
     logger.debug('ShieldDefense: continue check failed - low health but no hostile in close range');
   }
-  return !!nearbyHostile;
+  return !!meleeHostile;
 }
 
 function isEntityAlive(entity: any): boolean {
@@ -257,12 +264,13 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
       return false;
     }
 
-    const nearbyHostile = findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS);
-    if (!nearbyHostile) {
-        return false;
+    const skeletonThreat = findClosestHostileMob(bot, RANGED_HOSTILE_SEARCH_RADIUS, true, isRangedHostile);
+    if (skeletonThreat) {
+      return true;
     }
 
-    return true;
+    const meleeHostile = findClosestHostileMob(bot, MELEE_HOSTILE_SEARCH_RADIUS);
+    return !!meleeHostile;
   },
 
   createState: async (bot: Bot): Promise<any> => {
@@ -295,7 +303,11 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
           return creeper;
         }
         try {
-          return findClosestHostileMob(bot, HOSTILE_SEARCH_RADIUS, true);
+          const skeleton = findClosestHostileMob(bot, RANGED_HOSTILE_SEARCH_RADIUS, true, isRangedHostile);
+          if (skeleton) {
+            return skeleton;
+          }
+          return findClosestHostileMob(bot, MELEE_HOSTILE_SEARCH_RADIUS, true);
         } catch (err: any) {
           logger.debug(`ShieldDefense: threat lookup failed - ${err?.message || err}`);
           return null;
@@ -314,7 +326,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
           if (!name) return false;
           return hostileNameSet.has(name);
         },
-        detectionRange: HOSTILE_SEARCH_RADIUS,
+        detectionRange: RANGED_HOSTILE_SEARCH_RADIUS,
         attackRange: 3.5,
         fastAttack: true
       };
