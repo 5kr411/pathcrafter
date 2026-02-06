@@ -17,7 +17,7 @@ import createGetFoodState from '../../../behaviors/behaviorGetFood';
 import logger from '../../../utils/logger';
 
 const FOOD_COLLECTION_PRIORITY = 50;
-const DEFAULT_COOLDOWN_MS = 60_000; // 1 minute cooldown after failed collection
+const DEFAULT_COOLDOWN_MS = 120_000; // 2 minute cooldown after failed collection
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000; // Only log "should activate" every 10s
 
 let foodCollectionConfig: FoodCollectionConfig = { ...DEFAULT_FOOD_CONFIG };
@@ -80,9 +80,16 @@ export function resetFoodCollectionCooldown(): void {
 }
 
 /**
+ * Triggers the cooldown timer as if collection just failed
+ */
+export function triggerFoodCollectionCooldown(): void {
+  lastFailedAttempt = Date.now();
+}
+
+/**
  * Checks if currently in cooldown period
  */
-function isInCooldown(): boolean {
+export function isFoodCollectionInCooldown(): boolean {
   if (lastFailedAttempt === 0) return false;
   return Date.now() - lastFailedAttempt < cooldownMs;
 }
@@ -91,7 +98,7 @@ function isInCooldown(): boolean {
  * Gets remaining cooldown time in seconds
  */
 function getCooldownRemaining(): number {
-  if (!isInCooldown()) return 0;
+  if (!isFoodCollectionInCooldown()) return 0;
   return Math.ceil((cooldownMs - (Date.now() - lastFailedAttempt)) / 1000);
 }
 
@@ -114,7 +121,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
     
     if (foodPoints < threshold) {
       // Check cooldown
-      if (isInCooldown()) {
+      if (isFoodCollectionInCooldown()) {
         if (now - lastCooldownLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
           const remaining = getCooldownRemaining();
           logger.debug(`FoodCollection: in cooldown (${remaining}s remaining)`);
@@ -144,7 +151,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       : null;
     
     const currentFoodPoints = getBotFoodPoints(bot);
-    if (isInCooldown()) {
+    if (isFoodCollectionInCooldown()) {
       const remaining = getCooldownRemaining();
       logger.debug(`FoodCollection: skipping start (cooldown ${remaining}s remaining)`);
       return null;

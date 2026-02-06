@@ -8,7 +8,8 @@
 
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { getInventoryObject, getItemCountInInventory } from '../../../utils/inventory';
-import { FOOD_SMELT_MAPPINGS } from '../../../utils/foodConfig';
+import { FOOD_SMELT_MAPPINGS, calculateFoodPointsInInventory } from '../../../utils/foodConfig';
+import { getFoodCollectionConfig, isFoodCollectionInCooldown } from './food_collection_behavior';
 import { captureAdaptiveSnapshot } from '../../../utils/adaptiveSnapshot';
 import { buildStateMachineForPath } from '../../../behavior_generator/buildMachine';
 import { plan as planner, _internals as plannerInternals } from '../../../planner';
@@ -191,6 +192,17 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
   
   shouldActivate: (bot: Bot): boolean => {
     const now = Date.now();
+    
+    // Don't smelt when food collection would actually run -- that is,
+    // when food points are below the collection trigger AND collection
+    // isn't in cooldown. Above the trigger, food collection won't
+    // activate anyway so smelting is free to cook what we have.
+    const inventory = getInventoryObject(bot as any);
+    const foodPoints = calculateFoodPointsInInventory(inventory);
+    const { triggerFoodPoints } = getFoodCollectionConfig();
+    if (foodPoints < triggerFoodPoints && !isFoodCollectionInCooldown()) {
+      return false;
+    }
     
     // Check for raw food in inventory
     const rawFoodItems = findRawFoodInInventory(bot);

@@ -4,7 +4,7 @@ import {
   resetFoodSmeltingCooldown,
   setFoodSmeltingCooldown
 } from '../../bots/collector/reactive_behaviors/food_smelting_behavior';
-import { foodCollectionBehavior, resetFoodCollectionCooldown } from '../../bots/collector/reactive_behaviors/food_collection_behavior';
+import { foodCollectionBehavior, resetFoodCollectionCooldown, triggerFoodCollectionCooldown } from '../../bots/collector/reactive_behaviors/food_collection_behavior';
 
 jest.mock('../../planner', () => ({
   plan: jest.fn(),
@@ -84,14 +84,37 @@ describe('integration: food smelting behavior', () => {
     jest.useRealTimers();
   });
 
-  it('has lower priority than food collection (40 vs 60)', () => {
+  it('has lower priority than food collection (40 vs 50)', () => {
     expect(foodSmeltingBehavior.priority).toBe(40);
-    expect(foodCollectionBehavior.priority).toBe(60);
+    expect(foodCollectionBehavior.priority).toBe(50);
     expect(foodSmeltingBehavior.priority).toBeLessThan(foodCollectionBehavior.priority);
   });
 
-  it('activates when raw food is in inventory', async () => {
+  it('activates when raw food is in inventory and food points above trigger', async () => {
+    const bot = createBotWithRawFood({ beef: 7 });
+    
+    const shouldActivate = await Promise.resolve(foodSmeltingBehavior.shouldActivate(bot));
+    expect(shouldActivate).toBe(true);
+  });
+
+  it('does not activate when raw food exists but food points below trigger', async () => {
     const bot = createBotWithRawFood({ beef: 5 });
+    
+    const shouldActivate = await Promise.resolve(foodSmeltingBehavior.shouldActivate(bot));
+    expect(shouldActivate).toBe(false);
+  });
+
+  it('activates when food points below trigger but food collection is in cooldown', async () => {
+    jest.setSystemTime(1000);
+    const bot = createBotWithRawFood({ beef: 5 });
+    triggerFoodCollectionCooldown();
+    
+    const shouldActivate = await Promise.resolve(foodSmeltingBehavior.shouldActivate(bot));
+    expect(shouldActivate).toBe(true);
+  });
+
+  it('activates when food points above trigger but below target', async () => {
+    const bot = createBotWithRawFood({ beef: 9, bread: 1 });
     
     const shouldActivate = await Promise.resolve(foodSmeltingBehavior.shouldActivate(bot));
     expect(shouldActivate).toBe(true);
@@ -105,7 +128,7 @@ describe('integration: food smelting behavior', () => {
   });
 
   it('runs smelting behavior and completes successfully', async () => {
-    const bot = createBotWithRawFood({ beef: 3 });
+    const bot = createBotWithRawFood({ beef: 7 });
     
     let smeltTicks = 0;
     let smeltFinished = false;
@@ -213,7 +236,7 @@ describe('integration: food smelting behavior', () => {
   it('applies cooldown when planning fails', async () => {
     jest.useRealTimers();
     
-    const bot = createBotWithRawFood({ beef: 5 });
+    const bot = createBotWithRawFood({ beef: 7 });
     
     setFoodSmeltingCooldown(100);
     resetFoodSmeltingCooldown();
