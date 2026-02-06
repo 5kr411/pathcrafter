@@ -1,8 +1,8 @@
 /**
- * BehaviorHuntForFood - Hunt animals and cook the meat
+ * BehaviorHuntForFood - Hunt animals and collect drops
  * 
- * Orchestrates hunting any available animal, collecting dropped items,
- * then smelting the raw meat.
+ * Orchestrates hunting any available animal and collecting dropped items.
+ * Smelting raw meat is handled separately by the food smelting reactive behavior.
  */
 
 const {
@@ -24,10 +24,8 @@ import {
   getFoodHungerPoints
 } from '../utils/foodConfig';
 import createHuntEntityState from './behaviorHuntEntity';
-import createSmeltState from './behaviorSmelt';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 import {
-  countRawMeatInInventory,
   evaluateHuntDropCandidate,
   findClosestHuntableAnimal,
   getRawMeatDrop,
@@ -55,7 +53,7 @@ interface HuntForFoodTargets {
   onComplete?: (success: boolean, foodGained: number) => void;
 }
 
-type Phase = 'init' | 'hunting' | 'collecting_drops' | 'smelting' | 'complete' | 'failed';
+type Phase = 'init' | 'hunting' | 'collecting_drops' | 'complete' | 'failed';
 type WeaponPhase = 'init' | 'planning' | 'executing' | 'done' | 'skipped';
 
 const DROP_COLLECT_RADIUS = 8;
@@ -106,13 +104,9 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   // Pre-create the hunt state machine with dynamic targets
   const huntStateMachine = createHuntEntityState(bot, huntTargets);
   
-  // Smelt state machine - created lazily
-  let smeltStateMachine: any = null;
-  
   const enter = new BehaviorIdle();
   const prepareWeapon = new BehaviorIdle();
   const findAnimal = new BehaviorIdle();
-  const smelting = new BehaviorIdle();
   const exit = new BehaviorIdle();
   
   // Drop collection states
@@ -142,7 +136,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   addStateLogging(findAnimal, 'HuntForFood:FindAnimal', { logEnter: true });
   addStateLogging(findDrop, 'HuntForFood:FindDrop', { logEnter: false });
   addStateLogging(goToDrop, 'HuntForFood:GoToDrop', { logEnter: false });
-  addStateLogging(smelting, 'HuntForFood:Smelting', { logEnter: true });
   
   function calculateCurrentFoodPoints(): number {
     const inventory = getInventoryObject(bot);
@@ -365,25 +358,23 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
   });
   
-  // If hunt finished AND we gained food points (drops auto-collected), skip drop collection
-  const huntingToSmelting = new StateTransition({
+  const huntingToExit = new StateTransition({
     parent: huntStateMachine,
-    child: smelting,
-    name: 'HuntForFood: hunting -> smelting (auto-collected)',
+    child: exit,
+    name: 'HuntForFood: hunting -> exit (auto-collected)',
     shouldTransition: () => {
       const finished = typeof huntStateMachine.isFinished === 'function' 
         ? huntStateMachine.isFinished() 
         : false;
       if (!finished) return false;
       
-      // Check if food points increased (drops auto-collected)
       const gained = getFoodGained();
       return gained > 0;
     },
     onTransition: () => {
+      phase = 'complete';
       const gained = getFoodGained();
-      logger.info(`HuntForFood: hunt complete, gained ${gained} food points (auto-collected), proceeding to smelt`);
-      setupSmelting();
+      logger.info(`HuntForFood: hunt complete, gained ${gained} food points (auto-collected)`);
     }
   });
   
@@ -439,20 +430,20 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
   });
   
-  const findDropToSmelting = new StateTransition({
+  const findDropToExitWithMeat = new StateTransition({
     parent: findDrop,
-    child: smelting,
-    name: 'HuntForFood: find drop -> smelting (no more drops)',
+    child: exit,
+    name: 'HuntForFood: find drop -> exit (no more drops, has meat)',
     shouldTransition: () => {
-      // No drop found, timed out, or max attempts reached
       if (dropTargets.entity === null || shouldStopDropCollection()) {
         return hasCollectedRawMeat();
       }
       return false;
     },
     onTransition: () => {
-      logger.info(`HuntForFood: no more drops found (attempts=${dropAttemptCount}), proceeding to smelt`);
-      setupSmelting();
+      phase = 'complete';
+      const gained = getFoodGained();
+      logger.info(`HuntForFood: no more drops found (attempts=${dropAttemptCount}), complete with ${gained} food points`);
     }
   });
   
@@ -556,17 +547,18 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     );
   }
   
-  const goToDropToSmelting = new StateTransition({
+  const goToDropToExitWithMeat = new StateTransition({
     parent: goToDrop,
-    child: smelting,
-    name: 'HuntForFood: go to drop -> smelting (done collecting)',
+    child: exit,
+    name: 'HuntForFood: go to drop -> exit (done collecting, has meat)',
     shouldTransition: () => {
       if (!shouldStopDropCollection()) return false;
       return hasCollectedRawMeat();
     },
     onTransition: () => {
-      logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}), proceeding to smelt`);
-      setupSmelting();
+      phase = 'complete';
+      const gained = getFoodGained();
+      logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}), complete with ${gained} food points`);
     }
   });
   
@@ -584,85 +576,19 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
   });
   
-  function setupSmelting(): void {
-    phase = 'smelting';
-    const rawMeats = countRawMeatInInventory(getInventoryObject(bot));
-    const toSmelt = rawMeats[0];
-    
-    if (toSmelt) {
-      const cookedItem = getCookedVariant(toSmelt.rawItem);
-      const startCount = startRawMeatCounts.get(toSmelt.rawItem) || 0;
-      const collectedThisHunt = toSmelt.count - startCount;
-      logger.info(`HuntForFood: have ${toSmelt.count}x ${toSmelt.rawItem} (collected ${collectedThisHunt} this hunt), smelting -> ${cookedItem}`);
-      
-      if (cookedItem) {
-        const hasFurnace = getItemCountInInventory(bot, 'furnace') > 0;
-        const hasCoal = getItemCountInInventory(bot, 'coal') > 0;
-        
-        if (hasFurnace && hasCoal) {
-          smeltStateMachine = createSmeltState(bot, {
-            itemName: cookedItem,
-            amount: toSmelt.count,
-            inputName: toSmelt.rawItem,
-            fuelName: 'coal'
-          });
-        } else {
-          logger.info(`HuntForFood: missing furnace or coal, skipping smelt (furnace=${hasFurnace}, coal=${hasCoal})`);
-          phase = 'complete';
-        }
-      } else {
-        phase = 'complete';
-      }
-    } else {
-      phase = 'complete';
-    }
-  }
-  
-  const smeltingToExit = new StateTransition({
-    parent: smelting,
-    child: exit,
-    name: 'HuntForFood: smelting -> exit',
-    shouldTransition: () => {
-      if (phase === 'complete' || phase === 'failed') return true;
-      if (!smeltStateMachine) return true;
-      const finished = typeof smeltStateMachine.isFinished === 'function'
-        ? smeltStateMachine.isFinished()
-        : false;
-      return finished;
-    },
-    onTransition: () => {
-      if (phase !== 'failed') phase = 'complete';
-      const gained = getFoodGained();
-      logger.info(`HuntForFood: complete, gained ${gained} food points`);
-    }
-  });
-  
-  // Hook into smelting state to start the smelt state machine
-  const smeltingAsAny = smelting as any;
-  const originalSmeltingEntered = smeltingAsAny.onStateEntered;
-  smeltingAsAny.onStateEntered = function(this: any) {
-    if (originalSmeltingEntered) originalSmeltingEntered.call(this);
-    
-    if (smeltStateMachine && typeof smeltStateMachine.onStateEntered === 'function') {
-      logger.info('HuntForFood: starting smelt state machine');
-      smeltStateMachine.onStateEntered();
-    }
-  };
-  
   const transitions = [
     enterToFindAnimal,
     findAnimalToPrepareWeapon,
     findAnimalToExit,
     prepareWeaponToHunting,
-    huntingToSmelting,  // Fast path: drops auto-collected
-    huntingToFindDrop,  // Slow path: need to find drops
+    huntingToExit,      // Fast path: drops auto-collected
+    huntingToFindDrop,   // Slow path: need to find drops
     findDropToGoToDrop,
-    findDropToSmelting,
+    findDropToExitWithMeat,
     findDropToExit,
     goToDropToFindDrop,
-    goToDropToSmelting,
-    goToDropToExit,
-    smeltingToExit
+    goToDropToExitWithMeat,
+    goToDropToExit
   ];
   
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
@@ -741,9 +667,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
     if (huntStateMachine && typeof huntStateMachine.onStateExited === 'function') {
       try { huntStateMachine.onStateExited(); } catch (_) {}
-    }
-    if (smeltStateMachine && typeof smeltStateMachine.onStateExited === 'function') {
-      try { smeltStateMachine.onStateExited(); } catch (_) {}
     }
     
     try { bot.clearControlStates?.(); } catch (_) {}

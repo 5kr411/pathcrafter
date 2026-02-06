@@ -25,6 +25,7 @@ let lastFailedAttempt = 0;
 let cooldownMs = DEFAULT_COOLDOWN_MS;
 let lastShouldActivateLogTime = 0;
 let lastCooldownLogTime = 0;
+let wasPreempted = false;
 
 function getTriggerThreshold(): number {
   const trigger = Number(foodCollectionConfig.triggerFoodPoints);
@@ -77,6 +78,7 @@ export function setFoodCollectionCooldown(ms: number): void {
  */
 export function resetFoodCollectionCooldown(): void {
   lastFailedAttempt = 0;
+  wasPreempted = false;
 }
 
 /**
@@ -116,8 +118,14 @@ export const foodCollectionBehavior: ReactiveBehavior = {
   
   shouldActivate: (bot: Bot): boolean => {
     const foodPoints = getBotFoodPoints(bot);
-    const threshold = getTriggerThreshold();
+    const trigger = getTriggerThreshold();
     const now = Date.now();
+    
+    // After being preempted (e.g. by eating), use the target threshold so
+    // we resume collecting until the goal is actually reached.
+    const threshold = wasPreempted
+      ? foodCollectionConfig.targetFoodPoints
+      : trigger;
     
     if (foodPoints < threshold) {
       // Check cooldown
@@ -131,14 +139,19 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       }
       
       if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-        logger.debug(`FoodCollection: should activate - foodPoints=${foodPoints} < threshold=${threshold}`);
+        logger.debug(`FoodCollection: should activate - foodPoints=${foodPoints} < threshold=${threshold}${wasPreempted ? ' (resuming after preemption)' : ''}`);
         lastShouldActivateLogTime = now;
       }
       return true;
     }
     
+    // Target reached, clear preemption flag
+    if (wasPreempted && foodPoints >= foodCollectionConfig.targetFoodPoints) {
+      wasPreempted = false;
+    }
+    
     // Reset cooldown when we have enough food (food sources were found elsewhere)
-    if (lastFailedAttempt > 0 && foodPoints >= threshold) {
+    if (lastFailedAttempt > 0 && foodPoints >= trigger) {
       lastFailedAttempt = 0;
     }
     
@@ -156,6 +169,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       logger.debug(`FoodCollection: skipping start (cooldown ${remaining}s remaining)`);
       return null;
     }
+    wasPreempted = false;
     logger.info(`FoodCollection: starting - current food points = ${currentFoodPoints}`);
     
     if (sendChat) {
@@ -230,8 +244,13 @@ export const foodCollectionBehavior: ReactiveBehavior = {
         wasSuccessful: () => computeOutcome().success,
         onStop: (reason: ReactiveBehaviorStopReason) => {
           if (reason === 'completed') {
+            wasPreempted = false;
             finalizeCompletion();
+          } else if (reason === 'preempted') {
+            wasPreempted = true;
+            logger.debug(`FoodCollection: stopped (${reason}), will resume until target reached`);
           } else {
+            wasPreempted = false;
             logger.debug(`FoodCollection: stopped (${reason})`);
           }
         }
