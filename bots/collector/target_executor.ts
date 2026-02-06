@@ -9,6 +9,7 @@ import { createExecutionContext, ToolIssue } from './execution_context';
 import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
 import { ToolReplacementExecutor } from './tool_replacement_executor';
 import { isDelayReady, resolveTargetFailure } from './targetExecutorHelpers';
+import { BehaviorWander } from '../../behaviors/behaviorWander';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -23,6 +24,7 @@ const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
 const SKIP_DELAY_MS = 1000;
 const RESTART_DELAY_MS = 3000;
+const WANDER_DISTANCE = 128;
 
 export function createToolIssueHandler(options: {
   toolReplacementExecutor?: ToolReplacementExecutor | null;
@@ -182,6 +184,26 @@ class TargetDelayState implements StateBehavior {
   }
 }
 
+class TargetWanderState implements StateBehavior {
+  public stateName = 'TargetWander';
+  public active = false;
+  constructor(private readonly executor: TargetExecutor) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    this.executor.beginWander();
+  }
+
+  update(): void {
+    this.executor.updateWander();
+  }
+
+  onStateExited(): void {
+    this.active = false;
+    this.executor.cleanupWander();
+  }
+}
+
 class TargetRestartDelayState implements StateBehavior {
   public stateName = 'TargetRestartDelay';
   public active = false;
@@ -231,6 +253,9 @@ export class TargetExecutor implements StateBehavior {
   private restartReady = false;
   private restartDelayUntil = 0;
   private stopRequested = false;
+  private shouldWander = false;
+  private wanderDone = false;
+  private wanderBehavior: BehaviorWander | null = null;
 
   constructor(
     private bot: Bot,
@@ -253,6 +278,7 @@ export class TargetExecutor implements StateBehavior {
     const execute = new TargetExecuteState(this);
     const success = new TargetSuccessState(this);
     const failure = new TargetFailureState(this);
+    const wander = new TargetWanderState(this);
     const delay = new TargetDelayState(this);
     const restartDelay = new TargetRestartDelayState(this);
 
@@ -349,9 +375,27 @@ export class TargetExecutor implements StateBehavior {
       }),
       new StateTransition({
         parent: failure,
+        child: wander,
+        name: 'target: failure -> wander',
+        shouldTransition: () => this.failureHandled && this.shouldWander
+      }),
+      new StateTransition({
+        parent: failure,
         child: delay,
         name: 'target: failure -> delay',
-        shouldTransition: () => this.failureHandled
+        shouldTransition: () => this.failureHandled && !this.shouldWander
+      }),
+      new StateTransition({
+        parent: wander,
+        child: restartDelay,
+        name: 'target: wander -> restart',
+        shouldTransition: () => this.restartPending
+      }),
+      new StateTransition({
+        parent: wander,
+        child: delay,
+        name: 'target: wander -> delay',
+        shouldTransition: () => this.wanderDone
       }),
       new StateTransition({
         parent: delay,
@@ -463,6 +507,8 @@ export class TargetExecutor implements StateBehavior {
     this.delayReady = false;
     this.executionDone = false;
     this.executionSuccess = false;
+    this.shouldWander = false;
+    this.wanderDone = false;
     this.planPath = null;
     this.planningOutcome = 'pending';
 
@@ -700,10 +746,12 @@ export class TargetExecutor implements StateBehavior {
       logInfo(
         `Collector: will retry target ${this.sequenceIndex + 1} (${resolution.nextRetryCount} retries so far)`
       );
+      this.shouldWander = true;
       this.delayUntil = resolution.delayUntil;
       return;
     }
 
+    this.shouldWander = false;
     logInfo(`Collector: target ${this.sequenceIndex + 1} failed after ${MAX_RETRIES} attempts, moving to next target`);
     this.safeChat(`target failed after ${MAX_RETRIES} attempts, moving on`);
     this.targetRetryCount.delete(this.sequenceIndex);
@@ -733,6 +781,33 @@ export class TargetExecutor implements StateBehavior {
     if (isDelayReady(Date.now(), this.restartDelayUntil)) {
       this.restartPending = false;
       this.restartReady = true;
+    }
+  }
+
+  beginWander(): void {
+    this.wanderDone = false;
+    logInfo(`Collector: wandering ${WANDER_DISTANCE} blocks before retry`);
+    this.safeChat(`wandering ${WANDER_DISTANCE} blocks before retry`);
+    this.wanderBehavior = new BehaviorWander(this.bot, WANDER_DISTANCE);
+    this.wanderBehavior.onStateEntered();
+  }
+
+  updateWander(): void {
+    if (this.wanderDone) return;
+    if (this.wanderBehavior) {
+      this.wanderBehavior.update();
+      if (this.wanderBehavior.isFinished) {
+        logInfo('Collector: wander complete');
+        this.safeChat('done wandering');
+        this.wanderDone = true;
+      }
+    }
+  }
+
+  cleanupWander(): void {
+    if (this.wanderBehavior) {
+      this.wanderBehavior.onStateExited();
+      this.wanderBehavior = null;
     }
   }
 

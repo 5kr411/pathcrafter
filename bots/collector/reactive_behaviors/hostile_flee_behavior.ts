@@ -12,7 +12,7 @@ const HOSTILE_FLEE_TRIGGER_RADIUS = 16;
 const HOSTILE_FLEE_REACQUIRE_RADIUS = 24;
 const HOSTILE_FLEE_SAFE_RADIUS = 24;
 const FLEE_DISTANCE = 24;
-const GOAL_TOLERANCE = 2;
+const GOAL_CHANGE_THRESHOLD = 2;
 const GOAL_REFRESH_MS = 750;
 
 interface Vec3Like {
@@ -128,7 +128,7 @@ export const hostileFleeBehavior: ReactiveBehavior = {
 
     const setGoal = (target: Vec3): void => {
       try {
-        const goal = new goals.GoalNear(target.x, target.y, target.z, GOAL_TOLERANCE);
+        const goal = new goals.GoalXZ(target.x, target.z);
         pathfinder.setGoal(goal);
         lastGoal = target;
         lastGoalTime = Date.now();
@@ -145,7 +145,7 @@ export const hostileFleeBehavior: ReactiveBehavior = {
       }
 
       const target = computeFleeTarget(botPos, threatPos, FLEE_DISTANCE);
-      if (!force && lastGoal && getDistance(lastGoal, target) < GOAL_TOLERANCE) {
+      if (!force && lastGoal && getDistance(lastGoal, target) < GOAL_CHANGE_THRESHOLD) {
         return;
       }
       setGoal(target);
