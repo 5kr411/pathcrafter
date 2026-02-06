@@ -11,6 +11,7 @@ import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgra
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
 import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
 import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
+import { inventoryManagementBehavior, setInventoryManagementConfig } from './collector/reactive_behaviors/inventory_management_behavior';
 import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
@@ -89,6 +90,7 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(foodCollectionBehavior);
   reactiveBehaviorRegistry.register(foodEatingBehavior);
   reactiveBehaviorRegistry.register(foodSmeltingBehavior);
+  reactiveBehaviorRegistry.register(inventoryManagementBehavior);
 
   const controlStack = new CollectorControlStack(
     bot,
@@ -106,6 +108,10 @@ bot.once('spawn', () => {
   );
   controlStack.start();
   const executor = controlStack.targetLayer;
+
+  setInventoryManagementConfig({
+    getTargets: () => executor.getTargets()
+  });
 
   bot.on('death', () => {
     logger.info('Collector: bot died, resetting and retrying all targets');

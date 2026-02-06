@@ -13,6 +13,7 @@ const minecraftData = require('minecraft-data');
 const EATING_SUCCESS_COOLDOWN_MS = 3000;
 const EATING_FAILURE_BASE_COOLDOWN_MS = 15000;
 const EATING_FAILURE_MAX_COOLDOWN_MS = 60000;
+const EAT_HUNGER_THRESHOLD = 14;
 
 let lastEatAttempt = 0;
 let consecutiveEatFailures = 0;
@@ -211,7 +212,16 @@ function shouldEat(bot: Bot): boolean {
     lastFailureHunger = null;
   }
 
-  if (isFullHunger(bot)) {
+  const hunger = getBotFood(bot);
+
+  if (hunger >= 20) {
+    return false;
+  }
+
+  // Only eat when hunger is meaningfully low, not on every trivial
+  // depletion from walking around. This prevents eating from constantly
+  // preempting lower-priority behaviors like food collection.
+  if (hunger > EAT_HUNGER_THRESHOLD && isFullHealth(bot)) {
     return false;
   }
 

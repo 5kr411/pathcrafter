@@ -418,7 +418,6 @@ export class BehaviorSmartMoveTo {
 
     const executionContext = this.targets.executionContext as ExecutionContext | undefined;
     if (!executionContext || !executionContext.durabilityThreshold) {
-      logger.debug(`BehaviorSmartMoveTo: durability check skipped - executionContext=${!!executionContext}, threshold=${executionContext?.durabilityThreshold}`);
       return;
     }
 

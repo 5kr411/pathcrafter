@@ -14,6 +14,7 @@ const HOSTILE_FLEE_SAFE_RADIUS = 24;
 const FLEE_DISTANCE = 24;
 const GOAL_CHANGE_THRESHOLD = 2;
 const GOAL_REFRESH_MS = 750;
+export const FLEE_MEMORY_MS = 5000;
 
 interface Vec3Like {
   x: number;
@@ -114,6 +115,9 @@ export const hostileFleeBehavior: ReactiveBehavior = {
     let active = false;
     let startAnnounced = false;
     let threatLabel = 'hostile mob';
+    let lastKnownThreatPos: Vec3Like | null = null;
+    let lastThreatSeenTime = 0;
+    let memoryLogged = false;
 
     const getThreat = (): any | null => {
       const creeper = findClosestCreeper(bot, HOSTILE_FLEE_REACQUIRE_RADIUS);
@@ -137,10 +141,9 @@ export const hostileFleeBehavior: ReactiveBehavior = {
       }
     };
 
-    const updateGoal = (threat: any, force: boolean): void => {
+    const updateGoal = (threatPos: Vec3Like, force: boolean): void => {
       const botPos = bot?.entity?.position as Vec3Like | undefined;
-      const threatPos = threat?.position as Vec3Like | undefined;
-      if (!botPos || !threatPos) {
+      if (!botPos) {
         return;
       }
 
@@ -168,6 +171,9 @@ export const hostileFleeBehavior: ReactiveBehavior = {
         finished = false;
         lastGoal = null;
         lastGoalTime = 0;
+        lastKnownThreatPos = null;
+        lastThreatSeenTime = 0;
+        memoryLogged = false;
 
         const threat = getThreat();
         if (!threat) {
@@ -175,13 +181,15 @@ export const hostileFleeBehavior: ReactiveBehavior = {
           return;
         }
         threatLabel = String(threat.displayName || threat.name || 'hostile mob');
+        lastKnownThreatPos = { x: threat.position.x, y: threat.position.y, z: threat.position.z };
+        lastThreatSeenTime = Date.now();
         if (!startAnnounced && sendChat) {
           try {
             sendChat(`fleeing ${threatLabel}`);
           } catch (_) {}
           startAnnounced = true;
         }
-        updateGoal(threat, true);
+        updateGoal(threat.position, true);
       },
       update: () => {
         if (finished || !active) {
@@ -193,28 +201,41 @@ export const hostileFleeBehavior: ReactiveBehavior = {
           return;
         }
 
-        const threat = getThreat();
-        if (!threat) {
-          finish(isLowHealth(bot) ? 'hostile lost' : 'health recovered');
-          return;
-        }
-
         const botPos = bot?.entity?.position as Vec3Like | undefined;
-        const threatPos = threat?.position as Vec3Like | undefined;
-        if (!botPos || !threatPos) {
+        if (!botPos) {
           finish('missing positions');
           return;
         }
 
-        const distance = getDistance(botPos, threatPos);
+        const now = Date.now();
+        const threat = getThreat();
+
+        let currentThreatPos: Vec3Like;
+
+        if (threat) {
+          currentThreatPos = threat.position;
+          lastKnownThreatPos = { x: threat.position.x, y: threat.position.y, z: threat.position.z };
+          lastThreatSeenTime = now;
+          memoryLogged = false;
+        } else if (lastKnownThreatPos && now - lastThreatSeenTime < FLEE_MEMORY_MS) {
+          currentThreatPos = lastKnownThreatPos;
+          if (!memoryLogged) {
+            logger.debug('HostileFlee: LOS lost, continuing flee from last known position');
+            memoryLogged = true;
+          }
+        } else {
+          finish(isLowHealth(bot) ? 'hostile lost' : 'health recovered');
+          return;
+        }
+
+        const distance = getDistance(botPos, currentThreatPos);
         if (distance >= HOSTILE_FLEE_SAFE_RADIUS) {
           finish('safe distance reached');
           return;
         }
 
-        const now = Date.now();
         if (!lastGoal || now - lastGoalTime >= GOAL_REFRESH_MS) {
-          updateGoal(threat, false);
+          updateGoal(currentThreatPos, false);
         }
       },
       isFinished: () => finished,

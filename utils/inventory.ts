@@ -108,6 +108,30 @@ export function getInventoryObject(bot: any): InventoryObject {
   return out;
 }
 
+// Main inventory slot range (excludes crafting area 0-4, equipment 5-8, and offhand 45)
+const MAIN_INVENTORY_START = 9;
+const MAIN_INVENTORY_END = 44;
+
+/**
+ * Counts empty slots in the bot's main inventory (slots 9-44, excludes equipment).
+ */
+export function getEmptySlotCount(bot: any): number {
+  try {
+    const slots = bot?.inventory?.slots;
+    if (!Array.isArray(slots)) return 0;
+
+    let count = 0;
+    for (let i = MAIN_INVENTORY_START; i <= MAIN_INVENTORY_END; i++) {
+      if (i < slots.length && slots[i] == null) {
+        count++;
+      }
+    }
+    return count;
+  } catch (_) {
+    return 0;
+  }
+}
+
 /**
  * Gets the total count of a specific item in the bot's inventory and equipment slots
  * 
