@@ -28,7 +28,7 @@ import {
   getFoodItemsFromInventory,
   hasHuntingWeapon,
   getBestHuntingWeapon,
-  HUNTABLE_ANIMALS
+  HUNTABLE_LAND_ANIMALS
 } from '../utils/foodConfig';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import logger from '../utils/logger';
@@ -83,7 +83,7 @@ function showFoodStatus(): void {
   }
   
   // Check for nearby resources
-  const animalNames = new Set(HUNTABLE_ANIMALS.map(a => a.entity));
+  const animalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
   const nearbyAnimals: string[] = [];
   
   for (const entity of Object.values(bot.entities || {}) as any[]) {

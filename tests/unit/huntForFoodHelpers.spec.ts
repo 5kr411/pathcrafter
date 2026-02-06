@@ -7,6 +7,7 @@ import {
   isActualDroppedItem,
   isDropCollectTimedOut
 } from '../../behaviors/huntForFoodHelpers';
+import { HUNTABLE_WATER_ANIMALS } from '../../utils/foodConfig';
 
 function makePos(x: number, y: number, z: number) {
   return {
@@ -161,6 +162,33 @@ describe('huntForFoodHelpers', () => {
     it('detects swords in inventory', () => {
       expect(hasSwordInInventory({ stone_sword: 1 })).toBe(true);
       expect(hasSwordInInventory({ iron_pickaxe: 1 })).toBe(false);
+    });
+  });
+
+  describe('water animals (empty while pathfinder lacks water support)', () => {
+    it('HUNTABLE_WATER_ANIMALS is currently empty', () => {
+      expect(HUNTABLE_WATER_ANIMALS).toEqual([]);
+    });
+
+    it('findClosestHuntableAnimal returns null with empty water list', () => {
+      const bot = {
+        entity: { position: makePos(0, 0, 0) },
+        entities: {
+          a: { name: 'salmon', position: makePos(5, 0, 0), health: 6 }
+        }
+      };
+
+      const result = findClosestHuntableAnimal(bot as any, undefined, HUNTABLE_WATER_ANIMALS);
+      expect(result).toBeNull();
+    });
+
+    it('getRawMeatDrop returns null with empty water list', () => {
+      expect(getRawMeatDrop('salmon', HUNTABLE_WATER_ANIMALS)).toBeNull();
+    });
+
+    it('countRawMeatInInventory returns empty with empty water list', () => {
+      const inventory = { salmon: 3, cod: 1 };
+      expect(countRawMeatInInventory(inventory, HUNTABLE_WATER_ANIMALS)).toEqual([]);
     });
   });
 });

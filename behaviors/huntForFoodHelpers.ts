@@ -1,5 +1,5 @@
 import { DroppedItemInfo, getDroppedItemInfo, MinecraftDataLike } from '../utils/droppedItems';
-import { HUNTABLE_ANIMALS } from '../utils/foodConfig';
+import { HUNTABLE_LAND_ANIMALS } from '../utils/foodConfig';
 
 export interface Vec3Like {
   x: number;
@@ -21,7 +21,7 @@ export interface HuntableAnimal {
 export function findClosestHuntableAnimal(
   bot: BotLike,
   filter?: string[],
-  animals: HuntableAnimal[] = HUNTABLE_ANIMALS as HuntableAnimal[]
+  animals: HuntableAnimal[] = HUNTABLE_LAND_ANIMALS as HuntableAnimal[]
 ): { entity: any; animalType: string } | null {
   if (!bot.entities || !bot.entity?.position) return null;
 
@@ -57,7 +57,7 @@ export function findClosestHuntableAnimal(
 
 export function getRawMeatDrop(
   animalType: string,
-  animals: HuntableAnimal[] = HUNTABLE_ANIMALS as HuntableAnimal[]
+  animals: HuntableAnimal[] = HUNTABLE_LAND_ANIMALS as HuntableAnimal[]
 ): string | null {
   const animal = animals.find((a) => a.entity === animalType);
   return animal?.drops[0] || null;
@@ -65,7 +65,7 @@ export function getRawMeatDrop(
 
 export function countRawMeatInInventory(
   inventory: Record<string, number>,
-  animals: HuntableAnimal[] = HUNTABLE_ANIMALS as HuntableAnimal[]
+  animals: HuntableAnimal[] = HUNTABLE_LAND_ANIMALS as HuntableAnimal[]
 ): { rawItem: string; count: number }[] {
   const rawMeats: { rawItem: string; count: number }[] = [];
 

@@ -1,8 +1,31 @@
 import createGetFoodState from '../../behaviors/behaviorGetFood';
 import { createSimulatedBot } from '../helpers/reactiveTestHarness';
-import { HUNTABLE_ANIMALS } from '../../utils/foodConfig';
+import { HUNTABLE_LAND_ANIMALS } from '../../utils/foodConfig';
 
 jest.useFakeTimers();
+
+jest.mock('../../behaviors/behaviorHuntForFish', () => ({
+  __esModule: true,
+  default: jest.fn().mockImplementation((_bot: any, targets: any) => {
+    let finished = false;
+    let foodGained = 0;
+    return {
+      onStateEntered: jest.fn(),
+      update: jest.fn(() => {
+        if (!finished) {
+          finished = true;
+          const mockGain = (global as any).__mockFishFoodGain ?? 0;
+          foodGained = mockGain;
+          if (targets.onComplete) {
+            targets.onComplete(mockGain > 0, mockGain);
+          }
+        }
+      }),
+      isFinished: () => finished,
+      getFoodGained: () => foodGained
+    };
+  })
+}));
 
 jest.mock('../../behaviors/behaviorHuntForFood', () => {
   return jest.fn().mockImplementation((_bot: any, targets: any) => {
@@ -81,6 +104,7 @@ jest.mock('../../behaviors/behaviorCollectMelon', () => ({
 }));
 
 const createHuntForFoodState = require('../../behaviors/behaviorHuntForFood');
+const createHuntForFishState = require('../../behaviors/behaviorHuntForFish').default;
 
 async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
@@ -97,7 +121,7 @@ function createBotWithAnimals(animalCount: number = 1): any {
   const entities: Record<string, any> = {};
   for (let i = 0; i < animalCount; i++) {
     entities[`entity_${i}`] = {
-      name: HUNTABLE_ANIMALS[i % HUNTABLE_ANIMALS.length].entity,
+      name: HUNTABLE_LAND_ANIMALS[i % HUNTABLE_LAND_ANIMALS.length].entity,
       position: { x: 10 + i, y: 64, z: 10 }
     };
   }
@@ -122,10 +146,12 @@ describe('behaviorGetFood', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (global as any).__mockHuntFoodGain = 4;
+    (global as any).__mockFishFoodGain = 0;
   });
 
   afterEach(() => {
     delete (global as any).__mockHuntFoodGain;
+    delete (global as any).__mockFishFoodGain;
     jest.clearAllTimers();
   });
 
@@ -289,6 +315,32 @@ describe('behaviorGetFood', () => {
 
       expect(stateMachine.isFinished()).toBe(true);
       expect(stateMachine.wasSuccessful()).toBe(true);
+    });
+  });
+
+  describe('selectNextSource - fish source', () => {
+    it('fish hunting gains nothing when HUNTABLE_WATER_ANIMALS is empty', async () => {
+      const bot = createBotWithoutAnimals();
+
+      (global as any).__mockHuntFoodGain = 0;
+      (global as any).__mockFishFoodGain = 0;
+
+      const stateMachine = createGetFoodState(bot, {
+        targetFoodPoints: 40
+      });
+
+      stateMachine.onStateEntered();
+      await flushMicrotasks();
+
+      for (let i = 0; i < 30; i++) {
+        await advanceTimersAndFlush(500);
+        stateMachine.update();
+        await flushMicrotasks();
+      }
+
+      // Fish source may get an initial attempt but gains nothing with an empty list.
+      // Verify it never retries beyond the first attempt.
+      expect(createHuntForFishState.mock.calls.length).toBeLessThanOrEqual(1);
     });
   });
 });

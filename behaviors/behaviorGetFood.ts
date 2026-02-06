@@ -2,9 +2,11 @@
  * BehaviorGetFood - Orchestrator for food collection
  * 
  * Tries multiple food sources in sequence with fallback:
- * 1. Hunt animals
+ * 1. Hunt land animals
  * 2. Collect hay bales for bread
- * 3. Mine melon blocks for melon slices
+ * 3. Collect berries
+ * 4. Mine melon blocks for melon slices
+ * 5. Hunt water animals (fish) - last resort
  * 
  * Wraps the decomposed food collection behaviors.
  */
@@ -20,11 +22,13 @@ import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject } from '../utils/inventory';
 import {
   calculateFoodPointsInInventory,
-  HUNTABLE_ANIMALS,
+  HUNTABLE_LAND_ANIMALS,
+  HUNTABLE_WATER_ANIMALS,
   FoodCollectionConfig,
   DEFAULT_FOOD_CONFIG
 } from '../utils/foodConfig';
 import createHuntForFoodState from './behaviorHuntForFood';
+import createHuntForFishState from './behaviorHuntForFish';
 import createCollectBreadState, { BREAD_HUNGER_POINTS } from './behaviorCollectBread';
 import createCollectMelonState, { MELON_SLICE_HUNGER_POINTS } from './behaviorCollectMelon';
 import createCollectBerriesState, { BERRY_HUNGER_POINTS } from './behaviorCollectBerries';
@@ -49,8 +53,8 @@ interface GetFoodTargets {
   worldSnapshot?: any;
 }
 
-type FoodSource = 'hunt' | 'bread' | 'berries' | 'melon';
-type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'berries' | 'melon' | 'complete' | 'failed';
+type FoodSource = 'hunt' | 'bread' | 'berries' | 'melon' | 'fish';
+type Phase = 'init' | 'selecting' | 'hunt' | 'bread' | 'berries' | 'melon' | 'fish' | 'complete' | 'failed';
 
 interface FoodSourceConfig {
   priority: number;
@@ -60,11 +64,14 @@ interface FoodSourceConfig {
   entityBased: boolean;
 }
 
+export const COOKED_FISH_HUNGER_POINTS = 6;
+
 const FOOD_SOURCE_CONFIGS: Record<FoodSource, FoodSourceConfig> = {
   hunt: { priority: 1, maxAttempts: 10, maxAttemptsWithoutGain: 3, blockTypes: [], entityBased: true },
   bread: { priority: 2, maxAttempts: 5, blockTypes: ['hay_block'], entityBased: false },
   berries: { priority: 3, maxAttempts: 5, blockTypes: ['sweet_berry_bush', 'cave_vines', 'cave_vines_plant'], entityBased: false },
   melon: { priority: 4, maxAttempts: 5, blockTypes: ['melon'], entityBased: false },
+  fish: { priority: 5, maxAttempts: 5, maxAttemptsWithoutGain: 2, blockTypes: [], entityBased: true },
 };
 
 class FoodSourceTracker {
@@ -160,6 +167,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const collectBread = new BehaviorIdle();
   const collectBerries = new BehaviorIdle();
   const collectMelon = new BehaviorIdle();
+  const huntingFish = new BehaviorIdle();
   const exit = new BehaviorIdle();
   
   addStateLogging(enter, 'GetFood:Enter', { logEnter: true });
@@ -168,6 +176,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   addStateLogging(collectBread, 'GetFood:Bread', { logEnter: true });
   addStateLogging(collectBerries, 'GetFood:Berries', { logEnter: true });
   addStateLogging(collectMelon, 'GetFood:Melon', { logEnter: true });
+  addStateLogging(huntingFish, 'GetFood:Fish', { logEnter: true });
   
   function getCurrentFoodPoints(): number {
     const inventory = getInventoryObject(bot);
@@ -176,7 +185,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   
   function checkAnimalsNearbyOnce(): boolean {
     if (!bot.entities) return false;
-    const animalNames = new Set(HUNTABLE_ANIMALS.map(a => a.entity));
+    const animalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
     
     for (const entity of Object.values(bot.entities)) {
       if (!entity || !entity.position) continue;
@@ -193,7 +202,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       logger.debug('GetFood: bot.entities is null/undefined');
       return false;
     }
-    const animalNames = new Set(HUNTABLE_ANIMALS.map(a => a.entity));
+    const animalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
     
     const entityNames: string[] = [];
     for (const entity of Object.values(bot.entities)) {
@@ -240,9 +249,28 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     return false;
   }
   
+  function hasFishNearby(): boolean {
+    if (!bot.entities) return false;
+    const fishNames = new Set(HUNTABLE_WATER_ANIMALS.map(a => a.entity));
+
+    for (const entity of Object.values(bot.entities)) {
+      if (!entity || !entity.position) continue;
+      const name = (entity.name || '').toLowerCase();
+      if (fishNames.has(name)) {
+        logger.debug(`GetFood: found huntable fish: ${name}`);
+        return true;
+      }
+    }
+    return false;
+  }
+
   function hasSourceNearby(source: FoodSource): boolean {
     const sourceConfig = FOOD_SOURCE_CONFIGS[source];
     
+    if (source === 'fish') {
+      return hasFishNearby();
+    }
+
     if (sourceConfig.entityBased) {
       return hasAnimalsNearby();
     }
@@ -257,7 +285,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   function selectNextSource(): FoodSource | null {
     logger.debug(`GetFood: selectNextSource - tracker state: ${tracker.getDebugState()}`);
     
-    const sources: FoodSource[] = ['hunt', 'bread', 'berries', 'melon'];
+    const sources: FoodSource[] = ['hunt', 'bread', 'berries', 'melon', 'fish'];
     
     for (const source of sources) {
       const nearby = hasSourceNearby(source);
@@ -286,6 +314,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
         return Math.ceil(neededPoints / BERRY_HUNGER_POINTS);
       case 'melon':
         return Math.ceil(neededPoints / MELON_SLICE_HUNGER_POINTS);
+      case 'fish':
+        return Math.ceil(neededPoints / COOKED_FISH_HUNGER_POINTS);
       default:
         return 1;
     }
@@ -425,6 +455,35 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     }
   });
   
+  const selectToFish = new StateTransition({
+    parent: selectSource,
+    child: huntingFish,
+    name: 'GetFood: select -> fish',
+    shouldTransition: () => phase === 'fish',
+    onTransition: () => {
+      const attempts = tracker.incrementAttempts('fish');
+      const maxAttempts = FOOD_SOURCE_CONFIGS.fish.maxAttempts;
+      const count = calculateNeededCount('fish');
+      logger.info(`GetFood: trying fish hunting (attempt ${attempts}/${maxAttempts}), need ~${count} fish`);
+
+      currentSubMachine = createHuntForFishState(bot, {
+        targetFoodPoints: config.targetFoodPoints,
+        onComplete: (success: boolean, foodGained: number) => {
+          logger.info(`GetFood: fish hunting ${success ? 'succeeded' : 'failed'}, gained ${foodGained} points`);
+          tracker.setGainedFood('fish', foodGained > 0);
+
+          currentSubMachine = null;
+
+          if (getCurrentFoodPoints() >= config.targetFoodPoints) {
+            phase = 'complete';
+          } else {
+            phase = 'selecting';
+          }
+        }
+      });
+    }
+  });
+
   const selectToExit = new StateTransition({
     parent: selectSource,
     child: exit,
@@ -542,6 +601,35 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       return finished && (phase === 'complete' || phase === 'failed');
     }
   });
+
+  const fishToSelect = new StateTransition({
+    parent: huntingFish,
+    child: selectSource,
+    name: 'GetFood: fish -> select',
+    shouldTransition: () => {
+      if (!currentSubMachine) return phase === 'selecting';
+      const finished = typeof currentSubMachine.isFinished === 'function'
+        ? currentSubMachine.isFinished()
+        : false;
+      return finished && phase === 'selecting';
+    },
+    onTransition: () => {
+      logger.info('GetFood: fish hunt complete, checking if more food needed');
+    }
+  });
+
+  const fishToExit = new StateTransition({
+    parent: huntingFish,
+    child: exit,
+    name: 'GetFood: fish -> exit',
+    shouldTransition: () => {
+      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
+      const finished = typeof currentSubMachine.isFinished === 'function'
+        ? currentSubMachine.isFinished()
+        : false;
+      return finished && (phase === 'complete' || phase === 'failed');
+    }
+  });
   
   // Hook into hunting state to start and tick the sub-machine
   const huntingAsAny = huntingFood as any;
@@ -606,6 +694,22 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       currentSubMachine.update();
     }
   };
+
+  // Hook into fish state to start and tick the sub-machine
+  const fishAsAny = huntingFish as any;
+  const originalFishEntered = fishAsAny.onStateEntered;
+  fishAsAny.onStateEntered = function(this: any) {
+    if (originalFishEntered) originalFishEntered.call(this);
+    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
+      logger.info('GetFood: starting fish hunt sub-machine');
+      currentSubMachine.onStateEntered();
+    }
+  };
+  fishAsAny.update = function() {
+    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
+      currentSubMachine.update();
+    }
+  };
   
   const transitions = [
     enterToSelect,
@@ -613,6 +717,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     selectToBread,
     selectToBerries,
     selectToMelon,
+    selectToFish,
     selectToExit,
     huntToSelect,
     huntToExit,
@@ -621,7 +726,9 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     berriesToSelect,
     berriesToExit,
     melonToSelect,
-    melonToExit
+    melonToExit,
+    fishToSelect,
+    fishToExit
   ];
   
   const stateMachine = new NestedStateMachine(transitions, enter, exit);

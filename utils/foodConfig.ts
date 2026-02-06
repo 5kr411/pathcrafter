@@ -118,14 +118,31 @@ export const FOOD_ITEMS: Record<string, FoodItem> = {
 };
 
 /**
- * Huntable animals and their food drops
+ * Huntable land animals and their food drops
  */
-export const HUNTABLE_ANIMALS: HuntableAnimal[] = [
+export const HUNTABLE_LAND_ANIMALS: HuntableAnimal[] = [
   { entity: 'cow', drops: ['beef'], avgDropCount: 2 },
   { entity: 'pig', drops: ['porkchop'], avgDropCount: 2 },
   { entity: 'sheep', drops: ['mutton'], avgDropCount: 2 },
   { entity: 'chicken', drops: ['chicken'], avgDropCount: 1 },
   { entity: 'rabbit', drops: ['rabbit'], avgDropCount: 1 }
+];
+
+/**
+ * Huntable water animals and their food drops
+ */
+export const HUNTABLE_WATER_ANIMALS: HuntableAnimal[] = [
+  // disabled until pathfinder supports water navigation
+  // { entity: 'salmon', drops: ['salmon'], avgDropCount: 1 },
+  // { entity: 'cod', drops: ['cod'], avgDropCount: 1 }
+];
+
+/**
+ * All huntable animals (land + water)
+ */
+export const ALL_HUNTABLE_ANIMALS: HuntableAnimal[] = [
+  ...HUNTABLE_LAND_ANIMALS,
+  ...HUNTABLE_WATER_ANIMALS
 ];
 
 /**
@@ -300,8 +317,8 @@ export function selectBestFoodTarget(
     return 'bread';
   }
   
-  // Check for huntable animals (prefer larger drops)
-  for (const animal of HUNTABLE_ANIMALS) {
+  // Check for huntable land animals (prefer larger drops)
+  for (const animal of HUNTABLE_LAND_ANIMALS) {
     if (availableEntities.has(animal.entity)) {
       const cookedDrop = getCookedVariant(animal.drops[0]);
       if (cookedDrop) {
@@ -331,6 +348,6 @@ export function selectBestFoodTarget(
  * Gets the entity name that drops a specific raw food item
  */
 export function getEntityForFoodDrop(rawFoodItem: string): string | null {
-  const animal = HUNTABLE_ANIMALS.find(a => a.drops.includes(rawFoodItem));
+  const animal = ALL_HUNTABLE_ANIMALS.find(a => a.drops.includes(rawFoodItem));
   return animal?.entity || null;
 }

@@ -1,5 +1,6 @@
 import createHuntForFoodState from '../../behaviors/behaviorHuntForFood';
 import { createSimulatedBot } from '../helpers/reactiveTestHarness';
+import { HUNTABLE_LAND_ANIMALS } from '../../utils/foodConfig';
 
 jest.mock('../../behavior_generator/buildMachine', () => ({
   buildStateMachineForPath: jest.fn()
@@ -45,13 +46,54 @@ async function flushMicrotasks(): Promise<void> {
   await Promise.resolve();
 }
 
+function makePos(x: number, y: number, z: number) {
+  return {
+    x, y, z,
+    clone() { return makePos(x, y, z); },
+    distanceTo(other: any) {
+      const dx = x - (other.x ?? 0);
+      const dy = y - (other.y ?? 0);
+      const dz = z - (other.z ?? 0);
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+  };
+}
+
+function createBotWithAnimal(inventoryOpts?: { slots?: any[]; items?: any[] }): any {
+  const animalName = HUNTABLE_LAND_ANIMALS[0].entity;
+  const bot = createSimulatedBot({
+    position: { x: 0, y: 64, z: 0 },
+    entities: {
+      animal_0: {
+        name: animalName,
+        position: makePos(5, 64, 5),
+        health: 10
+      }
+    },
+    inventory: inventoryOpts ?? { slots: new Array(46).fill(null) }
+  });
+
+  if (bot.entity?.position && !bot.entity.position.distanceTo) {
+    const pos = bot.entity.position;
+    const px = pos.x, py = pos.y, pz = pos.z;
+    pos.distanceTo = (other: any) => {
+      const dx = px - (other.x ?? 0);
+      const dy = py - (other.y ?? 0);
+      const dz = pz - (other.z ?? 0);
+      return Math.sqrt(dx * dx + dy * dy + dz * dz);
+    };
+  }
+
+  return bot;
+}
+
 describe('behaviorHuntForFood - wooden sword prep', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
   it('attempts to craft wooden_sword when no sword is present', async () => {
-    const bot = createSimulatedBot({ inventory: { slots: new Array(46).fill(null) } });
+    const bot = createBotWithAnimal();
 
     planner.mockImplementation(() => ({}));
     enumerateActionPathsGenerator.mockImplementation(function* () {
@@ -92,11 +134,9 @@ describe('behaviorHuntForFood - wooden sword prep', () => {
   });
 
   it('skips weapon planning when a sword is already in inventory', async () => {
-    const bot = createSimulatedBot({
-      inventory: {
-        slots: new Array(46).fill(null),
-        items: [{ name: 'stone_sword', count: 1 }]
-      }
+    const bot = createBotWithAnimal({
+      slots: new Array(46).fill(null),
+      items: [{ name: 'stone_sword', count: 1 }]
     });
 
     const stateMachine = createHuntForFoodState(bot as any, { targetFoodPoints: 10 });
@@ -113,7 +153,7 @@ describe('behaviorHuntForFood - wooden sword prep', () => {
   });
 
   it('continues without weapon when no viable path is found', async () => {
-    const bot = createSimulatedBot({ inventory: { slots: new Array(46).fill(null) } });
+    const bot = createBotWithAnimal();
 
     planner.mockImplementation(() => ({}));
     enumerateActionPathsGenerator.mockImplementation(function* () {
@@ -136,6 +176,25 @@ describe('behaviorHuntForFood - wooden sword prep', () => {
     }
 
     expect(buildStateMachineForPath).not.toHaveBeenCalled();
+  });
+
+  it('does not attempt weapon crafting when no animal is found', async () => {
+    const bot = createSimulatedBot({
+      position: { x: 0, y: 64, z: 0 },
+      entities: {},
+      inventory: { slots: new Array(46).fill(null) }
+    });
+
+    const stateMachine = createHuntForFoodState(bot as any, { targetFoodPoints: 10 });
+    stateMachine.onStateEntered();
+
+    for (let i = 0; i < 6; i += 1) {
+      stateMachine.update();
+      await flushMicrotasks();
+    }
+
+    expect(planner).not.toHaveBeenCalled();
+    expect(captureAdaptiveSnapshot).not.toHaveBeenCalled();
     expect(stateMachine.isFinished()).toBe(true);
   });
 });
