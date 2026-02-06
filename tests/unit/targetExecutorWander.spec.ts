@@ -10,6 +10,18 @@ jest.mock('mineflayer-pathfinder', () => ({
         this.x = x;
         this.z = z;
       }
+    },
+    GoalNear: class GoalNear {
+      x: number;
+      y: number;
+      z: number;
+      range: number;
+      constructor(x: number, y: number, z: number, range: number) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.range = range;
+      }
     }
   }
 }));
@@ -81,7 +93,7 @@ describe('TargetExecutor wander on retry', () => {
     expect(targetExecutor['failureHandled']).toBe(true);
   });
 
-  it('beginWander creates a wander behavior and starts it', () => {
+  it('beginWander creates a wander behavior with 2x max snapshot radius', () => {
     const targets = [{ item: 'diamond', count: 5 }];
     targetExecutor.setTargets(targets);
     targetExecutor['running'] = true;
@@ -89,8 +101,9 @@ describe('TargetExecutor wander on retry', () => {
     targetExecutor['beginWander']();
 
     expect(targetExecutor['wanderBehavior']).not.toBeNull();
+    expect(targetExecutor['wanderBehavior']!.distance).toBe(64);
     expect(targetExecutor['wanderDone']).toBe(false);
-    expect(chatMessages.some(msg => msg.includes('wandering'))).toBe(true);
+    expect(chatMessages.some(msg => msg.includes('wandering 64 blocks'))).toBe(true);
   });
 
   it('updateWander sets wanderDone and chats when behavior finishes', () => {

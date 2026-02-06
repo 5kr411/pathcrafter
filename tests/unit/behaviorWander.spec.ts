@@ -10,6 +10,18 @@ jest.mock('mineflayer-pathfinder', () => ({
         this.x = x;
         this.z = z;
       }
+    },
+    GoalNear: class GoalNear {
+      x: number;
+      y: number;
+      z: number;
+      range: number;
+      constructor(x: number, y: number, z: number, range: number) {
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.range = range;
+      }
     }
   }
 }));
@@ -23,7 +35,7 @@ describe('BehaviorWander', () => {
     jest.useRealTimers();
   });
 
-  it('sets a pathfinder goal on enter', () => {
+  it('sets a pathfinder GoalNear on enter with a range', () => {
     const bot = createFakeBot({ position: { x: 10, y: 64, z: 20 } });
     const setGoalSpy = jest.fn();
     bot.pathfinder.setGoal = setGoalSpy;
@@ -36,6 +48,7 @@ describe('BehaviorWander', () => {
     expect(goal).toBeDefined();
     expect(typeof goal.x).toBe('number');
     expect(typeof goal.z).toBe('number');
+    expect(goal.range).toBe(16);
   });
 
   it('generates a target at the correct XZ distance from the bot', () => {
@@ -232,5 +245,102 @@ describe('BehaviorWander', () => {
     wander.update();
 
     expect(setGoalSpy).not.toHaveBeenCalled();
+  });
+
+  describe('water avoidance', () => {
+    it('re-rolls when probe direction finds water', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      let rollCount = 0;
+      jest.spyOn(Math, 'random').mockImplementation(() => {
+        rollCount++;
+        return rollCount <= 1 ? 0.0 : 0.5;
+      });
+
+      bot.blockAt = jest.fn((pos: any) => {
+        const dx = pos.x;
+        const dz = pos.z;
+        if (Math.abs(dz) < 1 && dx > 0) {
+          return { type: 9, name: 'water', position: pos, boundingBox: 'block' };
+        }
+        return { type: 1, name: 'stone', position: pos, boundingBox: 'block' };
+      });
+
+      const wander = new BehaviorWander(bot, 100);
+      wander.onStateEntered();
+
+      expect(rollCount).toBeGreaterThan(1);
+      expect(wander.isFinished).toBe(false);
+
+      (Math.random as any).mockRestore();
+    });
+
+    it('accepts water target after 3 failed attempts (island scenario)', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      bot.blockAt = jest.fn((_pos: any) => {
+        return { type: 9, name: 'water', position: _pos, boundingBox: 'block' };
+      });
+
+      const wander = new BehaviorWander(bot, 100);
+      wander.onStateEntered();
+
+      expect(wander.isFinished).toBe(false);
+      expect(bot.pathfinder.setGoal).toHaveBeenCalledTimes(1);
+    });
+
+    it('picks first direction when probe finds land', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      const setGoalSpy = jest.fn();
+      bot.pathfinder.setGoal = setGoalSpy;
+
+      bot.blockAt = jest.fn((_pos: any) => {
+        return { type: 1, name: 'stone', position: _pos, boundingBox: 'block' };
+      });
+
+      const wander = new BehaviorWander(bot, 100);
+      wander.onStateEntered();
+
+      expect(setGoalSpy).toHaveBeenCalledTimes(1);
+    });
+
+    it('steps back from target toward bot to find loaded chunk', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      const probedDistances: number[] = [];
+      bot.blockAt = jest.fn((pos: any) => {
+        const dist = Math.sqrt(pos.x * pos.x + pos.z * pos.z);
+        probedDistances.push(Math.round(dist));
+        if (dist > 50) {
+          return null;
+        }
+        return { type: 1, name: 'stone', position: pos, boundingBox: 'block' };
+      });
+
+      const wander = new BehaviorWander(bot, 100);
+      wander.onStateEntered();
+
+      expect(probedDistances.length).toBeGreaterThan(1);
+      const firstProbe = probedDistances[0];
+      const lastProbe = probedDistances[probedDistances.length - 1];
+      expect(firstProbe).toBeGreaterThan(lastProbe);
+      expect(wander.isFinished).toBe(false);
+    });
+
+    it('accepts direction when all columns are unloaded', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      bot.blockAt = jest.fn(() => null);
+
+      const wander = new BehaviorWander(bot, 100);
+      wander.onStateEntered();
+
+      expect(wander.isFinished).toBe(false);
+      expect(bot.pathfinder.setGoal).toHaveBeenCalledTimes(1);
+    });
   });
 });

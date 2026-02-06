@@ -24,7 +24,6 @@ const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
 const SKIP_DELAY_MS = 1000;
 const RESTART_DELAY_MS = 3000;
-const WANDER_DISTANCE = 128;
 
 export function createToolIssueHandler(options: {
   toolReplacementExecutor?: ToolReplacementExecutor | null;
@@ -784,11 +783,20 @@ export class TargetExecutor implements StateBehavior {
     }
   }
 
+  private getWanderDistance(): number {
+    const radii = this.config.snapshotRadii;
+    const maxRadius = Array.isArray(radii) && radii.length > 0
+      ? Math.max(...radii)
+      : 128;
+    return maxRadius * 2;
+  }
+
   beginWander(): void {
     this.wanderDone = false;
-    logInfo(`Collector: wandering ${WANDER_DISTANCE} blocks before retry`);
-    this.safeChat(`wandering ${WANDER_DISTANCE} blocks before retry`);
-    this.wanderBehavior = new BehaviorWander(this.bot, WANDER_DISTANCE);
+    const distance = this.getWanderDistance();
+    logInfo(`Collector: wandering ${distance} blocks before retry`);
+    this.safeChat(`wandering ${distance} blocks before retry`);
+    this.wanderBehavior = new BehaviorWander(this.bot, distance);
     this.wanderBehavior.onStateEntered();
   }
 
