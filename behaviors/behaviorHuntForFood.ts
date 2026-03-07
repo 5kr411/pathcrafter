@@ -15,9 +15,6 @@ const {
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
-import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
-import { plan as planner, _internals as plannerInternals } from '../planner';
-import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
 import {
   HUNTABLE_LAND_ANIMALS,
   getCookedVariant,
@@ -32,7 +29,6 @@ import {
   hasSwordInInventory,
   isDropCollectTimedOut
 } from './huntForFoodHelpers';
-const minecraftData = require('minecraft-data');
 
 interface Bot {
   version?: string;
@@ -54,13 +50,12 @@ interface HuntForFoodTargets {
 }
 
 type Phase = 'init' | 'hunting' | 'collecting_drops' | 'complete' | 'failed';
-type WeaponPhase = 'init' | 'planning' | 'executing' | 'done' | 'skipped';
+type WeaponPhase = 'init' | 'done' | 'skipped';
 
 const DROP_COLLECT_RADIUS = 8;
 const DROP_COLLECT_TIMEOUT = 10000;
 const DROP_COLLECT_MAX_ATTEMPTS = 10;
-const DROP_PICKUP_WAIT_TIME = 1500;
-const WEAPON_SNAPSHOT_RADII = [32, 64, 96, 128];
+const DROP_PICKUP_WAIT_MS = 1500;
 
 let lastDropLogTime = 0;
 const DROP_LOG_INTERVAL_MS = 2000;
@@ -80,8 +75,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   let attemptedDropIds = new Set<number>();
   let dropAttemptCount = 0;
   let weaponPhase: WeaponPhase = 'init';
-  let weaponPath: any[] | null = null;
-  let weaponStateMachine: any = null;
   
   // Shared targets for drop collection
   const dropTargets: any = {
@@ -195,99 +188,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     return Math.max(pointsGained, rawMeatGained);
   }
 
-  async function tryPlanWeaponWithSnapshot(snapshot: any): Promise<any[] | null> {
-    try {
-      const inventory = getInventoryObject(bot);
-      const inventoryMap = new Map(Object.entries(inventory));
-      const version = bot.version || '1.20.1';
-      const mcData = minecraftData(version);
-
-      const tree = planner(mcData, 'wooden_sword', 1, {
-        inventory: inventoryMap,
-        log: false,
-        pruneWithWorld: !!snapshot,
-        combineSimilarNodes: true,
-        worldSnapshot: snapshot
-      });
-
-      if (!tree) return null;
-
-      const { enumerateActionPathsGenerator } = plannerInternals;
-      const iter = enumerateActionPathsGenerator(tree, { inventory });
-
-      for (const path of iter) {
-        if (path && path.length > 0) {
-          return path;
-        }
-      }
-
-      return null;
-    } catch (err: any) {
-      logger.debug(`HuntForFood: weapon planning error - ${err?.message || err}`);
-      return null;
-    }
-  }
-
-  async function captureWeaponSnapshotWithValidation(): Promise<any> {
-    const inventory = getInventoryObject(bot);
-    const inventoryMap = new Map(Object.entries(inventory));
-    const version = bot.version || '1.20.1';
-    const mcData = minecraftData(version);
-
-    const validator = async (snapshot: any): Promise<boolean> => {
-      try {
-        const tree = planner(mcData, 'wooden_sword', 1, {
-          inventory: new Map(inventoryMap),
-          log: false,
-          pruneWithWorld: true,
-          combineSimilarNodes: true,
-          worldSnapshot: snapshot
-        });
-
-        if (!tree) {
-          logger.debug(`HuntForFood: weapon validator - no tree at radius ${snapshot.radius}`);
-          return false;
-        }
-
-        const { enumerateActionPathsGenerator } = plannerInternals;
-        const iter = enumerateActionPathsGenerator(tree, { inventory });
-
-        for (const path of iter) {
-          if (path && path.length > 0) {
-            logger.debug(`HuntForFood: weapon validator - found valid path at radius ${snapshot.radius}`);
-            return true;
-          }
-        }
-
-        logger.debug(`HuntForFood: weapon validator - no paths at radius ${snapshot.radius}`);
-        return false;
-      } catch (err: any) {
-        logger.debug(`HuntForFood: weapon validator error - ${err?.message || err}`);
-        return false;
-      }
-    };
-
-    try {
-      logger.info(`HuntForFood: capturing weapon snapshot with radii ${JSON.stringify(WEAPON_SNAPSHOT_RADII)}`);
-      const result = await captureAdaptiveSnapshot(bot, {
-        radii: WEAPON_SNAPSHOT_RADII,
-        validator,
-        onProgress: (msg: string) => logger.debug(`HuntForFood: ${msg}`)
-      });
-      logger.info(`HuntForFood: weapon snapshot captured at radius ${result.radiusUsed} after ${result.attemptsCount} attempts`);
-      return result.snapshot;
-    } catch (err: any) {
-      logger.info(`HuntForFood: weapon snapshot capture failed - ${err?.message || err}`);
-      return null;
-    }
-  }
-
-  async function generateWeaponPlan(): Promise<any[] | null> {
-    const snapshot = await captureWeaponSnapshotWithValidation();
-    if (!snapshot) return null;
-    return tryPlanWeaponWithSnapshot(snapshot);
-  }
-  
   // Transitions
   
   const enterToFindAnimal = new StateTransition({
@@ -298,8 +198,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     onTransition: () => {
       phase = 'init';
       weaponPhase = 'init';
-      weaponPath = null;
-      weaponStateMachine = null;
       startFoodPoints = calculateCurrentFoodPoints();
       captureStartRawMeatCounts();
       logger.info(`HuntForFood: starting, current food points = ${startFoodPoints}`);
@@ -345,13 +243,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     parent: prepareWeapon,
     child: huntStateMachine,
     name: 'HuntForFood: prepare weapon -> hunting',
-    shouldTransition: () => {
-      if (weaponPhase === 'skipped' || weaponPhase === 'done') return true;
-      if (weaponPhase === 'executing' && weaponStateMachine && typeof weaponStateMachine.isFinished === 'function') {
-        return weaponStateMachine.isFinished();
-      }
-      return false;
-    },
+    shouldTransition: () => weaponPhase === 'skipped' || weaponPhase === 'done',
     onTransition: () => {
       phase = 'hunting';
       logger.info(`HuntForFood: weapon ready, hunting ${huntedAnimalType}`);
@@ -430,107 +322,54 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     }
   });
   
-  const findDropToExitWithMeat = new StateTransition({
-    parent: findDrop,
-    child: exit,
-    name: 'HuntForFood: find drop -> exit (no more drops, has meat)',
-    shouldTransition: () => {
-      if (dropTargets.entity === null || shouldStopDropCollection()) {
-        return hasCollectedRawMeat();
-      }
-      return false;
-    },
-    onTransition: () => {
-      phase = 'complete';
-      const gained = getFoodGained();
-      logger.info(`HuntForFood: no more drops found (attempts=${dropAttemptCount}), complete with ${gained} food points`);
-    }
-  });
-  
   const findDropToExit = new StateTransition({
     parent: findDrop,
     child: exit,
-    name: 'HuntForFood: find drop -> exit (no drops, no meat)',
-    shouldTransition: () => {
-      if (dropTargets.entity === null || shouldStopDropCollection()) {
-        return !hasCollectedRawMeat();
-      }
-      return false;
-    },
+    name: 'HuntForFood: find drop -> exit',
+    shouldTransition: () => dropTargets.entity === null || shouldStopDropCollection(),
     onTransition: () => {
-      phase = 'failed';
-      logger.info(`HuntForFood: no drops found (attempts=${dropAttemptCount}) and no raw meat collected`);
+      phase = hasCollectedRawMeat() ? 'complete' : 'failed';
+      const gained = getFoodGained();
+      logger.info(`HuntForFood: find drop exit (attempts=${dropAttemptCount}), phase=${phase}, food points=${gained}`);
     }
   });
   
   let reachedDropTime = 0;
-  let waitingForPickup = false;
-  
+
   const goToDropToFindDrop = new StateTransition({
     parent: goToDrop,
     child: findDrop,
     name: 'HuntForFood: go to drop -> find drop (collected, look for more)',
     shouldTransition: () => {
-      // Check if entity is valid first - if not, wait a bit before transitioning
       const entityId = dropTargets.entity?.id;
       if (entityId === undefined) {
-        // Entity was never valid or already cleared - need a cooldown to prevent spam
-        if (!waitingForPickup) {
-          waitingForPickup = true;
-          reachedDropTime = Date.now();
-          return false;
-        }
-        const waitTime = Date.now() - reachedDropTime;
-        if (waitTime < DROP_PICKUP_WAIT_TIME) {
-          return false;
-        }
-        logger.debug('HuntForFood: no valid drop entity, moving on');
         return true;
       }
-      
-      const dist = goToDrop.distanceToTarget?.() ?? 999;
-      const closeEnough = dist <= 2.0;
-      
-      if (!closeEnough) {
-        waitingForPickup = false;
-        reachedDropTime = 0;
-        return false;
-      }
-      
-      // Start waiting for pickup when we first get close
-      if (!waitingForPickup) {
-        waitingForPickup = true;
-        reachedDropTime = Date.now();
-        return false;
-      }
-      
-      if (isDropCollectTimedOut(dropCollectStartTime, Date.now(), DROP_COLLECT_TIMEOUT)) return true;
-      if (dropAttemptCount >= DROP_COLLECT_MAX_ATTEMPTS) return true;
-      
+
       // Check if the drop entity still exists (if it despawned, we picked it up)
       const entityStillExists = bot.entities && bot.entities[entityId];
-      
       if (!entityStillExists) {
-        // Entity despawned - we picked it up!
         logger.debug(`HuntForFood: picked up drop (entity ${entityId} despawned)`);
         return true;
       }
-      
-      // Wait for pickup, but don't wait forever
-      const waitTime = Date.now() - reachedDropTime;
-      if (waitTime >= DROP_PICKUP_WAIT_TIME) {
-        // Waited long enough, entity didn't despawn - move on
-        logger.debug(`HuntForFood: drop pickup timeout after ${waitTime}ms, moving on`);
-        return true;
+
+      const dist = goToDrop.distanceToTarget?.() ?? 999;
+      if (dist <= 2.0) {
+        // Wait briefly for auto-pickup before moving on
+        if (reachedDropTime === 0) {
+          reachedDropTime = Date.now();
+          return false;
+        }
+        return Date.now() - reachedDropTime >= DROP_PICKUP_WAIT_MS;
       }
-      
+
+      reachedDropTime = 0;
       return false;
     },
     onTransition: () => {
       dropAttemptCount++;
-      waitingForPickup = false;
       reachedDropTime = 0;
-      
+
       // Mark this entity as attempted so we don't try it again
       const entityId = dropTargets.entity?.id;
       if (entityId !== undefined) {
@@ -547,32 +386,15 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     );
   }
   
-  const goToDropToExitWithMeat = new StateTransition({
-    parent: goToDrop,
-    child: exit,
-    name: 'HuntForFood: go to drop -> exit (done collecting, has meat)',
-    shouldTransition: () => {
-      if (!shouldStopDropCollection()) return false;
-      return hasCollectedRawMeat();
-    },
-    onTransition: () => {
-      phase = 'complete';
-      const gained = getFoodGained();
-      logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}), complete with ${gained} food points`);
-    }
-  });
-  
   const goToDropToExit = new StateTransition({
     parent: goToDrop,
     child: exit,
-    name: 'HuntForFood: go to drop -> exit (done, no meat)',
-    shouldTransition: () => {
-      if (!shouldStopDropCollection()) return false;
-      return !hasCollectedRawMeat();
-    },
+    name: 'HuntForFood: go to drop -> exit',
+    shouldTransition: () => shouldStopDropCollection(),
     onTransition: () => {
-      phase = 'failed';
-      logger.info(`HuntForFood: drop collection done (attempts=${dropAttemptCount}) with no raw meat collected`);
+      phase = hasCollectedRawMeat() ? 'complete' : 'failed';
+      const gained = getFoodGained();
+      logger.info(`HuntForFood: go to drop exit (attempts=${dropAttemptCount}), phase=${phase}, food points=${gained}`);
     }
   });
   
@@ -584,10 +406,8 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
     huntingToExit,      // Fast path: drops auto-collected
     huntingToFindDrop,   // Slow path: need to find drops
     findDropToGoToDrop,
-    findDropToExitWithMeat,
     findDropToExit,
     goToDropToFindDrop,
-    goToDropToExitWithMeat,
     goToDropToExit
   ];
   
@@ -595,51 +415,19 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
 
   const prepareWeaponAsAny = prepareWeapon as any;
   const originalPrepareWeaponEntered = prepareWeaponAsAny.onStateEntered;
-  prepareWeaponAsAny.onStateEntered = async function(this: any) {
+  prepareWeaponAsAny.onStateEntered = function(this: any) {
     if (originalPrepareWeaponEntered) originalPrepareWeaponEntered.call(this);
 
     weaponPhase = 'init';
-    weaponPath = null;
-    weaponStateMachine = null;
 
     if (hasSwordInInventory(getInventoryObject(bot))) {
       logger.info('HuntForFood: sword already in inventory, skipping weapon craft');
-      weaponPhase = 'skipped';
+      weaponPhase = 'done';
       return;
     }
 
-    weaponPhase = 'planning';
-    logger.info('HuntForFood: no sword in inventory, attempting to craft wooden_sword');
-
-    weaponPath = await generateWeaponPlan();
-
-    if (weaponPath && weaponPath.length > 0) {
-      weaponStateMachine = buildStateMachineForPath(bot, weaponPath, (success: boolean) => {
-        weaponPhase = 'done';
-        logger.info(`HuntForFood: wooden_sword ${success ? 'crafted' : 'craft failed'}, continuing hunt`);
-        weaponStateMachine = null;
-        weaponPath = null;
-      });
-      weaponPhase = 'executing';
-      if (weaponStateMachine && typeof weaponStateMachine.onStateEntered === 'function') {
-        logger.info('HuntForFood: starting weapon path sub-machine');
-        weaponStateMachine.onStateEntered();
-      }
-    } else {
-      logger.info('HuntForFood: no viable path for wooden_sword, continuing without weapon');
-      weaponPhase = 'skipped';
-    }
-  };
-  prepareWeaponAsAny.update = function() {
-    const currentWeaponMachine = weaponStateMachine;
-    if (currentWeaponMachine && typeof currentWeaponMachine.update === 'function') {
-      currentWeaponMachine.update();
-      if (typeof currentWeaponMachine.isFinished === 'function' && currentWeaponMachine.isFinished()) {
-        weaponPhase = 'done';
-        weaponStateMachine = null;
-        weaponPath = null;
-      }
-    }
+    logger.info('HuntForFood: no sword in inventory, skipping weapon craft');
+    weaponPhase = 'skipped';
   };
   
   let reachedExit = false;
@@ -662,9 +450,6 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
   stateMachine.onStateExited = function() {
     logger.debug('HuntForFood: cleaning up');
 
-    if (weaponStateMachine && typeof weaponStateMachine.onStateExited === 'function') {
-      try { weaponStateMachine.onStateExited(); } catch (_) {}
-    }
     if (huntStateMachine && typeof huntStateMachine.onStateExited === 'function') {
       try { huntStateMachine.onStateExited(); } catch (_) {}
     }

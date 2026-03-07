@@ -160,35 +160,27 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       const idOf = (name: string): number | undefined => mc.itemsByName[name]?.id;
       const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
-      let lastProgress = 0;
-      let prevOut = have0;
-      let lastActivity = Date.now();
       let lastFuelPut = 0;
-      const STALL_TIMEOUT_MS = 20000;
+      const MAX_ITERATIONS = 200;
       let localFuelCount = furnace.fuelItem() ? furnace.fuelItem()!.count || 0 : 0;
       let localOutputTaken = 0;
-      let fuelPutFailures = 0;
-      const MAX_FUEL_FAILURES = 3;
 
-      while (Date.now() - lastActivity < STALL_TIMEOUT_MS) {
+      for (let iter = 0; iter < MAX_ITERATIONS; iter++) {
         const invDelta = Math.max(0, getItemCount(wantItem) - have0);
         const produced = Math.max(invDelta, localOutputTaken);
         if (have0 + produced >= outTarget) break;
-
-        let acted = false;
 
         try {
           if (getItemCount(inputItem) > 0 && !furnace.inputItem()) {
             const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - (have0 + produced)));
             await furnace.putInput(idOf(inputItem)!, null, toPut);
             logger.debug(`Smelt: put input x${toPut} ${inputItem}`);
-            acted = true;
           }
         } catch (err) {
           logger.warn(`Smelt: Failed to put input: ${err}`);
         }
 
-        if (fuelPutFailures < MAX_FUEL_FAILURES && getItemCount(fuelItem) > 0) {
+        if (getItemCount(fuelItem) > 0) {
           const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
           const remaining = Math.max(0, outTarget - (have0 + produced));
           const desiredUnits = Math.ceil(remaining / perUnit);
@@ -208,16 +200,9 @@ function createSmeltState(bot: Bot, targets: Targets): any {
               await furnace.putFuel(idOf(fuelItem)!, null, topUp);
               localFuelCount += topUp;
               lastFuelPut = now;
-              fuelPutFailures = 0;
               logger.debug(`Smelt: put fuel x${topUp} ${fuelItem}`);
-              acted = true;
             } catch (err) {
-              fuelPutFailures++;
-              if (fuelPutFailures >= MAX_FUEL_FAILURES) {
-                logger.warn(`Smelt: Giving up on fuel after ${fuelPutFailures} failures: ${err}`);
-              } else {
-                logger.debug(`Smelt: Failed to put fuel (attempt ${fuelPutFailures}): ${err}`);
-              }
+              logger.debug(`Smelt: Failed to put fuel: ${err}`);
             }
           }
         }
@@ -235,25 +220,11 @@ function createSmeltState(bot: Bot, targets: Targets): any {
               waited += 50;
             }
             logger.debug(`Smelt: took output (have ~${have0 + Math.max(localOutputTaken, getItemCount(wantItem) - have0)}/${outTarget})`);
-            acted = true;
           }
         } catch (err) {
           logger.warn(`Smelt: Failed to take output: ${err}`);
         }
 
-        const hasInput = !!furnace.inputItem();
-        const hasOutput = !!furnace.outputItem();
-        const prog = Number.isFinite(furnace.progress) ? furnace.progress : 0;
-        const curOut = getItemCountInInventory(bot, wantItem);
-
-        if (curOut > prevOut) {
-          lastActivity = Date.now();
-          prevOut = curOut;
-        }
-        if (acted || prog > lastProgress || hasInput || hasOutput) {
-          lastActivity = Date.now();
-        }
-        lastProgress = prog;
         await sleep(400);
       }
 

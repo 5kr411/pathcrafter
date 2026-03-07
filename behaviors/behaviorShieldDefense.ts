@@ -22,8 +22,7 @@ class ShieldHoldState implements StateBehavior {
   public active = false;
   private finished = false;
   private holdTimer: NodeJS.Timeout | null = null;
-  private threatInterval: NodeJS.Timeout | null = null;
-  private damageCheckInterval: NodeJS.Timeout | null = null;
+  private monitorInterval: NodeJS.Timeout | null = null;
   private pendingThreat: any = null;
   private currentThreat: any = null;
   private offHandSlot: number | null = null;
@@ -58,22 +57,12 @@ class ShieldHoldState implements StateBehavior {
 
     try {
       const threat = this.reacquireThreat();
-      this.currentThreat = threat || null;
-      if (threat) {
-        if (this.isCreeper(threat)) {
-          this.pendingThreat = null;
-        } else {
-          this.pendingThreat = threat;
-        }
-      } else {
-        this.pendingThreat = null;
-      }
+      this.updateThreat(threat);
     } catch (err: any) {
       logger.debug(`ShieldDefense: error while acquiring initial threat - ${err?.message || err}`);
     }
-    
-    this.startThreatPolling();
-    this.startDamageChecking();
+
+    this.startMonitoring();
     this.startHoldTimer();
   }
 
@@ -129,13 +118,9 @@ class ShieldHoldState implements StateBehavior {
       clearTimeout(this.holdTimer);
       this.holdTimer = null;
     }
-    if (this.threatInterval) {
-      clearInterval(this.threatInterval);
-      this.threatInterval = null;
-    }
-    if (this.damageCheckInterval) {
-      clearInterval(this.damageCheckInterval);
-      this.damageCheckInterval = null;
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
     }
   }
 
@@ -150,16 +135,7 @@ class ShieldHoldState implements StateBehavior {
     this.holdTimer = setTimeout(() => {
       try {
         const threat = this.reacquireThreat();
-        this.currentThreat = threat || null;
-        if (threat) {
-          if (this.isCreeper(threat)) {
-            this.pendingThreat = null;
-          } else {
-            this.pendingThreat = threat;
-          }
-        } else {
-          this.pendingThreat = null;
-        }
+        this.updateThreat(threat);
       } catch (err: any) {
         logger.debug(`ShieldDefense: error while acquiring threat in timeout - ${err?.message || err}`);
       }
@@ -184,14 +160,14 @@ class ShieldHoldState implements StateBehavior {
     }, duration);
   }
 
-  private startThreatPolling(): void {
-    if (this.threatInterval) {
-      clearInterval(this.threatInterval);
-      this.threatInterval = null;
+  private startMonitoring(): void {
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
     }
 
-    const intervalMs = Math.max(200, Math.min(1000, Math.floor(this.holdDurationMs / 3)));
-    this.threatInterval = setInterval(() => {
+    this.monitorInterval = setInterval(() => {
+      // Threat reacquisition
       let threat: any = null;
       try {
         threat = this.reacquireThreat();
@@ -199,28 +175,13 @@ class ShieldHoldState implements StateBehavior {
         logger.debug(`ShieldDefense: error while acquiring threat - ${err?.message || err}`);
       }
 
-      this.currentThreat = threat || null;
+      this.updateThreat(threat);
 
       if (threat) {
-        if (this.isCreeper(threat)) {
-          this.pendingThreat = null;
-        } else {
-          this.pendingThreat = threat;
-        }
         this.lookAtThreatSmooth(threat);
-      } else {
-        this.pendingThreat = null;
       }
-    }, intervalMs);
-  }
 
-  private startDamageChecking(): void {
-    if (this.damageCheckInterval) {
-      clearInterval(this.damageCheckInterval);
-      this.damageCheckInterval = null;
-    }
-
-    this.damageCheckInterval = setInterval(() => {
+      // Damage checking
       if (!this.active || this.finished) {
         return;
       }
@@ -233,32 +194,37 @@ class ShieldHoldState implements StateBehavior {
       }
 
       const currentDamage = this.getShieldDamage(currentItem);
-      
+
       if (typeof currentDamage === 'number' && typeof this.lastShieldDamage === 'number') {
         if (currentDamage > this.lastShieldDamage) {
           logger.info(`ShieldDefense: shield damage detected (${this.lastShieldDamage} -> ${currentDamage}), triggering counter-attack`);
           this.lastShieldDamage = currentDamage;
-          
-          try {
-            const threat = this.reacquireThreat();
-            this.currentThreat = threat || null;
-            if (threat) {
-              if (this.isCreeper(threat)) {
-                logger.debug('ShieldDefense: creeper threat, continuing to block instead of attacking');
-                this.pendingThreat = null;
-                this.lookAtThreatSmooth(threat);
-                return;
-              }
-              this.pendingThreat = threat;
-              this.lookAtThreatSmooth(threat);
-              this.finishWithThreat(threat);
+
+          if (this.currentThreat) {
+            if (this.isCreeper(this.currentThreat)) {
+              logger.debug('ShieldDefense: creeper threat, continuing to block instead of attacking');
+              this.lookAtThreatSmooth(this.currentThreat);
+              return;
             }
-          } catch (err: any) {
-            logger.debug(`ShieldDefense: error while acquiring threat after damage - ${err?.message || err}`);
+            this.lookAtThreatSmooth(this.currentThreat);
+            this.finishWithThreat(this.currentThreat);
           }
         }
       }
     }, 50);
+  }
+
+  private updateThreat(threat: any): void {
+    this.currentThreat = threat || null;
+    if (threat) {
+      if (this.isCreeper(threat)) {
+        this.pendingThreat = null;
+      } else {
+        this.pendingThreat = threat;
+      }
+    } else {
+      this.pendingThreat = null;
+    }
   }
 
   private lookAtThreatSmooth(threat: any): void {
@@ -502,14 +468,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     onTransition: () => {
       config.targets.entity = null;
       cycleCount += 1;
-      
-      if (cycleCount > 20) {
-        logger.warn(`ShieldDefense: cycle limit reached (${cycleCount}), forcing exit to prevent memory leak`);
-        shieldHold.cancel();
-        notifyFinished(false);
-        return;
-      }
-      
+
       logger.debug(`ShieldDefense: counter-attack complete, raising shield again (cycle ${cycleCount})`);
     }
   });

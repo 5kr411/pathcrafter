@@ -5,23 +5,20 @@ import logger from '../../../utils/logger';
 type ArmorSlot = 'head' | 'torso' | 'legs' | 'feet';
 type EquipSlot = ArmorSlot | 'off-hand';
 
-const SLOT_SUCCESS_COOLDOWN_MS = 1500;
-const SLOT_RETRY_COOLDOWN_MS = 250;
-const SLOT_IN_PROGRESS_COOLDOWN_MS = 250;
+const SLOT_COOLDOWN_MS = 1500;
 
-const slotCooldowns = new Map<EquipSlot, number>();
+let lastEquipTime = 0;
 
-function setSlotCooldown(slot: EquipSlot, durationMs: number): void {
-  slotCooldowns.set(slot, Date.now() + Math.max(0, durationMs));
+function setSlotCooldown(): void {
+  lastEquipTime = Date.now();
 }
 
-function isSlotCooling(slot: EquipSlot): boolean {
-  const expiresAt = slotCooldowns.get(slot);
-  return typeof expiresAt === 'number' && expiresAt > Date.now();
+function isSlotCooling(): boolean {
+  return Date.now() - lastEquipTime < SLOT_COOLDOWN_MS;
 }
 
 export function resetArmorUpgradeCooldowns(): void {
-  slotCooldowns.clear();
+  lastEquipTime = 0;
 }
 
 interface ArmorEvaluation {
@@ -180,20 +177,15 @@ function selectArmorUpgrade(bot: Bot, slotFilter?: (slot: ArmorSlot) => boolean)
 }
 
 function getOffhandItem(bot: Bot): any | null {
-  try {
-    if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
-      return null;
-    }
-    const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
-    const slots = (bot as any)?.inventory?.slots;
-    if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
-      return null;
-    }
-    return slots[offHandIndex] ?? null;
-  } catch (err: any) {
-    logger.debug(`ArmorUpgrade: unable to read off-hand slot - ${err?.message || err}`);
+  if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
     return null;
   }
+  const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
+  const slots = (bot as any)?.inventory?.slots;
+  if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
+    return null;
+  }
+  return slots[offHandIndex] ?? null;
 }
 
 function isShieldItem(item: any): boolean {
@@ -270,7 +262,7 @@ class BehaviorEquipSlot implements StateBehavior {
 
   markPreempted(): void {
     if (!this.finished) {
-      setSlotCooldown(this.attempt.slot, SLOT_RETRY_COOLDOWN_MS);
+      setSlotCooldown();
       this.clearTimer();
       this.finished = true;
       this.success = false;
@@ -290,14 +282,14 @@ class BehaviorEquipSlot implements StateBehavior {
     }
     this.finished = true;
     this.success = success;
-    setSlotCooldown(this.attempt.slot, success ? SLOT_SUCCESS_COOLDOWN_MS : SLOT_RETRY_COOLDOWN_MS);
+    setSlotCooldown();
     if (success && this.sendChat) {
       this.sendChat(`equipped ${this.attempt.label}`);
     }
   }
 
   private async startEquip(): Promise<void> {
-    setSlotCooldown(this.attempt.slot, SLOT_IN_PROGRESS_COOLDOWN_MS);
+    setSlotCooldown();
 
     try {
       if (this.attempt.slot !== 'off-hand') {
@@ -369,12 +361,12 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
   name: 'armor_upgrade',
 
   shouldActivate: (bot: Bot): boolean => {
-    const armorCandidate = selectArmorUpgrade(bot, (slot) => !isSlotCooling(slot));
+    const armorCandidate = selectArmorUpgrade(bot, () => !isSlotCooling());
     if (armorCandidate !== null) {
       return true;
     }
 
-    if (!isSlotCooling('off-hand')) {
+    if (!isSlotCooling()) {
       const shieldItem = shouldEquipShield(bot);
       if (shieldItem !== null) {
         return true;
@@ -389,7 +381,7 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
       ? (bot as any).safeChat.bind(bot)
       : null;
 
-    const armorCandidate = selectArmorUpgrade(bot, (slot) => !isSlotCooling(slot));
+    const armorCandidate = selectArmorUpgrade(bot, () => !isSlotCooling());
     if (armorCandidate) {
       const equipped = getEquippedItem(bot, armorCandidate.slot);
       const currentScore = equipped ? evaluateArmor(bot, equipped)?.score : 0;
@@ -409,7 +401,7 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
       return createEquipState(bot, attempt, sendChat, verify);
     }
 
-    if (!isSlotCooling('off-hand')) {
+    if (!isSlotCooling()) {
       const shieldItem = shouldEquipShield(bot);
       if (shieldItem) {
         logger.debug(`ArmorUpgrade: attempting to equip shield in off-hand`);

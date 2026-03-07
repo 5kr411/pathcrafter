@@ -45,47 +45,6 @@ interface Targets {
   [key: string]: any;
 }
 
-const FAILED_TARGET_COOLDOWN = 10000; // 10 seconds before retrying a failed target
-const failedTargets = new Map<number, number>(); // entityId -> failedTime
-
-function resolveEntityId(entityOrId: Entity | number | null | undefined): number | null {
-  if (typeof entityOrId === 'number') {
-    return entityOrId;
-  }
-  const entityId = (entityOrId as any)?.id;
-  if (typeof entityId !== 'number') return null;
-  return entityId;
-}
-
-function getFailedTargetCooldownRemainingMs(entityOrId: Entity | number | null | undefined): number {
-  const entityId = resolveEntityId(entityOrId);
-  if (entityId === null) return 0;
-  const failedTime = failedTargets.get(entityId);
-  if (failedTime === undefined) return 0;
-  const remaining = FAILED_TARGET_COOLDOWN - (Date.now() - failedTime);
-  if (remaining <= 0) {
-    failedTargets.delete(entityId);
-    return 0;
-  }
-  return remaining;
-}
-
-export function getFailedTargetCooldownRemaining(entityOrId: Entity | number | null | undefined): number {
-  return getFailedTargetCooldownRemainingMs(entityOrId);
-}
-
-function isRecentlyFailedTarget(entity: Entity | null | undefined): boolean {
-  return getFailedTargetCooldownRemainingMs(entity) > 0;
-}
-
-function markTargetAsFailed(entity: Entity | null | undefined): void {
-  if (!entity) return;
-  const entityId = (entity as any)?.id;
-  if (entityId === undefined || entityId === null) return;
-  failedTargets.set(entityId, Date.now());
-  logger.warn(`BehaviorHuntEntity: marking entity ${entityId} as unreachable for ${FAILED_TARGET_COOLDOWN / 1000}s`);
-}
-
 /**
  * Hunt entity behavior - uses mineflayer-pvp for combat
  * Attacks continuously until entity is dead, despawned, or timeout
@@ -99,7 +58,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   let targetEntity: Entity | null | undefined = null;
   let handleEntityGone: ((entity: any) => void) | null = null;
   let pvpAttackState: BehaviorPvpAttack | null = null;
-  let attackSucceeded = false;
+
 
   const enter = new BehaviorIdle();
   
@@ -122,14 +81,8 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     attackRange: targets.attackRange ?? 3.0,
     followRange: targets.followRange ?? 2.0,
     viewDistance: targets.detectionRange ?? 48,
-    onAttackPerformed: () => {
-      attackSucceeded = true;
-    },
     onStopped: (reason) => {
       logger.info(`BehaviorHuntEntity: pvp stopped - reason: ${reason}`);
-      if (reason === 'target_lost' && !attackSucceeded && targetEntity) {
-        markTargetAsFailed(targetEntity);
-      }
     }
   });
 
@@ -138,7 +91,6 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   const setupEntityTracking = () => {
     if (targets.entity && !targetEntity) {
       targetEntity = targets.entity;
-      attackSucceeded = false;
       logger.info(`BehaviorHuntEntity: captured entity reference: ${targetEntity.name || targetEntity.displayName || 'unknown'}`);
       
       if (!handleEntityGone) {
@@ -217,10 +169,6 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorHuntEntity: enter -> approach',
     shouldTransition: () => {
       if (!targets.entity) return false;
-      if (isRecentlyFailedTarget(targets.entity)) {
-        logger.debug(`BehaviorHuntEntity: skipping recently failed target ${(targets.entity as any)?.id}`);
-        return false;
-      }
       return true;
     },
     onTransition: () => {
@@ -237,10 +185,6 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorHuntEntity: find -> approach',
     shouldTransition: () => {
       if (targets.entity === null) return false;
-      if (isRecentlyFailedTarget(targets.entity)) {
-        logger.debug(`BehaviorHuntEntity: skipping recently failed target ${(targets.entity as any)?.id}`);
-        return false;
-      }
       if (typeof findEntity.isFinished === 'function') {
         return findEntity.isFinished();
       }
@@ -259,10 +203,6 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       if (huntTimedOut) return false;
       if (!targets.entity) return false;
-      if (isRecentlyFailedTarget(targets.entity)) {
-        logger.debug(`BehaviorHuntEntity: skipping recently failed target ${(targets.entity as any)?.id}`);
-        return false;
-      }
       const dist = getDistanceToTarget();
       if (dist <= PVP_APPROACH_RANGE) {
         return true;
@@ -275,22 +215,6 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       setupEntityTracking();
       logger.info('BehaviorHuntEntity: within approach range, starting pvp attack');
-    }
-  });
-
-  const enterToExitFailedTarget = new StateTransition({
-    parent: enter,
-    child: exit,
-    name: 'BehaviorHuntEntity: enter -> exit (recently failed target)',
-    shouldTransition: () => {
-      if (!targets.entity) return false;
-      return isRecentlyFailedTarget(targets.entity);
-    },
-    onTransition: () => {
-      const entityId = (targets.entity as any)?.id;
-      const cooldownRemaining = getFailedTargetCooldownRemaining(targets.entity);
-      logger.info(`BehaviorHuntEntity: skipping unreachable target ${entityId}, cooldown ${(cooldownRemaining / 1000).toFixed(1)}s remaining`);
-      targets.entity = null;
     }
   });
 
@@ -349,27 +273,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       clearHuntTimeout();
       cleanupEntityTracking();
-      if (targetEntity) {
-        markTargetAsFailed(targetEntity);
-      }
       logger.info('BehaviorHuntEntity: timed out while approaching, exiting');
-    }
-  });
-
-  const findToExitFailedTarget = new StateTransition({
-    parent: findEntity,
-    child: exit,
-    name: 'BehaviorHuntEntity: find -> exit (recently failed target)',
-    shouldTransition: () => {
-      if (!targets.entity) return false;
-      return isRecentlyFailedTarget(targets.entity);
-    },
-    onTransition: () => {
-      clearHuntTimeout();
-      cleanupEntityTracking();
-      const entityId = (targets.entity as any)?.id;
-      logger.info(`BehaviorHuntEntity: found entity ${entityId} but it was recently unreachable, skipping`);
-      targets.entity = null;
     }
   });
 
@@ -397,10 +301,8 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   });
 
   const transitions = [
-    enterToExitFailedTarget,
     enterToFind,
     enterToApproach,
-    findToExitFailedTarget,
     findToPvpAttack,
     findToExit,
     findToExitTimeout,

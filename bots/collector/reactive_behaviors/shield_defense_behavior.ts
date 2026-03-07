@@ -17,44 +17,28 @@ const MELEE_HOSTILE_SEARCH_RADIUS = 8;
 
 function getInventoryItems(bot: Bot): any[] {
   const inventory: any = (bot as any)?.inventory;
-  if (!inventory) {
+  if (!inventory || typeof inventory.items !== 'function') {
     return [];
   }
 
-  try {
-    if (typeof inventory.items === 'function') {
-      const items = inventory.items();
-      if (Array.isArray(items)) {
-        return items.filter((item: any) => !!item);
-      }
-    }
-  } catch (err: any) {
-    logger.debug(`ShieldDefense: failed to enumerate inventory items - ${err?.message || err}`);
-  }
-
-  const slots = inventory.slots;
-  if (!Array.isArray(slots)) {
+  const items = inventory.items();
+  if (!Array.isArray(items)) {
     return [];
   }
 
-  return slots.filter((item: any) => !!item);
+  return items.filter((item: any) => !!item);
 }
 
 function getOffhandItem(bot: Bot): any | null {
-  try {
-    if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
-      return null;
-    }
-    const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
-    const slots = (bot as any)?.inventory?.slots;
-    if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
-      return null;
-    }
-    return slots[offHandIndex] ?? null;
-  } catch (err: any) {
-    logger.debug(`ShieldDefense: unable to read off-hand slot - ${err?.message || err}`);
+  if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
     return null;
   }
+  const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
+  const slots = (bot as any)?.inventory?.slots;
+  if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
+    return null;
+  }
+  return slots[offHandIndex] ?? null;
 }
 
 export function hasShieldInOffhand(bot: Bot): boolean {
@@ -193,32 +177,12 @@ interface HealthInfo {
 }
 
 function getBotHealthInfo(bot: Bot): HealthInfo {
-  const entity: any = bot?.entity;
-  const candidates: Array<number | null> = [];
-
-  if (typeof (bot as any)?.health === 'number') {
-    candidates.push((bot as any).health);
-  }
-  if (typeof entity?.health === 'number') {
-    candidates.push(entity.health);
-  }
-
-  const current = candidates.find((value) => typeof value === 'number' && Number.isFinite(value)) ?? 0;
-
-  let max: number | null = null;
-  if (typeof (bot as any)?.maxHealth === 'number' && Number.isFinite((bot as any).maxHealth)) {
-    max = (bot as any).maxHealth;
-  } else if (typeof entity?.maxHealth === 'number' && Number.isFinite(entity.maxHealth)) {
-    max = entity.maxHealth;
-  }
-
-  if (!Number.isFinite(max) || !max || max <= 0) {
-    max = 20;
-  }
+  const current = (bot as any)?.health ?? 0;
+  const max = (bot as any)?.maxHealth ?? 20;
 
   return {
-    current: Number.isFinite(current) ? current : 0,
-    max
+    current,
+    max: max > 0 ? max : 20
   };
 }
 
@@ -302,16 +266,11 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         if (creeper) {
           return creeper;
         }
-        try {
-          const skeleton = findClosestHostileMob(bot, RANGED_HOSTILE_SEARCH_RADIUS, true, isRangedHostile);
-          if (skeleton) {
-            return skeleton;
-          }
-          return findClosestHostileMob(bot, MELEE_HOSTILE_SEARCH_RADIUS, true);
-        } catch (err: any) {
-          logger.debug(`ShieldDefense: threat lookup failed - ${err?.message || err}`);
-          return null;
+        const skeleton = findClosestHostileMob(bot, RANGED_HOSTILE_SEARCH_RADIUS, true, isRangedHostile);
+        if (skeleton) {
+          return skeleton;
         }
+        return findClosestHostileMob(bot, MELEE_HOSTILE_SEARCH_RADIUS, true);
       };
 
       const initialThreat = reacquireThreat();
@@ -343,23 +302,6 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
 
       let finished = false;
       let success = false;
-      let deathListener: (() => void) | null = null;
-
-      const removeDeathListener = () => {
-        if (!deathListener) {
-          return;
-        }
-        try {
-          if (typeof (bot as any)?.off === 'function') {
-            (bot as any).off('death', deathListener);
-          } else if (typeof (bot as any)?.removeListener === 'function') {
-            (bot as any).removeListener('death', deathListener);
-          }
-        } catch (err: any) {
-          logger.debug(`ShieldDefense: failed to detach death listener - ${err?.message || err}`);
-        }
-        deathListener = null;
-      };
 
       const finishBehavior = (successResult: boolean, message?: string) => {
         if (finished) {
@@ -367,41 +309,14 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         }
         finished = true;
         success = successResult;
-        removeDeathListener();
         if (message && sendChat) {
-          try {
-            sendChat(message);
-          } catch (_) {
-          }
+          sendChat(message);
         }
       };
-
-      const attachDeathListener = () => {
-        if (deathListener) {
-          return;
-        }
-      const handler = () => finishBehavior(false);
-        deathListener = handler;
-        try {
-          if (typeof (bot as any)?.on === 'function') {
-            (bot as any).on('death', handler);
-          } else if (typeof (bot as any)?.addListener === 'function') {
-            (bot as any).addListener('death', handler);
-          }
-        } catch (err: any) {
-          logger.debug(`ShieldDefense: failed to attach death listener - ${err?.message || err}`);
-          removeDeathListener();
-        }
-      };
-
-      attachDeathListener();
 
       logger.info(`ShieldDefense: reactive shield behavior engaged against ${threatName}`);
       if (sendChat) {
-        try {
-          sendChat(`shielding against ${threatName}`);
-        } catch (_) {
-        }
+        sendChat(`shielding against ${threatName}`);
       }
       return {
         stateMachine,

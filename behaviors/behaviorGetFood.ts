@@ -197,45 +197,6 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     return false;
   }
   
-  function hasAnimalsNearby(): boolean {
-    if (!bot.entities) {
-      logger.debug('GetFood: bot.entities is null/undefined');
-      return false;
-    }
-    const animalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
-    
-    const entityNames: string[] = [];
-    for (const entity of Object.values(bot.entities)) {
-      if (!entity || !entity.position) continue;
-      const name = (entity.name || '').toLowerCase();
-      entityNames.push(name);
-      if (animalNames.has(name)) {
-        logger.debug(`GetFood: found huntable animal: ${name}`);
-        return true;
-      }
-    }
-    logger.debug(`GetFood: no huntable animals in ${entityNames.length} entities. Looking for: ${Array.from(animalNames).join(',')}. Found: ${entityNames.slice(0, 20).join(',')}`);
-    return false;
-  }
-  
-  async function waitForEntities(): Promise<boolean> {
-    const MAX_ATTEMPTS = 4;
-    const DELAY_MS = 500;
-    
-    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-      if (checkAnimalsNearbyOnce()) {
-        logger.debug(`GetFood: found animals on attempt ${attempt}/${MAX_ATTEMPTS}`);
-        return true;
-      }
-      if (attempt < MAX_ATTEMPTS) {
-        logger.debug(`GetFood: no animals found on attempt ${attempt}/${MAX_ATTEMPTS}, waiting ${DELAY_MS}ms...`);
-        await new Promise(resolve => setTimeout(resolve, DELAY_MS));
-      }
-    }
-    logger.debug(`GetFood: no animals found after ${MAX_ATTEMPTS} attempts`);
-    return false;
-  }
-  
   function hasBlocksNearby(blockTypes: string[]): boolean {
     if (!targets.worldSnapshot?.blockCounts) {
       return false;
@@ -272,7 +233,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     }
 
     if (sourceConfig.entityBased) {
-      return hasAnimalsNearby();
+      return checkAnimalsNearbyOnce();
     }
     
     if (sourceConfig.blockTypes.length > 0) {
@@ -495,221 +456,65 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     }
   });
   
-  const huntToSelect = new StateTransition({
-    parent: huntingFood,
-    child: selectSource,
-    name: 'GetFood: hunt -> select',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'selecting';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && phase === 'selecting';
-    },
-    onTransition: () => {
-      logger.info('GetFood: hunt complete, checking if more food needed');
-    }
-  });
-  
-  const huntToExit = new StateTransition({
-    parent: huntingFood,
-    child: exit,
-    name: 'GetFood: hunt -> exit',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && (phase === 'complete' || phase === 'failed');
-    }
-  });
-  
-  const breadToSelect = new StateTransition({
-    parent: collectBread,
-    child: selectSource,
-    name: 'GetFood: bread -> select',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'selecting';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && phase === 'selecting';
-    }
-  });
-  
-  const breadToExit = new StateTransition({
-    parent: collectBread,
-    child: exit,
-    name: 'GetFood: bread -> exit',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && (phase === 'complete' || phase === 'failed');
-    }
-  });
+  function makeSourceTransitions(parent: any, label: string): [any, any] {
+    const toSelect = new StateTransition({
+      parent,
+      child: selectSource,
+      name: `GetFood: ${label} -> select`,
+      shouldTransition: () => {
+        if (!currentSubMachine) return phase === 'selecting';
+        const finished = typeof currentSubMachine.isFinished === 'function'
+          ? currentSubMachine.isFinished()
+          : false;
+        return finished && phase === 'selecting';
+      }
+    });
 
-  const berriesToSelect = new StateTransition({
-    parent: collectBerries,
-    child: selectSource,
-    name: 'GetFood: berries -> select',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'selecting';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && phase === 'selecting';
-    }
-  });
+    const toExit = new StateTransition({
+      parent,
+      child: exit,
+      name: `GetFood: ${label} -> exit`,
+      shouldTransition: () => {
+        if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
+        const finished = typeof currentSubMachine.isFinished === 'function'
+          ? currentSubMachine.isFinished()
+          : false;
+        return finished && (phase === 'complete' || phase === 'failed');
+      }
+    });
 
-  const berriesToExit = new StateTransition({
-    parent: collectBerries,
-    child: exit,
-    name: 'GetFood: berries -> exit',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && (phase === 'complete' || phase === 'failed');
-    }
-  });
-  
-  const melonToSelect = new StateTransition({
-    parent: collectMelon,
-    child: selectSource,
-    name: 'GetFood: melon -> select',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'selecting';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && phase === 'selecting';
-    }
-  });
-  
-  const melonToExit = new StateTransition({
-    parent: collectMelon,
-    child: exit,
-    name: 'GetFood: melon -> exit',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && (phase === 'complete' || phase === 'failed');
-    }
-  });
+    return [toSelect, toExit];
+  }
 
-  const fishToSelect = new StateTransition({
-    parent: huntingFish,
-    child: selectSource,
-    name: 'GetFood: fish -> select',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'selecting';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && phase === 'selecting';
-    },
-    onTransition: () => {
-      logger.info('GetFood: fish hunt complete, checking if more food needed');
-    }
-  });
-
-  const fishToExit = new StateTransition({
-    parent: huntingFish,
-    child: exit,
-    name: 'GetFood: fish -> exit',
-    shouldTransition: () => {
-      if (!currentSubMachine) return phase === 'complete' || phase === 'failed';
-      const finished = typeof currentSubMachine.isFinished === 'function'
-        ? currentSubMachine.isFinished()
-        : false;
-      return finished && (phase === 'complete' || phase === 'failed');
-    }
-  });
+  const [huntToSelect, huntToExit] = makeSourceTransitions(huntingFood, 'hunt');
+  const [breadToSelect, breadToExit] = makeSourceTransitions(collectBread, 'bread');
+  const [berriesToSelect, berriesToExit] = makeSourceTransitions(collectBerries, 'berries');
+  const [melonToSelect, melonToExit] = makeSourceTransitions(collectMelon, 'melon');
+  const [fishToSelect, fishToExit] = makeSourceTransitions(huntingFish, 'fish');
   
-  // Hook into hunting state to start and tick the sub-machine
-  const huntingAsAny = huntingFood as any;
-  const originalHuntingEntered = huntingAsAny.onStateEntered;
-  huntingAsAny.onStateEntered = function(this: any) {
-    if (originalHuntingEntered) originalHuntingEntered.call(this);
-    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
-      logger.info('GetFood: starting hunt sub-machine');
-      currentSubMachine.onStateEntered();
-    }
-  };
-  huntingAsAny.update = function() {
-    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
-      currentSubMachine.update();
-    }
-  };
-  
-  // Hook into bread state to start and tick the sub-machine
-  const breadAsAny = collectBread as any;
-  const originalBreadEntered = breadAsAny.onStateEntered;
-  breadAsAny.onStateEntered = function(this: any) {
-    if (originalBreadEntered) originalBreadEntered.call(this);
-    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
-      logger.info('GetFood: starting bread sub-machine');
-      currentSubMachine.onStateEntered();
-    }
-  };
-  breadAsAny.update = function() {
-    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
-      currentSubMachine.update();
-    }
-  };
+  // Hook into sub-machine states to start and tick them
+  function hookupSubMachine(state: any, label: string): void {
+    const stateAsAny = state as any;
+    const originalEntered = stateAsAny.onStateEntered;
+    stateAsAny.onStateEntered = function(this: any) {
+      if (originalEntered) originalEntered.call(this);
+      if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
+        logger.info(`GetFood: starting ${label} sub-machine`);
+        currentSubMachine.onStateEntered();
+      }
+    };
+    stateAsAny.update = function() {
+      if (currentSubMachine && typeof currentSubMachine.update === 'function') {
+        currentSubMachine.update();
+      }
+    };
+  }
 
-  // Hook into berries state to start and tick the sub-machine
-  const berriesAsAny = collectBerries as any;
-  const originalBerriesEntered = berriesAsAny.onStateEntered;
-  berriesAsAny.onStateEntered = function(this: any) {
-    if (originalBerriesEntered) originalBerriesEntered.call(this);
-    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
-      logger.info('GetFood: starting berries sub-machine');
-      currentSubMachine.onStateEntered();
-    }
-  };
-  berriesAsAny.update = function() {
-    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
-      currentSubMachine.update();
-    }
-  };
-  
-  // Hook into melon state to start and tick the sub-machine
-  const melonAsAny = collectMelon as any;
-  const originalMelonEntered = melonAsAny.onStateEntered;
-  melonAsAny.onStateEntered = function(this: any) {
-    if (originalMelonEntered) originalMelonEntered.call(this);
-    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
-      logger.info('GetFood: starting melon sub-machine');
-      currentSubMachine.onStateEntered();
-    }
-  };
-  melonAsAny.update = function() {
-    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
-      currentSubMachine.update();
-    }
-  };
-
-  // Hook into fish state to start and tick the sub-machine
-  const fishAsAny = huntingFish as any;
-  const originalFishEntered = fishAsAny.onStateEntered;
-  fishAsAny.onStateEntered = function(this: any) {
-    if (originalFishEntered) originalFishEntered.call(this);
-    if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
-      logger.info('GetFood: starting fish hunt sub-machine');
-      currentSubMachine.onStateEntered();
-    }
-  };
-  fishAsAny.update = function() {
-    if (currentSubMachine && typeof currentSubMachine.update === 'function') {
-      currentSubMachine.update();
-    }
-  };
+  hookupSubMachine(huntingFood, 'hunt');
+  hookupSubMachine(collectBread, 'bread');
+  hookupSubMachine(collectBerries, 'berries');
+  hookupSubMachine(collectMelon, 'melon');
+  hookupSubMachine(huntingFish, 'fish hunt');
   
   const transitions = [
     enterToSelect,
@@ -734,27 +539,21 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
   
   // Handle source selection
-  let isFirstSelection = true;
   const selectAsAny = selectSource as any;
   const originalSelectEntered = selectAsAny.onStateEntered;
-  selectAsAny.onStateEntered = async function(this: any) {
+  selectAsAny.onStateEntered = function(this: any) {
     if (originalSelectEntered) originalSelectEntered.call(this);
-    
+
     phase = 'selecting';
-    
+
     // Check if we already have enough food
     if (getCurrentFoodPoints() >= config.targetFoodPoints) {
       phase = 'complete';
       return;
     }
-    
-    // On first selection, wait for entities to load (they may not be ready at spawn)
-    if (isFirstSelection) {
-      isFirstSelection = false;
-      logger.debug('GetFood: first selection, waiting for entities to load...');
-      await waitForEntities();
-    }
-    
+
+    checkAnimalsNearbyOnce();
+
     const nextSource = selectNextSource();
     
     if (!nextSource) {

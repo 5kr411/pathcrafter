@@ -24,8 +24,7 @@ const DEFAULT_RADII = [32, 64, 96, 128];
 
 let lastFailedAttempt = 0;
 let cooldownMs = DEFAULT_COOLDOWN_MS;
-let lastShouldActivateLogTime = 0;
-let lastCooldownLogTime = 0;
+let lastThrottledLogTime = 0;
 
 /**
  * Sets the cooldown duration after failed smelting attempts
@@ -47,14 +46,6 @@ export function resetFoodSmeltingCooldown(): void {
 function isInCooldown(): boolean {
   if (lastFailedAttempt === 0) return false;
   return Date.now() - lastFailedAttempt < cooldownMs;
-}
-
-/**
- * Gets remaining cooldown time in seconds
- */
-function getCooldownRemaining(): number {
-  if (!isInCooldown()) return 0;
-  return Math.ceil((cooldownMs - (Date.now() - lastFailedAttempt)) / 1000);
 }
 
 interface RawFoodItem {
@@ -133,44 +124,11 @@ async function captureSnapshotWithValidation(
   cookedItemName: string,
   targetCount: number
 ): Promise<any> {
-  const inventory = getInventoryObject(bot as any);
-  const inventoryMap = new Map(Object.entries(inventory));
-  const version = (bot as any).version || '1.20.1';
-  const mcData = minecraftData(version);
-  
   const validator = async (snapshot: any): Promise<boolean> => {
-    try {
-      const tree = planner(mcData, cookedItemName, targetCount, {
-        inventory: new Map(inventoryMap),
-        log: false,
-        pruneWithWorld: true,
-        combineSimilarNodes: true,
-        worldSnapshot: snapshot
-      });
-      
-      if (!tree) {
-        logger.debug(`FoodSmelting: validator - no tree at radius ${snapshot.radius}`);
-        return false;
-      }
-      
-      const { enumerateActionPathsGenerator } = plannerInternals;
-      const iter = enumerateActionPathsGenerator(tree, { inventory });
-      
-      for (const path of iter) {
-        if (path && path.length > 0) {
-          logger.debug(`FoodSmelting: validator - found valid path at radius ${snapshot.radius}`);
-          return true;
-        }
-      }
-      
-      logger.debug(`FoodSmelting: validator - no paths at radius ${snapshot.radius}`);
-      return false;
-    } catch (err: any) {
-      logger.debug(`FoodSmelting: validator error - ${err?.message || err}`);
-      return false;
-    }
+    const path = await tryPlanForCookedFood(bot, cookedItemName, targetCount, snapshot);
+    return path !== null && path.length > 0;
   };
-  
+
   try {
     logger.info(`FoodSmelting: capturing adaptive snapshot with radii ${JSON.stringify(DEFAULT_RADII)}`);
     const result = await captureAdaptiveSnapshot(bot as any, {
@@ -213,18 +171,17 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
     
     // Check cooldown
     if (isInCooldown()) {
-      if (now - lastCooldownLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-        const remaining = getCooldownRemaining();
-        logger.debug(`FoodSmelting: in cooldown (${remaining}s remaining)`);
-        lastCooldownLogTime = now;
+      if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+        logger.debug(`FoodSmelting: in cooldown`);
+        lastThrottledLogTime = now;
       }
       return false;
     }
-    
-    if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+
+    if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
       const items = rawFoodItems.map(f => `${f.count}x ${f.rawName}`).join(', ');
       logger.debug(`FoodSmelting: should activate - raw food: ${items}`);
-      lastShouldActivateLogTime = now;
+      lastThrottledLogTime = now;
     }
     
     return true;

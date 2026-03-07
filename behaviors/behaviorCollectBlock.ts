@@ -12,7 +12,6 @@ const {
 import { BehaviorMineBlock } from './behaviorMineBlock';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
-import createBreakBlockOnlyState, { BreakBlockTargets } from './behaviorBreakBlockOnly';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import { chooseMinimalToolName, hasEqualOrBetterTool } from '../utils/items';
@@ -20,7 +19,7 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getLastSnapshotRadius } from '../utils/context';
 import createSafeFindBlockState from './behaviorSafeFindBlock';
-import { canSeeTargetBlock, findObstructingBlock } from '../utils/raycasting';
+
 import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 import { getDropFollowTimeoutMs } from '../bots/collector/config';
 import { getHarvestToolNames, inventoryItemsToMap, isDropEntityCandidate } from './collectBlockHelpers';
@@ -107,17 +106,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   } catch (_) {}
 
   let currentBlockCount = 0; // Will be set by resetBaseline on first entry
-  let pathfindingFailureCount = 0; // Track how many times pathfinding failed and we searched for closer block
-  const MAX_PATHFINDING_FAILURES = 20; // Max attempts before giving up
+  let pathfindingFailureCount = 0;
+  const MAX_PATHFINDING_FAILURES = 5;
   let missingToolInfo: { requiredTool?: string; blockName?: string; currentTool?: string } | null = null;
-  let pathfindingGiveUpLogged = false;
-  let lastEnterLogCollected: number | null = null;
-  let lastEnterLogTime = 0;
-  let lastFindFailTime: number | null = null;
-  const lastFindFailLogTimeByBlock = new Map<string, number>();
   let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
-  let lastDropMetadataLogTime: number | null = null;
-  let cooldownLoggedForCurrentFailure = false;
 
   function collectedCount(): number {
     return getItemCountInInventory(bot, targets.itemName) - currentBlockCount;
@@ -207,7 +199,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     typeof mineBlock.onStateEntered === 'function' ? mineBlock.onStateEntered.bind(mineBlock) : null;
   mineBlock.onStateEntered = function () {
     mineStartTime = Date.now();
-    lastDropMetadataLogTime = null;
     const pos = targets.position;
     try {
       const block = pos ? bot.blockAt?.(pos) : null;
@@ -251,27 +242,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
     return false;
   });
-
-  function logNearbyItemMetadata(context: string): void {
-    const now = Date.now();
-    const targetPos = targets.blockPosition || targets.position || bot.entity?.position;
-    if (!targetPos) return;
-    if (lastDropMetadataLogTime && now - lastDropMetadataLogTime < 1000) return;
-    lastDropMetadataLogTime = now;
-    try {
-      const items = Object.values(bot.entities || {}).filter((e: any) => {
-        return e && (e.displayName === 'Item' || e.name === 'item' || e.type === 'object') && e.position?.distanceTo;
-      });
-      const desc = items.map((e: any) => {
-        const dist = targetPos && e.position?.distanceTo ? e.position.distanceTo(targetPos).toFixed(2) : 'n/a';
-        const meta = Array.isArray(e.metadata) ? e.metadata[7] : undefined;
-        return `@${e.position?.x?.toFixed(1)},${e.position?.y?.toFixed(1)},${e.position?.z?.toFixed(1)} d=${dist} meta=${JSON.stringify(meta)}`;
-      });
-      logger.debug(`DropDebug[${context}]: nearby items for ${targets.itemName}: ${desc.join(' | ') || 'none'}`);
-    } catch (err: any) {
-      logger.debug(`DropDebug[${context}]: error logging item metadata: ${err?.message || err}`);
-    }
-  }
 
   // Add logging to GetClosestEntity
   addStateLogging(findDrop, 'GetClosestEntity', {
@@ -319,8 +289,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return done;
     },
     onTransition: () => {
-      pathfindingFailureCount = 0;
-      pathfindingGiveUpLogged = false;
       missingToolInfo = null;
     }
   });
@@ -334,36 +302,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         resetBaseline();
         baselineInitialized = true;
       }
-      if (lastFindFailTime && Date.now() - lastFindFailTime < 2000) {
-        if (!cooldownLoggedForCurrentFailure) {
-          logger.debug('enterToFindBlock: cooling down after recent find failure (2s)');
-          cooldownLoggedForCurrentFailure = true;
-        }
-        return false;
-      }
       const collected = collectedCount();
       const shouldGo = collected < targets.amount;
-      if (shouldGo) {
-        logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
-      } else {
-        const now = Date.now();
-        if (lastEnterLogCollected !== collected || now - lastEnterLogTime > 5000) {
-          logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
-          lastEnterLogCollected = collected;
-          lastEnterLogTime = now;
-        } else {
-          logger.debug(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
-        }
-      }
+      logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
       return shouldGo;
     },
     onTransition: () => {
-      pathfindingFailureCount = 0; // Reset counter when starting a new find block sequence
-      pathfindingGiveUpLogged = false;
+      pathfindingFailureCount = 0;
       missingToolInfo = null;
-      lastFindFailTime = null;
       lastFailureReason = null;
-      cooldownLoggedForCurrentFailure = false;
       try {
         const currentId = mcData.blocksByName[targets.blockName]?.id;
         if (currentId != null) findBlock.blocks = [currentId];
@@ -394,15 +341,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return false;
     },
     onTransition: () => {
-      const now = Date.now();
-      const lastLog = lastFindFailLogTimeByBlock.get(targets.blockName) || 0;
-      if (now - lastLog > 2000) {
-        logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
-        lastFindFailLogTimeByBlock.set(targets.blockName, now);
-      } else {
-        logger.debug(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
-      }
-      lastFindFailTime = now;
+      logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
       lastFailureReason = 'not_found';
     }
   });
@@ -477,25 +416,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         if (!targets.position) {
           targets.position = targets.blockPosition;
         }
-        
-        // Adjust distance based on target position relative to bot
-        if (bot.entity && bot.entity.position && targets.blockPosition) {
-          const botPos = bot.entity.position;
-          const targetPos = targets.blockPosition;
-          const dx = Math.abs(targetPos.x - botPos.x);
-          const dz = Math.abs(targetPos.z - botPos.z);
-          const dy = targetPos.y - botPos.y;
-          
-          // If target is directly above or below (small horizontal distance)
-          if (dx < 1.5 && dz < 1.5) {
-            // Use smaller distance for vertical mining
-            goToBlock.distance = Math.max(0.5, Math.abs(dy) - 1);
-            logger.debug(`Target is vertical (dx=${dx.toFixed(1)}, dz=${dz.toFixed(1)}, dy=${dy.toFixed(1)}), using distance ${goToBlock.distance.toFixed(1)}`);
-          } else {
-            // Use standard distance for horizontal mining
-            goToBlock.distance = 3;
-          }
-        }
+
+        goToBlock.distance = 3;
         
         try {
           logger.debug('moving towards position', targets.position);
@@ -521,46 +443,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const obstructionTargets: BreakBlockTargets = {};
-  const breakObstruction = createBreakBlockOnlyState(bot, obstructionTargets);
-  if (breakObstruction && typeof breakObstruction === 'object') {
-    (breakObstruction as any).stateName =
-      (breakObstruction as any).stateName || 'BreakObstruction';
-  }
-
-  const checkObstruction = new BehaviorIdle();
-  checkObstruction.stateName = 'CheckObstruction';
-
-  let obstructionAttempts = 0;
-  const MAX_OBSTRUCTION_ATTEMPTS = 12;
-
-  checkObstruction.onStateEntered = function () {
-    try {
-      const obstruction = findObstructingBlock(bot, targets);
-      if (obstruction && obstruction.position) {
-        obstructionTargets.position = obstruction.position;
-        obstructionTargets.blockPosition = obstruction.position;
-        obstructionTargets.blockName = obstruction.name || 'unknown';
-        logger.info(
-          `BehaviorCollectBlock: obstruction ${obstructionTargets.blockName} at (${obstruction.position.x}, ${obstruction.position.y}, ${obstruction.position.z})`
-        );
-      } else {
-        obstructionTargets.position = undefined;
-        obstructionTargets.blockPosition = undefined;
-        obstructionTargets.blockName = undefined;
-        const canSee = canSeeTargetBlock(bot, targets);
-        logger.debug(`BehaviorCollectBlock: obstruction clear (canSee=${canSee})`);
-      }
-    } catch (err: any) {
-      obstructionTargets.position = undefined;
-      obstructionTargets.blockPosition = undefined;
-      obstructionTargets.blockName = undefined;
-      logger.debug(
-        `BehaviorCollectBlock: obstruction check failed: ${err?.message || err}`
-      );
-    }
-  };
-
   const goToBlockToMine = new StateTransition({
     parent: goToBlock,
     child: mineBlock,
@@ -568,27 +450,22 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      const canSee = canSeeTargetBlock(bot, targets);
-      
+
       if (!finished) return false;
       if (distance >= 3) {
         logger.debug(`BehaviorCollectBlock: goToBlockToMine - distance ${distance.toFixed(2)} >= 3, not close enough yet`);
         return false;
       }
-      
-      if (!canSee) return false;
-      
+
       if (isTargetUnderFeet()) {
         logger.warn('BehaviorCollectBlock: Target is directly under bot feet, cannot mine');
         return false;
       }
-      
-      logger.info(`BehaviorCollectBlock: reached target block at distance ${distance.toFixed(2)}, can see target, proceeding to mine`);
+
+      logger.info(`BehaviorCollectBlock: reached target block at distance ${distance.toFixed(2)}, proceeding to mine`);
       return true;
     },
     onTransition: () => {
-      obstructionAttempts = 0;
-      pathfindingFailureCount = 0;
       targets.position = targets.blockPosition;
       logger.debug('go to block -> mine block');
     }
@@ -601,123 +478,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      const canSee = canSeeTargetBlock(bot, targets);
-      
+
       if (!finished) return false;
       if (distance >= 3) return false;
-      if (!canSee) return false;
-      
+
       return isTargetUnderFeet();
     },
     onTransition: () => {
-      pathfindingFailureCount = 0;
       logger.debug('go to block -> find block (avoiding block under feet)');
-    }
-  });
-
-  const goToBlockToCheckObstructions = new StateTransition({
-    parent: goToBlock,
-    child: checkObstruction,
-    name: 'BehaviorCollectBlock: go to block -> check obstructions',
-    shouldTransition: () => {
-      const finished = goToBlock.isFinished();
-      const distance = goToBlock.distanceToTarget();
-      const canSee = canSeeTargetBlock(bot, targets);
-      
-      if (!finished) return false;
-      if (distance >= 3) {
-        logger.debug(`BehaviorCollectBlock: goToBlockToCheckObstructions - distance ${distance.toFixed(2)} >= 3, not close enough to check obstructions`);
-        return false;
-      }
-      
-      const shouldCheck = !canSee;
-      if (shouldCheck) {
-        logger.info(`BehaviorCollectBlock: reached target at distance ${distance.toFixed(2)}, but cannot see target, checking for obstructions`);
-      }
-      
-      return shouldCheck;
-    },
-    onTransition: () => {
-      obstructionAttempts = 0;
-      logger.debug('BehaviorCollectBlock: go to block -> check obstructions');
-    }
-  });
-
-  const checkObstructionToBreak = new StateTransition({
-    parent: checkObstruction,
-    child: breakObstruction,
-    name: 'BehaviorCollectBlock: check obstructions -> break obstruction',
-    shouldTransition: () =>
-      !!obstructionTargets.position && obstructionAttempts < MAX_OBSTRUCTION_ATTEMPTS,
-    onTransition: () => {
-      obstructionAttempts++;
-      const pos = obstructionTargets.position as Vec3Like;
-      const name = obstructionTargets.blockName || 'unknown';
-      logger.info(
-        `BehaviorCollectBlock: clearing obstruction ${obstructionAttempts}/${MAX_OBSTRUCTION_ATTEMPTS} (${name}) at (${pos.x}, ${pos.y}, ${pos.z})`
-      );
-    }
-  });
-
-  const breakObstructionToCheck = new StateTransition({
-    parent: breakObstruction,
-    child: checkObstruction,
-    name: 'BehaviorCollectBlock: break obstruction -> recheck',
-    shouldTransition: () => {
-      if (typeof breakObstruction.isFinished === 'function') {
-        return breakObstruction.isFinished();
-      }
-      return !!breakObstruction.isFinished;
-    },
-    onTransition: () => {
-      obstructionTargets.position = undefined;
-      obstructionTargets.blockPosition = undefined;
-      obstructionTargets.blockName = undefined;
-    }
-  });
-
-  const checkObstructionToMine = new StateTransition({
-    parent: checkObstruction,
-    child: mineBlock,
-    name: 'BehaviorCollectBlock: check obstructions -> mine block',
-    shouldTransition: () => {
-      if (isTargetUnderFeet()) return false;
-      if (obstructionTargets.position) {
-        return obstructionAttempts >= MAX_OBSTRUCTION_ATTEMPTS;
-      }
-      return true;
-    },
-    onTransition: () => {
-      if (obstructionTargets.position) {
-        logger.warn(
-          `BehaviorCollectBlock: obstruction clearing exceeded ${MAX_OBSTRUCTION_ATTEMPTS} attempts, proceeding anyway`
-        );
-      } else if (!canSeeTargetBlock(bot, targets)) {
-        logger.warn(
-          'BehaviorCollectBlock: no obstruction detected but target still not visible, proceeding'
-        );
-      }
-      obstructionAttempts = 0;
-      pathfindingFailureCount = 0;
-      targets.position = targets.blockPosition;
-      logger.debug('check obstructions -> mine block');
-    }
-  });
-
-  const checkObstructionToFindBlockUnderFeet = new StateTransition({
-    parent: checkObstruction,
-    child: findBlock,
-    name: 'BehaviorCollectBlock: check obstructions -> find block (target under feet)',
-    shouldTransition: () => {
-      if (!isTargetUnderFeet()) return false;
-      if (obstructionTargets.position) {
-        return obstructionAttempts >= MAX_OBSTRUCTION_ATTEMPTS;
-      }
-      return true;
-    },
-    onTransition: () => {
-      pathfindingFailureCount = 0;
-      logger.debug('check obstructions -> find block (avoiding block under feet)');
     }
   });
 
@@ -740,37 +508,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const goToBlockToFindBlock = new StateTransition({
     parent: goToBlock,
     child: findBlock,
-    name: 'BehaviorCollectBlock: go to block -> find block',
+    name: 'BehaviorCollectBlock: go to block -> find block (retry)',
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      
-      if (!finished || distance < 3) return false;
-
-      if (pathfindingFailureCount >= MAX_PATHFINDING_FAILURES) {
-        if (!pathfindingGiveUpLogged) {
-          const botPos = bot.entity?.position;
-          const targetPos = targets.blockPosition;
-          const posInfo = botPos && targetPos 
-            ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
-            : 'position info unavailable';
-          logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times, giving up on ${targets.blockName}. ${posInfo}`);
-          pathfindingGiveUpLogged = true;
-        }
-        return false;
-      }
-
-      pathfindingFailureCount++;
-      const botPos = bot.entity?.position;
-      const targetPos = targets.blockPosition;
-      const posInfo = botPos && targetPos 
-        ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
-        : 'position info unavailable';
-      logger.warn(`BehaviorCollectBlock: pathfinding failed (still ${distance.toFixed(2)} blocks away from ${targets.blockName}), searching for closer block (attempt ${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}). ${posInfo}`);
-      return true;
+      return finished && distance >= 3 && pathfindingFailureCount < MAX_PATHFINDING_FAILURES;
     },
     onTransition: () => {
-      logger.debug('go to block -> find block (pathfinding retry)');
+      pathfindingFailureCount++;
+      logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), searching for closer block`);
     }
   });
 
@@ -778,14 +524,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     parent: goToBlock,
     child: exit,
     name: 'BehaviorCollectBlock: go to block -> exit (pathfinding give up)',
-    shouldTransition: () => pathfindingFailureCount >= MAX_PATHFINDING_FAILURES && goToBlock.isFinished(),
+    shouldTransition: () => {
+      const finished = goToBlock.isFinished();
+      const distance = goToBlock.distanceToTarget();
+      return finished && distance >= 3 && pathfindingFailureCount >= MAX_PATHFINDING_FAILURES;
+    },
     onTransition: () => {
-      const botPos = bot.entity?.position;
-      const targetPos = targets.blockPosition;
-      const posInfo = botPos && targetPos 
-        ? `bot at (${botPos.x.toFixed(1)}, ${botPos.y.toFixed(1)}, ${botPos.z.toFixed(1)}), target at (${targetPos.x.toFixed(1)}, ${targetPos.y.toFixed(1)}, ${targetPos.z.toFixed(1)})`
-        : 'position info unavailable';
-      logger.error(`BehaviorCollectBlock: giving up after ${pathfindingFailureCount} pathfinding failures on ${targets.blockName}. ${posInfo}`);
+      logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times for ${targets.blockName}, giving up`);
       lastFailureReason = 'pathfinding';
     }
   });
@@ -864,7 +609,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       } catch (_) {
         logger.debug('find drop -> find block');
       }
-      logNearbyItemMetadata('no-match');
       lastBreakPosition = null;
       dropsCollectedThisCycle = 0;
     }
@@ -983,12 +727,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findInteractPositionToExitMissingTool,
     goToBlockToMine,
     goToBlockToFindBlockUnderFeet,
-    goToBlockToCheckObstructions,
-    checkObstructionToBreak,
-    breakObstructionToCheck,
-    checkObstructionToMine,
-    checkObstructionToFindBlockUnderFeet,
     goToBlockToFindBlock,
+    goToBlockToExitPathfail,
     mineBlockToFindDrop,
     findDropToGoToDrop,
     findDropToExit,
@@ -996,8 +736,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     goToDropToFindBlockGotTarget,
     goToDropToFindMoreDrops,
     goToDropToFindBlock,
-    goToDropToExit,
-    goToBlockToExitPathfail
+    goToDropToExit
   ];
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);

@@ -8,10 +8,8 @@ import { Vec3 } from 'vec3';
 const { goals } = require('mineflayer-pathfinder');
 
 const HOSTILE_FLEE_PRIORITY = 110;
-const HOSTILE_FLEE_TRIGGER_RADIUS = 16;
-const HOSTILE_FLEE_REACQUIRE_RADIUS = 24;
-const HOSTILE_FLEE_SAFE_RADIUS = 24;
-const FLEE_DISTANCE = 24;
+const TRIGGER_RADIUS = 16;
+const FLEE_RADIUS = 24;
 const GOAL_CHANGE_THRESHOLD = 2;
 const GOAL_REFRESH_MS = 750;
 export const FLEE_MEMORY_MS = 5000;
@@ -28,26 +26,8 @@ function hasShield(bot: Bot): boolean {
 }
 
 function isLowHealth(bot: Bot): boolean {
-  const entity: any = bot?.entity;
-  let current = 0;
-  let max: number | null = null;
-
-  if (typeof (bot as any)?.health === 'number' && Number.isFinite((bot as any).health)) {
-    current = (bot as any).health;
-  } else if (typeof entity?.health === 'number' && Number.isFinite(entity.health)) {
-    current = entity.health;
-  }
-
-  if (typeof (bot as any)?.maxHealth === 'number' && Number.isFinite((bot as any).maxHealth)) {
-    max = (bot as any).maxHealth;
-  } else if (typeof entity?.maxHealth === 'number' && Number.isFinite(entity.maxHealth)) {
-    max = entity.maxHealth;
-  }
-
-  if (!Number.isFinite(max) || !max || max <= 0) {
-    max = 20;
-  }
-
+  const current = (bot as any).health ?? 20;
+  const max = (bot as any).maxHealth ?? 20;
   return current > 0 && current < max / 2;
 }
 
@@ -85,14 +65,14 @@ export const hostileFleeBehavior: ReactiveBehavior = {
     if (hasShield(bot)) {
       return false;
     }
-    const creeperThreat = findClosestCreeper(bot, HOSTILE_FLEE_TRIGGER_RADIUS);
+    const creeperThreat = findClosestCreeper(bot, TRIGGER_RADIUS);
     if (creeperThreat) {
       return true;
     }
     if (!isLowHealth(bot)) {
       return false;
     }
-    const hostileThreat = findClosestHostileMob(bot, HOSTILE_FLEE_TRIGGER_RADIUS, true);
+    const hostileThreat = findClosestHostileMob(bot, TRIGGER_RADIUS, true);
     return !!hostileThreat;
   },
 
@@ -117,17 +97,16 @@ export const hostileFleeBehavior: ReactiveBehavior = {
     let threatLabel = 'hostile mob';
     let lastKnownThreatPos: Vec3Like | null = null;
     let lastThreatSeenTime = 0;
-    let memoryLogged = false;
 
     const getThreat = (): any | null => {
-      const creeper = findClosestCreeper(bot, HOSTILE_FLEE_REACQUIRE_RADIUS);
+      const creeper = findClosestCreeper(bot, FLEE_RADIUS);
       if (creeper) {
         return creeper;
       }
       if (!isLowHealth(bot)) {
         return null;
       }
-      return findClosestHostileMob(bot, HOSTILE_FLEE_REACQUIRE_RADIUS, true);
+      return findClosestHostileMob(bot, FLEE_RADIUS, true);
     };
 
     const setGoal = (target: Vec3): void => {
@@ -147,7 +126,7 @@ export const hostileFleeBehavior: ReactiveBehavior = {
         return;
       }
 
-      const target = computeFleeTarget(botPos, threatPos, FLEE_DISTANCE);
+      const target = computeFleeTarget(botPos, threatPos, FLEE_RADIUS);
       if (!force && lastGoal && getDistance(lastGoal, target) < GOAL_CHANGE_THRESHOLD) {
         return;
       }
@@ -173,7 +152,6 @@ export const hostileFleeBehavior: ReactiveBehavior = {
         lastGoalTime = 0;
         lastKnownThreatPos = null;
         lastThreatSeenTime = 0;
-        memoryLogged = false;
 
         const threat = getThreat();
         if (!threat) {
@@ -216,20 +194,15 @@ export const hostileFleeBehavior: ReactiveBehavior = {
           currentThreatPos = threat.position;
           lastKnownThreatPos = { x: threat.position.x, y: threat.position.y, z: threat.position.z };
           lastThreatSeenTime = now;
-          memoryLogged = false;
         } else if (lastKnownThreatPos && now - lastThreatSeenTime < FLEE_MEMORY_MS) {
           currentThreatPos = lastKnownThreatPos;
-          if (!memoryLogged) {
-            logger.debug('HostileFlee: LOS lost, continuing flee from last known position');
-            memoryLogged = true;
-          }
         } else {
           finish(isLowHealth(bot) ? 'hostile lost' : 'health recovered');
           return;
         }
 
         const distance = getDistance(botPos, currentThreatPos);
-        if (distance >= HOSTILE_FLEE_SAFE_RADIUS) {
+        if (distance >= FLEE_RADIUS) {
           finish('safe distance reached');
           return;
         }
@@ -258,9 +231,7 @@ export const hostileFleeBehavior: ReactiveBehavior = {
           : reason === 'preempted'
             ? 'pausing flee'
             : 'stopped fleeing';
-        try {
-          sendChat(`${verb} ${threatLabel}`);
-        } catch (_) {}
+        sendChat(`${verb} ${threatLabel}`);
       }
     };
   }

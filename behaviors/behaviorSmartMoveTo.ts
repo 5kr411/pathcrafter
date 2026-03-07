@@ -1,14 +1,6 @@
 const { BehaviorMoveTo } = require('mineflayer-statemachine');
-const Vec3 = require('vec3').Vec3;
 import logger from '../utils/logger';
 import { getStuckDetectionWindowMs } from '../utils/movementConfig';
-import { BehaviorMineBlock } from './behaviorMineBlock';
-import { getToolRemainingUses } from '../utils/toolValidation';
-import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
-
-// Global tracking of which tools have been warned about
-// This prevents spamming INFO logs across multiple state machine instances
-export const globalDurabilityWarnings = new Map<string, number>();
 
 interface Vec3Like {
   x: number;
@@ -43,9 +35,6 @@ export class BehaviorSmartMoveTo {
   private isUnsticking: boolean = false;
   private unstickTarget: Vec3Like | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
-  private miningHitboxBlock: boolean = false;
-  private mineBehavior: any = null;
-  private lastDurabilityCheck: number = 0;
   private allowUnstick: boolean = true;
 
   constructor(bot: Bot, targets: any) {
@@ -80,7 +69,6 @@ export class BehaviorSmartMoveTo {
     this.isStuck = false;
     this.isUnsticking = false;
     this.unstickTarget = null;
-    this.lastDurabilityCheck = 0;
     this.allowUnstick = this.targets?.disableSmartMoveUnstick !== true;
 
     if (this.targets) {
@@ -98,7 +86,6 @@ export class BehaviorSmartMoveTo {
     
     this.checkInterval = setInterval(() => {
       this.checkIfStuck();
-      this.checkToolDurability();
     }, 1000);
     
     logger.debug(`BehaviorSmartMoveTo: Started stuck detection interval for target at (${this.originalTarget?.x}, ${this.originalTarget?.y}, ${this.originalTarget?.z})`);
@@ -116,16 +103,9 @@ export class BehaviorSmartMoveTo {
       logger.debug('BehaviorSmartMoveTo: Cleared stuck detection interval');
     }
 
-    if (this.mineBehavior && this.mineBehavior.onStateExited) {
-      this.mineBehavior.onStateExited();
-      this.mineBehavior = null;
-    }
-
     this.positionHistory = [];
     this.isStuck = false;
     this.isUnsticking = false;
-    this.miningHitboxBlock = false;
-    this.lastDurabilityCheck = 0;
     this.allowUnstick = true;
 
     if (this.targets) {
@@ -176,108 +156,11 @@ export class BehaviorSmartMoveTo {
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
   }
 
-  private isSolidMineableBlock(block: any): boolean {
-    if (!block) return false;
-    if (block.type === 0) return false;
-    if (block.transparent) return false;
-    if (block.boundingBox && block.boundingBox !== 'block') return false;
-    const name = String(block.name || '').toLowerCase();
-    if (name.includes('water') || name.includes('lava')) return false;
-    return true;
-  }
-
-  private findBlockInHitbox(): any {
-    if (!this.bot.entity?.position) return null;
-    
-    const botPos = this.bot.entity.position;
-    const feetX = Math.floor(botPos.x);
-    const feetY = Math.floor(botPos.y);
-    const feetZ = Math.floor(botPos.z);
-    
-    const positions = [
-      new Vec3(feetX, feetY, feetZ),
-      new Vec3(feetX, feetY + 1, feetZ)
-    ];
-
-    for (const pos of positions) {
-      try {
-        if (!this.bot.blockAt) continue;
-        
-        const block = this.bot.blockAt(pos, false);
-        if (!this.isSolidMineableBlock(block)) continue;
-        
-        if (this.bot.canDigBlock && !this.bot.canDigBlock(block)) continue;
-        
-        logger.debug(`BehaviorSmartMoveTo: Found block ${block.name} in hitbox at (${pos.x}, ${pos.y}, ${pos.z})`);
-        return { block, position: pos };
-      } catch (err: any) {
-        logger.debug(`BehaviorSmartMoveTo: Error checking block in hitbox at (${pos.x}, ${pos.y}, ${pos.z}): ${err.message}`);
-      }
-    }
-    
-    return null;
-  }
-
-  private startMiningHitboxBlock(): void {
-    const blockInfo = this.findBlockInHitbox();
-    
-    if (!blockInfo) {
-      this.miningHitboxBlock = false;
-      return;
-    }
-
-    logger.warn(`BehaviorSmartMoveTo: Found block in hitbox: ${blockInfo.block.name} at (${blockInfo.position.x}, ${blockInfo.position.y}, ${blockInfo.position.z}). Mining it...`);
-    
-    this.miningHitboxBlock = true;
-    
-    const mineTargets = { position: blockInfo.position };
-    this.mineBehavior = new BehaviorMineBlock(this.bot, mineTargets);
-    
-    if (this.mineBehavior.onStateEntered) {
-      this.mineBehavior.onStateEntered();
-    }
-  }
-
-  private checkMiningProgress(): boolean {
-    if (!this.miningHitboxBlock || !this.mineBehavior) return false;
-
-    if (this.mineBehavior.isFinished) {
-      logger.info('BehaviorSmartMoveTo: Finished mining block from hitbox');
-      
-      if (this.mineBehavior.onStateExited) {
-        this.mineBehavior.onStateExited();
-      }
-      
-      this.mineBehavior = null;
-      this.miningHitboxBlock = false;
-      
-      const nextBlock = this.findBlockInHitbox();
-      if (nextBlock) {
-        logger.debug('BehaviorSmartMoveTo: Found another block in hitbox, mining it...');
-        this.startMiningHitboxBlock();
-        return true;
-      }
-      
-      return false;
-    }
-    
-    return true;
-  }
-
   private checkIfStuck(): void {
     this.recordCurrentPosition();
     
     const currentPos = this.bot.entity?.position;
     if (!currentPos) return;
-    
-    if (this.miningHitboxBlock) {
-      const stillMining = this.checkMiningProgress();
-      if (!stillMining) {
-        logger.info('BehaviorSmartMoveTo: Completed mining blocks from hitbox, resuming movement check');
-        this.positionHistory = [];
-      }
-      return;
-    }
     
     if (this.positionHistory.length > 0) {
       const oldestInHistory = this.positionHistory[0];
@@ -314,15 +197,9 @@ export class BehaviorSmartMoveTo {
         
         if (distanceMoved < 2) {
           logger.warn(`BehaviorSmartMoveTo: Still stuck while unsticking! Moved only ${distanceMoved.toFixed(2)} blocks.`);
-          
-          const blockInHitbox = this.findBlockInHitbox();
-          if (blockInHitbox) {
-            logger.info('BehaviorSmartMoveTo: Found blocks in hitbox while unsticking, mining them first');
-            this.startMiningHitboxBlock();
-          } else {
-            this.positionHistory = [];
-            this.initiateUnstick();
-          }
+
+          this.positionHistory = [];
+          this.initiateUnstick();
         }
       }
       return;
@@ -358,11 +235,7 @@ export class BehaviorSmartMoveTo {
         this.targets.smartMoveStuckCount = prevCount + 1;
       }
 
-      const blockInHitbox = this.findBlockInHitbox();
-      if (blockInHitbox) {
-        logger.info('BehaviorSmartMoveTo: Found blocks in hitbox, mining them first');
-        this.startMiningHitboxBlock();
-      } else if (this.allowUnstick) {
+      if (this.allowUnstick) {
         this.initiateUnstick();
       } else {
         logger.debug('BehaviorSmartMoveTo: Unstick suppressed for current targets');
@@ -409,69 +282,6 @@ export class BehaviorSmartMoveTo {
     this.positionHistory = [];
   }
 
-  private checkToolDurability(): void {
-    const now = Date.now();
-    if (now - this.lastDurabilityCheck < 500) {
-      return;
-    }
-    this.lastDurabilityCheck = now;
-
-    const executionContext = this.targets.executionContext as ExecutionContext | undefined;
-    if (!executionContext || !executionContext.durabilityThreshold) {
-      return;
-    }
-
-    const heldItem = this.bot.heldItem;
-    if (!heldItem || !heldItem.name) {
-      logger.debug(`BehaviorSmartMoveTo: durability check skipped - no held item`);
-      return;
-    }
-
-    try {
-      const remainingUses = getToolRemainingUses(this.bot, heldItem);
-      
-      if (!Number.isFinite(remainingUses) || remainingUses <= 0) {
-        logger.debug(`BehaviorSmartMoveTo: durability check skipped - remainingUses=${remainingUses}`);
-        return;
-      }
-
-      const itemData = this.bot.registry?.items?.[heldItem.type];
-      const maxDurability = itemData?.maxDurability;
-      
-      if (!maxDurability || maxDurability <= 0) {
-        logger.debug(`BehaviorSmartMoveTo: durability check skipped - maxDurability=${maxDurability}`);
-        return;
-      }
-
-      const durabilityPct = remainingUses / maxDurability;
-      logger.debug(`BehaviorSmartMoveTo: durability check - ${heldItem.name}: ${remainingUses}/${maxDurability} (${(durabilityPct * 100).toFixed(1)}%), threshold: ${(executionContext.durabilityThreshold * 100).toFixed(1)}%`);
-      
-      if (durabilityPct <= executionContext.durabilityThreshold) {
-        // Use global map to track warnings across ALL instances
-        const lastWarnedRemainingUses = globalDurabilityWarnings.get(heldItem.name);
-        
-        // Only log at INFO level if we haven't warned about this tool yet,
-        // OR if the remaining uses have decreased significantly (tool broke and was replaced)
-        if (lastWarnedRemainingUses === undefined || remainingUses > lastWarnedRemainingUses + 100) {
-          const pctDisplay = (durabilityPct * 100).toFixed(1);
-          const thresholdDisplay = (executionContext.durabilityThreshold * 100).toFixed(1);
-          logger.info(
-            `BehaviorSmartMoveTo: tool ${heldItem.name} low durability (${pctDisplay}% remaining, ${remainingUses}/${maxDurability} uses, threshold: ${thresholdDisplay}%)`
-          );
-          globalDurabilityWarnings.set(heldItem.name, remainingUses);
-        }
-        
-        signalToolIssue(executionContext, {
-          type: 'durability',
-          toolName: heldItem.name,
-          blockName: 'unknown',
-          currentToolName: heldItem.name
-        });
-      }
-    } catch (err: any) {
-      logger.debug(`BehaviorSmartMoveTo: error checking durability: ${err.message || err}`);
-    }
-  }
 }
 
 export default BehaviorSmartMoveTo;

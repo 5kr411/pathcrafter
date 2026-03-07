@@ -11,13 +11,10 @@ import logger from '../../../utils/logger';
 const minecraftData = require('minecraft-data');
 
 const EATING_SUCCESS_COOLDOWN_MS = 3000;
-const EATING_FAILURE_BASE_COOLDOWN_MS = 15000;
-const EATING_FAILURE_MAX_COOLDOWN_MS = 60000;
+const EATING_FAILURE_COOLDOWN_MS = 15000;
 const EAT_HUNGER_THRESHOLD = 14;
 
 let lastEatAttempt = 0;
-let consecutiveEatFailures = 0;
-let lastFailureHunger: number | null = null;
 
 function isOnCooldown(): boolean {
   return Date.now() < lastEatAttempt;
@@ -29,8 +26,6 @@ function setCooldown(durationMs: number): void {
 
 export function resetFoodEatingCooldown(): void {
   lastEatAttempt = 0;
-  consecutiveEatFailures = 0;
-  lastFailureHunger = null;
 }
 
 interface FoodInfo {
@@ -46,21 +41,11 @@ interface FoodItem {
 }
 
 function getBotHealth(bot: Bot): number {
-  const entity: any = bot?.entity;
-  if (typeof (bot as any)?.health === 'number' && Number.isFinite((bot as any).health)) {
-    return (bot as any).health;
-  }
-  if (typeof entity?.health === 'number' && Number.isFinite(entity.health)) {
-    return entity.health;
-  }
-  return 20;
+  return (bot as any).health ?? 20;
 }
 
 function getBotFood(bot: Bot): number {
-  if (typeof (bot as any)?.food === 'number' && Number.isFinite((bot as any).food)) {
-    return (bot as any).food;
-  }
-  return 20;
+  return (bot as any).food ?? 20;
 }
 
 function isFullHealth(bot: Bot): boolean {
@@ -115,12 +100,7 @@ function getInventoryItems(bot: Bot): any[] {
     logger.debug(`FoodEating: failed to enumerate inventory items - ${err?.message || err}`);
   }
 
-  const slots = inventory.slots;
-  if (!Array.isArray(slots)) {
-    return [];
-  }
-
-  return slots.filter((item: any) => !!item);
+  return [];
 }
 
 function getFoodItems(bot: Bot): FoodItem[] {
@@ -142,34 +122,13 @@ function getFoodItems(bot: Bot): FoodItem[] {
   return foodItems;
 }
 
-function selectFoodForFullHealth(foods: FoodItem[]): FoodItem | null {
-  if (foods.length === 0) {
-    return null;
-  }
-
-  const sorted = [...foods].sort((a, b) => a.foodInfo.foodPoints - b.foodInfo.foodPoints);
-  return sorted[0];
-}
-
-function selectFoodForHealing(foods: FoodItem[]): FoodItem | null {
+function selectBestFood(_bot: Bot, foods: FoodItem[]): FoodItem | null {
   if (foods.length === 0) {
     return null;
   }
 
   const sorted = [...foods].sort((a, b) => b.foodInfo.saturation - a.foodInfo.saturation);
   return sorted[0];
-}
-
-function selectBestFood(bot: Bot, foods: FoodItem[]): FoodItem | null {
-  if (foods.length === 0) {
-    return null;
-  }
-
-  if (isFullHealth(bot)) {
-    return selectFoodForFullHealth(foods);
-  } else {
-    return selectFoodForHealing(foods);
-  }
 }
 
 function canEatFood(bot: Bot, food: FoodItem): boolean {
@@ -207,11 +166,6 @@ function shouldEat(bot: Bot): boolean {
     return false;
   }
 
-  if (lastFailureHunger != null && getBotFood(bot) !== lastFailureHunger) {
-    consecutiveEatFailures = 0;
-    lastFailureHunger = null;
-  }
-
   const hunger = getBotFood(bot);
 
   if (hunger >= 20) {
@@ -234,16 +188,10 @@ function stopBotActions(bot: Bot): void {
     if (typeof (bot as any)?.clearControlStates === 'function') {
       (bot as any).clearControlStates();
     }
-  } catch (_) {}
-
-  try {
     const pathfinder = (bot as any)?.pathfinder;
     if (pathfinder && typeof pathfinder.stop === 'function') {
       pathfinder.stop();
     }
-  } catch (_) {}
-
-  try {
     if (typeof (bot as any)?.stopDigging === 'function') {
       (bot as any).stopDigging();
     }
@@ -347,17 +295,9 @@ function createFoodEatingState(bot: Bot, targets: EatFoodTargets): any {
       reachedExit = true;
       const success = eatFood.wasSuccessful();
       if (success) {
-        consecutiveEatFailures = 0;
-        lastFailureHunger = null;
         setCooldown(EATING_SUCCESS_COOLDOWN_MS);
       } else {
-        consecutiveEatFailures = Math.min(consecutiveEatFailures + 1, 8);
-        lastFailureHunger = getBotFood(bot);
-        const cooldownMs = Math.min(
-          EATING_FAILURE_BASE_COOLDOWN_MS * Math.pow(2, Math.max(0, consecutiveEatFailures - 1)),
-          EATING_FAILURE_MAX_COOLDOWN_MS
-        );
-        setCooldown(cooldownMs);
+        setCooldown(EATING_FAILURE_COOLDOWN_MS);
       }
       logger.debug(`FoodEating: eat finished, success=${success}`);
     }

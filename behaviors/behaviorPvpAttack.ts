@@ -251,24 +251,11 @@ export class BehaviorPvpAttack implements StateBehavior {
 
   private removeEventListeners(): void {
     if (this.stoppedAttackingHandler) {
-      try {
-        this.bot.off('stoppedAttacking', this.stoppedAttackingHandler);
-      } catch {
-        try {
-          this.bot.removeListener('stoppedAttacking', this.stoppedAttackingHandler);
-        } catch {}
-      }
+      try { this.bot.off('stoppedAttacking', this.stoppedAttackingHandler); } catch {}
       this.stoppedAttackingHandler = null;
     }
-
     if (this.attackedTargetHandler) {
-      try {
-        this.bot.off('attackedTarget', this.attackedTargetHandler);
-      } catch {
-        try {
-          this.bot.removeListener('attackedTarget', this.attackedTargetHandler);
-        } catch {}
-      }
+      try { this.bot.off('attackedTarget', this.attackedTargetHandler); } catch {}
       this.attackedTargetHandler = null;
     }
   }

@@ -2,8 +2,7 @@ import logger from '../utils/logger';
 import { forceStopAllMovement } from '../utils/movement';
 import {
   randomAngle,
-  offsetFromAngle,
-  probeDirectionForWater
+  offsetFromAngle
 } from '../utils/blockProbe';
 
 const { goals } = require('mineflayer-pathfinder');
@@ -12,8 +11,6 @@ const DEFAULT_DISTANCE = 128;
 const TIMEOUT_SECONDS_PER_BLOCK = 1.5;
 const GOAL_RESET_COOLDOWN_MS = 2000;
 const GOAL_REACH_RANGE = 16;
-const MAX_WATER_REROLLS = 3;
-const PROBE_STEP_BACK = 16;
 
 interface BotLike {
   entity?: { position: { x: number; y: number; z: number } };
@@ -98,30 +95,10 @@ export class BehaviorWander {
   }
 
   private pickTarget(pos: { x: number; y: number; z: number }): void {
-    const blockAt = typeof this.bot.blockAt === 'function'
-      ? this.bot.blockAt.bind(this.bot)
-      : null;
-
-    for (let attempt = 0; attempt < MAX_WATER_REROLLS; attempt++) {
-      const angle = randomAngle();
-      const target = offsetFromAngle(pos.x, pos.z, angle, this.distance);
-      this.targetX = target.x;
-      this.targetZ = target.z;
-
-      if (!blockAt) return;
-
-      const result = probeDirectionForWater(
-        blockAt, pos.x, pos.z, angle, this.distance, PROBE_STEP_BACK
-      );
-      if (result !== 'water') {
-        return;
-      }
-      logger.info(
-        `BehaviorWander: attempt ${attempt + 1} landed over water, re-rolling`
-      );
-    }
-
-    logger.info('BehaviorWander: all attempts landed over water, probably on an island');
+    const angle = randomAngle();
+    const target = offsetFromAngle(pos.x, pos.z, angle, this.distance);
+    this.targetX = target.x;
+    this.targetZ = target.z;
   }
 
   private setGoal(): void {

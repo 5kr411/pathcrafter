@@ -51,11 +51,6 @@ function isInCooldown(): boolean {
   return Date.now() - lastManagementTime < config.cooldownMs;
 }
 
-function getCooldownRemaining(): number {
-  if (!isInCooldown()) return 0;
-  return Math.ceil((config.cooldownMs - (Date.now() - lastManagementTime)) / 1000);
-}
-
 // --- Item protection ---
 
 function isProtectedItem(_bot: Bot, itemName: string): boolean {
@@ -196,12 +191,8 @@ function isDirectionClear(bot: Bot, yaw: number): boolean {
     const y = Math.floor(pos.y + 1);
     const z = Math.floor(pos.z + dz * dist);
 
-    try {
-      const block = (bot as any).blockAt({ x, y, z });
-      if (block && block.boundingBox !== 'empty') return false;
-    } catch (_) {
-      return true;
-    }
+    const block = (bot as any).blockAt({ x, y, z });
+    if (block && block.boundingBox !== 'empty') return false;
   }
   return true;
 }
@@ -313,7 +304,7 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
 
     if (isInCooldown()) {
       if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-        const remaining = getCooldownRemaining();
+        const remaining = Math.ceil((config.cooldownMs - (now - lastManagementTime)) / 1000);
         logger.debug(`InventoryManagement: in cooldown (${remaining}s remaining)`);
         lastShouldActivateLogTime = now;
       }
@@ -332,12 +323,6 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
   createState: async (bot: Bot) => {
     const sendChat: ((msg: string) => void) | null =
       typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
-
-    if (isInCooldown()) {
-      const remaining = getCooldownRemaining();
-      logger.debug(`InventoryManagement: skipping start (cooldown ${remaining}s remaining)`);
-      return null;
-    }
 
     const freeSlots = getEmptySlotCount(bot as any);
     const targetFree = config.triggerFreeSlots + FREE_SLOT_BUFFER;

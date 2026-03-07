@@ -1,5 +1,5 @@
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
-import createHuntEntityState, { getFailedTargetCooldownRemaining } from '../../../behaviors/behaviorHuntEntity';
+import createHuntEntityState from '../../../behaviors/behaviorHuntEntity';
 import { Vec3 } from 'vec3';
 const minecraftData = require('minecraft-data');
 
@@ -38,10 +38,11 @@ function isSolidBlock(block: any): boolean {
 
 export function hasLineOfSight(bot: Bot, entity: any): boolean {
   try {
-    if (!bot || !bot.entity || !bot.entity.position || !entity || !entity.position) return false;
+    if (!entity || !entity.position) return false;
     if (typeof (bot as any).blockAt !== 'function') return true;
 
-    const botPos = bot.entity.position;
+    const botPos = bot.entity?.position;
+    if (!botPos) return false;
     const eyeHeight = getBotEyeHeight(bot);
     const eyePos = new Vec3(botPos.x, botPos.y + eyeHeight, botPos.z);
     const targetPoint = getEntityAimPoint(entity);
@@ -157,6 +158,18 @@ export function getHostileMobNames(mcData: any): Set<string> {
   return hostileMobs;
 }
 
+let cachedHostileMobNames: Set<string> | null = null;
+let cachedMcDataVersion: string | null = null;
+
+function getCachedHostileMobNames(mcData: any, version: string): Set<string> {
+  if (cachedHostileMobNames && cachedMcDataVersion === version) {
+    return cachedHostileMobNames;
+  }
+  cachedHostileMobNames = getHostileMobNames(mcData);
+  cachedMcDataVersion = version;
+  return cachedHostileMobNames;
+}
+
 const SKELETON_VARIANT_NAMES = new Set(['skeleton', 'stray', 'bogged', 'parched']);
 
 export function isRangedHostile(entity: any): boolean {
@@ -180,7 +193,7 @@ export function findClosestHostileMob(
   if (!bot.entities) return null;
 
   const mcData = minecraftData(bot.version);
-  const hostileMobNames = getHostileMobNames(mcData);
+  const hostileMobNames = getCachedHostileMobNames(mcData, bot.version ?? '');
 
   let closest: any = null;
   let closestDistance = Infinity;
@@ -219,22 +232,12 @@ export const hostileMobBehavior: ReactiveBehavior = {
   name: 'hostile_mob_combat',
 
   shouldActivate: (bot: Bot): boolean => {
-    const hostileMob = findClosestHostileMob(
-      bot,
-      16,
-      true,
-      (entity) => getFailedTargetCooldownRemaining(entity) <= 0
-    );
+    const hostileMob = findClosestHostileMob(bot, 16, true);
     return hostileMob !== null;
   },
 
   createState: async (bot: Bot): Promise<any> => {
-    const hostileMob = findClosestHostileMob(
-      bot,
-      32,
-      true,
-      (entity) => getFailedTargetCooldownRemaining(entity) <= 0
-    );
+    const hostileMob = findClosestHostileMob(bot, 32, true);
     
     if (!hostileMob) {
       return null;
@@ -261,13 +264,14 @@ export const hostileMobBehavior: ReactiveBehavior = {
       }
     };
 
+    const mcData = minecraftData(bot.version);
+    const hostileNames = getCachedHostileMobNames(mcData, bot.version ?? '');
+
     const targets: any = {
       entity: hostileMob,
       entityFilter: (entity: any) => {
         if (!entity || !entity.name) return false;
-        const mcData = minecraftData(bot.version);
-        const hostileMobNames = getHostileMobNames(mcData);
-        return hostileMobNames.has(entity.name);
+        return hostileNames.has(entity.name);
       },
       detectionRange: 32,
       attackRange: 3.5
