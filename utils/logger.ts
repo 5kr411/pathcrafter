@@ -1,4 +1,5 @@
 import * as path from 'path';
+import * as fs from 'fs';
 
 // Log levels
 type LogLevelType = 'DEBUG' | 'INFO' | 'WARN' | 'ERROR' | 'SILENT';
@@ -33,15 +34,17 @@ export class Logger {
     private level: number;
     private useColors: boolean;
     private workspaceRoot: string;
+    private fileStream: fs.WriteStream | null = null;
+    private botName: string = '';
 
     constructor() {
         // Get log level from environment variable, default to INFO
         const envLevel = process.env.LOG_LEVEL?.toUpperCase();
         this.level = envLevel && envLevel in LogLevel ? LogLevel[envLevel as LogLevelType] : LogLevel.INFO;
-        
+
         // Option to disable colors (useful for file output or CI)
         this.useColors = process.env.LOG_NO_COLOR !== 'true';
-        
+
         // Track the workspace root for relative paths
         this.workspaceRoot = process.cwd();
     }
@@ -115,21 +118,81 @@ export class Logger {
     }
 
     /**
+     * Initialize file-based JSON-lines logging
+     */
+    initFileLogging(runDir: string, botName: string): void {
+        this.botName = botName;
+        const logPath = path.join(runDir, `${botName}.log`);
+        this.fileStream = fs.createWriteStream(logPath, { flags: 'a' });
+    }
+
+    /**
+     * Close the file log stream
+     */
+    close(): Promise<void> {
+        return new Promise((resolve) => {
+            if (this.fileStream) {
+                this.fileStream.end(() => resolve());
+                this.fileStream = null;
+            } else {
+                resolve();
+            }
+        });
+    }
+
+    /**
+     * Write a JSON-lines entry to the file stream
+     */
+    private _writeFileEntry(levelName: string, source: string, args: any[]): void {
+        if (!this.fileStream) return;
+        const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+        const entry = {
+            ts: new Date().toISOString(),
+            level: levelName.trim(),
+            bot: this.botName,
+            source,
+            msg
+        };
+        this.fileStream.write(JSON.stringify(entry) + '\n');
+    }
+
+    /**
+     * Log a milestone event — always writes to both console AND file
+     */
+    milestone(...args: any[]): void {
+        const callerFile = this._getCallerFile();
+        this._writeFileEntry('MILESTONE', callerFile, args);
+
+        // Always write to console
+        const timestamp = this._getTimestamp();
+        const levelTag = this._colorize('[MILE ]', colors.magenta);
+        const timeTag = this._colorize(`[${timestamp}]`, colors.gray);
+        const fileTag = this._colorize(`[${callerFile}]`, colors.cyan);
+        console.log(`${timeTag} ${levelTag} ${fileTag}`, ...args);
+    }
+
+    /**
      * Core logging method
      */
     _log(level: number, levelName: string, color: string, args: any[]): void {
         if (this.level > level) return; // Skip if below current log level
 
-        const timestamp = this._getTimestamp();
         const callerFile = this._getCallerFile();
-        
+
+        // Always write to file if stream is open
+        this._writeFileEntry(levelName, callerFile, args);
+
+        // Console: only write for WARN/ERROR when file logging is active
+        if (this.fileStream && level < LogLevel.WARN) return;
+
+        const timestamp = this._getTimestamp();
         const levelTag = this._colorize(`[${levelName}]`, color);
         const timeTag = this._colorize(`[${timestamp}]`, colors.gray);
         const fileTag = this._colorize(`[${callerFile}]`, colors.cyan);
-        
+
         // Construct the prefix
         const prefix = `${timeTag} ${levelTag} ${fileTag}`;
-        
+
         // Log the message
         console.log(prefix, ...args);
     }

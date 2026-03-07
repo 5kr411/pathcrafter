@@ -1,6 +1,7 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import logger from '../utils/logger';
+import { createRunDir } from '../utils/runDir';
 
 if (process.argv.length < 3) {
   logger.info('Usage: node collect_paths_multi.js <num> [<host>] [<port>] [<name_base>] [<password>]');
@@ -35,10 +36,21 @@ function spawnCollector(index: number): void {
     args.push(password);
   }
 
+  // Forward --targets flag if present
+  const targetsIdx = process.argv.indexOf('--targets');
+  if (targetsIdx !== -1 && targetsIdx + 1 < process.argv.length) {
+    args.push('--targets', process.argv[targetsIdx + 1]);
+  }
+
   logger.info(`Spawning collector ${index}/${num}: ${username}`);
   
   const proc = spawn('node', args, {
-    stdio: ['inherit', 'inherit', 'inherit']
+    stdio: ['inherit', 'inherit', 'inherit'],
+    env: {
+      ...process.env,
+      PATHCRAFTER_RUN_DIR: runDir,
+      PATHCRAFTER_BOT_NAME: username
+    }
   });
 
   processes.push(proc);
@@ -85,9 +97,11 @@ process.on('SIGTERM', () => {
   setTimeout(() => process.exit(0), 5000);
 });
 
+const runDir = createRunDir();
 logger.info(`Starting ${num} collector instances`);
 logger.info(`Server: ${host}:${port}`);
 logger.info(`Username base: ${usernameBase}`);
+logger.info(`Run directory: ${runDir}`);
 
 spawnCollector(1);
 

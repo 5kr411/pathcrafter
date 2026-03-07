@@ -536,8 +536,8 @@ export class TargetExecutor implements StateBehavior {
       );
       this.safeChat(`retrying ${target.item} x${target.count} (attempt ${retryCount + 1}/${MAX_RETRIES})`);
     } else {
-      logInfo(
-        `Collector: starting target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${target.item} x${target.count}`
+      logger.milestone(
+        `starting target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${target.item} x${target.count}`
       );
     }
 
@@ -716,7 +716,7 @@ export class TargetExecutor implements StateBehavior {
     const currentTarget = this.sequenceTargets[this.sequenceIndex];
     if (currentTarget) {
       const completedDesc = `${currentTarget.item} x${currentTarget.count}`;
-      logInfo(`Collector: target complete: ${completedDesc}`);
+      logger.milestone(`target complete: ${completedDesc}`);
       this.safeChat(`collected ${completedDesc}`);
     }
 
@@ -751,7 +751,7 @@ export class TargetExecutor implements StateBehavior {
     }
 
     this.shouldWander = false;
-    logInfo(`Collector: target ${this.sequenceIndex + 1} failed after ${MAX_RETRIES} attempts, moving to next target`);
+    logger.milestone(`target ${this.sequenceIndex + 1} failed after ${MAX_RETRIES} attempts, moving to next target`);
     this.safeChat(`target failed after ${MAX_RETRIES} attempts, moving on`);
     this.targetRetryCount.delete(this.sequenceIndex);
     this.sequenceIndex++;
@@ -847,7 +847,7 @@ export class TargetExecutor implements StateBehavior {
   }
 
   private completeAllTargets(): void {
-    logInfo('Collector: all targets complete');
+    logger.milestone('all targets complete');
     this.safeChat('all targets complete');
     this.running = false;
     this.sequenceTargets = [];

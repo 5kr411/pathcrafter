@@ -18,6 +18,8 @@ import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { installExplosionSanitizer } from '../utils/explosionSanitizer';
 import { installPacketErrorSuppressor } from '../utils/packetErrorSuppressor';
 import logger from '../utils/logger';
+import { parseCliTargets } from '../utils/cli';
+import { resolveRunDir } from '../utils/runDir';
 
 const config = getConfig();
 
@@ -30,7 +32,7 @@ if (process.argv.length >= 4) {
   botOptions.host = process.argv[2];
   botOptions.port = parseInt(process.argv[3]);
   if (process.argv[4]) botOptions.username = process.argv[4];
-  if (process.argv[5]) botOptions.password = process.argv[5];
+  if (process.argv[5] && !process.argv[5].startsWith('--')) botOptions.password = process.argv[5];
 }
 
 const bot: any = mineflayer.createBot(botOptions);
@@ -72,6 +74,11 @@ bot.once('spawn', () => {
     logger.info('Collector: bot error', err && err.code ? err.code : err);
   });
 
+  // Initialize file logging
+  const runDir = resolveRunDir();
+  logger.initFileLogging(runDir, botOptions.username);
+
+  logger.milestone('bot ready');
   safeChat('collector ready');
 
   const workerManager = new WorkerManager(
@@ -123,6 +130,7 @@ bot.once('spawn', () => {
   bot.on('end', () => {
     workerManager.terminate();
     controlStack.stop();
+    logger.close();
   });
 
   const commandHandler = new CommandHandler(bot, executor, safeChat);
@@ -130,4 +138,12 @@ bot.once('spawn', () => {
   bot.on('chat', (username: string, message: string) => {
     commandHandler.handleChatMessage(username, message);
   });
+
+  // Auto-start from CLI targets if provided
+  const cliTargets = parseCliTargets();
+  if (cliTargets) {
+    logger.info(`Collector: auto-starting with CLI targets: ${cliTargets.map(t => `${t.item} x${t.count}`).join(', ')}`);
+    executor.setTargets(cliTargets);
+    executor.startNextTarget().catch(() => {});
+  }
 });

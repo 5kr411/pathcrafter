@@ -1,4 +1,4 @@
-.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food
+.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food bot-agent bot-agent-config
 
 # Build TypeScript sources
 build:
@@ -14,12 +14,12 @@ tests: build
 
 # E2E Bots
 bot-collect: build
-	node dist/bots/collect_paths.js
+	node dist/bots/collect_paths.js $(if $(TARGETS),--targets "$(TARGETS)")
 
 # Run multiple collector instances (default 10)
 # Usage: make bot-collect-multi [NUM=10] [HOST=localhost] [PORT=25565] [NAME=collector]
 bot-collect-multi: build
-	node dist/bots/collect_paths_multi.js $(or $(NUM),10) $(or $(HOST),localhost) $(or $(PORT),25565) $(or $(NAME),collector)
+	node dist/bots/collect_paths_multi.js $(or $(NUM),10) $(or $(HOST),localhost) $(or $(PORT),25565) $(or $(NAME),collector) $(if $(TARGETS),--targets "$(TARGETS)")
 
 bot-craft-inv: build
 	node dist/bots/craft_inventory.js
@@ -56,3 +56,9 @@ bot-shield: build
 
 bot-food: build
 	node dist/bots/food_collection.js
+
+bot-agent: build
+	node dist/bots/agent_runner.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(HOST),--host $(HOST)) $(if $(PORT),--port $(PORT))
+
+bot-agent-config: build
+	node dist/bots/agent_runner.js --config $(CONFIG)
