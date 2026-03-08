@@ -71,6 +71,11 @@ class BehaviorSafeFindBlock {
     );
   }
 
+  clearExclusions(): void {
+    this._excluded.clear();
+    this._returnCounts.clear();
+  }
+
   addExcludedPosition(pos: Vec3 | null | undefined): void {
     try {
       if (!pos) return;

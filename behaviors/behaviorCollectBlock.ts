@@ -107,7 +107,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   let currentBlockCount = 0; // Will be set by resetBaseline on first entry
   let pathfindingFailureCount = 0;
-  const MAX_PATHFINDING_FAILURES = 5;
+  const MAX_PATHFINDING_FAILURES = 8;
+  const MINE_REACH_DISTANCE = 5;
   let missingToolInfo: { requiredTool?: string; blockName?: string; currentTool?: string } | null = null;
   let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
 
@@ -408,8 +409,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
           targets.position = targets.blockPosition;
         }
 
-        goToBlock.distance = 3;
-        
+        goToBlock.distance = 2;
+
         try {
           logger.debug('moving towards position', targets.position);
         } catch (_) {}
@@ -444,8 +445,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const distance = goToBlock.distanceToTarget();
 
       if (!finished) return false;
-      if (distance >= 3) {
-        logger.debug(`BehaviorCollectBlock: goToBlockToMine - distance ${distance.toFixed(2)} >= 3, not close enough yet`);
+      if (distance >= MINE_REACH_DISTANCE) {
+        logger.debug(`BehaviorCollectBlock: goToBlockToMine - distance ${distance.toFixed(2)} >= ${MINE_REACH_DISTANCE}, not close enough yet`);
         return false;
       }
 
@@ -472,7 +473,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const distance = goToBlock.distanceToTarget();
 
       if (!finished) return false;
-      if (distance >= 3) return false;
+      if (distance >= MINE_REACH_DISTANCE) return false;
 
       return isTargetUnderFeet();
     },
@@ -504,11 +505,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      return finished && distance >= 3 && pathfindingFailureCount < MAX_PATHFINDING_FAILURES;
+      return finished && distance >= MINE_REACH_DISTANCE && pathfindingFailureCount < MAX_PATHFINDING_FAILURES;
     },
     onTransition: () => {
       pathfindingFailureCount++;
-      logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), searching for closer block`);
+      const distance = goToBlock.distanceToTarget();
+      logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), distance=${distance.toFixed(2)}, searching for closer block`);
     }
   });
 
@@ -519,7 +521,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      return finished && distance >= 3 && pathfindingFailureCount >= MAX_PATHFINDING_FAILURES;
+      return finished && distance >= MINE_REACH_DISTANCE && pathfindingFailureCount >= MAX_PATHFINDING_FAILURES;
     },
     onTransition: () => {
       stateMachine.stepSucceeded = false;
@@ -744,6 +746,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   (stateMachine as any).resetBaseline = resetBaseline;
   (stateMachine as any).collectedCount = collectedCount;
   (stateMachine as any).getLastFailureReason = () => lastFailureReason;
+  (stateMachine as any).clearBlockExclusions = () => {
+    if (findBlock && typeof findBlock.clearExclusions === 'function') {
+      findBlock.clearExclusions();
+    }
+  };
 
   // Store the framework's original onStateExited so we can call it after cleanup
   const frameworkOnStateExited = stateMachine.onStateExited.bind(stateMachine);

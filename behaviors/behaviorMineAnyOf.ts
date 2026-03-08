@@ -366,6 +366,11 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         } catch (_) {}
       }
       
+      // Reset SafeFindBlock exclusions so the next cycle gets fresh candidates
+      if (typeof (collectBehavior as any).clearBlockExclusions === 'function') {
+        (collectBehavior as any).clearBlockExclusions();
+      }
+
       selectionComplete = false;
       selectionInProgress = false;
       // Start async selection
