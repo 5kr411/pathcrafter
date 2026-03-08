@@ -36,6 +36,9 @@ export class BehaviorSmartMoveTo {
   private unstickTarget: Vec3Like | null = null;
   private checkInterval: NodeJS.Timeout | null = null;
   private allowUnstick: boolean = true;
+  private unstickAttempts: number = 0;
+  private readonly MAX_UNSTICK_ATTEMPTS = 3;
+  private _gaveUp: boolean = false;
 
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
@@ -55,7 +58,7 @@ export class BehaviorSmartMoveTo {
   }
 
   isFinished(): boolean {
-    return this.moveTo.isFinished();
+    return this._gaveUp || this.moveTo.isFinished();
   }
 
   distanceToTarget(): number {
@@ -69,6 +72,8 @@ export class BehaviorSmartMoveTo {
     this.isStuck = false;
     this.isUnsticking = false;
     this.unstickTarget = null;
+    this.unstickAttempts = 0;
+    this._gaveUp = false;
     this.allowUnstick = this.targets?.disableSmartMoveUnstick !== true;
 
     if (this.targets) {
@@ -106,6 +111,8 @@ export class BehaviorSmartMoveTo {
     this.positionHistory = [];
     this.isStuck = false;
     this.isUnsticking = false;
+    this.unstickAttempts = 0;
+    this._gaveUp = false;
     this.allowUnstick = true;
 
     if (this.targets) {
@@ -196,7 +203,13 @@ export class BehaviorSmartMoveTo {
         const distanceMoved = this.getDistanceBetween(oldestRecord.position, currentPos);
         
         if (distanceMoved < 2) {
-          logger.warn(`BehaviorSmartMoveTo: Still stuck while unsticking! Moved only ${distanceMoved.toFixed(2)} blocks.`);
+          if (this.unstickAttempts >= this.MAX_UNSTICK_ATTEMPTS) {
+            logger.warn(`BehaviorSmartMoveTo: Gave up after ${this.unstickAttempts} unstick attempts (moved ${distanceMoved.toFixed(2)} blocks)`);
+            this._gaveUp = true;
+            this.isUnsticking = false;
+            return;
+          }
+          logger.warn(`BehaviorSmartMoveTo: Still stuck while unsticking! Moved only ${distanceMoved.toFixed(2)} blocks. (attempt ${this.unstickAttempts}/${this.MAX_UNSTICK_ATTEMPTS})`);
 
           this.positionHistory = [];
           this.initiateUnstick();
@@ -250,6 +263,7 @@ export class BehaviorSmartMoveTo {
     }
     if (!this.bot.entity?.position) return;
 
+    this.unstickAttempts++;
     const currentPos = this.bot.entity.position;
     const randomAngle = Math.random() * 2 * Math.PI;
     const unstickDistance = 5;
