@@ -1,6 +1,6 @@
 import plan from '../../planner';
 import { ActionStep } from '../../action_tree/types';
-import { initTierRanks, rank } from '../../utils/items';
+import { rank } from '../../utils/items';
 
 describe('unit: helpers', () => {
     const { chooseMinimalToolName, renderName } = (plan as any)._internals;
@@ -14,18 +14,15 @@ describe('unit: helpers', () => {
     });
 });
 
-describe('unit: data-driven tier ranks', () => {
-    const mcData = require('minecraft-data')('1.20.1');
+describe('unit: tier ranks', () => {
     const { chooseMinimalToolName } = (plan as any)._internals;
 
-    beforeAll(() => {
-        initTierRanks(mcData);
-    });
-
-    test('initTierRanks produces correct ordering: wooden < stone < iron < diamond < netherite', () => {
+    test('correct ordering: wooden < stone < copper < iron < golden < diamond < netherite', () => {
         expect(rank('wooden_pickaxe')).toBeLessThan(rank('stone_pickaxe'));
-        expect(rank('stone_pickaxe')).toBeLessThan(rank('iron_pickaxe'));
-        expect(rank('iron_pickaxe')).toBeLessThan(rank('diamond_pickaxe'));
+        expect(rank('stone_pickaxe')).toBeLessThan(rank('copper_pickaxe'));
+        expect(rank('copper_pickaxe')).toBeLessThan(rank('iron_pickaxe'));
+        expect(rank('iron_pickaxe')).toBeLessThan(rank('golden_pickaxe'));
+        expect(rank('golden_pickaxe')).toBeLessThan(rank('diamond_pickaxe'));
         expect(rank('diamond_pickaxe')).toBeLessThan(rank('netherite_pickaxe'));
     });
 
