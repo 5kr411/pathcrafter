@@ -26,19 +26,19 @@ describe('unit: behaviorPlaceNear', () => {
     jest.useRealTimers();
   });
 
-  test('reposition when reference base missing after move', async () => {
+  test('exits when no item set', async () => {
     const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
-    const targets: any = { item: { name: 'stone' } };
+    const targets: any = { item: null };
     const sm = createPlaceNearState(bot as any, targets);
 
     await withLoggerSpy(async (_logger) => {
-      await runWithFakeClock(bot as any, sm, { maxMs: 3000, stepMs: 50, directNested: true });
+      await runWithFakeClock(bot as any, sm, { maxMs: 1000, stepMs: 50, directNested: true });
     });
 
     expect((sm as any).isFinished()).toBe(true);
   });
 
-  test('move timeout triggers reposition', async () => {
+  test('exits on move timeout', async () => {
     const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
     // Keep pathfinder moving forever to trigger timeout branch
     (bot.pathfinder as any).isMoving = () => true;
@@ -52,5 +52,3 @@ describe('unit: behaviorPlaceNear', () => {
     expect((sm as any).isFinished()).toBe(true);
   });
 });
-
-

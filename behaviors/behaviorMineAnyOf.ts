@@ -286,11 +286,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         dynamicTargets.blockName = selection.chosen.blockName;
         dynamicTargets.itemName = selection.chosen.itemName;
         dynamicTargets.amount = selection.chosen.amount;
-        
-        if (typeof (collectBehavior as any).resetBaseline === 'function') {
-          (collectBehavior as any).resetBaseline();
-        }
-        
+
         const total = getTotalCollected();
         const breakdown = getCollectionBreakdown();
         try {
@@ -396,9 +392,11 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
 
   const stateMachine = new NestedStateMachine([tEnterToPrepare, tPrepareToCollect, tPrepareToExit, tCollectToPrepare, tCollectToExit], enter, exit);
   
+  const frameworkOnStateExited = stateMachine.onStateExited.bind(stateMachine);
+
   stateMachine.onStateExited = function() {
     logger.debug('MineAnyOf: cleaning up on state exit');
-    
+
     if (collectBehavior && typeof collectBehavior.onStateExited === 'function') {
       try {
         collectBehavior.onStateExited();
@@ -407,13 +405,15 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         logger.warn(`MineAnyOf: error cleaning up collectBehavior: ${err.message}`);
       }
     }
-    
+
     try {
       bot.clearControlStates();
       logger.debug('MineAnyOf: cleared bot control states');
     } catch (err: any) {
       logger.debug(`MineAnyOf: error clearing control states: ${err.message}`);
     }
+
+    frameworkOnStateExited();
   };
   
   return stateMachine;

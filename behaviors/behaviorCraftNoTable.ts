@@ -167,6 +167,8 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       logger.info(`BehaviorCraftNoTable: Attempting to craft ${timesToCraft} times`);
 
       await bot.craft(recipe, timesToCraft, null);
+      // Wait a tick for server inventory sync to avoid desync from rapid crafting
+      await new Promise(r => setTimeout(r, 50));
 
       const newCount = getItemCountInInventory(bot, itemName);
       logger.info(
@@ -211,6 +213,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
   let waitForCraftStartTime: number;
   let craftingDone = false;
   let craftingOk = false;
+  let baselineCount = 0;
   const enterToWaitForCraft = new StateTransition({
     parent: enter,
     child: waitForCraft,
@@ -237,7 +240,10 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
         // Persist the selected variant back to targets
         targets.itemName = actualItemName;
       }
-      
+
+      // Record baseline BEFORE crafting so exit transition uses additive check
+      baselineCount = actualItemName ? getItemCountInInventory(bot, actualItemName) : 0;
+
       Promise.resolve()
         .then(() => craftItemNoTable(actualItemName!, targets.amount))
         .then((ok) => {
@@ -259,7 +265,8 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       if (!targets.itemName) return craftingDone;
       const have = getItemCountInInventory(bot, targets.itemName);
-      if (have >= targets.amount) return true;
+      const needed = baselineCount + targets.amount;
+      if (have >= needed) return true;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
       if (timedOut) return true;
       return craftingDone;
@@ -270,11 +277,12 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
         return;
       }
       const have = getItemCountInInventory(bot, targets.itemName);
+      const needed = baselineCount + targets.amount;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
-      if (have >= targets.amount) {
-        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (complete ${have}/${targets.amount})`);
+      if (have >= needed) {
+        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (complete ${have}/${needed})`);
       } else if (timedOut) {
-        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (timeout ${have}/${targets.amount})`);
+        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (timeout ${have}/${needed})`);
       } else {
         logger.info(`BehaviorCraftNoTable: wait for craft -> exit (craftingDone=${craftingDone}, ok=${craftingOk})`);
       }

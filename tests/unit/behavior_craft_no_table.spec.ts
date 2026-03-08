@@ -82,6 +82,31 @@ describe('unit: behaviorCraftNoTable', () => {
 
     expect((sm as any).isFinished()).toBe(true);
   });
+
+  test('consecutive crafts: does not short-circuit when item already in inventory', async () => {
+    // Simulates the bug: planner generates two "craft 4 planks" steps.
+    // Step 1 produces 4 planks. Step 2 must produce 4 MORE, not exit early.
+    const bot = makeBot();
+    const counts: Record<string, number> = { spruce_planks: 4 }; // Already have 4 from step 1
+    const invSpy = jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation((...args: any[]) => {
+      const name = String(args[1]);
+      return counts[name] || 0;
+    });
+    (bot.craft as jest.Mock).mockImplementation(async () => { counts.spruce_planks += 4; });
+
+    const targets = { itemName: 'spruce_planks', amount: 4 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      await runWithFakeClock(bot, sm, { maxMs: 3000, stepMs: 50, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    // Must have actually crafted, not short-circuited
+    expect(bot.craft).toHaveBeenCalled();
+    expect(counts.spruce_planks).toBe(8);
+    invSpy.mockRestore();
+  });
 });
 
 

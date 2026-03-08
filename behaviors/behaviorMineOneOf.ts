@@ -368,9 +368,11 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
 
   const stateMachine = new NestedStateMachine([tEnterToPrepare, tPrepareToCollect, tPrepareToExit, tCollectToPrepare, tCollectToExit], enter, exit);
   
+  const frameworkOnStateExited = stateMachine.onStateExited.bind(stateMachine);
+
   stateMachine.onStateExited = function() {
     logger.debug('MineOneOf: cleaning up on state exit');
-    
+
     if (collectBehavior && typeof collectBehavior.onStateExited === 'function') {
       try {
         collectBehavior.onStateExited();
@@ -379,13 +381,15 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
         logger.warn(`MineOneOf: error cleaning up collectBehavior: ${err.message}`);
       }
     }
-    
+
     try {
       bot.clearControlStates();
       logger.debug('MineOneOf: cleared bot control states');
     } catch (err: any) {
       logger.debug(`MineOneOf: error clearing control states: ${err.message}`);
     }
+
+    frameworkOnStateExited();
   };
   
   return stateMachine;

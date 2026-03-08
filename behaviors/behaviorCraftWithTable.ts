@@ -66,6 +66,8 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
         Math.floor(64 / recipe.result.count)
       );
       await bot.craft(recipe, timesToCraft, craftingTable);
+      // Wait a tick for server inventory sync to avoid desync from rapid crafting
+      await new Promise(r => setTimeout(r, 50));
       const newCount = getItemCountInInventory(bot, itemName);
       logger.info(`CraftWithTable: Crafted ${itemName}, now have ${newCount}/${targetCount}`);
       return newCount >= targetCount;

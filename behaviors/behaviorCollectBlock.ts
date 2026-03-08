@@ -268,17 +268,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const exit = new BehaviorIdle();
 
-  let baselineInitialized = false;
-
   const enterToExitSatisfied = new StateTransition({
     parent: enter,
     child: exit,
     name: 'BehaviorCollectBlock: enter -> exit (already satisfied)',
     shouldTransition: () => {
-      if (!baselineInitialized && targets.itemName) {
-        resetBaseline();
-        baselineInitialized = true;
-      }
       const collected = collectedCount();
       const done = collected >= targets.amount;
       if (done) {
@@ -298,10 +292,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     child: findBlock,
     name: 'BehaviorCollectBlock: enter -> find block',
     shouldTransition: () => {
-      if (!baselineInitialized && targets.itemName) {
-        resetBaseline();
-        baselineInitialized = true;
-      }
       const collected = collectedCount();
       const shouldGo = collected < targets.amount;
       logger.info(`enterToFindBlock: collected=${collected}, target=${targets.amount}, shouldTransition=${shouldGo}`);
@@ -739,17 +729,28 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     goToDropToExit
   ];
 
+  // Reset baseline on every re-entry via the enter state's lifecycle hook.
+  // This ensures currentBlockCount is set BEFORE any shouldTransition polls,
+  // which is critical when MineOneOf/MineAnyOf reuse the same CollectBlock instance.
+  enter.onStateEntered = () => {
+    resetBaseline();
+    pathfindingFailureCount = 0;
+  };
+
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
   (stateMachine as any).resetBaseline = resetBaseline;
   (stateMachine as any).collectedCount = collectedCount;
   (stateMachine as any).getLastFailureReason = () => lastFailureReason;
-  
+
+  // Store the framework's original onStateExited so we can call it after cleanup
+  const frameworkOnStateExited = stateMachine.onStateExited.bind(stateMachine);
+
   stateMachine.onStateExited = function() {
     logger.debug('CollectBlock: cleaning up on state exit');
     missingToolInfo = null;
     // NOTE: Do NOT clear lastFailureReason here - MineAnyOf needs to read it
     // in its onTransition. It gets reset in enterToFindBlock.onTransition instead.
-    
+
     if (goToBlock && typeof goToBlock.onStateExited === 'function') {
       try {
         goToBlock.onStateExited();
@@ -758,7 +759,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         logger.warn(`CollectBlock: error cleaning up goToBlock: ${err.message}`);
       }
     }
-    
+
     if (mineBlock && typeof mineBlock.onStateExited === 'function') {
       try {
         mineBlock.onStateExited();
@@ -767,7 +768,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         logger.warn(`CollectBlock: error cleaning up mineBlock: ${err.message}`);
       }
     }
-    
+
     if (goToDrop && typeof goToDrop.onStateExited === 'function') {
       try {
         goToDrop.onStateExited();
@@ -776,13 +777,17 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         logger.warn(`CollectBlock: error cleaning up goToDrop: ${err.message}`);
       }
     }
-    
+
     try {
       bot.clearControlStates();
       logger.debug('CollectBlock: cleared bot control states');
     } catch (err: any) {
       logger.debug(`CollectBlock: error clearing control states: ${err.message}`);
     }
+
+    // Call framework's onStateExited to properly deactivate internal states
+    // and reset activeState. Without this, re-entry doesn't work correctly.
+    frameworkOnStateExited();
   };
   
   return stateMachine;

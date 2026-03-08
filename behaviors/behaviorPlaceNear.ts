@@ -3,9 +3,7 @@ const Vec3 = require('vec3').Vec3;
 const {
   StateTransition,
   BehaviorIdle,
-  NestedStateMachine,
-  BehaviorFindInteractPosition,
-  BehaviorPlaceBlock
+  NestedStateMachine
 } = require('mineflayer-statemachine');
 
 import createClearAreaState from './behaviorClearArea';
@@ -50,19 +48,8 @@ interface Targets {
 
 function createPlaceNearState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
-  const findPlaceCoords = new BehaviorFindInteractPosition(bot, targets);
-
-  // Add logging to FindInteractPosition
-  addStateLogging(findPlaceCoords, 'FindInteractPosition', {
-    logEnter: true,
-    getExtraInfo: () => {
-      const pos = targets.placePosition;
-      return pos ? `for placing at (${pos.x}, ${pos.y}, ${pos.z})` : '';
-    }
-  });
-
   const moveToPlaceCoords = new BehaviorSmartMoveTo(bot, targets);
-  moveToPlaceCoords.distance = 0.05;
+  moveToPlaceCoords.distance = 2;
 
   addStateLogging(moveToPlaceCoords, 'MoveTo', {
     logEnter: true,
@@ -74,541 +61,308 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const placeBlock = new BehaviorPlaceBlock(bot, targets);
-
-  // Add logging to PlaceBlock (already has custom hook, extend it)
-  const existingPlaceLogging = placeBlock.onStateEntered;
-  addStateLogging(placeBlock, 'PlaceBlock', {
-    logEnter: true,
-    getExtraInfo: () => {
-      const item = targets.item;
-      return item ? `placing ${item.name}` : 'no item';
-    }
-  });
-  // Restore the existing custom logic after adding logging
-  if (existingPlaceLogging && typeof existingPlaceLogging === 'function') {
-    const loggedOnEnter = placeBlock.onStateEntered;
-    placeBlock.onStateEntered = async function (this: any) {
-      if (loggedOnEnter) await loggedOnEnter.call(this);
-      return existingPlaceLogging.call(this);
-    };
-  }
-
-  let lastPlaceError: any = null;
-  const clearInit = new BehaviorIdle();
-  const clearTargets: Targets = { placePosition: undefined, clearRadiusHorizontal: 1, clearRadiusVertical: 2 };
-  const clearArea = createClearAreaState(bot, clearTargets as any);
-  // Ensure the held item matches targets.item before placing (wrap original handler safely)
-  const originalOnStateEntered =
-    typeof placeBlock.onStateEntered === 'function' ? placeBlock.onStateEntered.bind(placeBlock) : null;
+  // Direct placement state — equip + placeBlock in one await chain, no race conditions
+  const placeBlock = new BehaviorIdle();
   placeBlock.onStateEntered = async () => {
     try {
-      const need = targets && targets.item;
-      const held = bot.heldItem;
-      if (need && (!held || held.name !== need.name)) {
-        await bot.equip(need, 'hand');
-      }
-    } catch (_) {}
-    
-    if (originalOnStateEntered) {
-      try {
-        const backoffMs = Math.min(2000, 500 * Math.pow(2, placeTries - 1));
-        if (placeTries > 1 && backoffMs > 0) {
-          logger.info(`BehaviorPlaceNear: waiting ${backoffMs}ms before placement attempt ${placeTries}`);
-          await new Promise(resolve => setTimeout(resolve, backoffMs));
+      const need = targets.item;
+      if (need) {
+        const held = bot.heldItem;
+        if (!held || held.name !== need.name) {
+          await bot.equip(need, 'hand');
         }
-        lastPlaceError = null;
-        return await originalOnStateEntered();
-      } catch (err: any) {
-        lastPlaceError = err;
-        if (err.message && err.message.includes('blockUpdate') && err.message.includes('timeout')) {
-          logger.warn(`BehaviorPlaceNear: caught mineflayer blockUpdate timeout on attempt ${placeTries}`);
-        } else {
-          logger.warn(`BehaviorPlaceNear: placement error on attempt ${placeTries}: ${err.message || err}`);
-        }
-        throw err;
       }
+      const block = bot.blockAt(targets.placePosition, false);
+      if (!block || block.type === 0) {
+        logger.warn('BehaviorPlaceNear: reference block missing for placement');
+        return;
+      }
+      // Look at the top face of the reference block before placing
+      const topFace = block.position.clone().offset(0.5, 1, 0.5);
+      await bot.lookAt(topFace, true);
+      logger.info(`BehaviorPlaceNear: placing ${need?.name} on ${block.name} at (${block.position.x},${block.position.y},${block.position.z})`);
+      await bot.placeBlock(block, targets.blockFace);
+    } catch (err: any) {
+      logger.warn(`BehaviorPlaceNear: placeBlock error: ${err.message || err}`);
     }
   };
 
+  const clearTargets: Targets = { placePosition: undefined, clearRadiusHorizontal: 1, clearRadiusVertical: 2 };
+  const clearArea = createClearAreaState(bot, clearTargets as any);
   const exit = new BehaviorIdle();
 
-  function getHeadroom(): Vec3Like {
-    return targets.placePosition!.clone().offset(0, 1, 0);
+  // --- Spot selection ---
+  function findSpot(): boolean {
+    targets.placedConfirmed = false;
+    const botPos = bot.entity.position.clone().floored();
+    const candidates: { ground: Vec3Like; dist: number }[] = [];
+
+    for (let dy = -2; dy <= 1; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        for (let dz = -4; dz <= 4; dz++) {
+          const ground = botPos.clone().offset(dx, dy, dz);
+          try {
+            const b = bot.blockAt(ground, false);
+            if (!b || b.type === 0 || b.boundingBox !== 'block') continue;
+            const above = ground.clone().offset(0, 1, 0);
+            if (bot.world.getBlockType(above) !== 0) continue;
+          } catch (_) {
+            continue;
+          }
+          const hdist = Math.sqrt(dx * dx + dz * dz);
+          // Must be >= 1.5 blocks away horizontally to avoid entity-block collision
+          if (hdist < 1.5) continue;
+          // Must be within reach (4.5 blocks total 3D distance)
+          const dist3d = Math.sqrt(dx * dx + (dy + 1) * (dy + 1) + dz * dz);
+          if (dist3d > 4.5) continue;
+          candidates.push({ ground, dist: hdist });
+        }
+      }
+    }
+
+    // Prefer spots at ideal distance (~2-3 blocks)
+    candidates.sort((a, b) => {
+      const idealA = Math.abs(a.dist - 2.5);
+      const idealB = Math.abs(b.dist - 2.5);
+      return idealA - idealB;
+    });
+
+    const best = candidates.length > 0 ? candidates[0].ground : null;
+
+    if (!best) {
+      logger.error('BehaviorPlaceNear: No valid placement location found');
+      targets.placePosition = undefined;
+      targets.position = undefined;
+      return false;
+    }
+
+    targets.placePosition = best.clone();
+    // Set moveTo target near the placement but not on it (bot's current position)
+    standingPosition = bot.entity.position.clone();
+    targets.position = standingPosition;
+    logger.info(`BehaviorPlaceNear: Selected place base at (${best.x}, ${best.y}, ${best.z}), hdist=${candidates[0].dist.toFixed(1)}`);
+    return true;
   }
-  function isSolidBlock(pos: Vec3Like): boolean {
+
+  // --- Transition helpers ---
+  let moveStartTime = 0;
+  let placeStartTime = 0;
+  let clearedOnce = false;
+  let standingPosition: Vec3Like | undefined = undefined;
+  const moveTimeoutMs = 8000;
+
+  function setupPlaceTransition() {
+    targets.blockFace = new Vec3(0, 1, 0);
+    if (targets.placePosition) {
+      targets.placedPosition = targets.placePosition.clone();
+      targets.placedPosition.y += 1;
+    }
+    placeStartTime = Date.now();
+  }
+
+  function restoreStandingPosition() {
+    // After placement attempt, restore moveTo target for potential retry
+    if (standingPosition) {
+      targets.position = standingPosition;
+    }
+  }
+
+  function isRefSolid(): boolean {
     try {
-      const b = bot.blockAt(pos, false);
-      if (!b) return false;
-      if (b.type === 0) return false;
-      return b.boundingBox === 'block';
+      const ref = bot.blockAt(targets.placePosition, false);
+      return !!(ref && ref.type !== 0);
     } catch (_) {
       return false;
     }
   }
-  function findSolidBaseNear(pos: Vec3Like, maxRadius: number = 2): Vec3Like | null {
-    const base = pos.clone();
-    base.x = Math.floor(base.x);
-    base.y = Math.floor(base.y);
-    base.z = Math.floor(base.z);
-    let best: Vec3Like | null = null;
-    for (let r = 0; r <= maxRadius; r++) {
-      for (let dx = -r; dx <= r; dx++) {
-        for (let dz = -r; dz <= r; dz++) {
-          const p = base.clone().offset(dx, -1, dz);
-          const above = p.clone().offset(0, 1, 0);
-          if (isSolidBlock(p) && bot.world.getBlockType(above) === 0) {
-            if (!best || p.distanceTo(bot.entity.position) < best.distanceTo(bot.entity.position)) best = p;
-          }
-        }
-      }
-      if (best) break;
-    }
-    return best;
+
+  function blockPlacedCorrectly(): boolean {
+    const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
+    if (!placedBlock || placedBlock.type === 0) return false;
+    const desiredName = targets.item?.name;
+    return !desiredName || placedBlock.name === desiredName;
   }
-  
-  function findSolidBaseFallback(maxRadius: number = 5): Vec3Like | null {
-    const botPos = bot.entity.position.clone();
-    for (let r = 1; r <= maxRadius; r++) {
-      for (let dx = -r; dx <= r; dx++) {
-        for (let dz = -r; dz <= r; dz++) {
-          if (Math.abs(dx) < r && Math.abs(dz) < r) continue;
-          const checkPos = botPos.clone().floored();
-          checkPos.x += dx;
-          checkPos.z += dz;
-          checkPos.y -= 1;
-          const above = checkPos.clone().offset(0, 1, 0);
-          if (isSolidBlock(checkPos) && bot.world.getBlockType(above) === 0) {
-            return checkPos;
-          }
-        }
-      }
-    }
-    return null;
-  }
-  function gatherCandidateObstructions(): Vec3Like[] {
-    const head = getHeadroom();
-    const list: Vec3Like[] = [];
+
+  function isObstructed(): boolean {
+    if (!targets.placePosition) return false;
+    const head = targets.placePosition.clone().offset(0, 1, 0);
     const h = Number.isFinite(targets.clearRadiusHorizontal)
       ? Math.max(0, Math.floor(targets.clearRadiusHorizontal!))
       : 1;
     const v = Number.isFinite(targets.clearRadiusVertical)
       ? Math.max(1, Math.floor(targets.clearRadiusVertical!))
       : 2;
-    for (let dy = 0; dy < v; dy++) {
+    for (let dy = 0; dy < v; dy++)
       for (let dx = -h; dx <= h; dx++)
-        for (let dz = -h; dz <= h; dz++) list.push(head.clone().offset(dx, dy, dz));
-    }
-    return list;
-  }
-  function obstructedDirectionsCount(): number {
-    const head = getHeadroom();
-    const obstructed = { E: false, W: false, S: false, N: false };
-    const list = gatherCandidateObstructions();
-    for (const p of list) {
-      if (bot.world.getBlockType(p) === 0) continue;
-      const dx = p.x - head.x;
-      const dz = p.z - head.z;
-      if (Math.abs(dx) >= Math.abs(dz)) {
-        if (dx > 0) obstructed.E = true;
-        else if (dx < 0) obstructed.W = true;
-      } else {
-        if (dz > 0) obstructed.S = true;
-        else if (dz < 0) obstructed.N = true;
-      }
-    }
-    return (obstructed.E ? 1 : 0) + (obstructed.W ? 1 : 0) + (obstructed.S ? 1 : 0) + (obstructed.N ? 1 : 0);
-  }
-  function canPlaceNow(): boolean {
-    return obstructedDirectionsCount() < 2;
-  }
-  function shouldClearArea(): boolean {
-    return obstructedDirectionsCount() >= 2;
+        for (let dz = -h; dz <= h; dz++)
+          if (bot.world.getBlockType(head.clone().offset(dx, dy, dz)) !== 0) return true;
+    return false;
   }
 
-  function pickPlacementTarget() {
-    placeTries = Math.max(1, placeTries);
-    targets.placedConfirmed = false;
+  // --- Transitions ---
 
-    const base = bot.entity.position.clone();
-    const offsetX = Math.random() < 0.5 ? -1.5 : 1.5;
-    const offsetZ = Math.random() < 0.5 ? -1.5 : 1.5;
-    const rough = base.clone();
-    rough.x += offsetX;
-    rough.z += offsetZ;
-    const searchRadius = Math.min(2 + Math.floor(placeTries / 2), 5);
-
-    const ground =
-      findSolidBaseNear(rough, searchRadius) ||
-      findSolidBaseNear(base, searchRadius) ||
-      findSolidBaseFallback(searchRadius);
-
-    if (ground) {
-      const placePos = ground.clone();
-      targets.placePosition = placePos;
-      const center = placePos.clone();
-      center.x += 0.5;
-      center.y += 1;
-      center.z += 0.5;
-      targets.position = placePos.clone();
-      targets.position.x += 0.5;
-      targets.position.y += 0;
-      targets.position.z += 0.5;
-      logger.info('BehaviorPlaceNear: Set place base:', placePos);
-      logger.info('BehaviorPlaceNear: Set target position:', targets.position);
-    } else {
-      logger.error('BehaviorPlaceNear: No valid placement location found after searching');
-      targets.placePosition = undefined;
-      targets.position = undefined;
-    }
-  }
-
+  // 1. enter → exit: no item
   const enterToExit = new StateTransition({
-    name: 'BehaviorPlaceNear: enter -> exit',
+    name: 'PlaceNear: enter → exit (no item)',
     parent: enter,
     child: exit,
     shouldTransition: () => targets.item == null,
     onTransition: () => {
-      logger.error('BehaviorPlaceNear: enter -> exit, item is null');
+      logger.error('BehaviorPlaceNear: no item set');
     }
   });
 
-  let placeTries = 1;
-  const maxAttempts = 10;
-
-  const enterToFindPlaceCoords = new StateTransition({
-    name: 'BehaviorPlaceNear: enter -> find place coords',
+  // 2. enter → moveTo: findSpot succeeds
+  const enterToMove = new StateTransition({
+    name: 'PlaceNear: enter → moveTo',
     parent: enter,
-    child: findPlaceCoords,
+    child: moveToPlaceCoords,
     shouldTransition: () => true,
     onTransition: () => {
-      logger.info('BehaviorPlaceNear: enter -> find place coords');
-      placeTries = 1;
-      pickPlacementTarget();
-    }
-  });
-
-  const findPlaceCoordsToMoveToPlaceCoords = new StateTransition({
-    name: 'BehaviorPlaceNear: find place coords -> move to place coords',
-    parent: findPlaceCoords,
-    child: moveToPlaceCoords,
-    shouldTransition: () => !!targets.placePosition && !!targets.position,
-    onTransition: () => {
-      logger.info('BehaviorPlaceNear: find place coords -> move to place coords');
+      clearedOnce = false;
+      if (!findSpot()) return; // will fall through to exit via move timeout
       moveStartTime = Date.now();
     }
   });
-  
-  const findPlaceCoordsToExitNoValidLocation = new StateTransition({
-    name: 'BehaviorPlaceNear: find place coords -> exit (no valid location)',
-    parent: findPlaceCoords,
-    child: exit,
-    shouldTransition: () => !targets.placePosition || !targets.position,
+
+  // 3. moveTo → placeBlock: arrived and ref is solid
+  const moveToPlace = new StateTransition({
+    name: 'PlaceNear: moveTo → placeBlock',
+    parent: moveToPlaceCoords,
+    child: placeBlock,
+    shouldTransition: () => moveToPlaceCoords.isFinished() && isRefSolid(),
     onTransition: () => {
-      logger.error('BehaviorPlaceNear: find place coords -> exit (no valid location found)');
+      logger.info('BehaviorPlaceNear: arrived, placing block');
+      setupPlaceTransition();
     }
   });
 
-  let placeStartTime: number;
-  let moveStartTime: number;
-  const moveTimeoutMs = 8000; // fallback if MoveTo never finishes
-  const moveToPlaceCoordsToPlaceUtilityBlock = new StateTransition({
-    name: 'BehaviorPlaceNear: move to place coords -> place block',
+  // 4. moveTo → exit: timeout or ref missing after arrival
+  const moveToExit = new StateTransition({
+    name: 'PlaceNear: moveTo → exit (timeout/ref missing)',
     parent: moveToPlaceCoords,
-    child: placeBlock,
+    child: exit,
     shouldTransition: () => {
-      if (!moveToPlaceCoords.isFinished()) return false;
-      try {
-        const ref = bot.blockAt(targets.placePosition, false);
-        if (!ref || ref.type === 0) return false;
-      } catch (_) {
-        return false;
-      }
-      if (placeTries <= 2) return true;
-      if (!canPlaceNow()) return false;
-      return true;
+      if (Date.now() - moveStartTime > moveTimeoutMs) return true;
+      return moveToPlaceCoords.isFinished() && !isRefSolid();
     },
     onTransition: () => {
-      placeStartTime = Date.now();
-      logger.info('BehaviorPlaceNear: move to place coords -> place block');
-      targets.position = targets.placePosition;
-      targets.blockFace = new Vec3(0, 1, 0);
+      logger.warn('BehaviorPlaceNear: move failed (timeout or ref missing)');
+      targets.placedConfirmed = false;
+    }
+  });
 
-      if (targets.position) {
-        targets.placedPosition = targets.position.clone();
-        targets.placedPosition.y += 1;
-      }
+  // 5. placeBlock → exit (success): block placed correctly
+  const placeToExitSuccess = new StateTransition({
+    name: 'PlaceNear: placeBlock → exit (success)',
+    parent: placeBlock,
+    child: exit,
+    shouldTransition: () => {
+      if (Date.now() - placeStartTime < 500) return false;
+      return blockPlacedCorrectly();
+    },
+    onTransition: () => {
+      targets.placedConfirmed = true;
       try {
-        targets.referenceBlock = bot.blockAt(targets.placePosition, false);
+        const blk = bot.blockAt(targets.placedPosition, false);
+        logger.info(`BehaviorPlaceNear: Confirmed placement of ${blk?.name}`);
       } catch (_) {}
     }
   });
 
-  // Fallback: Move finished but reference base is not solid/loaded -> reposition and retry
-  const moveToPlaceCoordsToRepositionOnRefMissing = new StateTransition({
-    name: 'BehaviorPlaceNear: move to place coords -> reposition (ref missing)',
-    parent: moveToPlaceCoords,
-    child: findPlaceCoords,
+  // 6. placeBlock → clearArea: not placed, area obstructed, haven't cleared yet
+  const placeToClear = new StateTransition({
+    name: 'PlaceNear: placeBlock → clearArea',
+    parent: placeBlock,
+    child: clearArea,
     shouldTransition: () => {
-      if (!moveToPlaceCoords.isFinished()) return false;
-      try {
-        const ref = bot.blockAt(targets.placePosition, false);
-        return !ref || ref.type === 0;
-      } catch (_) {
-        return true;
-      }
+      if (Date.now() - placeStartTime < 500) return false;
+      return !blockPlacedCorrectly() && !clearedOnce && isObstructed();
     },
     onTransition: () => {
-      logger.warn('BehaviorPlaceNear: no solid reference at place base -> reposition');
-      placeTries++;
-      pickPlacementTarget();
-    }
-  });
-
-  // Fallback: Move timeout -> reposition and retry
-  const moveToPlaceCoordsTimeoutToFind = new StateTransition({
-    name: 'BehaviorPlaceNear: move to place coords TIMEOUT -> reposition',
-    parent: moveToPlaceCoords,
-    child: findPlaceCoords,
-    shouldTransition: () => {
-      return Date.now() - moveStartTime > moveTimeoutMs;
-    },
-    onTransition: () => {
-      logger.warn('BehaviorPlaceNear: move to place coords timed out -> reposition');
-      placeTries++;
-      pickPlacementTarget();
-    }
-  });
-
-  // Max attempts exits: prevent infinite retry loops
-  const findPlaceCoordsMaxAttemptsToExit = new StateTransition({
-    name: 'BehaviorPlaceNear: find place coords MAX ATTEMPTS -> exit',
-    parent: findPlaceCoords,
-    child: exit,
-    shouldTransition: () => placeTries >= maxAttempts,
-    onTransition: () => {
-      logger.error(`BehaviorPlaceNear: max attempts (${maxAttempts}) reached in find place coords -> exit`);
-    }
-  });
-
-  const moveToPlaceCoordsMaxAttemptsToExit = new StateTransition({
-    name: 'BehaviorPlaceNear: move to place coords MAX ATTEMPTS -> exit',
-    parent: moveToPlaceCoords,
-    child: exit,
-    shouldTransition: () => placeTries >= maxAttempts,
-    onTransition: () => {
-      logger.error(`BehaviorPlaceNear: max attempts (${maxAttempts}) reached in move to place coords -> exit`);
-    }
-  });
-
-  // Multi-block clear loop delegated to behaviorClearArea
-  const moveToPlaceCoordsToClearInit = new StateTransition({
-    name: 'BehaviorPlaceNear: move to place coords -> clear init',
-    parent: moveToPlaceCoords,
-    child: clearInit,
-    shouldTransition: () =>
-      moveToPlaceCoords.isFinished() && placeTries >= 3 && shouldClearArea() && placeTries < 5,
-    onTransition: () => {
+      logger.info('BehaviorPlaceNear: placement obstructed, clearing area');
+      restoreStandingPosition();
+      clearedOnce = true;
       clearTargets.placePosition = targets.placePosition!.clone();
       clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal)
-        ? targets.clearRadiusHorizontal
-        : Number.isFinite(clearTargets.clearRadiusHorizontal)
-          ? clearTargets.clearRadiusHorizontal
-          : 1;
+        ? targets.clearRadiusHorizontal : 1;
       clearTargets.clearRadiusVertical = Number.isFinite(targets.clearRadiusVertical)
-        ? targets.clearRadiusVertical
-        : Number.isFinite(clearTargets.clearRadiusVertical)
-          ? clearTargets.clearRadiusVertical
-          : 2;
-      logger.info(
-        'BehaviorPlaceNear: clear init -> queued area with radii',
-        clearTargets.clearRadiusHorizontal,
-        clearTargets.clearRadiusVertical
-      );
+        ? targets.clearRadiusVertical : 2;
     }
   });
 
-  const clearInitToClearArea = new StateTransition({
-    name: 'BehaviorPlaceNear: clear init -> clear area',
-    parent: clearInit,
-    child: clearArea,
-    shouldTransition: () => !!clearTargets.placePosition,
-    onTransition: () => {}
-  });
-
-  const clearAreaToPlaceGate = new StateTransition({
-    name: 'BehaviorPlaceNear: clear area -> place gate',
-    parent: clearArea,
-    child: moveToPlaceCoords,
-    shouldTransition: () =>
-      typeof clearArea.isFinished === 'function' ? clearArea.isFinished() && canPlaceNow() : canPlaceNow(),
-    onTransition: () => {
-      logger.info('BehaviorPlaceNear: clearing complete');
-    }
-  });
-
-  const clearAreaToReposition = new StateTransition({
-    name: 'BehaviorPlaceNear: clear area -> reposition',
-    parent: clearArea,
-    child: findPlaceCoords,
-    shouldTransition: () => {
-      const finished = typeof clearArea.isFinished === 'function' ? clearArea.isFinished() : true;
-      return finished && !canPlaceNow();
-    },
-    onTransition: () => {
-      logger.info('BehaviorPlaceNear: clearing capped or still obstructed -> reposition');
-      placeTries++;
-      pickPlacementTarget();
-    }
-  });
-
-  const placeUtilityBlockToFindPlaceCoords = new StateTransition({
-    name: 'BehaviorPlaceNear: place block -> find place coords',
-    parent: placeBlock,
-    child: findPlaceCoords,
-    shouldTransition: () => {
-      // Check for mineflayer timeout error immediately
-      if (lastPlaceError && lastPlaceError.message && lastPlaceError.message.includes('blockUpdate') && lastPlaceError.message.includes('timeout')) {
-        logger.info(`BehaviorPlaceNear: detected blockUpdate timeout, will retry at different position`);
-        return true;
-      }
-
-      // Wait a bit after placement attempt
-      if (Date.now() - placeStartTime < 1000) return false;
-
-      // Don't retry if we've exceeded max tries
-      if (placeTries >= 8) return false;
-
-      const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
-      const desiredName = targets.item?.name;
-      const blockPlaced = placedBlock && placedBlock.type !== 0;
-
-      // If a block was placed but it's not the desired one, retry elsewhere
-      if (blockPlaced && desiredName && placedBlock!.name !== desiredName) {
-        logger.warn(
-          `BehaviorPlaceNear: wrong block placed (${placedBlock!.name}) instead of ${desiredName}, retrying elsewhere`
-        );
-        return true;
-      }
-
-      if (blockPlaced) return false; // Block exists and matches (or no desired name), don't retry
-
-      // Block not placed - retry with different position
-      return true;
-    },
-    onTransition: () => {
-      const reason = lastPlaceError && lastPlaceError.message && lastPlaceError.message.includes('blockUpdate') 
-        ? 'mineflayer timeout' 
-        : 'block placement failed';
-      logger.info(
-        `BehaviorPlaceNear: place block -> find place coords (retry ${placeTries}, ${reason})`
-      );
-      placeTries++;
-      lastPlaceError = null;
-      pickPlacementTarget();
-    }
-  });
-
-  const placeUtilityBlockToExit = new StateTransition({
-    name: 'BehaviorPlaceNear: place block -> exit',
+  // 7. placeBlock → exit (failure): not placed, not obstructed (or already cleared)
+  const placeToExitFail = new StateTransition({
+    name: 'PlaceNear: placeBlock → exit (failure)',
     parent: placeBlock,
     child: exit,
     shouldTransition: () => {
-      // Wait minimum time for block update
       if (Date.now() - placeStartTime < 500) return false;
-
-      const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
-      const desiredName = targets.item?.name;
-      const blockType = placedBlock?.type ?? 0;
-      const nameMatches = placedBlock && desiredName ? placedBlock.name === desiredName : true;
-
-      // SUCCESS: Block was placed successfully and matches desired item (if known)
-      if (blockType !== 0 && nameMatches) {
-        return true;
-      }
-
-      // FAILURE: Exceeded retries without success
-      if (placeTries >= 8) {
-        logger.error('BehaviorPlaceNear: Max retries exceeded, placement failed');
-        return true;
-      }
-
-      // Keep trying
-      return false;
+      return !blockPlacedCorrectly() && (clearedOnce || !isObstructed());
     },
     onTransition: () => {
-      const blockType = bot.world.getBlockType(targets.placedPosition);
-      const success = blockType !== 0;
+      const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
+      const refBlock = targets.placePosition ? bot.blockAt(targets.placePosition, false) : null;
+      const botDist = targets.placePosition ? bot.entity.position.distanceTo(targets.placePosition).toFixed(1) : '?';
+      logger.error(`BehaviorPlaceNear: placement failed — dist=${botDist}, ref=${refBlock?.name || 'none'}, at placed pos: ${placedBlock?.name || 'air'}`);
+      targets.placedConfirmed = false;
+    }
+  });
 
-      if (success) {
-        logger.info('BehaviorPlaceNear: place block -> exit (SUCCESS)');
-        logger.info('Block at place position:', blockType);
-        try {
-          const blk = bot.blockAt(targets.placedPosition, false);
-          targets.placedConfirmed = !!(blk && blk.name);
-          if (targets.placedConfirmed) {
-            logger.info(`BehaviorPlaceNear: Confirmed placement of ${blk.name}`);
-          }
-        } catch (_) {
-          targets.placedConfirmed = false;
-        }
-      } else {
-        logger.error('BehaviorPlaceNear: place block -> exit (FAILED after max retries)');
-        logger.error('Block at place position:', blockType, '(expected non-zero)');
-        targets.placedConfirmed = false;
-      }
+  // 8. clearArea → moveTo: retry after clearing
+  const clearToMove = new StateTransition({
+    name: 'PlaceNear: clearArea → moveTo (retry)',
+    parent: clearArea,
+    child: moveToPlaceCoords,
+    shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() : true,
+    onTransition: () => {
+      logger.info('BehaviorPlaceNear: clearing complete, retrying placement');
+      // Update standing position to where the bot is now (may have moved during clearing)
+      standingPosition = bot.entity.position.clone();
+      targets.position = standingPosition;
+      moveStartTime = Date.now();
     }
   });
 
   const transitions = [
     enterToExit,
-    enterToFindPlaceCoords,
-    findPlaceCoordsMaxAttemptsToExit,
-    findPlaceCoordsToExitNoValidLocation,
-    findPlaceCoordsToMoveToPlaceCoords,
-    moveToPlaceCoordsMaxAttemptsToExit,
-    moveToPlaceCoordsToRepositionOnRefMissing,
-    moveToPlaceCoordsTimeoutToFind,
-    moveToPlaceCoordsToClearInit,
-    clearInitToClearArea,
-    clearAreaToPlaceGate,
-    moveToPlaceCoordsToPlaceUtilityBlock,
-    placeUtilityBlockToFindPlaceCoords,
-    placeUtilityBlockToExit,
-    clearAreaToReposition
+    enterToMove,
+    moveToPlace,
+    moveToExit,
+    placeToExitSuccess,
+    placeToClear,
+    placeToExitFail,
+    clearToMove
   ];
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
-  
-  stateMachine.onStateExited = function() {
+
+  stateMachine.onStateExited = function () {
     logger.debug('PlaceNear: cleaning up on state exit');
-    
+
     if (moveToPlaceCoords && typeof moveToPlaceCoords.onStateExited === 'function') {
       try {
         moveToPlaceCoords.onStateExited();
-        logger.debug('PlaceNear: cleaned up moveToPlaceCoords');
       } catch (err: any) {
         logger.warn(`PlaceNear: error cleaning up moveToPlaceCoords: ${err.message}`);
       }
     }
-    
+
     if (clearArea && typeof clearArea.onStateExited === 'function') {
       try {
         clearArea.onStateExited();
-        logger.debug('PlaceNear: cleaned up clearArea');
       } catch (err: any) {
         logger.warn(`PlaceNear: error cleaning up clearArea: ${err.message}`);
       }
     }
-    
+
     try {
       bot.clearControlStates();
-      logger.debug('PlaceNear: cleared bot control states');
     } catch (err: any) {
       logger.debug(`PlaceNear: error clearing control states: ${err.message}`);
     }
   };
-  
+
   return stateMachine;
 }
 
