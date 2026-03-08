@@ -6,6 +6,7 @@
  */
 
 import { MinecraftData, BlockSource, MobSource } from '../types';
+import { chooseMinimalToolName } from '../../utils/items';
 
 /**
  * Configuration for a secondary block drop.
@@ -305,10 +306,11 @@ export function getBestToolForBlock(mcData: MinecraftData, blockName: string): s
   const block = Object.values(mcData.blocks).find(b => b.name === blockName);
   if (!block || !block.harvestTools) return 'any';
 
-  // Return the first (lowest tier) tool that can harvest this block
+  // Return the minimal tier tool that can harvest this block
   const toolIds = Object.keys(block.harvestTools);
   if (toolIds.length === 0) return 'any';
 
-  const toolId = Number(toolIds[0]);
-  return mcData.items[toolId]?.name || 'any';
+  const toolNames = toolIds.map(id => mcData.items[Number(id)]?.name).filter(Boolean);
+  if (toolNames.length === 0) return 'any';
+  return chooseMinimalToolName(toolNames) || toolNames[0];
 }

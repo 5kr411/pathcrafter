@@ -3,9 +3,10 @@
  */
 
 /**
- * Tool tier ranking for choosing minimal tools
+ * Tool tier ranking for choosing minimal tools.
+ * Populated by initTierRanks() from minecraft-data; falls back to hardcoded defaults.
  */
-const TIER_RANK: Record<string, number> = {
+let tierRanks: Record<string, number> = {
   wooden: 0,
   golden: 0.5,
   stone: 1,
@@ -13,6 +14,48 @@ const TIER_RANK: Record<string, number> = {
   diamond: 3,
   netherite: 4
 };
+
+/**
+ * Derives tier ranks from minecraft-data by counting harvestTools coverage.
+ * Higher-tier pickaxes can mine more blocks → higher coverage count → higher rank.
+ * Called from resolveMcData() on first resolve.
+ */
+export function initTierRanks(mcData: any): void {
+  const pickaxes = Object.values(mcData.items)
+    .filter((item: any) => item.name?.endsWith('_pickaxe'));
+  if (pickaxes.length === 0) return;
+
+  const blocks = Object.values(mcData.blocks);
+  const coverage = new Map<string, number>();
+
+  for (const pickaxe of pickaxes) {
+    let count = 0;
+    for (const block of blocks) {
+      if ((block as any).harvestTools && (block as any).harvestTools[(pickaxe as any).id]) count++;
+    }
+    coverage.set((pickaxe as any).name, count);
+  }
+
+  // Build a map of pickaxe name -> item ID for tiebreaking
+  const pickaxeIds = new Map<string, number>();
+  for (const pickaxe of pickaxes) {
+    pickaxeIds.set((pickaxe as any).name, (pickaxe as any).id);
+  }
+
+  // Sort by coverage count, then by item ID as tiebreaker (higher ID = higher tier)
+  const sorted = [...coverage.entries()].sort((a, b) => {
+    if (a[1] !== b[1]) return a[1] - b[1];
+    return (pickaxeIds.get(a[0]) || 0) - (pickaxeIds.get(b[0]) || 0);
+  });
+  const newRanks: Record<string, number> = {};
+  let currentRank = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const [name] = sorted[i];
+    currentRank = i + 1;
+    newRanks[name.replace('_pickaxe', '')] = currentRank;
+  }
+  tierRanks = newRanks;
+}
 
 /**
  * Ranks a tool name by its tier
@@ -26,7 +69,7 @@ const TIER_RANK: Record<string, number> = {
  */
 export function rank(name: string): number {
   const first = String(name).split('_')[0];
-  const base = TIER_RANK[first];
+  const base = tierRanks[first];
   if (base === undefined) return 10;
   return base;
 }

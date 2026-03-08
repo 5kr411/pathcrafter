@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MinecraftData } from '../types';
+import { initTierRanks } from '../../utils/items';
 
 let featuresFilesEnsured = false;
 
@@ -100,8 +101,13 @@ export function resolveMcData(ctx: any): MinecraftData | undefined {
     }
   }
 
-  if (typeof ctx === 'string') return minecraftData(ctx);
-  if (ctx.itemsByName && ctx.items && ctx.blocks && ctx.recipes) return ctx;
-  if (typeof ctx === 'object' && ctx.version) return minecraftData(ctx.version);
-  return undefined;
+  let result: MinecraftData | undefined;
+  if (typeof ctx === 'string') result = minecraftData(ctx);
+  else if (ctx.itemsByName && ctx.items && ctx.blocks && ctx.recipes) result = ctx;
+  else if (typeof ctx === 'object' && ctx.version) result = minecraftData(ctx.version);
+
+  if (result) {
+    initTierRanks(result);
+  }
+  return result;
 }

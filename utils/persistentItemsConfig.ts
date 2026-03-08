@@ -44,7 +44,14 @@ const PERSISTENT_TOOLS = [
   'stone_shovel',
   'stone_hoe',
   'stone_sword',
-  
+
+  // Copper tier
+  'copper_pickaxe',
+  'copper_axe',
+  'copper_shovel',
+  'copper_hoe',
+  'copper_sword',
+
   // Iron tier
   'iron_pickaxe',
   'iron_axe',

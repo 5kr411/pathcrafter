@@ -276,6 +276,32 @@ describe('sourceLookup', () => {
       const tool = getBestToolForBlock(mockMcData, 'nonexistent_block');
       expect(tool).toBe('any');
     });
+
+    test('picks stone_pickaxe over copper_pickaxe when copper has lower ID', () => {
+      const mcDataWithCopper = {
+        ...mockMcData,
+        items: {
+          ...mockMcData.items,
+          3: { id: 3, name: 'copper_pickaxe' },
+          4: { id: 4, name: 'wooden_pickaxe' },
+          5: { id: 5, name: 'stone_pickaxe' }
+        },
+        blocks: {
+          ...mockMcData.blocks,
+          10: {
+            id: 10,
+            name: 'copper_ore',
+            drops: [1],
+            harvestTools: {
+              '3': true, // copper_pickaxe (lower ID)
+              '5': true  // stone_pickaxe (higher ID)
+            }
+          }
+        }
+      } as any;
+      const tool = getBestToolForBlock(mcDataWithCopper, 'copper_ore');
+      expect(tool).toBe('stone_pickaxe');
+    });
   });
 });
 

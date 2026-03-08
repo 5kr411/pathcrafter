@@ -24,6 +24,7 @@ import {
   injectToolDependency
 } from './dependencyInjector';
 import { findBlocksWithSameDrop, findSimilarItems } from '../utils/itemSimilarity';
+import { chooseMinimalToolName } from '../../utils/items';
 
 /**
  * Builds mining nodes for an item and adds them to the root node
@@ -133,7 +134,9 @@ function groupMiningPathsByTool(miningPaths: BlockSource[]): Map<string, BlockSo
   
   for (const miningPath of miningPaths) {
     const requiredTool = miningPath.tool;
-    const minimalTool = requiredTool && requiredTool !== 'any' ? requiredTool.split('/')[0] : requiredTool;
+    const minimalTool = requiredTool && requiredTool !== 'any'
+      ? chooseMinimalToolName(requiredTool.split('/')) || requiredTool.split('/')[0]
+      : requiredTool;
     const toolKey = minimalTool || 'any';
     if (!groupedByTool.has(toolKey)) {
       groupedByTool.set(toolKey, []);

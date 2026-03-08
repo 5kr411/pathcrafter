@@ -1,5 +1,6 @@
 import plan from '../../planner';
 import { ActionStep } from '../../action_tree/types';
+import { initTierRanks, rank } from '../../utils/items';
 
 describe('unit: helpers', () => {
     const { chooseMinimalToolName, renderName } = (plan as any)._internals;
@@ -10,6 +11,30 @@ describe('unit: helpers', () => {
 
     test('renderName returns name as is', () => {
         expect(renderName('oak_planks', {})).toBe('oak_planks');
+    });
+});
+
+describe('unit: data-driven tier ranks', () => {
+    const mcData = require('minecraft-data')('1.20.1');
+    const { chooseMinimalToolName } = (plan as any)._internals;
+
+    beforeAll(() => {
+        initTierRanks(mcData);
+    });
+
+    test('initTierRanks produces correct ordering: wooden < stone < iron < diamond < netherite', () => {
+        expect(rank('wooden_pickaxe')).toBeLessThan(rank('stone_pickaxe'));
+        expect(rank('stone_pickaxe')).toBeLessThan(rank('iron_pickaxe'));
+        expect(rank('iron_pickaxe')).toBeLessThan(rank('diamond_pickaxe'));
+        expect(rank('diamond_pickaxe')).toBeLessThan(rank('netherite_pickaxe'));
+    });
+
+    test('chooseMinimalToolName picks stone_pickaxe over copper_pickaxe', () => {
+        expect(chooseMinimalToolName(['copper_pickaxe', 'stone_pickaxe'])).toBe('stone_pickaxe');
+    });
+
+    test('rank returns 10 for unknown tiers', () => {
+        expect(rank('mystery_pickaxe')).toBe(10);
     });
 });
 
