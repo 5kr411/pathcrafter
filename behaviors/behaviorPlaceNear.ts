@@ -98,8 +98,10 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     const candidates: { ground: Vec3Like; dist: number }[] = [];
 
     for (let dy = -2; dy <= 1; dy++) {
-      for (let dx = -4; dx <= 4; dx++) {
-        for (let dz = -4; dz <= 4; dz++) {
+      for (let dx = -6; dx <= 6; dx++) {
+        for (let dz = -6; dz <= 6; dz++) {
+          const hdist = Math.sqrt(dx * dx + dz * dz);
+          if (hdist < 1.5 || hdist > 8) continue;
           const ground = botPos.clone().offset(dx, dy, dz);
           try {
             const b = bot.blockAt(ground, false);
@@ -109,23 +111,12 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
           } catch (_) {
             continue;
           }
-          const hdist = Math.sqrt(dx * dx + dz * dz);
-          // Must be >= 1.5 blocks away horizontally to avoid entity-block collision
-          if (hdist < 1.5) continue;
-          // Must be within reach (4.5 blocks total 3D distance)
-          const dist3d = Math.sqrt(dx * dx + (dy + 1) * (dy + 1) + dz * dz);
-          if (dist3d > 4.5) continue;
           candidates.push({ ground, dist: hdist });
         }
       }
     }
 
-    // Prefer spots at ideal distance (~2-3 blocks)
-    candidates.sort((a, b) => {
-      const idealA = Math.abs(a.dist - 2.5);
-      const idealB = Math.abs(b.dist - 2.5);
-      return idealA - idealB;
-    });
+    candidates.sort((a, b) => a.dist - b.dist);
 
     const best = candidates.length > 0 ? candidates[0].ground : null;
 
@@ -137,8 +128,8 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
 
     targets.placePosition = best.clone();
-    // Set moveTo target near the placement but not on it (bot's current position)
-    standingPosition = bot.entity.position.clone();
+    // Set moveTo target to the air space above the ground block — SmartMoveTo (distance=2) walks within placement reach
+    standingPosition = best.offset(0, 1, 0);
     targets.position = standingPosition;
     logger.info(`BehaviorPlaceNear: Selected place base at (${best.x}, ${best.y}, ${best.z}), hdist=${candidates[0].dist.toFixed(1)}`);
     return true;
@@ -149,7 +140,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
   let placeStartTime = 0;
   let clearedOnce = false;
   let standingPosition: Vec3Like | undefined = undefined;
-  const moveTimeoutMs = 8000;
+  const moveTimeoutMs = 15000;
 
   function setupPlaceTransition() {
     targets.blockFace = new Vec3(0, 1, 0);
@@ -317,8 +308,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() : true,
     onTransition: () => {
       logger.info('BehaviorPlaceNear: clearing complete, retrying placement');
-      // Update standing position to where the bot is now (may have moved during clearing)
-      standingPosition = bot.entity.position.clone();
       targets.position = standingPosition;
       moveStartTime = Date.now();
     }

@@ -331,6 +331,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return false;
     },
     onTransition: () => {
+      stateMachine.stepSucceeded = false;
       logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
       lastFailureReason = 'not_found';
     }
@@ -426,6 +427,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const info = missingToolInfo;
       const blockName = info?.blockName || targets.blockName;
       const required = info?.requiredTool || 'unknown tool';
+      stateMachine.stepSucceeded = false;
       logger.error(
         `BehaviorCollectBlock: cannot collect ${blockName} - missing required tool ${required}`
       );
@@ -520,6 +522,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return finished && distance >= 3 && pathfindingFailureCount >= MAX_PATHFINDING_FAILURES;
     },
     onTransition: () => {
+      stateMachine.stepSucceeded = false;
       logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times for ${targets.blockName}, giving up`);
       lastFailureReason = 'pathfinding';
     }

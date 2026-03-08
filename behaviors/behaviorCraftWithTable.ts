@@ -112,7 +112,10 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     child: exit,
     name: 'CraftWithTable: enter -> exit (invalid)',
     shouldTransition: () => !targets.itemName || targets.amount == null,
-    onTransition: () => logger.error('CraftWithTable: Missing itemName or amount')
+    onTransition: () => {
+      stateMachine.stepSucceeded = false;
+      logger.error('CraftWithTable: Missing itemName or amount');
+    }
   });
 
   // enter -> place
@@ -138,7 +141,10 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       if (typeof placeTable.isFinished !== 'function') return false;
       return placeTable.isFinished() && !placeTargets.placedConfirmed;
     },
-    onTransition: () => logger.error('CraftWithTable: Failed to place crafting table')
+    onTransition: () => {
+      stateMachine.stepSucceeded = false;
+      logger.error('CraftWithTable: Failed to place crafting table');
+    }
   });
 
   // place -> craft

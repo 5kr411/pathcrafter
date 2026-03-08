@@ -77,6 +77,7 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
       return itemName === null;
     },
     onTransition: () => {
+      stateMachine.stepSucceeded = false;
       logger.error('BehaviorCraftWithTableIfNeeded: enter -> exit: variant selection failed, cannot craft');
     }
   });
@@ -122,13 +123,15 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
     name: 'BehaviorCraftWithTableIfNeeded: craft with table -> exit',
     shouldTransition: () => craftWithTableState.isFinished(),
     onTransition: () => {
+      stateMachine.stepSucceeded = craftWithTableState.stepSucceeded;
       logger.info('BehaviorCraftWithTableIfNeeded: craft with table -> exit');
     }
   });
 
   const transitions = [enterToExitFailed, enterToExit, enterToCraftWithTable, craftWithTableToExit];
 
-  return new NestedStateMachine(transitions, enter, exit);
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  return stateMachine;
 }
 
 export default createCraftWithTableIfNeeded;

@@ -36,6 +36,8 @@ if (process.argv.length >= 4) {
 }
 
 const bot: any = mineflayer.createBot(botOptions);
+// mineflayer-pathfinder leaks digging listeners on resetPath — raise limit to avoid noisy warnings
+bot.setMaxListeners(25);
 bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-pvp').plugin);
 bot.loadPlugin(require('mineflayer-tool').plugin);

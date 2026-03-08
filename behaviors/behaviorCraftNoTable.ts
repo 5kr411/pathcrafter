@@ -200,6 +200,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       return targets.itemName == null || targets.amount == null;
     },
     onTransition: () => {
+      stateMachine.stepSucceeded = false;
       if (targets.itemName == null && !targets.variantStep) {
         logger.error('BehaviorCraftNoTable: Error: No item name');
       }
@@ -272,6 +273,9 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       return craftingDone;
     },
     onTransition: () => {
+      if (!craftingOk) {
+        stateMachine.stepSucceeded = false;
+      }
       if (!targets.itemName) {
         logger.info('BehaviorCraftNoTable: wait for craft -> exit (no itemName)');
         return;

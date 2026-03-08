@@ -155,10 +155,15 @@ export function buildStateMachineForPath(
     }
 
     const parent = prev;
-    const should = isFirst 
-      ? () => true 
-      : () => (parent && typeof parent.isFinished === 'function' ? parent.isFinished() : true);
-    
+    const should = isFirst
+      ? () => true
+      : () => {
+          const finished = parent && typeof parent.isFinished === 'function' ? parent.isFinished() : true;
+          if (!finished) return false;
+          if ((parent as any).stepSucceeded === false) return false;
+          return true;
+        };
+
     const stepIndex = index;
     transitions.push(new StateTransition({
       parent,
@@ -176,6 +181,30 @@ export function buildStateMachineForPath(
         logger.info(`PathBuilder: step ${stepIndex} -> ${step.action}: ${whatStr}${step.count ? ` x${step.count}` : ''}`);
       }
     }));
+
+    // Abort plan early if a step failed or a tool issue was detected
+    // This prevents cascading failures where subsequent steps consume shared ingredients
+    {
+      const ctx = executionContext;
+      transitions.push(new StateTransition({
+        parent: st,
+        child: exit,
+        name: `step:${stepIndex}:abort-step-failed`,
+        shouldTransition: () => {
+          const finished = st && typeof st.isFinished === 'function' ? st.isFinished() : true;
+          if (!finished) return false;
+          return (st as any).stepSucceeded === false || (ctx && ctx.toolIssueDetected);
+        },
+        onTransition: () => {
+          shared.failed = true;
+          const reason = (st as any).stepSucceeded === false ? 'step failure' : 'tool issue';
+          logger.warn(`PathBuilder: aborting plan at step ${stepIndex} due to ${reason}`);
+          try {
+            if (typeof onFinished === 'function') onFinished(false);
+          } catch (_) {}
+        }
+      }));
+    }
 
     prev = st;
     isFirst = false;

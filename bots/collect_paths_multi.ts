@@ -25,12 +25,12 @@ const processes: ChildProcess[] = [];
 const scriptPath = path.resolve(__dirname, './collect_paths.js');
 
 function spawnCollector(index: number): void {
-  if (index > num) {
+  if (index >= num) {
     logger.info(`All ${num} collector instances spawned`);
     return;
   }
 
-  const username = num === 1 ? usernameBase : `${usernameBase}${index}`;
+  const username = num === 1 ? usernameBase : `${usernameBase}_${index}`;
   const args = [scriptPath, host, port, username];
   if (password) {
     args.push(password);
@@ -42,7 +42,7 @@ function spawnCollector(index: number): void {
     args.push('--targets', process.argv[targetsIdx + 1]);
   }
 
-  logger.info(`Spawning collector ${index}/${num}: ${username}`);
+  logger.info(`Spawning collector ${index + 1}/${num}: ${username}`);
   
   const proc = spawn('node', args, {
     stdio: ['inherit', 'inherit', 'inherit'],
@@ -103,5 +103,5 @@ logger.info(`Server: ${host}:${port}`);
 logger.info(`Username base: ${usernameBase}`);
 logger.info(`Run directory: ${runDir}`);
 
-spawnCollector(1);
+spawnCollector(0);
 
