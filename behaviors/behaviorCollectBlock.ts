@@ -12,6 +12,7 @@ const {
 import { BehaviorMineBlock } from './behaviorMineBlock';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
+import { BehaviorWander } from './behaviorWander';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import { chooseMinimalToolName, hasEqualOrBetterTool } from '../utils/items';
@@ -191,6 +192,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const goToBlock = new BehaviorSmartMoveTo(bot, targets);
   goToBlock.distance = 3;
+
+  const MICRO_WANDER_BASE_DISTANCE = 4;
+  const microWander = new BehaviorWander(bot, MICRO_WANDER_BASE_DISTANCE);
+  addStateLogging(microWander, 'MicroWander', {
+    logEnter: true,
+    getExtraInfo: () => `repositioning ${microWander.distance} blocks (attempt ${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES})`
+  });
 
   const mineBlock = new BehaviorMineBlock(bot, targets);
 
@@ -460,6 +468,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       targets.position = targets.blockPosition;
+      pathfindingFailureCount = 0; // Reset on successful reach
       logger.debug('go to block -> mine block');
     }
   });
@@ -498,10 +507,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     return targetBlockX === botBlockX && targetBlockZ === botBlockZ && targetBlockY === botBlockY - 1;
   };
 
-  const goToBlockToFindBlock = new StateTransition({
+  const goToBlockToMicroWander = new StateTransition({
     parent: goToBlock,
-    child: findBlock,
-    name: 'BehaviorCollectBlock: go to block -> find block (retry)',
+    child: microWander,
+    name: 'BehaviorCollectBlock: go to block -> micro wander (reposition)',
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
@@ -509,8 +518,20 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       pathfindingFailureCount++;
+      // Exponential wander distance: 4, 8, 16, 32, 64, 128, 256, 256
+      microWander.distance = Math.min(256, MICRO_WANDER_BASE_DISTANCE * Math.pow(2, pathfindingFailureCount - 1));
       const distance = goToBlock.distanceToTarget();
-      logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), distance=${distance.toFixed(2)}, searching for closer block`);
+      logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), distance=${distance.toFixed(2)}, micro-wandering ${microWander.distance} blocks to reposition`);
+    }
+  });
+
+  const microWanderToFindBlock = new StateTransition({
+    parent: microWander,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: micro wander -> find block',
+    shouldTransition: () => microWander.isFinished,
+    onTransition: () => {
+      logger.info(`BehaviorCollectBlock: micro-wander complete, searching for new ${targets.blockName}`);
     }
   });
 
@@ -722,7 +743,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findInteractPositionToExitMissingTool,
     goToBlockToMine,
     goToBlockToFindBlockUnderFeet,
-    goToBlockToFindBlock,
+    goToBlockToMicroWander,
+    microWanderToFindBlock,
     goToBlockToExitPathfail,
     mineBlockToFindDrop,
     findDropToGoToDrop,
@@ -776,6 +798,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         logger.debug('CollectBlock: cleaned up mineBlock');
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up mineBlock: ${err.message}`);
+      }
+    }
+
+    if (microWander && typeof microWander.onStateExited === 'function') {
+      try {
+        microWander.onStateExited();
+        logger.debug('CollectBlock: cleaned up microWander');
+      } catch (err: any) {
+        logger.warn(`CollectBlock: error cleaning up microWander: ${err.message}`);
       }
     }
 

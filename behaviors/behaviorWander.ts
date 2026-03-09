@@ -104,7 +104,8 @@ export class BehaviorWander {
   private setGoal(): void {
     try {
       const y = this.bot.entity?.position?.y ?? 64;
-      const goal = new goals.GoalNear(this.targetX, y, this.targetZ, GOAL_REACH_RANGE);
+      const range = Math.min(GOAL_REACH_RANGE, Math.max(2, this.distance * 0.5));
+      const goal = new goals.GoalNear(this.targetX, y, this.targetZ, range);
       this.bot.pathfinder.setGoal(goal);
       this.lastGoalSetTime = Date.now();
     } catch (err: any) {

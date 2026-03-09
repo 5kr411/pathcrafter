@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import logger from '../utils/logger';
 import { createRunDir } from '../utils/runDir';
 
@@ -30,7 +31,10 @@ function spawnCollector(index: number): void {
     return;
   }
 
-  const username = num === 1 ? usernameBase : `${usernameBase}_${index}`;
+  const suffix = crypto.randomBytes(2).toString('hex');
+  const username = num === 1
+    ? `${usernameBase}_${suffix}`
+    : `${usernameBase}_${index}_${suffix}`;
   const args = [scriptPath, host, port, username];
   if (password) {
     args.push(password);

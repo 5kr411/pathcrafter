@@ -193,12 +193,17 @@ class BehaviorSafeFindBlock {
         const distSq = this._distanceSq(p);
         if (!Number.isFinite(distSq)) continue;
 
+        // Penalize blocks far from the bot's Y level (high tree blocks and deep underground are harder to reach)
+        const botY = this.bot.entity?.position?.y ?? 64;
+        const absYDiff = Math.abs(p.y - botY);
+        const heightPenalty = absYDiff > 2 ? absYDiff * absYDiff * 4 : 0;
+
         let nearLiquid = false;
-        let penalty = 0;
+        let penalty = heightPenalty;
         if (avoidanceRadius > 0) {
           nearLiquid = this.isNearLiquid(p);
           if (nearLiquid) {
-            penalty = nearLiquidPenalty;
+            penalty += nearLiquidPenalty;
             try {
               logger.debug(
                 `BehaviorSafeFindBlock: candidate near liquid at (${p.x}, ${p.y}, ${p.z}), distSq=${distSq.toFixed(2)}, penalty=${penalty}`
