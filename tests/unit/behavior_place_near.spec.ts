@@ -46,7 +46,9 @@ describe('unit: behaviorPlaceNear', () => {
     const sm = createPlaceNearState(bot as any, targets);
 
     await withLoggerSpy(async (_logger) => {
-      await runWithFakeClock(bot as any, sm, { maxMs: 9000, stepMs: 100, directNested: true });
+      // Outer SM retries up to 5 wander + 5 clear attempts before final exit;
+      // each wander has a safety timeout proportional to distance, so allow ample time
+      await runWithFakeClock(bot as any, sm, { maxMs: 300000, stepMs: 500, directNested: true });
     });
 
     expect((sm as any).isFinished()).toBe(true);

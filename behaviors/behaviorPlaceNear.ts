@@ -8,6 +8,7 @@ const {
 
 import createClearAreaState from './behaviorClearArea';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
+import { BehaviorWander } from './behaviorWander';
 
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
@@ -46,7 +47,7 @@ interface Targets {
   [key: string]: any;
 }
 
-function createPlaceNearState(bot: Bot, targets: Targets): any {
+function createInnerPlaceState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const moveToPlaceCoords = new BehaviorSmartMoveTo(bot, targets);
   moveToPlaceCoords.distance = 2;
@@ -87,8 +88,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
   };
 
-  const clearTargets: Targets = { placePosition: undefined, clearRadiusHorizontal: 1, clearRadiusVertical: 2 };
-  const clearArea = createClearAreaState(bot, clearTargets as any);
   const exit = new BehaviorIdle();
 
   // --- Spot selection ---
@@ -97,23 +96,38 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     const botPos = bot.entity.position.clone().floored();
     const candidates: { ground: Vec3Like; dist: number }[] = [];
 
-    for (let dy = -2; dy <= 1; dy++) {
+    const fallbackCandidates: { ground: Vec3Like; dist: number }[] = [];
+
+    for (let dy = -4; dy <= 2; dy++) {
       for (let dx = -6; dx <= 6; dx++) {
         for (let dz = -6; dz <= 6; dz++) {
           const hdist = Math.sqrt(dx * dx + dz * dz);
-          if (hdist < 1.5 || hdist > 8) continue;
+          if (hdist < 1 || hdist > 8) continue;
           const ground = botPos.clone().offset(dx, dy, dz);
           try {
             const b = bot.blockAt(ground, false);
             if (!b || b.type === 0 || b.boundingBox !== 'block') continue;
             const above = ground.clone().offset(0, 1, 0);
-            if (bot.world.getBlockType(above) !== 0) continue;
+            const aboveBlock = bot.blockAt(above, false);
+            if (!aboveBlock) continue; // unloaded chunk — skip
+            if (aboveBlock.type === 0) {
+              candidates.push({ ground, dist: hdist });
+            } else {
+              // Fallback: solid above but diggable (clearArea can handle it)
+              if (aboveBlock.diggable !== false) {
+                fallbackCandidates.push({ ground, dist: hdist });
+              }
+            }
           } catch (_) {
             continue;
           }
-          candidates.push({ ground, dist: hdist });
         }
       }
+    }
+
+    // Use fallback candidates (solid above, needs clearing) if no air-above spots found
+    if (candidates.length === 0 && fallbackCandidates.length > 0) {
+      candidates.push(...fallbackCandidates);
     }
 
     candidates.sort((a, b) => a.dist - b.dist);
@@ -138,7 +152,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
   // --- Transition helpers ---
   let moveStartTime = 0;
   let placeStartTime = 0;
-  let clearedOnce = false;
   let standingPosition: Vec3Like | undefined = undefined;
   const moveTimeoutMs = 15000;
 
@@ -149,13 +162,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
       targets.placedPosition.y += 1;
     }
     placeStartTime = Date.now();
-  }
-
-  function restoreStandingPosition() {
-    // After placement attempt, restore moveTo target for potential retry
-    if (standingPosition) {
-      targets.position = standingPosition;
-    }
   }
 
   function isRefSolid(): boolean {
@@ -172,22 +178,6 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     if (!placedBlock || placedBlock.type === 0) return false;
     const desiredName = targets.item?.name;
     return !desiredName || placedBlock.name === desiredName;
-  }
-
-  function isObstructed(): boolean {
-    if (!targets.placePosition) return false;
-    const head = targets.placePosition.clone().offset(0, 1, 0);
-    const h = Number.isFinite(targets.clearRadiusHorizontal)
-      ? Math.max(0, Math.floor(targets.clearRadiusHorizontal!))
-      : 1;
-    const v = Number.isFinite(targets.clearRadiusVertical)
-      ? Math.max(1, Math.floor(targets.clearRadiusVertical!))
-      : 2;
-    for (let dy = 0; dy < v; dy++)
-      for (let dx = -h; dx <= h; dx++)
-        for (let dz = -h; dz <= h; dz++)
-          if (bot.world.getBlockType(head.clone().offset(dx, dy, dz)) !== 0) return true;
-    return false;
   }
 
   // --- Transitions ---
@@ -210,8 +200,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     child: moveToPlaceCoords,
     shouldTransition: () => true,
     onTransition: () => {
-      clearedOnce = false;
-      if (!findSpot()) return; // will fall through to exit via move timeout
+      if (!findSpot()) return; // will fall through to exit via fast-exit
       moveStartTime = Date.now();
     }
   });
@@ -234,6 +223,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     parent: moveToPlaceCoords,
     child: exit,
     shouldTransition: () => {
+      if (!targets.position) return true; // fast-exit: findSpot failed
       if (Date.now() - moveStartTime > moveTimeoutMs) return true;
       return moveToPlaceCoords.isFinished() && !isRefSolid();
     },
@@ -261,35 +251,14 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
   });
 
-  // 6. placeBlock → clearArea: not placed, area obstructed, haven't cleared yet
-  const placeToClear = new StateTransition({
-    name: 'PlaceNear: placeBlock → clearArea',
-    parent: placeBlock,
-    child: clearArea,
-    shouldTransition: () => {
-      if (Date.now() - placeStartTime < 500) return false;
-      return !blockPlacedCorrectly() && !clearedOnce && isObstructed();
-    },
-    onTransition: () => {
-      logger.info('BehaviorPlaceNear: placement obstructed, clearing area');
-      restoreStandingPosition();
-      clearedOnce = true;
-      clearTargets.placePosition = targets.placePosition!.clone();
-      clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal)
-        ? targets.clearRadiusHorizontal : 1;
-      clearTargets.clearRadiusVertical = Number.isFinite(targets.clearRadiusVertical)
-        ? targets.clearRadiusVertical : 2;
-    }
-  });
-
-  // 7. placeBlock → exit (failure): not placed, not obstructed (or already cleared)
+  // 6. placeBlock → exit (failure): not placed
   const placeToExitFail = new StateTransition({
     name: 'PlaceNear: placeBlock → exit (failure)',
     parent: placeBlock,
     child: exit,
     shouldTransition: () => {
       if (Date.now() - placeStartTime < 500) return false;
-      return !blockPlacedCorrectly() && (clearedOnce || !isObstructed());
+      return !blockPlacedCorrectly();
     },
     onTransition: () => {
       const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
@@ -300,48 +269,25 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
   });
 
-  // 8. clearArea → moveTo: retry after clearing
-  const clearToMove = new StateTransition({
-    name: 'PlaceNear: clearArea → moveTo (retry)',
-    parent: clearArea,
-    child: moveToPlaceCoords,
-    shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() : true,
-    onTransition: () => {
-      logger.info('BehaviorPlaceNear: clearing complete, retrying placement');
-      targets.position = standingPosition;
-      moveStartTime = Date.now();
-    }
-  });
-
   const transitions = [
     enterToExit,
     enterToMove,
     moveToPlace,
     moveToExit,
     placeToExitSuccess,
-    placeToClear,
-    placeToExitFail,
-    clearToMove
+    placeToExitFail
   ];
 
-  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  const innerSM = new NestedStateMachine(transitions, enter, exit);
 
-  stateMachine.onStateExited = function () {
-    logger.debug('PlaceNear: cleaning up on state exit');
+  innerSM.onStateExited = function () {
+    logger.debug('PlaceNear: cleaning up inner SM on state exit');
 
     if (moveToPlaceCoords && typeof moveToPlaceCoords.onStateExited === 'function') {
       try {
         moveToPlaceCoords.onStateExited();
       } catch (err: any) {
         logger.warn(`PlaceNear: error cleaning up moveToPlaceCoords: ${err.message}`);
-      }
-    }
-
-    if (clearArea && typeof clearArea.onStateExited === 'function') {
-      try {
-        clearArea.onStateExited();
-      } catch (err: any) {
-        logger.warn(`PlaceNear: error cleaning up clearArea: ${err.message}`);
       }
     }
 
@@ -352,7 +298,214 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     }
   };
 
-  return stateMachine;
+  return innerSM;
+}
+
+const MAX_WANDER_RETRIES = 5;
+const MAX_CLEAR_RETRIES = 5;
+const BASE_WANDER_DISTANCE = 4;
+
+function createPlaceNearState(bot: Bot, targets: Targets): any {
+  const outerEnter = new BehaviorIdle();
+  const outerExit = new BehaviorIdle();
+
+  let wanderAttempts = 0;
+  let clearAttempts = 0;
+  let phase: 'wander' | 'clear' = 'wander';
+
+  const innerPlace = createInnerPlaceState(bot, targets);
+  const microWander = new BehaviorWander(bot, BASE_WANDER_DISTANCE);
+
+  const clearTargets: Targets = { placePosition: undefined, clearRadiusHorizontal: 1, clearRadiusVertical: 2 };
+  const clearArea = createClearAreaState(bot, clearTargets as any);
+
+  addStateLogging(microWander, 'MicroWander', {
+    logEnter: true,
+    getExtraInfo: () => `retry wander (attempt ${wanderAttempts}/${MAX_WANDER_RETRIES}, dist=${microWander.distance})`
+  });
+
+  function innerFinished(): boolean {
+    return typeof innerPlace.isFinished === 'function' ? innerPlace.isFinished() : false;
+  }
+
+  function totalAttemptLabel(): string {
+    if (phase === 'wander') return `wander ${wanderAttempts}/${MAX_WANDER_RETRIES}`;
+    return `clear ${clearAttempts}/${MAX_CLEAR_RETRIES}`;
+  }
+
+  // outerEnter → outerExit: no item set
+  const outerEnterToExit = new StateTransition({
+    name: 'PlaceNear(outer): enter → exit (no item)',
+    parent: outerEnter,
+    child: outerExit,
+    shouldTransition: () => targets.item == null,
+    onTransition: () => {
+      logger.error('BehaviorPlaceNear: no item set');
+      targets.placedConfirmed = false;
+    }
+  });
+
+  // outerEnter → innerPlace: start first attempt
+  const outerEnterToPlace = new StateTransition({
+    name: 'PlaceNear(outer): enter → innerPlace',
+    parent: outerEnter,
+    child: innerPlace,
+    shouldTransition: () => true,
+    onTransition: () => {
+      wanderAttempts = 1;
+      clearAttempts = 0;
+      phase = 'wander';
+      logger.info(`BehaviorPlaceNear: starting placement (${totalAttemptLabel()})`);
+    }
+  });
+
+  // innerPlace → outerExit (success): placement confirmed
+  const placeToOuterSuccess = new StateTransition({
+    name: 'PlaceNear(outer): innerPlace → exit (success)',
+    parent: innerPlace,
+    child: outerExit,
+    shouldTransition: () => innerFinished() && targets.placedConfirmed === true,
+    onTransition: () => {
+      logger.info(`BehaviorPlaceNear: placement succeeded (${totalAttemptLabel()})`);
+    }
+  });
+
+  // innerPlace → microWander (failure, wander phase, retries remaining)
+  const placeToWander = new StateTransition({
+    name: 'PlaceNear(outer): innerPlace → microWander (retry)',
+    parent: innerPlace,
+    child: microWander,
+    shouldTransition: () => {
+      return innerFinished() && targets.placedConfirmed !== true
+        && phase === 'wander' && wanderAttempts < MAX_WANDER_RETRIES;
+    },
+    onTransition: () => {
+      microWander.distance = BASE_WANDER_DISTANCE + wanderAttempts * 2;
+      logger.info(`BehaviorPlaceNear: attempt failed (${totalAttemptLabel()}), wandering ${microWander.distance} blocks`);
+    }
+  });
+
+  // innerPlace → clearArea (failure, wander phase exhausted OR clear phase retries remaining)
+  const placeToClear = new StateTransition({
+    name: 'PlaceNear(outer): innerPlace → clearArea',
+    parent: innerPlace,
+    child: clearArea,
+    shouldTransition: () => {
+      if (!innerFinished() || targets.placedConfirmed === true) return false;
+      // Enter clear phase when wander retries exhausted, or continue clear phase if retries remain
+      if (phase === 'wander' && wanderAttempts >= MAX_WANDER_RETRIES) return true;
+      if (phase === 'clear' && clearAttempts < MAX_CLEAR_RETRIES) return true;
+      return false;
+    },
+    onTransition: () => {
+      if (phase === 'wander') {
+        phase = 'clear';
+        clearAttempts = 1;
+        logger.info(`BehaviorPlaceNear: wander retries exhausted, switching to clear phase`);
+      } else {
+        clearAttempts++;
+      }
+      logger.info(`BehaviorPlaceNear: clearing area (${totalAttemptLabel()})`);
+      // Set up clearArea targets from current placement position
+      if (targets.placePosition) {
+        clearTargets.placePosition = targets.placePosition.clone();
+      } else {
+        // Re-scan from current position to find something to clear near
+        clearTargets.placePosition = bot.entity.position.clone().floored();
+      }
+      clearTargets.clearRadiusHorizontal = Number.isFinite(targets.clearRadiusHorizontal)
+        ? targets.clearRadiusHorizontal : 1;
+      clearTargets.clearRadiusVertical = Number.isFinite(targets.clearRadiusVertical)
+        ? targets.clearRadiusVertical : 2;
+    }
+  });
+
+  // innerPlace → outerExit (failure, all retries exhausted)
+  const placeToOuterFail = new StateTransition({
+    name: 'PlaceNear(outer): innerPlace → exit (all retries exhausted)',
+    parent: innerPlace,
+    child: outerExit,
+    shouldTransition: () => {
+      return innerFinished() && targets.placedConfirmed !== true
+        && phase === 'clear' && clearAttempts >= MAX_CLEAR_RETRIES;
+    },
+    onTransition: () => {
+      logger.error(`BehaviorPlaceNear: all placement attempts exhausted (${MAX_WANDER_RETRIES} wander + ${MAX_CLEAR_RETRIES} clear)`);
+      targets.placedConfirmed = false;
+    }
+  });
+
+  // microWander → innerPlace: retry after wander
+  const wanderToPlace = new StateTransition({
+    name: 'PlaceNear(outer): microWander → innerPlace (retry)',
+    parent: microWander,
+    child: innerPlace,
+    shouldTransition: () => microWander.isFinished === true,
+    onTransition: () => {
+      wanderAttempts++;
+      logger.info(`BehaviorPlaceNear: retrying placement (${totalAttemptLabel()})`);
+    }
+  });
+
+  // clearArea → innerPlace: retry after clearing
+  const clearToPlace = new StateTransition({
+    name: 'PlaceNear(outer): clearArea → innerPlace (retry)',
+    parent: clearArea,
+    child: innerPlace,
+    shouldTransition: () => typeof clearArea.isFinished === 'function' ? clearArea.isFinished() : true,
+    onTransition: () => {
+      logger.info(`BehaviorPlaceNear: clearing complete, retrying placement (${totalAttemptLabel()})`);
+    }
+  });
+
+  const outerTransitions = [
+    outerEnterToExit,
+    outerEnterToPlace,
+    placeToOuterSuccess,
+    placeToWander,
+    placeToClear,
+    placeToOuterFail,
+    wanderToPlace,
+    clearToPlace
+  ];
+
+  const outerSM = new NestedStateMachine(outerTransitions, outerEnter, outerExit);
+
+  outerSM.onStateExited = function () {
+    logger.debug('PlaceNear(outer): cleaning up on state exit');
+
+    if (innerPlace && typeof innerPlace.onStateExited === 'function') {
+      try {
+        innerPlace.onStateExited();
+      } catch (err: any) {
+        logger.warn(`PlaceNear(outer): error cleaning up innerPlace: ${err.message}`);
+      }
+    }
+
+    if (microWander && typeof microWander.onStateExited === 'function') {
+      try {
+        microWander.onStateExited();
+      } catch (err: any) {
+        logger.warn(`PlaceNear(outer): error cleaning up microWander: ${err.message}`);
+      }
+    }
+
+    if (clearArea && typeof clearArea.onStateExited === 'function') {
+      try {
+        clearArea.onStateExited();
+      } catch (err: any) {
+        logger.warn(`PlaceNear(outer): error cleaning up clearArea: ${err.message}`);
+      }
+    }
+
+    try {
+      bot.clearControlStates();
+    } catch (err: any) {
+      logger.debug(`PlaceNear(outer): error clearing control states: ${err.message}`);
+    }
+  };
+
+  return outerSM;
 }
 
 export default createPlaceNearState;
