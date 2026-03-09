@@ -101,6 +101,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   const followDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
 
   let craftingDone = false;
+  let craftingOk = false;
   let tableCountBeforeBreak = 0;
   let waitStartTime = 0;
 
@@ -158,6 +159,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     },
     onTransition: () => {
       craftingDone = false;
+      craftingOk = false;
       logger.info('CraftWithTable: Table placed, starting craft');
 
       const craftingTable = placeTargets.placedPosition ? bot.blockAt(placeTargets.placedPosition, false) : null;
@@ -168,8 +170,8 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       }
 
       craftItemWithTable(targets.itemName!, targets.amount, craftingTable)
-        .then(() => { craftingDone = true; })
-        .catch(() => { craftingDone = true; });
+        .then((ok) => { craftingOk = !!ok; craftingDone = true; })
+        .catch(() => { craftingOk = false; craftingDone = true; });
     }
   });
 
@@ -180,6 +182,9 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'CraftWithTable: craft -> break',
     shouldTransition: () => craftingDone,
     onTransition: () => {
+      if (!craftingOk) {
+        stateMachine.stepSucceeded = false;
+      }
       tableCountBeforeBreak = getItemCountInInventory(bot, 'crafting_table');
       breakTargets.position = placeTargets.placedPosition;
       const have = getItemCountInInventory(bot, targets.itemName!);

@@ -267,7 +267,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       if (!targets.itemName) return craftingDone;
       const have = getItemCountInInventory(bot, targets.itemName);
       const needed = baselineCount + targets.amount;
-      if (have >= needed) return true;
+      if (have >= needed) return craftingDone;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
       if (timedOut) return true;
       return craftingDone;
