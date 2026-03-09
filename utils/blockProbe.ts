@@ -1,7 +1,9 @@
+import { Vec3 } from 'vec3';
+
 export type SurfaceType = 'land' | 'water' | 'unknown';
 
 export interface BlockAtFn {
-  (pos: { x: number; y: number; z: number }, extraInfos?: boolean): any | null;
+  (pos: Vec3, extraInfos?: boolean): any | null;
 }
 
 const WATER_NAMES = ['water', 'flowing_water'];
@@ -26,7 +28,7 @@ export function findSurfaceBlock(
   const floorZ = Math.floor(z);
 
   for (let y = maxY; y >= minY; y--) {
-    const block = blockAt({ x: floorX, y, z: floorZ });
+    const block = blockAt(new Vec3(floorX, y, floorZ));
     if (!block) return null;
     if (block.type === 0) continue;
     return block;

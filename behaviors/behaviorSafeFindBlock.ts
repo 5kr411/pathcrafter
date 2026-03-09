@@ -1,14 +1,8 @@
 import { getSafeFindRepeatThreshold, getLiquidAvoidanceDistance } from '../utils/config';
+import { Vec3 } from 'vec3';
 
 import logger from '../utils/logger';
 const minecraftData = require('minecraft-data');
-
-interface Vec3 {
-  x: number;
-  y: number;
-  z: number;
-  [key: string]: any;
-}
 
 interface Block {
   type: number;
@@ -126,8 +120,7 @@ class BehaviorSafeFindBlock {
       for (let dx = -avoidanceRadius; dx <= avoidanceRadius; dx++) {
         for (let dy = -avoidanceRadius; dy <= avoidanceRadius; dy++) {
           for (let dz = -avoidanceRadius; dz <= avoidanceRadius; dz++) {
-            const checkPos = { x: pos.x + dx, y: pos.y + dy, z: pos.z + dz };
-            const block = this.bot.blockAt(checkPos, false);
+            const block = this.bot.blockAt(new Vec3(pos.x + dx, pos.y + dy, pos.z + dz), false);
             if (block && liquidIds.has(block.type)) {
               return true;
             }
@@ -277,7 +270,7 @@ export default function createSafeFindBlock(bot: Bot, targets: Targets): Behavio
   return new BehaviorSafeFindBlock(bot, targets);
 }
 
-export function isPositionNearLiquid(bot: any, pos: Vec3): boolean {
+export function isPositionNearLiquid(bot: any, pos: { x: number; y: number; z: number }): boolean {
   try {
     const avoidanceRadius = getLiquidAvoidanceDistance();
     if (avoidanceRadius <= 0) return false;
@@ -293,8 +286,7 @@ export function isPositionNearLiquid(bot: any, pos: Vec3): boolean {
     for (let dx = -avoidanceRadius; dx <= avoidanceRadius; dx++) {
       for (let dy = -avoidanceRadius; dy <= avoidanceRadius; dy++) {
         for (let dz = -avoidanceRadius; dz <= avoidanceRadius; dz++) {
-          const checkPos = { x: pos.x + dx, y: pos.y + dy, z: pos.z + dz };
-          const block = bot.blockAt(checkPos, false);
+          const block = bot.blockAt(new Vec3(pos.x + dx, pos.y + dy, pos.z + dz), false);
           if (block && liquidIds.has(block.type)) {
             return true;
           }

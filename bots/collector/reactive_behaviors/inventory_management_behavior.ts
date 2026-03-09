@@ -1,4 +1,5 @@
 import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
+import { Vec3 } from 'vec3';
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { getEmptySlotCount } from '../../../utils/inventory';
 import { isFood } from '../../../utils/foodConfig';
@@ -191,7 +192,7 @@ function isDirectionClear(bot: Bot, yaw: number): boolean {
     const y = Math.floor(pos.y + 1);
     const z = Math.floor(pos.z + dz * dist);
 
-    const block = (bot as any).blockAt({ x, y, z });
+    const block = (bot as any).blockAt(new Vec3(x, y, z));
     if (block && block.boundingBox !== 'empty') return false;
   }
   return true;
