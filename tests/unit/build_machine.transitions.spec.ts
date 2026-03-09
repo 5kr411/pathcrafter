@@ -4,6 +4,29 @@ import { createTestActionStep, createTestStringGroup, createTestItemReferenceGro
 import { createFakeBot } from '../utils/fakeBot';
 import { runWithFakeClock, withLoggerSpy } from '../utils/stateMachineRunner';
 
+// Mock the craft and mine generators to return simple states that finish immediately.
+// This test is about transition ordering, not individual step behavior.
+function makeSimpleState() {
+  let finished = false;
+  return {
+    active: false,
+    onStateEntered() { this.active = true; finished = true; },
+    onStateExited() { this.active = false; },
+    isFinished: () => finished,
+    update() {}
+  };
+}
+
+jest.mock('../../behavior_generator/craftInventory', () => ({
+  canHandle: (step: any) => step?.action === 'craft' && step?.what?.variants?.some((v: any) => v.value === 'inventory'),
+  create: () => makeSimpleState()
+}));
+
+jest.mock('../../behavior_generator/mine', () => ({
+  canHandle: (step: any) => step?.action === 'mine',
+  create: () => makeSimpleState()
+}));
+
 describe('unit: buildStateMachineForPath transitions', () => {
   beforeEach(() => {
     jest.useFakeTimers();
@@ -54,5 +77,3 @@ describe('unit: buildStateMachineForPath transitions', () => {
     expect(finished).toHaveBeenCalled();
   });
 });
-
-

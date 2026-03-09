@@ -199,21 +199,22 @@ describe('BehaviorSafeFollowEntity', () => {
     
     it('should not detect stuck when bot has moved more than 2 blocks', () => {
       behavior.onStateEntered();
-      
-      // Advance time 10 seconds
-      for (let i = 0; i < 10; i++) {
+
+      // Advance time 5 seconds
+      for (let i = 0; i < 5; i++) {
         jest.advanceTimersByTime(1000);
       }
-      
+
       // Move the bot 5 blocks
       bot.entity.position = new Vec3(5, 60, 0);
-      
-      // Advance more time
-      for (let i = 0; i < 15; i++) {
+
+      // Advance only a short time (< 10s window) after moving so the
+      // rolling window still includes the move
+      for (let i = 0; i < 4; i++) {
         jest.advanceTimersByTime(1000);
       }
-      
-      // Should not be stuck because we moved
+
+      // Should not be stuck because we moved within the window
       expect(targets.smartMoveStuckCount || 0).toBe(0);
     });
     

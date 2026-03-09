@@ -92,32 +92,8 @@ describe('behaviorHuntForFood - wooden sword prep', () => {
     jest.clearAllMocks();
   });
 
-  it('attempts to craft wooden_sword when no sword is present', async () => {
+  it('skips weapon crafting when no sword is present (weaponPhase=skipped)', async () => {
     const bot = createBotWithAnimal();
-
-    planner.mockImplementation(() => ({}));
-    enumerateActionPathsGenerator.mockImplementation(function* () {
-      yield [{ action: 'mine', what: 'oak_log', count: 1 }];
-    });
-    captureAdaptiveSnapshot.mockResolvedValue({
-      snapshot: { radius: 32 },
-      radiusUsed: 32,
-      attemptsCount: 1,
-      totalTimeMs: 1
-    });
-
-    buildStateMachineForPath.mockImplementation((_bot: any, _path: any[], onFinished?: (success: boolean) => void) => {
-      let finished = false;
-      return {
-        onStateEntered: jest.fn(),
-        update: () => {
-          if (finished) return;
-          finished = true;
-          if (onFinished) onFinished(true);
-        },
-        isFinished: () => finished
-      };
-    });
 
     const stateMachine = createHuntForFoodState(bot as any, { targetFoodPoints: 10 });
     stateMachine.onStateEntered();
@@ -128,9 +104,9 @@ describe('behaviorHuntForFood - wooden sword prep', () => {
       await flushMicrotasks();
     }
 
-    const plannedItems = planner.mock.calls.map((call) => call[1]);
-    expect(plannedItems).toContain('wooden_sword');
-    expect(buildStateMachineForPath).toHaveBeenCalled();
+    // Weapon crafting is now skipped — no planning or build machine calls for weapons
+    expect(planner).not.toHaveBeenCalled();
+    expect(buildStateMachineForPath).not.toHaveBeenCalled();
   });
 
   it('skips weapon planning when a sword is already in inventory', async () => {

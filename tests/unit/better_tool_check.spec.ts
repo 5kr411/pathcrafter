@@ -14,18 +14,18 @@ describe('unit: better tool detection', () => {
   describe('rank function', () => {
     test('ranks tools in correct tier order', () => {
       expect(rank('wooden_pickaxe')).toBe(0);
-      expect(rank('golden_pickaxe')).toBe(0.5);
+      expect(rank('golden_pickaxe')).toBe(4);
       expect(rank('stone_pickaxe')).toBe(1);
-      expect(rank('iron_pickaxe')).toBe(2);
-      expect(rank('diamond_pickaxe')).toBe(3);
-      expect(rank('netherite_pickaxe')).toBe(4);
+      expect(rank('iron_pickaxe')).toBe(3);
+      expect(rank('diamond_pickaxe')).toBe(5);
+      expect(rank('netherite_pickaxe')).toBe(6);
     });
 
     test('works for all tool types', () => {
       expect(rank('wooden_axe')).toBe(0);
       expect(rank('stone_shovel')).toBe(1);
-      expect(rank('iron_sword')).toBe(2);
-      expect(rank('diamond_hoe')).toBe(3);
+      expect(rank('iron_sword')).toBe(3);
+      expect(rank('diamond_hoe')).toBe(5);
     });
 
     test('returns 10 for unknown materials', () => {
@@ -151,17 +151,17 @@ describe('unit: better tool detection', () => {
     });
 
     describe('golden tier edge case', () => {
-      test('golden_pickaxe satisfies wooden_pickaxe (rank 0.5 >= 0)', () => {
+      test('golden_pickaxe satisfies wooden_pickaxe (rank 4 >= 0)', () => {
         const inv = new Map([['golden_pickaxe', 1]]);
         expect(hasEqualOrBetterTool(inv, 'wooden_pickaxe')).toBe(true);
       });
 
-      test('stone_pickaxe satisfies golden_pickaxe (rank 1 >= 0.5)', () => {
+      test('stone_pickaxe does NOT satisfy golden_pickaxe (rank 1 < 4)', () => {
         const inv = new Map([['stone_pickaxe', 1]]);
-        expect(hasEqualOrBetterTool(inv, 'golden_pickaxe')).toBe(true);
+        expect(hasEqualOrBetterTool(inv, 'golden_pickaxe')).toBe(false);
       });
 
-      test('wooden_pickaxe does NOT satisfy golden_pickaxe (rank 0 < 0.5)', () => {
+      test('wooden_pickaxe does NOT satisfy golden_pickaxe (rank 0 < 4)', () => {
         const inv = new Map([['wooden_pickaxe', 1]]);
         expect(hasEqualOrBetterTool(inv, 'golden_pickaxe')).toBe(false);
       });

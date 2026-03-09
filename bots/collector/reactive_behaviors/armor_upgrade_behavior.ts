@@ -14,6 +14,7 @@ function setSlotCooldown(): void {
 }
 
 function isSlotCooling(): boolean {
+  if (lastEquipTime === 0) return false;
   return Date.now() - lastEquipTime < SLOT_COOLDOWN_MS;
 }
 

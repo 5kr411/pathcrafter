@@ -44,7 +44,7 @@ export function resetInventoryManagementCooldown(): void {
 }
 
 export function triggerInventoryManagementCooldown(): void {
-  lastManagementTime = Date.now();
+  lastManagementTime = Date.now() || 1;
 }
 
 function isInCooldown(): boolean {
@@ -322,6 +322,10 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
   },
 
   createState: async (bot: Bot) => {
+    if (isInCooldown()) {
+      return null;
+    }
+
     const sendChat: ((msg: string) => void) | null =
       typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
 

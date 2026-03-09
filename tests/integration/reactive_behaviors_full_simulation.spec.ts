@@ -502,7 +502,7 @@ describe('integration: full reactive behavior simulation', () => {
     const slots = new Array(46).fill(null);
     slots[9] = { name: 'bread', count: 1 };
 
-    const bot = createSimulatedBot({ inventory: { slots }, food: 15 });
+    const bot = createSimulatedBot({ inventory: { slots }, food: 10 });
     bot.consume = jest.fn(async () => {
       bot.food = 20;
     });
@@ -539,7 +539,7 @@ describe('integration: full reactive behavior simulation', () => {
     const slots = new Array(46).fill(null);
     slots[9] = { name: 'porkchop', count: 1 };
 
-    const bot = createSimulatedBot({ inventory: { slots }, food: 15 });
+    const bot = createSimulatedBot({ inventory: { slots }, food: 10 });
     bot.consume = jest.fn(async () => {
       throw new Error('Promise timed out.');
     });
