@@ -39,6 +39,11 @@ export class BehaviorSmartMoveTo {
   private unstickAttempts: number = 0;
   private readonly MAX_UNSTICK_ATTEMPTS = 3;
   private _gaveUp: boolean = false;
+  private _pathfindingSettled: boolean = false;
+  private _enteredAt: number = 0;
+  private _pathUpdateHandler: ((r: any) => void) | null = null;
+  private _goalReachedHandler: (() => void) | null = null;
+  private readonly MIN_SETTLE_MS = 600;
 
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
@@ -58,7 +63,17 @@ export class BehaviorSmartMoveTo {
   }
 
   isFinished(): boolean {
-    return this._gaveUp || this.moveTo.isFinished();
+    if (this._gaveUp) return true;
+
+    if (!this._pathfindingSettled) {
+      if (Date.now() - this._enteredAt >= this.MIN_SETTLE_MS) {
+        this._pathfindingSettled = true;
+      } else {
+        return false;
+      }
+    }
+
+    return this.moveTo.isFinished();
   }
 
   distanceToTarget(): number {
@@ -74,6 +89,8 @@ export class BehaviorSmartMoveTo {
     this.unstickTarget = null;
     this.unstickAttempts = 0;
     this._gaveUp = false;
+    this._pathfindingSettled = false;
+    this._enteredAt = Date.now();
     this.allowUnstick = this.targets?.disableSmartMoveUnstick !== true;
 
     if (this.targets) {
@@ -87,12 +104,25 @@ export class BehaviorSmartMoveTo {
       }
     }
 
+    // Register pathfinder event listeners BEFORE starting movement
+    // so we capture events from the very first tick
+    if (typeof this.bot.on === 'function') {
+      this._pathUpdateHandler = () => {
+        this._pathfindingSettled = true;
+      };
+      this._goalReachedHandler = () => {
+        this._pathfindingSettled = true;
+      };
+      this.bot.on('path_update', this._pathUpdateHandler);
+      this.bot.on('goal_reached', this._goalReachedHandler);
+    }
+
     this.recordCurrentPosition();
-    
+
     this.checkInterval = setInterval(() => {
       this.checkIfStuck();
     }, 1000);
-    
+
     logger.debug(`BehaviorSmartMoveTo: Started stuck detection interval for target at (${this.originalTarget?.x}, ${this.originalTarget?.y}, ${this.originalTarget?.z})`);
 
     if (this.moveTo.onStateEntered) {
@@ -107,6 +137,17 @@ export class BehaviorSmartMoveTo {
       this.checkInterval = null;
       logger.debug('BehaviorSmartMoveTo: Cleared stuck detection interval');
     }
+
+    // Remove pathfinder event listeners
+    if (this._pathUpdateHandler && typeof this.bot.removeListener === 'function') {
+      this.bot.removeListener('path_update', this._pathUpdateHandler);
+      this._pathUpdateHandler = null;
+    }
+    if (this._goalReachedHandler && typeof this.bot.removeListener === 'function') {
+      this.bot.removeListener('goal_reached', this._goalReachedHandler);
+      this._goalReachedHandler = null;
+    }
+    this._pathfindingSettled = false;
 
     this.positionHistory = [];
     this.isStuck = false;

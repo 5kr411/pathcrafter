@@ -78,6 +78,8 @@ describe('BehaviorSmartMoveTo', () => {
     it('delegates isFinished to moveTo when not gave up', () => {
       behavior.onStateEntered();
       expect(behavior.isFinished()).toBe(false);
+      // Advance past pathfinding settle guard (MIN_SETTLE_MS = 600)
+      jest.advanceTimersByTime(700);
       mockMoveTo!.setFinished(true);
       expect(behavior.isFinished()).toBe(true);
     });

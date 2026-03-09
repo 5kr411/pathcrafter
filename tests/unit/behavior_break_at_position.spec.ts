@@ -86,7 +86,7 @@ describe('unit: behaviorBreakAtPosition', () => {
     const sm = createBreakAtPositionState(bot as any, targets);
 
     await withLoggerSpy(async () => {
-      await runWithFakeClock(bot as any, sm, { maxMs: 15000, stepMs: 100, directNested: true });
+      await runWithFakeClock(bot as any, sm, { maxMs: 18000, stepMs: 100, directNested: true });
     });
 
     expect((sm as any).isFinished()).toBe(true);

@@ -108,7 +108,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   let currentBlockCount = 0; // Will be set by resetBaseline on first entry
   let pathfindingFailureCount = 0;
-  const MAX_PATHFINDING_FAILURES = 8;
+  const MAX_PATHFINDING_FAILURES = 5;
   const MINE_REACH_DISTANCE = 5;
   let missingToolInfo: { requiredTool?: string; blockName?: string; currentTool?: string } | null = null;
   let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
@@ -518,8 +518,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       pathfindingFailureCount++;
-      // Exponential wander distance: 4, 8, 16, 32, 64, 128, 256, 256
-      microWander.distance = Math.min(256, MICRO_WANDER_BASE_DISTANCE * Math.pow(2, pathfindingFailureCount - 1));
+      // Linear wander distance: 4, 8, 12, 16, 20, 24, 28, 32
+      microWander.distance = Math.min(32, MICRO_WANDER_BASE_DISTANCE + (pathfindingFailureCount - 1) * 4);
       const distance = goToBlock.distanceToTarget();
       logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), distance=${distance.toFixed(2)}, micro-wandering ${microWander.distance} blocks to reposition`);
     }
