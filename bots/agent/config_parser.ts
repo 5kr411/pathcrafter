@@ -10,6 +10,7 @@ export interface AgentConfig {
   usernameBase: string;
   timeoutMs: number;
   perTargetTimeoutMs: number;
+  staggerMs: number;
 }
 
 const DEFAULTS: Omit<AgentConfig, 'targets'> = {
@@ -18,7 +19,8 @@ const DEFAULTS: Omit<AgentConfig, 'targets'> = {
   port: 25565,
   usernameBase: 'agent_bot',
   timeoutMs: 600000,
-  perTargetTimeoutMs: 120000
+  perTargetTimeoutMs: 120000,
+  staggerMs: 2000
 };
 
 function parseTargetsString(raw: string): Target[] {
@@ -51,7 +53,8 @@ export function parseAgentConfig(argv: string[] = process.argv): AgentConfig {
       port: json.port ?? DEFAULTS.port,
       usernameBase: json.usernameBase ?? DEFAULTS.usernameBase,
       timeoutMs: json.timeoutMs ?? DEFAULTS.timeoutMs,
-      perTargetTimeoutMs: json.perTargetTimeoutMs ?? DEFAULTS.perTargetTimeoutMs
+      perTargetTimeoutMs: json.perTargetTimeoutMs ?? DEFAULTS.perTargetTimeoutMs,
+      staggerMs: json.staggerMs ?? DEFAULTS.staggerMs
     };
   }
 
@@ -72,6 +75,7 @@ export function parseAgentConfig(argv: string[] = process.argv): AgentConfig {
     port: Number(getArgValue(argv, '--port')) || DEFAULTS.port,
     usernameBase: getArgValue(argv, '--username-base') ?? DEFAULTS.usernameBase,
     timeoutMs: Number(getArgValue(argv, '--timeout')) || DEFAULTS.timeoutMs,
-    perTargetTimeoutMs: Number(getArgValue(argv, '--per-target-timeout')) || DEFAULTS.perTargetTimeoutMs
+    perTargetTimeoutMs: Number(getArgValue(argv, '--per-target-timeout')) || DEFAULTS.perTargetTimeoutMs,
+    staggerMs: Number(getArgValue(argv, '--stagger-ms') ?? DEFAULTS.staggerMs)
   };
 }

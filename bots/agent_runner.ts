@@ -7,7 +7,7 @@ import { BotStatus, RunSummary, computeExitCode, computeOverallResult, writeSumm
 import { createRunDir } from '../utils/runDir';
 import logger from '../utils/logger';
 
-function run(): void {
+async function run(): Promise<void> {
   let config: AgentConfig;
   try {
     config = parseAgentConfig();
@@ -81,10 +81,17 @@ function run(): void {
   let exited = 0;
 
   for (let i = 0; i < config.numBots; i++) {
+    if (i > 0 && config.staggerMs > 0) {
+      logger.info(`Waiting ${config.staggerMs}ms before spawning bot ${i + 1}...`);
+      await new Promise(resolve => setTimeout(resolve, config.staggerMs));
+    }
+
     const suffix = crypto.randomBytes(2).toString('hex');
     const botName = config.numBots === 1
       ? `${config.usernameBase}_${suffix}`
-      : `${config.usernameBase}_${i + 1}_${suffix}`;
+      : `${config.usernameBase}_${i}_${suffix}`;
+
+    logger.info(`Spawning bot ${i + 1}/${config.numBots}: ${botName}`);
 
     const args = [scriptPath, config.host, String(config.port), botName, '--targets', targetsArg];
 
