@@ -160,6 +160,21 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       const idOf = (name: string): number | undefined => mc.itemsByName[name]?.id;
       const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+      function getWindowItemCount(name: string): number {
+        try {
+          const win = bot.currentWindow;
+          if (!win) return 0;
+          let c = 0;
+          for (let i = win.inventoryStart; i < win.inventoryEnd; i++) {
+            const it = win.slots[i];
+            if (it && it.name === name) c += it.count || 0;
+          }
+          return c;
+        } catch (_) {
+          return 0;
+        }
+      }
+
       let lastFuelPut = 0;
       const MAX_ITERATIONS = 200;
       let localFuelCount = furnace.fuelItem() ? furnace.fuelItem()!.count || 0 : 0;
@@ -171,16 +186,16 @@ function createSmeltState(bot: Bot, targets: Targets): any {
         if (have0 + produced >= outTarget) break;
 
         try {
-          if (getItemCount(inputItem) > 0 && !furnace.inputItem()) {
-            const toPut = Math.min(getItemCount(inputItem), Math.max(1, outTarget - (have0 + produced)));
+          if (getWindowItemCount(inputItem) > 0 && !furnace.inputItem()) {
+            const toPut = Math.min(getWindowItemCount(inputItem), Math.max(1, outTarget - (have0 + produced)));
             await furnace.putInput(idOf(inputItem)!, null, toPut);
             logger.debug(`Smelt: put input x${toPut} ${inputItem}`);
           }
         } catch (err) {
-          logger.warn(`Smelt: Failed to put input: ${err}`);
+          logger.debug(`Smelt: Failed to put input: ${err}`);
         }
 
-        if (getItemCount(fuelItem) > 0) {
+        if (getWindowItemCount(fuelItem) > 0) {
           const perUnit = Math.max(1, getSmeltsPerUnitForFuel(fuelItem) || 0);
           const remaining = Math.max(0, outTarget - (have0 + produced));
           const desiredUnits = Math.ceil(remaining / perUnit);
@@ -189,7 +204,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
           if (fuelSlot) {
             localFuelCount = currentUnits;
           }
-          const available = getItemCount(fuelItem);
+          const available = getWindowItemCount(fuelItem);
           const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits));
           const now = Date.now();
           const fuelProgress = (furnace as any).fuel ?? 0;
