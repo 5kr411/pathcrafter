@@ -6,6 +6,8 @@ import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
+import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
+import { BehaviorWander } from './behaviorWander';
 
 type Bot = any;
 
@@ -100,10 +102,16 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   );
   const followDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
 
+  const walkBackTargets: { position: any } = { position: null };
+  const walkBack = new BehaviorSmartMoveTo(bot, walkBackTargets);
+  walkBack.distance = 1;
+  const microWander = new BehaviorWander(bot, 4);
+
   let craftingDone = false;
   let craftingOk = false;
   let tableCountBeforeBreak = 0;
   let waitStartTime = 0;
+  let pickupAttempts = 0;
 
   const hasPickedUpTable = () => getItemCountInInventory(bot, 'crafting_table') > tableCountBeforeBreak;
 
@@ -200,6 +208,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     shouldTransition: () => breakTable.isFinished(),
     onTransition: () => {
       waitStartTime = Date.now();
+      pickupAttempts = 0;
       logger.info('CraftWithTable: Table broken, waiting for auto-pickup');
     }
   });
@@ -209,22 +218,52 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     parent: waitForPickup,
     child: exit,
     name: 'CraftWithTable: wait -> exit (picked up)',
-    shouldTransition: () => hasPickedUpTable() && Date.now() - waitStartTime > 1000,
+    shouldTransition: () => hasPickedUpTable() && Date.now() - waitStartTime > 2500,
     onTransition: () => {
       const have = getItemCountInInventory(bot, targets.itemName!);
       logger.info(`CraftWithTable: Auto-picked up table, complete (${have}/${targets.amount} ${targets.itemName})`);
     }
   });
 
-  // wait -> findDrop (not picked up after delay for drop to spawn)
-  const waitToFindDrop = new StateTransition({
+  // wait -> walkBack (not picked up after delay)
+  const waitToWalkBack = new StateTransition({
     parent: waitForPickup,
+    child: walkBack,
+    name: 'CraftWithTable: wait -> walk back',
+    shouldTransition: () => !hasPickedUpTable() && Date.now() - waitStartTime > 2500,
+    onTransition: () => {
+      walkBackTargets.position = placeTargets.placedPosition;
+      logger.info('CraftWithTable: Not auto-picked up, walking back to break position');
+    }
+  });
+
+  // walkBack -> findDrop (arrived)
+  const walkBackToFindDrop = new StateTransition({
+    parent: walkBack,
     child: findDrop,
-    name: 'CraftWithTable: wait -> find drop',
-    shouldTransition: () => !hasPickedUpTable() && Date.now() - waitStartTime > 1000,
+    name: 'CraftWithTable: walk back -> find drop',
+    shouldTransition: () => walkBack.isFinished(),
     onTransition: () => {
       dropTargets.entity = null;
-      logger.info('CraftWithTable: Not auto-picked up, looking for drop');
+      logger.info('CraftWithTable: Arrived at break position, looking for drop');
+    }
+  });
+
+  // walkBack -> findDrop (timeout safety)
+  let walkBackStartTime = 0;
+  const walkBackOnEnter = walkBack.onStateEntered?.bind(walkBack);
+  walkBack.onStateEntered = () => {
+    walkBackStartTime = Date.now();
+    if (walkBackOnEnter) walkBackOnEnter();
+  };
+  const walkBackTimeout = new StateTransition({
+    parent: walkBack,
+    child: findDrop,
+    name: 'CraftWithTable: walk back -> find drop (timeout)',
+    shouldTransition: () => Date.now() - walkBackStartTime > 3000,
+    onTransition: () => {
+      dropTargets.entity = null;
+      logger.info('CraftWithTable: Walk back timed out, looking for drop');
     }
   });
 
@@ -252,19 +291,47 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
   });
 
-  // findDrop -> exit (timeout, no drop found)
+  // findDrop timeout handling with retry via microWander
   let findDropStartTime = 0;
   const findDropOnEnter = findDrop.onStateEntered?.bind(findDrop);
   findDrop.onStateEntered = () => {
     findDropStartTime = Date.now();
     if (findDropOnEnter) findDropOnEnter();
   };
+
+  // findDrop -> microWander (timeout, attempt < 2)
+  const findDropToMicroWander = new StateTransition({
+    parent: findDrop,
+    child: microWander,
+    name: 'CraftWithTable: find drop -> micro wander (retry)',
+    shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 6000 && pickupAttempts < 2,
+    onTransition: () => {
+      pickupAttempts++;
+      logger.info(`CraftWithTable: Drop not found, micro-wandering (attempt ${pickupAttempts})`);
+    }
+  });
+
+  // microWander -> findDrop (wander finished)
+  const microWanderToFindDrop = new StateTransition({
+    parent: microWander,
+    child: findDrop,
+    name: 'CraftWithTable: micro wander -> find drop',
+    shouldTransition: () => microWander.isFinished,
+    onTransition: () => {
+      dropTargets.entity = null;
+      findDropStartTime = Date.now();
+      logger.info('CraftWithTable: Wander done, looking for drop again');
+    }
+  });
+
+  // findDrop -> exit (timeout, attempts exhausted)
   const findDropToExitTimeout = new StateTransition({
     parent: findDrop,
     child: exit,
     name: 'CraftWithTable: find drop -> exit (timeout)',
-    shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 3000,
+    shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 6000 && pickupAttempts >= 2,
     onTransition: () => {
+      stateMachine.stepSucceeded = false;
       const have = getItemCountInInventory(bot, targets.itemName!);
       logger.warn(`CraftWithTable: Could not find dropped table, exiting (${have}/${targets.amount} ${targets.itemName})`);
     }
@@ -295,6 +362,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'CraftWithTable: follow drop -> exit (timeout)',
     shouldTransition: () => Date.now() - followStartTime > 5000,
     onTransition: () => {
+      stateMachine.stepSucceeded = false;
       const have = getItemCountInInventory(bot, targets.itemName!);
       logger.warn(`CraftWithTable: Follow timeout, exiting (${have}/${targets.amount} ${targets.itemName})`);
     }
@@ -308,10 +376,14 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     craftToBreak,
     breakToWait,
     waitToExitPickedUp,
-    waitToFindDrop,
+    waitToWalkBack,
+    walkBackToFindDrop,
+    walkBackTimeout,
     findDropToExitPickedUp,
     findDropToFollow,
+    findDropToMicroWander,
     findDropToExitTimeout,
+    microWanderToFindDrop,
     followDropToExitPickedUp,
     followDropToExitTimeout
   ];
@@ -319,7 +391,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
 
   stateMachine.onStateExited = function () {
-    for (const sub of [placeTable, breakTable, followDrop]) {
+    for (const sub of [placeTable, breakTable, followDrop, walkBack, microWander]) {
       if (sub && typeof sub.onStateExited === 'function') {
         try { sub.onStateExited(); } catch (_) {}
       }
