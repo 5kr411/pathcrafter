@@ -1,4 +1,6 @@
 import { getSafeFindRepeatThreshold, getLiquidAvoidanceDistance } from '../utils/config';
+import { getLastSnapshotRadius } from '../utils/context';
+import { findBlocksNonBlocking } from '../utils/findBlocks';
 import { Vec3 } from 'vec3';
 
 import logger from '../utils/logger';
@@ -43,6 +45,7 @@ class BehaviorSafeFindBlock {
   maxDistance: number;
   preventXRay: boolean;
 
+  private _scanning: boolean;
   private _excluded: Set<string>;
   private _returnCounts: Map<string, number>;
   private _countThreshold: number;
@@ -56,6 +59,8 @@ class BehaviorSafeFindBlock {
     this.blocks = [];
     this.maxDistance = 32;
     this.preventXRay = false;
+
+    this._scanning = false;
 
     this._excluded = new Set<string>();
     this._returnCounts = new Map<string, number>();
@@ -152,13 +157,30 @@ class BehaviorSafeFindBlock {
   }
 
   onStateEntered(): void {
+    this._scanning = true;
+    this._runScan().catch(() => {
+      this.targets.position = undefined;
+      this._scanning = false;
+    });
+  }
+
+  private async _runScan(): Promise<void> {
     try {
-      const candidates =
-        this.bot.findBlocks({
-          matching: (block: Block) => this.matchesBlock(block),
-          maxDistance: this.maxDistance,
-          count: 64
-        }) || [];
+      // Use dynamic radius from last snapshot, fallback to 32
+      const radius = (() => {
+        try {
+          const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
+          if (Number.isFinite(r) && r > 0) return r;
+        } catch (_) {}
+        return 32;
+      })();
+
+      const candidates = await findBlocksNonBlocking(this.bot as any, {
+        matching: (block: any) => this.matchesBlock(block),
+        maxDistance: radius,
+        count: 64
+      });
+
       const sorted = [...candidates].sort((a, b) => this._distanceSq(a) - this._distanceSq(b));
       const avoidanceRadius = getLiquidAvoidanceDistance();
       const nearLiquidPenalty = avoidanceRadius > 0 ? Math.max(avoidanceRadius * avoidanceRadius * 16, 256) : 0;
@@ -186,7 +208,6 @@ class BehaviorSafeFindBlock {
         const distSq = this._distanceSq(p);
         if (!Number.isFinite(distSq)) continue;
 
-        // Penalize blocks far from the bot's Y level (high tree blocks and deep underground are harder to reach)
         const botY = this.bot.entity?.position?.y ?? 64;
         const absYDiff = Math.abs(p.y - botY);
         const heightPenalty = absYDiff > 2 ? absYDiff * absYDiff * 4 : 0;
@@ -239,11 +260,13 @@ class BehaviorSafeFindBlock {
       }
     } catch (err) {
       this.targets.position = undefined;
+    } finally {
+      this._scanning = false;
     }
   }
 
   isFinished(): boolean {
-    return true;
+    return !this._scanning;
   }
 
   private _distanceSq(pos: Vec3): number {

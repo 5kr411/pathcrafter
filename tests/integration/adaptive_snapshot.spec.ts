@@ -215,11 +215,12 @@ describe('integration: adaptive snapshot with progressive radii', () => {
     const radii = [8];
 
     await captureAdaptiveSnapshot(bot as any, { radii });
-    const callsAfterFirst = (bot as any).findBlocks.mock.calls.length;
+    const callsAfterFirst = (bot as any).blockAt.mock.calls.length;
 
     await captureAdaptiveSnapshot(bot as any, { radii });
-    const callsAfterSecond = (bot as any).findBlocks.mock.calls.length;
+    const callsAfterSecond = (bot as any).blockAt.mock.calls.length;
 
+    // Cache hit: no additional blockAt calls
     expect(callsAfterSecond).toBe(callsAfterFirst);
   }, 30000);
 
@@ -233,17 +234,17 @@ describe('integration: adaptive snapshot with progressive radii', () => {
 
     try {
       await captureAdaptiveSnapshot(bot, { radii });
-      const callsAfterFirst = bot.findBlocks.mock.calls.length;
+      const callsAfterFirst = bot.blockAt.mock.calls.length;
 
       now = 31000;
       await captureAdaptiveSnapshot(bot, { radii });
-      const callsAfterStale = bot.findBlocks.mock.calls.length;
+      const callsAfterStale = bot.blockAt.mock.calls.length;
       expect(callsAfterStale).toBeGreaterThan(callsAfterFirst);
 
       now += 1000;
       bot.entity.position.x += 5;
       await captureAdaptiveSnapshot(bot, { radii });
-      const callsAfterMove = bot.findBlocks.mock.calls.length;
+      const callsAfterMove = bot.blockAt.mock.calls.length;
       expect(callsAfterMove).toBeGreaterThan(callsAfterStale);
     } finally {
       dateNow.mockRestore();

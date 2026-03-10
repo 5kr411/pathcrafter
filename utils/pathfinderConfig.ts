@@ -1,50 +1,10 @@
 const minecraftData = require('minecraft-data');
-import { getLiquidAvoidanceDistance } from './config';
 
 interface Bot {
   version: string;
   pathfinder: any;
   entity?: any;
   [key: string]: any;
-}
-
-export function createLiquidAvoidanceExclusion(bot: Bot, range: number = 1): (block: any) => number {
-  const mcData = minecraftData(bot.version);
-  const waterIds = new Set([
-    mcData.blocksByName.water?.id,
-    mcData.blocksByName.flowing_water?.id
-  ].filter((id) => id !== undefined));
-  
-  const lavaIds = new Set([
-    mcData.blocksByName.lava?.id,
-    mcData.blocksByName.flowing_lava?.id
-  ].filter((id) => id !== undefined));
-  
-  return (block: any) => {
-    if (!block || !block.position) return 0;
-    
-    const pos = block.position;
-    for (let dx = -range; dx <= range; dx++) {
-      for (let dy = -range; dy <= range; dy++) {
-        for (let dz = -range; dz <= range; dz++) {
-          const checkBlock = bot.blockAt(pos.offset(dx, dy, dz));
-          if (!checkBlock) continue;
-          
-          if (lavaIds.has(checkBlock.type)) {
-            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            return Math.max(0, 50 * (1 - distance / range));
-          }
-          
-          if (waterIds.has(checkBlock.type)) {
-            const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-            return Math.max(0, 30 * (1 - distance / range));
-          }
-        }
-      }
-    }
-    
-    return 0;
-  };
 }
 
 export interface PathfinderPrecisionConfig {
@@ -193,17 +153,6 @@ export function configurePrecisePathfinder(
         lavaIds.forEach((id) => movements.blocksToAvoid.add(id));
       }
       
-      if (!movements.exclusionAreasStep) {
-        movements.exclusionAreasStep = [];
-      }
-      const avoidanceRadius = getLiquidAvoidanceDistance();
-      const liquidAvoidance = createLiquidAvoidanceExclusion(bot, avoidanceRadius);
-      movements.exclusionAreasStep.push(liquidAvoidance);
-      
-      if (!movements.exclusionAreasBreak) {
-        movements.exclusionAreasBreak = [];
-      }
-      movements.exclusionAreasBreak.push(liquidAvoidance);
     }
     
     if (config.exclusionAreasStep && config.exclusionAreasStep.length > 0) {

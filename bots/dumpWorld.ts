@@ -1,5 +1,5 @@
 import mineflayer from 'mineflayer';
-import { captureRawWorldSnapshot, saveSnapshotToFile } from '../utils/worldSnapshot';
+import { beginSnapshotScan, stepSnapshotScan, snapshotFromState, saveSnapshotToFile } from '../utils/worldSnapshot';
 import { getDefaultSnapshotChunkRadius } from '../utils/config';
 import logger from '../utils/logger';
 
@@ -17,12 +17,15 @@ function safeExit(code: number): void {
 }
 
 bot.once('spawn', () => {
-    setTimeout(() => {
+    setTimeout(async () => {
         try {
-            const raw = captureRawWorldSnapshot(bot as any, { 
-                chunkRadius: Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius(), 
-                includeAir: false 
+            const cr = Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius();
+            const scan = beginSnapshotScan(bot as any, {
+                chunkRadius: cr,
+                includeAir: false
             });
+            await stepSnapshotScan(scan);
+            const raw = snapshotFromState(scan);
             const dim = (bot.game && bot.game.dimension) ? String(bot.game.dimension).replace(/[^a-z0-9_\-]/gi, '_') : 'overworld';
             const outPath = `./world_snapshots/raw_${dim}_${Date.now()}.json`;
             saveSnapshotToFile(raw, outPath);

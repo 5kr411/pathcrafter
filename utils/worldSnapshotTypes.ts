@@ -66,8 +66,6 @@ export interface SnapshotOptions {
   version?: string;
   /** Minecraft data override */
   mcData?: any;
-  /** Step size for async scanning (distance increment per iteration) */
-  step?: number;
 }
 
 /**
@@ -139,20 +137,17 @@ export interface ScanState {
   maxRadius: number;
   yMin: number;
   yMax: number;
-  step: number;
-  initialStep: number; // For dynamic step calculation
   r: number;
-  prevR: number; // Track previous radius for logging
-  shellCount: number; // Track shell number
-  shellStart: number; // Timestamp when current shell started
-  newBlocksInShell: number; // Blocks found in current shell
-  seen: Set<string>;
+  shellStart: number;
   blockAgg: Map<string, {
     count: number;
     sumDist: number;
     closest: number;
   }>;
   done: boolean;
+  /** Internal iteration cursor for non-blocking scan */
+  _iterX?: number;
+  _iterStarted?: boolean;
 }
 
 /**

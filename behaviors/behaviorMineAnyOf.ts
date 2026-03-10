@@ -8,6 +8,7 @@ import { ExecutionContext } from '../bots/collector/execution_context';
 
 import createCollectBlockState from './behaviorCollectBlock';
 import { isPositionNearLiquid } from './behaviorSafeFindBlock';
+import { findBlocksNonBlocking } from '../utils/findBlocks';
 
 interface Vec3Like {
   x: number;
@@ -131,9 +132,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
 
   async function evaluateCandidateAsync(blockName: string, required: number): Promise<EvaluationResult> {
     try {
-      const botAny = bot as any;
-      if (!bot || (typeof bot.findBlocks !== 'function' && typeof botAny.findBlocksAsync !== 'function'))
-        return { count: 0, nearest: Number.POSITIVE_INFINITY };
+      if (!bot || !bot.entity) return { count: 0, nearest: Number.POSITIVE_INFINITY };
       const radius = (() => {
         try {
           const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
@@ -147,14 +146,13 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
           ? mcData.blocksByName[blockName].id
           : null;
       const matcher = id != null ? id : (b: any) => b && b.name === blockName;
-      
-      let allPositions: Vec3Like[] = [];
-      if (typeof botAny.findBlocksAsync === 'function') {
-        allPositions = await botAny.findBlocksAsync({ matching: matcher, maxDistance: radius, count: maxCount, yieldEvery: 16 }) || [];
-      } else {
-        allPositions = bot.findBlocks!({ matching: matcher, maxDistance: radius, count: maxCount }) || [];
-      }
-      
+
+      const allPositions = await findBlocksNonBlocking(bot as any, {
+        matching: matcher,
+        maxDistance: radius,
+        count: maxCount
+      });
+
       const positions = allPositions.filter((p) => !isPositionNearLiquid(bot, p));
       let near = Number.POSITIVE_INFINITY;
       const center = bot.entity && bot.entity.position ? bot.entity.position : { x: 0, y: 0, z: 0 };

@@ -153,7 +153,7 @@ function buildWorldBudgetFromSnapshot(snap: WorldSnapshot): WorldBudget {
  * @example
  * ```typescript
  * // With world pruning
- * const snapshot = captureRawWorldSnapshot(bot);
+ * const snapshot = snapshotFromState(scan); // after stepSnapshotScan completes
  * const tree = plan(bot.mcData, 'iron_ingot', 3, {
  *   pruneWithWorld: true,
  *   worldSnapshot: snapshot
