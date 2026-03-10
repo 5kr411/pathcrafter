@@ -5,15 +5,13 @@ const {
   BehaviorIdle,
   BehaviorGetClosestEntity,
   NestedStateMachine,
-  BehaviorFindBlock,
-  BehaviorFindInteractPosition
+  BehaviorFindBlock
 } = require('mineflayer-statemachine');
 
 import { BehaviorMineBlock } from './behaviorMineBlock';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 import { BehaviorWander } from './behaviorWander';
-import { BehaviorBiasInteractPosition } from './behaviorBiasInteractPosition';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import { chooseMinimalToolName, hasEqualOrBetterTool } from '../utils/items';
@@ -180,28 +178,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     getExtraInfo: () => `searching for ${targets.blockName}${initialId ? ` (id:${initialId})` : ''}`
   });
 
-  const findInteractPosition = new BehaviorFindInteractPosition(bot, targets);
-
-  // Add logging to FindInteractPosition
-  addStateLogging(findInteractPosition, 'FindInteractPosition', {
-    logEnter: true,
-    getExtraInfo: () => {
-      const pos = targets.blockPosition;
-      return pos ? `at (${pos.x}, ${pos.y}, ${pos.z})` : '';
-    }
-  });
-
-  const biasInteractPosition = new BehaviorBiasInteractPosition(bot, targets);
-  addStateLogging(biasInteractPosition, 'BiasInteractPosition', {
-    logEnter: true,
-    getExtraInfo: () => {
-      const pos = targets.blockPosition;
-      return pos ? `block at (${pos.x}, ${pos.y}, ${pos.z})` : '';
-    }
-  });
-
   const goToBlock = new BehaviorSmartMoveTo(bot, targets);
-  goToBlock.distance = 3;
+  goToBlock.distance = 4;
 
   const MICRO_WANDER_BASE_DISTANCE = 4;
   const microWander = new BehaviorWander(bot, MICRO_WANDER_BASE_DISTANCE);
@@ -356,30 +334,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const findBlockToFindInteractPosition = new StateTransition({
+  const findBlockToGoToBlock = new StateTransition({
     parent: findBlock,
-    child: findInteractPosition,
-    name: 'BehaviorCollectBlock: find block -> find interact position',
+    child: goToBlock,
+    name: 'BehaviorCollectBlock: find block -> go to block',
     shouldTransition: () => {
       const hasPosition = targets.position !== undefined;
-      logger.debug(`findBlockToFindInteractPosition: targets.position=${targets.position ? `(${targets.position.x},${targets.position.y},${targets.position.z})` : 'undefined'}, shouldTransition=${hasPosition}`);
-      return hasPosition;
-    },
-    onTransition: () => {
-      targets.blockPosition = targets.position;
-      if (targets.position) {
-        logger.info(`find block -> find interact position at (${targets.position.x}, ${targets.position.y}, ${targets.position.z})`);
-      } else {
-        logger.warn('find block -> find interact position but position is undefined!');
-      }
-    }
-  });
+      if (!hasPosition) return false;
 
-  const findInteractPositionToBiasPosition = new StateTransition({
-    parent: findInteractPosition,
-    child: biasInteractPosition,
-    name: 'BehaviorCollectBlock: find interact position -> bias interact position',
-    shouldTransition: () => {
       const requirement = checkToolRequirement();
       if (!requirement.ok) {
         if (!missingToolInfo) {
@@ -408,16 +370,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return true;
     },
     onTransition: () => {
-      logger.debug('find interact position -> bias interact position');
-    }
-  });
+      targets.blockPosition = targets.position;
 
-  const biasPositionToGoToBlock = new StateTransition({
-    parent: biasInteractPosition,
-    child: goToBlock,
-    name: 'BehaviorCollectBlock: bias interact position -> go to block',
-    shouldTransition: () => biasInteractPosition.isFinished(),
-    onTransition: () => {
       if (targets.blockPosition) {
         if (!isMainThread && parentPort) {
           parentPort.postMessage({
@@ -432,23 +386,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         if (findBlock && typeof findBlock.addExcludedPosition === 'function') {
           findBlock.addExcludedPosition(targets.blockPosition);
         }
-        // Ensure movement has a clear goal even if interact position is unavailable
-        if (!targets.position) {
-          targets.position = targets.blockPosition;
-        }
-
-        goToBlock.distance = 2;
-
-        try {
-          logger.debug('moving towards position', targets.position);
-        } catch (_) {}
-        logger.debug('bias interact position -> go to block');
       }
+
+      logger.info(`find block -> go to block at (${targets.position?.x}, ${targets.position?.y}, ${targets.position?.z})`);
     }
   });
 
-  const findInteractPositionToExitMissingTool = new StateTransition({
-    parent: findInteractPosition,
+  const findBlockToExitMissingTool = new StateTransition({
+    parent: findBlock,
     child: exit,
     name: 'BehaviorCollectBlock: missing required tool -> exit',
     shouldTransition: () => !!missingToolInfo,
@@ -478,11 +423,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         return false;
       }
 
-      if (isTargetUnderFeet()) {
-        logger.warn('BehaviorCollectBlock: Target is directly under bot feet, cannot mine');
-        return false;
-      }
-
       logger.info(`BehaviorCollectBlock: reached target block at distance ${distance.toFixed(2)}, proceeding to mine`);
       return true;
     },
@@ -492,40 +432,6 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       logger.debug('go to block -> mine block');
     }
   });
-
-  const goToBlockToFindBlockUnderFeet = new StateTransition({
-    parent: goToBlock,
-    child: findBlock,
-    name: 'BehaviorCollectBlock: go to block -> find block (target under feet)',
-    shouldTransition: () => {
-      const finished = goToBlock.isFinished();
-      const distance = goToBlock.distanceToTarget();
-
-      if (!finished) return false;
-      if (distance >= MINE_REACH_DISTANCE) return false;
-
-      return isTargetUnderFeet();
-    },
-    onTransition: () => {
-      logger.debug('go to block -> find block (avoiding block under feet)');
-    }
-  });
-
-  // Helper function to check if target is under bot's feet
-  const isTargetUnderFeet = () => {
-    if (!targets.blockPosition || !bot.entity || !bot.entity.position) return false;
-    const botPos = bot.entity.position;
-    const targetPos = targets.blockPosition;
-    const botBlockX = Math.floor(botPos.x);
-    const botBlockY = Math.floor(botPos.y);
-    const botBlockZ = Math.floor(botPos.z);
-    const targetBlockX = Math.floor(targetPos.x);
-    const targetBlockY = Math.floor(targetPos.y);
-    const targetBlockZ = Math.floor(targetPos.z);
-    
-    // Check if target is directly under bot (same X/Z, Y-1)
-    return targetBlockX === botBlockX && targetBlockZ === botBlockZ && targetBlockY === botBlockY - 1;
-  };
 
   const goToBlockToMicroWander = new StateTransition({
     parent: goToBlock,
@@ -758,12 +664,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     enterToExitSatisfied,
     enterToFindBlock,
     findBlockToExit,
-    findBlockToFindInteractPosition,
-    findInteractPositionToBiasPosition,
-    biasPositionToGoToBlock,
-    findInteractPositionToExitMissingTool,
+    findBlockToGoToBlock,
+    findBlockToExitMissingTool,
     goToBlockToMine,
-    goToBlockToFindBlockUnderFeet,
     goToBlockToMicroWander,
     microWanderToFindBlock,
     goToBlockToExitPathfail,
