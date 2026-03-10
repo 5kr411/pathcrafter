@@ -190,13 +190,19 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'CraftWithTable: craft -> break',
     shouldTransition: () => craftingDone,
     onTransition: () => {
-      if (!craftingOk) {
-        stateMachine.stepSucceeded = false;
-      }
       tableCountBeforeBreak = getItemCountInInventory(bot, 'crafting_table');
       breakTargets.position = placeTargets.placedPosition;
       const have = getItemCountInInventory(bot, targets.itemName!);
-      logger.info(`CraftWithTable: Crafting done (${have}/${targets.amount}), breaking table (had ${tableCountBeforeBreak})`);
+      if (have < targets.amount! && !craftingOk) {
+        stateMachine.stepSucceeded = false;
+        logger.info(`CraftWithTable: Crafting failed (${have}/${targets.amount}), breaking table (had ${tableCountBeforeBreak})`);
+      } else {
+        if (!craftingOk) {
+          logger.warn(`CraftWithTable: Crafting done (${have}/${targets.amount}, craft promise failed but inventory satisfied), breaking table (had ${tableCountBeforeBreak})`);
+        } else {
+          logger.info(`CraftWithTable: Crafting done (${have}/${targets.amount}), breaking table (had ${tableCountBeforeBreak})`);
+        }
+      }
     }
   });
 

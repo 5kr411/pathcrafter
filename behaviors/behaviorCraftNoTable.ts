@@ -273,22 +273,27 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       return craftingDone;
     },
     onTransition: () => {
-      if (!craftingOk) {
-        stateMachine.stepSucceeded = false;
-      }
       if (!targets.itemName) {
         logger.info('BehaviorCraftNoTable: wait for craft -> exit (no itemName)');
+        stateMachine.stepSucceeded = false;
         return;
       }
       const have = getItemCountInInventory(bot, targets.itemName);
       const needed = baselineCount + targets.amount;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
       if (have >= needed) {
-        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (complete ${have}/${needed})`);
-      } else if (timedOut) {
-        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (timeout ${have}/${needed})`);
+        if (!craftingOk) {
+          logger.warn(`BehaviorCraftNoTable: wait for craft -> exit (complete ${have}/${needed}, craft promise failed but inventory satisfied)`);
+        } else {
+          logger.info(`BehaviorCraftNoTable: wait for craft -> exit (complete ${have}/${needed})`);
+        }
       } else {
-        logger.info(`BehaviorCraftNoTable: wait for craft -> exit (craftingDone=${craftingDone}, ok=${craftingOk})`);
+        stateMachine.stepSucceeded = false;
+        if (timedOut) {
+          logger.info(`BehaviorCraftNoTable: wait for craft -> exit (timeout ${have}/${needed})`);
+        } else {
+          logger.info(`BehaviorCraftNoTable: wait for craft -> exit (failed ${have}/${needed}, craftingOk=${craftingOk})`);
+        }
       }
     }
   });

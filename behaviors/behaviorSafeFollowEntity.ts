@@ -40,6 +40,9 @@ export class BehaviorSafeFollowEntity {
   private checkInterval: NodeJS.Timeout | null = null;
   private allowUnstick: boolean = true;
   private savedEntity: Entity | null = null;
+  private unstickAttempts: number = 0;
+  private readonly MAX_UNSTICK_ATTEMPTS = 3;
+  private _gaveUp: boolean = false;
 
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
@@ -67,6 +70,7 @@ export class BehaviorSafeFollowEntity {
   }
 
   isFinished(): boolean {
+    if (this._gaveUp) return true;
     if (this.isUnsticking) {
       return false;
     }
@@ -88,6 +92,8 @@ export class BehaviorSafeFollowEntity {
     this.unstickTarget = null;
     this.moveTo = null;
     this.savedEntity = null;
+    this.unstickAttempts = 0;
+    this._gaveUp = false;
     this.allowUnstick = this.targets?.disableSmartMoveUnstick !== true;
 
     if (this.targets) {
@@ -126,6 +132,8 @@ export class BehaviorSafeFollowEntity {
     this.positionHistory = [];
     this.isStuck = false;
     this.isUnsticking = false;
+    this.unstickAttempts = 0;
+    this._gaveUp = false;
     this.allowUnstick = true;
     this.savedEntity = null;
 
@@ -231,7 +239,13 @@ export class BehaviorSafeFollowEntity {
         const distanceMoved = this.getDistanceBetween(oldestRecord.position, currentPos);
         
         if (distanceMoved < 2) {
-          logger.warn(`BehaviorSafeFollowEntity: Still stuck while unsticking! Moved only ${distanceMoved.toFixed(2)} blocks.`);
+          if (this.unstickAttempts >= this.MAX_UNSTICK_ATTEMPTS) {
+            logger.warn(`BehaviorSafeFollowEntity: Giving up after ${this.unstickAttempts} unstick attempts`);
+            this._gaveUp = true;
+            this.isUnsticking = false;
+            return;
+          }
+          logger.warn(`BehaviorSafeFollowEntity: Still stuck while unsticking! Moved only ${distanceMoved.toFixed(2)} blocks. (attempt ${this.unstickAttempts}/${this.MAX_UNSTICK_ATTEMPTS})`);
 
           this.positionHistory = [];
           this.initiateUnstick();
@@ -289,6 +303,7 @@ export class BehaviorSafeFollowEntity {
     }
     if (!this.bot.entity?.position) return;
 
+    this.unstickAttempts++;
     this.savedEntity = this.targets.entity;
 
     const currentPos = this.bot.entity.position;

@@ -8,10 +8,9 @@ import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_b
 import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_defense_behavior';
 import { hostileFleeBehavior } from './collector/reactive_behaviors/hostile_flee_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
-// TODO: Re-enable food behaviors once collection is stable
-// import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
-// import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
-// import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
+import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
+import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
+import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
 import { inventoryManagementBehavior, setInventoryManagementConfig } from './collector/reactive_behaviors/inventory_management_behavior';
 import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';

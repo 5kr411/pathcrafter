@@ -13,6 +13,7 @@ import { BehaviorMineBlock } from './behaviorMineBlock';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 import { BehaviorWander } from './behaviorWander';
+import { BehaviorBiasInteractPosition } from './behaviorBiasInteractPosition';
 
 import { getItemCountInInventory } from '../utils/inventory';
 import { chooseMinimalToolName, hasEqualOrBetterTool } from '../utils/items';
@@ -187,6 +188,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     getExtraInfo: () => {
       const pos = targets.blockPosition;
       return pos ? `at (${pos.x}, ${pos.y}, ${pos.z})` : '';
+    }
+  });
+
+  const biasInteractPosition = new BehaviorBiasInteractPosition(bot, targets);
+  addStateLogging(biasInteractPosition, 'BiasInteractPosition', {
+    logEnter: true,
+    getExtraInfo: () => {
+      const pos = targets.blockPosition;
+      return pos ? `block at (${pos.x}, ${pos.y}, ${pos.z})` : '';
     }
   });
 
@@ -365,10 +375,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const findInteractPositionToGoToBlock = new StateTransition({
+  const findInteractPositionToBiasPosition = new StateTransition({
     parent: findInteractPosition,
-    child: goToBlock,
-    name: 'BehaviorCollectBlock: find interact position -> go to block',
+    child: biasInteractPosition,
+    name: 'BehaviorCollectBlock: find interact position -> bias interact position',
     shouldTransition: () => {
       const requirement = checkToolRequirement();
       if (!requirement.ok) {
@@ -398,6 +408,16 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return true;
     },
     onTransition: () => {
+      logger.debug('find interact position -> bias interact position');
+    }
+  });
+
+  const biasPositionToGoToBlock = new StateTransition({
+    parent: biasInteractPosition,
+    child: goToBlock,
+    name: 'BehaviorCollectBlock: bias interact position -> go to block',
+    shouldTransition: () => biasInteractPosition.isFinished(),
+    onTransition: () => {
       if (targets.blockPosition) {
         if (!isMainThread && parentPort) {
           parentPort.postMessage({
@@ -422,7 +442,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         try {
           logger.debug('moving towards position', targets.position);
         } catch (_) {}
-        logger.debug('find interact position -> go to block');
+        logger.debug('bias interact position -> go to block');
       }
     }
   });
@@ -739,7 +759,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     enterToFindBlock,
     findBlockToExit,
     findBlockToFindInteractPosition,
-    findInteractPositionToGoToBlock,
+    findInteractPositionToBiasPosition,
+    biasPositionToGoToBlock,
     findInteractPositionToExitMissingTool,
     goToBlockToMine,
     goToBlockToFindBlockUnderFeet,
