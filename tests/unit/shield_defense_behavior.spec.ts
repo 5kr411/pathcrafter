@@ -14,6 +14,19 @@ jest.mock('../../behaviors/behaviorFollowAndAttackEntity', () => ({
   }))
 }));
 
+jest.mock('../../behaviors/behaviorPvpAttack', () => {
+  return {
+    BehaviorPvpAttack: jest.fn().mockImplementation(() => ({
+      stateName: 'BehaviorPvpAttack',
+      active: false,
+      isFinished: jest.fn(() => false),
+      onStateEntered: jest.fn(),
+      onStateExited: jest.fn(),
+      forceStop: jest.fn()
+    }))
+  };
+});
+
 jest.mock('mineflayer-statemachine', () => {
   class StateTransition {
     parent: any;
@@ -35,13 +48,11 @@ jest.mock('mineflayer-statemachine', () => {
 
   class BehaviorIdle {}
 
-  class NestedStateMachine {
-    public stateName = '';
-    public onStateExited: (..._args: any[]) => void = () => {};
-    public isFinished: () => boolean = () => true;
-
-    constructor(_transitions: any[], _enter: any, _exit?: any) {}
-  }
+  const NestedStateMachine = jest.fn().mockImplementation(function(this: any, _transitions: any[], _enter: any, _exit?: any) {
+    this.stateName = '';
+    this.onStateExited = () => {};
+    this.isFinished = () => true;
+  });
 
   return {
     StateTransition,
@@ -154,6 +165,276 @@ describe('unit: shield_defense_behavior', () => {
     });
   });
 
+  describe('createShieldDefenseState', () => {
+    let createShieldDefenseState: any;
+
+    beforeEach(() => {
+      const mod = require('../../behaviors/behaviorShieldDefense');
+      createShieldDefenseState = mod.createShieldDefenseState;
+    });
+
+    const makeShieldBot = () => {
+      const listeners: Record<string, ((...args: any[]) => void)[]> = {};
+      const slots = new Array(46).fill(null);
+      slots[45] = { name: 'shield', type: 442, durabilityUsed: 10, maxDurability: 336 };
+
+      return {
+        health: 20,
+        entity: { position: makePos(0, 64, 0) },
+        inventory: { slots },
+        getEquipmentDestSlot: jest.fn(() => 45),
+        activateItem: jest.fn(),
+        deactivateItem: jest.fn(),
+        clearControlStates: jest.fn(),
+        lookAt: jest.fn(),
+        on: jest.fn((event: string, fn: (...args: any[]) => void) => {
+          if (!listeners[event]) listeners[event] = [];
+          listeners[event].push(fn);
+        }),
+        removeListener: jest.fn((event: string, fn: (...args: any[]) => void) => {
+          if (listeners[event]) {
+            listeners[event] = listeners[event].filter(l => l !== fn);
+          }
+        }),
+        emit: (event: string, ...args: any[]) => {
+          (listeners[event] || []).forEach(fn => fn(...args));
+        },
+        pvp: { attack: jest.fn(), stop: jest.fn() }
+      };
+    };
+
+    test('entitySwingArm from current threat triggers counter-attack', () => {
+      jest.useFakeTimers();
+      const bot = makeShieldBot();
+      const threat = { id: 1, name: 'zombie', position: makePos(3, 64, 0), height: 1.8 };
+
+      const targets: any = { entity: null };
+      createShieldDefenseState(bot, {
+        targets,
+        reacquireThreat: () => threat,
+        shouldContinue: () => true
+      });
+
+      // Access the internal shieldHold via the transitions passed to NestedStateMachine
+      const { NestedStateMachine } = require('mineflayer-statemachine');
+      const nsmCalls = (NestedStateMachine as jest.Mock).mock.calls;
+      const lastCall = nsmCalls[nsmCalls.length - 1];
+      const transitions = lastCall[0];
+
+      // enterToShield is transitions[0], its child is shieldHold
+      const enterToShield = transitions[0];
+      const shieldHold = enterToShield.child;
+
+      // Manually enter the shield hold state
+      shieldHold.onStateEntered();
+
+      // Verify listener was registered
+      expect(bot.on).toHaveBeenCalledWith('entitySwingArm', expect.any(Function));
+
+      // Emit entitySwingArm with the threat entity
+      bot.emit('entitySwingArm', threat);
+
+      // Should be finished with pendingThreat
+      expect(shieldHold.isFinished()).toBe(true);
+      expect(shieldHold.getNextThreat()).toBe(threat);
+
+      // Cleanup
+      shieldHold.onStateExited();
+      jest.useRealTimers();
+    });
+
+    test('entitySwingArm from non-threat entity is ignored', () => {
+      jest.useFakeTimers();
+      const bot = makeShieldBot();
+      const threat = { id: 1, name: 'zombie', position: makePos(3, 64, 0), height: 1.8 };
+      const otherEntity = { id: 2, name: 'skeleton', position: makePos(5, 64, 0), height: 1.8 };
+
+      const targets: any = { entity: null };
+      createShieldDefenseState(bot, {
+        targets,
+        reacquireThreat: () => threat,
+        shouldContinue: () => true
+      });
+
+      const { NestedStateMachine } = require('mineflayer-statemachine');
+      const nsmCalls = (NestedStateMachine as jest.Mock).mock.calls;
+      const lastCall = nsmCalls[nsmCalls.length - 1];
+      const transitions = lastCall[0];
+      const shieldHold = transitions[0].child;
+
+      shieldHold.onStateEntered();
+
+      // Emit swing from a different entity
+      bot.emit('entitySwingArm', otherEntity);
+
+      // Should NOT be finished — swing was from non-threat
+      expect(shieldHold.isFinished()).toBe(false);
+
+      shieldHold.onStateExited();
+      jest.useRealTimers();
+    });
+
+    test('entitySwingArm listener is removed on cleanup', () => {
+      jest.useFakeTimers();
+      const bot = makeShieldBot();
+      const threat = { id: 1, name: 'zombie', position: makePos(3, 64, 0), height: 1.8 };
+
+      createShieldDefenseState(bot, {
+        targets: { entity: null },
+        reacquireThreat: () => threat,
+        shouldContinue: () => true
+      });
+
+      const { NestedStateMachine } = require('mineflayer-statemachine');
+      const nsmCalls = (NestedStateMachine as jest.Mock).mock.calls;
+      const lastCall = nsmCalls[nsmCalls.length - 1];
+      const shieldHold = lastCall[0][0].child;
+
+      shieldHold.onStateEntered();
+      expect(bot.on).toHaveBeenCalledWith('entitySwingArm', expect.any(Function));
+
+      shieldHold.onStateExited();
+      expect(bot.removeListener).toHaveBeenCalledWith('entitySwingArm', expect.any(Function));
+
+      // Emitting after cleanup should have no effect
+      bot.emit('entitySwingArm', threat);
+      expect(shieldHold.isFinished()).toBe(false);
+
+      jest.useRealTimers();
+    });
+
+    test('stale durability resets when shield item type changes', () => {
+      jest.useFakeTimers();
+      const bot = makeShieldBot();
+      const threat = { id: 1, name: 'zombie', position: makePos(3, 64, 0), height: 1.8 };
+
+      createShieldDefenseState(bot, {
+        targets: { entity: null },
+        reacquireThreat: () => threat,
+        shouldContinue: () => true
+      });
+
+      const { NestedStateMachine } = require('mineflayer-statemachine');
+      const nsmCalls = (NestedStateMachine as jest.Mock).mock.calls;
+      const lastCall = nsmCalls[nsmCalls.length - 1];
+      const shieldHold = lastCall[0][0].child;
+
+      shieldHold.onStateEntered();
+
+      // Replace the shield item with a different type (simulating recraft)
+      bot.inventory.slots[45] = { name: 'shield', type: 999, durabilityUsed: 0, maxDurability: 336 };
+
+      // Advance past a monitoring interval
+      jest.advanceTimersByTime(50);
+
+      // The shield hold should NOT have finished from damage detection
+      // (the type change should have reset tracking, not triggered counter-attack)
+      // It should still be active waiting for real damage
+      // If it had not reset, it would compare old damage (10) with new (0) and
+      // since 0 < 10, it resets. This is correct behavior.
+      const logger = require('../../utils/logger');
+      expect(logger.info).toHaveBeenCalledWith('ShieldDefense: shield item replaced, resetting durability tracking');
+
+      shieldHold.onStateExited();
+      jest.useRealTimers();
+    });
+
+    test('stale durability resets when damage goes down', () => {
+      jest.useFakeTimers();
+      const bot = makeShieldBot();
+      const threat = { id: 1, name: 'zombie', position: makePos(3, 64, 0), height: 1.8 };
+
+      createShieldDefenseState(bot, {
+        targets: { entity: null },
+        reacquireThreat: () => threat,
+        shouldContinue: () => true
+      });
+
+      const { NestedStateMachine } = require('mineflayer-statemachine');
+      const nsmCalls = (NestedStateMachine as jest.Mock).mock.calls;
+      const lastCall = nsmCalls[nsmCalls.length - 1];
+      const shieldHold = lastCall[0][0].child;
+
+      shieldHold.onStateEntered();
+
+      // Replace with same type but lower durability (recraft)
+      bot.inventory.slots[45] = { name: 'shield', type: 442, durabilityUsed: 2, maxDurability: 336 };
+
+      jest.advanceTimersByTime(50);
+
+      const logger = require('../../utils/logger');
+      expect(logger.info).toHaveBeenCalledWith('ShieldDefense: shield item replaced, resetting durability tracking');
+
+      shieldHold.onStateExited();
+      jest.useRealTimers();
+    });
+
+    test('max shield cycles prevents attackToShield and forces attackToExit', () => {
+      jest.useFakeTimers();
+      const bot = makeShieldBot();
+      const threat = { id: 1, name: 'zombie', position: makePos(3, 64, 0), height: 1.8 };
+
+      createShieldDefenseState(bot, {
+        targets: { entity: null },
+        reacquireThreat: () => threat,
+        shouldContinue: () => true
+      });
+
+      const { NestedStateMachine } = require('mineflayer-statemachine');
+      const nsmCalls = (NestedStateMachine as jest.Mock).mock.calls;
+      const lastCall = nsmCalls[nsmCalls.length - 1];
+      const transitions = lastCall[0];
+
+      // transitions: [enterToShield, shieldToAttack, shieldToExit, attackToExit, attackToShield]
+      const enterToShield = transitions[0];
+      const shieldToAttack = transitions[1];
+      const attackToExit = transitions[3];
+      const attackToShield = transitions[4];
+      const shieldHold = enterToShield.child;
+      const pvpAttack = shieldToAttack.child;
+
+      // cycleCount increments in both shieldToAttack (+1) and attackToShield (+1)
+      // So each full shield->attack->shield round adds 2 to cycleCount
+      // MAX_SHIELD_CYCLES = 5, so after 3 shieldToAttack transitions (cycleCount=3)
+      // and 2 attackToShield transitions (cycleCount=5), the next attackToShield is blocked.
+      enterToShield.onTransition(); // resets cycleCount=0
+
+      // Drive cycles until max is reached
+      let cyclesCompleted = 0;
+      while (true) {
+        // Enter shield hold
+        shieldHold.onStateEntered();
+        bot.emit('entitySwingArm', threat);
+        expect(shieldHold.isFinished()).toBe(true);
+
+        // shieldToAttack increments cycleCount
+        expect(shieldToAttack.shouldTransition()).toBe(true);
+        shieldToAttack.onTransition();
+        shieldHold.onStateExited();
+        cyclesCompleted++;
+
+        // Make pvpAttack finished
+        pvpAttack.isFinished.mockReturnValue(true);
+
+        // Check if attackToShield is blocked by max cycles
+        if (!attackToShield.shouldTransition()) {
+          break;
+        }
+        attackToShield.onTransition();
+        pvpAttack.isFinished.mockReturnValue(false);
+      }
+
+      // The cycle cap should have been hit
+      expect(cyclesCompleted).toBeGreaterThan(0);
+      expect(cyclesCompleted).toBeLessThanOrEqual(5);
+
+      // attackToExit should force exit due to max cycles
+      expect(attackToExit.shouldTransition()).toBe(true);
+
+      jest.useRealTimers();
+    });
+  });
+
   describe('shouldActivate', () => {
     test('returns false when bot lacks shield', () => {
       const bot = createShieldBot();
@@ -244,6 +525,27 @@ describe('unit: shield_defense_behavior', () => {
         .mockReturnValueOnce(null)
         .mockReturnValueOnce(null);
       expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(false);
+    });
+
+    test('returns false when shield durability below 15% threshold', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20, creeperDistance: 4 });
+      // Shield with 336 max durability, 300 used = 36 remaining = 10.7%
+      bot.inventory.slots[45] = { name: 'shield', maxDurability: 336, durabilityUsed: 300 };
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(false);
+    });
+
+    test('returns true when shield durability above 15% threshold', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20, creeperDistance: 4 });
+      // Shield with 336 max durability, 200 used = 136 remaining = 40.5%
+      bot.inventory.slots[45] = { name: 'shield', maxDurability: 336, durabilityUsed: 200 };
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('returns true when shield has no durability info (assumes usable)', () => {
+      const bot = createShieldBot({ health: 8, maxHealth: 20, creeperDistance: 4 });
+      // Shield without durability fields
+      bot.inventory.slots[45] = { name: 'shield' };
+      expect(shieldDefenseBehavior.shouldActivate(bot)).toBe(true);
     });
   });
 });

@@ -9,6 +9,8 @@ import { BehaviorPvpAttack } from './behaviorPvpAttack';
 import logger from '../utils/logger';
 import { Vec3 } from 'vec3';
 
+const MAX_SHIELD_CYCLES = 5;
+
 export interface ShieldDefenseStateConfig {
   targets: any;
   reacquireThreat: () => any | null;
@@ -27,6 +29,8 @@ class ShieldHoldState implements StateBehavior {
   private currentThreat: any = null;
   private offHandSlot: number | null = null;
   private lastShieldDamage: number | null = null;
+  private lastShieldItemType: number | null = null;
+  private swingArmListener: ((entity: any) => void) | null = null;
 
   constructor(
     private readonly bot: any,
@@ -52,7 +56,8 @@ class ShieldHoldState implements StateBehavior {
     this.offHandSlot = this.getOffhandSlot();
     const initialShieldItem = this.getItemInSlot(this.offHandSlot);
     this.lastShieldDamage = this.getShieldDamage(initialShieldItem);
-    
+    this.lastShieldItemType = initialShieldItem?.type ?? null;
+
     logger.info(`ShieldDefense: initialized shield damage tracking - slot=${this.offHandSlot}, durability=${this.lastShieldDamage}/${initialShieldItem?.maxDurability || '?'}`)
 
     try {
@@ -64,6 +69,19 @@ class ShieldHoldState implements StateBehavior {
 
     this.startMonitoring();
     this.startHoldTimer();
+
+    this.swingArmListener = (entity: any) => {
+      if (!this.active || this.finished) return;
+      if (!this.currentThreat) return;
+      // Only react to swings from the current threat
+      if (entity !== this.currentThreat && entity?.id !== this.currentThreat?.id) return;
+      // Creepers don't swing — they explode
+      if (this.isCreeper(entity)) return;
+
+      logger.info('ShieldDefense: melee attack detected via entitySwingArm, triggering counter-attack');
+      this.finishWithThreat(this.currentThreat);
+    };
+    this.bot.on('entitySwingArm', this.swingArmListener);
   }
 
   onStateExited(): void {
@@ -90,8 +108,15 @@ class ShieldHoldState implements StateBehavior {
   }
 
   private cleanup(resetThreat: boolean): void {
+    if (this.swingArmListener) {
+      try {
+        this.bot.removeListener('entitySwingArm', this.swingArmListener);
+      } catch (_) {}
+      this.swingArmListener = null;
+    }
     this.clearTimers();
     this.finished = false;
+    this.lastShieldItemType = null;
     if (resetThreat) {
       this.pendingThreat = null;
       this.currentThreat = null;
@@ -194,6 +219,15 @@ class ShieldHoldState implements StateBehavior {
       }
 
       const currentDamage = this.getShieldDamage(currentItem);
+
+      // Detect item replacement (death/recraft)
+      const currentType = currentItem?.type ?? null;
+      if (currentType !== this.lastShieldItemType ||
+          (typeof currentDamage === 'number' && typeof this.lastShieldDamage === 'number' && currentDamage < this.lastShieldDamage)) {
+        logger.info('ShieldDefense: shield item replaced, resetting durability tracking');
+        this.lastShieldDamage = currentDamage;
+        this.lastShieldItemType = currentType;
+      }
 
       if (typeof currentDamage === 'number' && typeof this.lastShieldDamage === 'number') {
         if (currentDamage > this.lastShieldDamage) {
@@ -453,7 +487,12 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       if (!pvpAttack.isFinished()) {
         return false;
       }
-      
+
+      if (cycleCount >= MAX_SHIELD_CYCLES) {
+        logger.info(`ShieldDefense: max cycles (${MAX_SHIELD_CYCLES}) reached, exiting instead of re-shielding`);
+        return false;
+      }
+
       try {
         if (!config.shouldContinue()) {
           logger.debug('ShieldDefense: attack finished but conditions no longer met, not cycling back to shield');
@@ -481,7 +520,12 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       if (!pvpAttack.isFinished()) {
         return false;
       }
-      
+
+      if (cycleCount >= MAX_SHIELD_CYCLES) {
+        logger.info(`ShieldDefense: max cycles reached, forcing exit`);
+        return true;
+      }
+
       try {
         if (!config.shouldContinue()) {
           logger.info('ShieldDefense: conditions no longer met after attack, exiting');

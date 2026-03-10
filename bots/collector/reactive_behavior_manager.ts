@@ -244,31 +244,40 @@ export class ReactiveBehaviorManager {
   }
 
   private startBehavior(behavior: ReactiveBehavior): void {
-    this.starting = true;
-    Promise.resolve()
-      .then(async () => behavior.createState(this.bot))
-      .then((state) => {
-        if (!state || !state.stateMachine) {
-          logger.info(`ReactiveBehaviorManager: behavior ${behavior?.name || 'unknown'} returned no state`);
+    let result: ReturnType<ReactiveBehavior['createState']>;
+    try {
+      result = behavior.createState(this.bot);
+    } catch (err: any) {
+      logger.info(`ReactiveBehaviorManager: failed to start behavior - ${err?.message || err}`);
+      this.candidate = null;
+      this.pendingBehavior = null;
+      return;
+    }
+
+    if (result && typeof (result as any).then === 'function') {
+      this.starting = true;
+      (result as Promise<any>)
+        .then((state) => this.finishStart(behavior, state))
+        .catch((err: any) => {
+          logger.info(`ReactiveBehaviorManager: failed to start behavior - ${err?.message || err}`);
           this.candidate = null;
           this.pendingBehavior = null;
-          return null;
-        }
-        return state;
-      })
-      .then((state) => {
-        if (!state) return;
-        const run = new ReactiveBehaviorRun(this.bot, behavior, state);
-        run.start();
-        this.currentRun = run;
-      })
-      .catch((err: any) => {
-        logger.info(`ReactiveBehaviorManager: failed to start behavior - ${err?.message || err}`);
-        this.candidate = null;
-        this.pendingBehavior = null;
-      })
-      .finally(() => {
-        this.starting = false;
-      });
+        })
+        .finally(() => { this.starting = false; });
+    } else {
+      this.finishStart(behavior, result as ReactiveBehaviorState | null);
+    }
+  }
+
+  private finishStart(behavior: ReactiveBehavior, state: ReactiveBehaviorState | null): void {
+    if (!state || !state.stateMachine) {
+      logger.info(`ReactiveBehaviorManager: behavior ${behavior?.name || 'unknown'} returned no state`);
+      this.candidate = null;
+      this.pendingBehavior = null;
+      return;
+    }
+    const run = new ReactiveBehaviorRun(this.bot, behavior, state);
+    run.start();
+    this.currentRun = run;
   }
 }

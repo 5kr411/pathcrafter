@@ -218,6 +218,43 @@ describe('unit: hostile_mob_behavior', () => {
       expect(result).toBe(false);
     });
 
+    test('returns false when only nearby hostile is an enderman', () => {
+      const bot = {
+        version: '1.20.1',
+        entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 8 } },
+        entities: {
+          '1': { name: 'enderman', position: { x: 8, y: 64, z: 0 }, health: 40 }
+        }
+      };
+      const result = hostileMobBehavior.shouldActivate(bot);
+      expect(result).toBe(false);
+    });
+
+    test('returns false when only nearby hostile is a zombified_piglin', () => {
+      const bot = {
+        version: '1.20.1',
+        entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 8 } },
+        entities: {
+          '1': { name: 'zombified_piglin', position: { x: 8, y: 64, z: 0 }, health: 20 }
+        }
+      };
+      const result = hostileMobBehavior.shouldActivate(bot);
+      expect(result).toBe(false);
+    });
+
+    test('returns true when zombie nearby even with enderman also present', () => {
+      const bot = {
+        version: '1.20.1',
+        entity: { position: { x: 0, y: 64, z: 0, distanceTo: () => 10 } },
+        entities: {
+          '1': { name: 'enderman', position: { x: 5, y: 64, z: 0 }, health: 40 },
+          '2': { name: 'zombie', position: { x: 10, y: 64, z: 0 }, health: 20 }
+        }
+      };
+      const result = hostileMobBehavior.shouldActivate(bot);
+      expect(result).toBe(true);
+    });
+
     test('returns false when hostile mob is obstructed by solid block', () => {
       const blockAt = jest.fn((pos: any) => {
         if (Math.floor(pos.x) === 0 && Math.floor(pos.y) === 65 && Math.floor(pos.z) === 2) {

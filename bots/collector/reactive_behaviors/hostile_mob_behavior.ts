@@ -172,6 +172,8 @@ function getCachedHostileMobNames(mcData: any, version: string): Set<string> {
 
 const SKELETON_VARIANT_NAMES = new Set(['skeleton', 'stray', 'bogged', 'parched']);
 
+export const COMBAT_BLACKLIST = new Set<string>(['enderman', 'zombified_piglin']);
+
 export function isRangedHostile(entity: any): boolean {
   const name = String(entity?.name || entity?.displayName || '').toLowerCase();
   if (SKELETON_VARIANT_NAMES.has(name)) {
@@ -188,7 +190,8 @@ export function findClosestHostileMob(
   bot: Bot,
   maxDistance: number = 16,
   requireLineOfSight: boolean = true,
-  predicate?: (entity: any) => boolean
+  predicate?: (entity: any) => boolean,
+  blacklist?: Set<string>
 ): any | null {
   if (!bot.entities) return null;
 
@@ -207,6 +210,7 @@ export function findClosestHostileMob(
 
     const entityName = entity.name || entity.displayName || '';
     if (!hostileMobNames.has(entityName)) continue;
+    if (blacklist && blacklist.has(entityName)) continue;
 
     if (typeof entity.isAlive === 'function' && !entity.isAlive()) continue;
     if (typeof entity.health === 'number' && entity.health <= 0) continue;
@@ -232,13 +236,13 @@ export const hostileMobBehavior: ReactiveBehavior = {
   name: 'hostile_mob_combat',
 
   shouldActivate: (bot: Bot): boolean => {
-    const hostileMob = findClosestHostileMob(bot, 16, true);
+    const hostileMob = findClosestHostileMob(bot, 16, true, undefined, COMBAT_BLACKLIST);
     return hostileMob !== null;
   },
 
-  createState: async (bot: Bot): Promise<any> => {
-    const hostileMob = findClosestHostileMob(bot, 32, true);
-    
+  createState: (bot: Bot) => {
+    const hostileMob = findClosestHostileMob(bot, 32, true, undefined, COMBAT_BLACKLIST);
+
     if (!hostileMob) {
       return null;
     }
@@ -271,6 +275,7 @@ export const hostileMobBehavior: ReactiveBehavior = {
       entity: hostileMob,
       entityFilter: (entity: any) => {
         if (!entity || !entity.name) return false;
+        if (COMBAT_BLACKLIST.has(entity.name)) return false;
         return hostileNames.has(entity.name);
       },
       detectionRange: 32,

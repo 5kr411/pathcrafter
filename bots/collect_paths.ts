@@ -91,16 +91,14 @@ bot.once('spawn', () => {
   );
 
   const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
-  // TODO: Re-enable once collection is stable
-  // setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 60 });
+  setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 60 });
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileFleeBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
-  // TODO: Re-enable food collection behaviors once core collection is stable
-  // reactiveBehaviorRegistry.register(foodCollectionBehavior);
-  // reactiveBehaviorRegistry.register(foodEatingBehavior);
-  // reactiveBehaviorRegistry.register(foodSmeltingBehavior);
+  reactiveBehaviorRegistry.register(foodCollectionBehavior);
+  reactiveBehaviorRegistry.register(foodEatingBehavior);
+  reactiveBehaviorRegistry.register(foodSmeltingBehavior);
   reactiveBehaviorRegistry.register(inventoryManagementBehavior);
 
   const controlStack = new CollectorControlStack(

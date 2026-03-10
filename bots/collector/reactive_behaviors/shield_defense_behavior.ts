@@ -13,6 +13,7 @@ const CREEPER_TRIGGER_RADIUS = 8;
 const CREEPER_REACQUIRE_RADIUS = 8;
 const RANGED_HOSTILE_SEARCH_RADIUS = 16;
 const MELEE_HOSTILE_SEARCH_RADIUS = 8;
+const SHIELD_MIN_DURABILITY_RATIO = 0.15;
 
 
 function getInventoryItems(bot: Bot): any[] {
@@ -63,6 +64,17 @@ export function findShieldItem(bot: Bot): any | null {
   }
 
   return null;
+}
+
+export function isShieldUsable(shield: any): boolean {
+  if (!shield) return false;
+  const maxDur = shield.maxDurability;
+  const used = shield.durabilityUsed;
+  if (typeof maxDur !== 'number' || maxDur <= 0 || typeof used !== 'number') {
+    return true; // no durability info — assume usable
+  }
+  const remaining = maxDur - used;
+  return (remaining / maxDur) >= SHIELD_MIN_DURABILITY_RATIO;
 }
 
 export async function ensureShieldEquipped(bot: Bot, preferredShield?: any): Promise<boolean> {
@@ -209,7 +221,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
 
   shouldActivate: (bot: Bot): boolean => {
     const shieldItem = findShieldItem(bot);
-    if (!shieldItem) {
+    if (!shieldItem || !isShieldUsable(shieldItem)) {
       return false;
     }
 
@@ -237,7 +249,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
     return !!meleeHostile;
   },
 
-  createState: async (bot: Bot): Promise<any> => {
+  createState: (bot: Bot) => {
     try {
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
         ? (bot as any).safeChat.bind(bot)
@@ -250,9 +262,10 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         return null;
       }
 
-      const equipped = await ensureShieldEquipped(bot, shieldItem);
-      if (!equipped) {
-        return null;
+      if (!hasShieldInOffhand(bot)) {
+        ensureShieldEquipped(bot, shieldItem).catch((err: any) => {
+          logger.debug(`ShieldDefense: background equip failed - ${err?.message || err}`);
+        });
       }
 
       if (!shouldContinueShieldDefense(bot)) {

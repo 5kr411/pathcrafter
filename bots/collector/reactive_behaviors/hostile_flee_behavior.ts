@@ -1,18 +1,20 @@
 import logger from '../../../utils/logger';
 import { forceStopAllMovement } from '../../../utils/movement';
 import { ReactiveBehavior, Bot } from './types';
-import { findClosestCreeper, findShieldItem } from './shield_defense_behavior';
-import { findClosestHostileMob } from './hostile_mob_behavior';
+import { findClosestCreeper, findShieldItem, isShieldUsable } from './shield_defense_behavior';
+import { findClosestHostileMob, isRangedHostile } from './hostile_mob_behavior';
 import { Vec3 } from 'vec3';
 
 const { goals } = require('mineflayer-pathfinder');
 
 const HOSTILE_FLEE_PRIORITY = 110;
 const TRIGGER_RADIUS = 16;
-const FLEE_RADIUS = 24;
+const FLEE_RADIUS = 32;
 const GOAL_CHANGE_THRESHOLD = 2;
 const GOAL_REFRESH_MS = 750;
 export const FLEE_MEMORY_MS = 5000;
+const LOW_ARMOR_THRESHOLD = 10;
+const LOW_HEALTH_RATIO = 0.6;
 
 interface Vec3Like {
   x: number;
@@ -21,14 +23,26 @@ interface Vec3Like {
   distanceTo?: (other: any) => number;
 }
 
-function hasShield(bot: Bot): boolean {
-  return !!findShieldItem(bot);
+function hasUsableShield(bot: Bot): boolean {
+  const shield = findShieldItem(bot);
+  if (!shield) return false;
+  return isShieldUsable(shield);
+}
+
+function getArmorValue(bot: Bot): number {
+  const attr = (bot as any)?.entity?.attributes?.['generic.armor'];
+  if (attr && typeof attr.value === 'number') return attr.value;
+  return 0;
+}
+
+function isLowArmor(bot: Bot): boolean {
+  return getArmorValue(bot) < LOW_ARMOR_THRESHOLD;
 }
 
 function isLowHealth(bot: Bot): boolean {
   const current = (bot as any).health ?? 20;
   const max = (bot as any).maxHealth ?? 20;
-  return current > 0 && current < max / 2;
+  return current > 0 && current < max * LOW_HEALTH_RATIO;
 }
 
 function getDistance(a: Vec3Like, b: Vec3Like): number {
@@ -62,11 +76,16 @@ export const hostileFleeBehavior: ReactiveBehavior = {
   name: 'hostile_flee',
 
   shouldActivate: (bot: Bot): boolean => {
-    if (hasShield(bot)) {
+    if (hasUsableShield(bot)) {
       return false;
     }
     const creeperThreat = findClosestCreeper(bot, TRIGGER_RADIUS);
     if (creeperThreat) {
+      return true;
+    }
+    // Ranged hostiles: flee if low armor OR low health
+    const rangedThreat = findClosestHostileMob(bot, TRIGGER_RADIUS, true, isRangedHostile);
+    if (rangedThreat && (isLowArmor(bot) || isLowHealth(bot))) {
       return true;
     }
     if (!isLowHealth(bot)) {
@@ -100,12 +119,10 @@ export const hostileFleeBehavior: ReactiveBehavior = {
 
     const getThreat = (): any | null => {
       const creeper = findClosestCreeper(bot, FLEE_RADIUS);
-      if (creeper) {
-        return creeper;
-      }
-      if (!isLowHealth(bot)) {
-        return null;
-      }
+      if (creeper) return creeper;
+      const ranged = findClosestHostileMob(bot, FLEE_RADIUS, true, isRangedHostile);
+      if (ranged && (isLowArmor(bot) || isLowHealth(bot))) return ranged;
+      if (!isLowHealth(bot)) return null;
       return findClosestHostileMob(bot, FLEE_RADIUS, true);
     };
 
@@ -174,7 +191,7 @@ export const hostileFleeBehavior: ReactiveBehavior = {
           return;
         }
 
-        if (hasShield(bot)) {
+        if (hasUsableShield(bot)) {
           finish('shield acquired');
           return;
         }

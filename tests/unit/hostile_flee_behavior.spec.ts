@@ -17,15 +17,31 @@ jest.mock('mineflayer-pathfinder', () => ({
 
 const mockFindClosestCreeper: jest.Mock = jest.fn().mockReturnValue(null);
 const mockFindShieldItem: jest.Mock = jest.fn().mockReturnValue(null);
+const mockIsShieldUsable: jest.Mock = jest.fn().mockReturnValue(true);
 jest.mock('../../bots/collector/reactive_behaviors/shield_defense_behavior', () => ({
   findClosestCreeper: (...args: any) => mockFindClosestCreeper(...args),
-  findShieldItem: (...args: any) => mockFindShieldItem(...args)
+  findShieldItem: (...args: any) => mockFindShieldItem(...args),
+  isShieldUsable: (...args: any) => mockIsShieldUsable(...args)
 }));
 
-const mockFindClosestHostileMob: jest.Mock = jest.fn().mockReturnValue(null);
+const mockFindClosestHostileMobRaw: jest.Mock = jest.fn().mockReturnValue(null);
+const mockFindClosestHostileMob = jest.fn((...args: any) => {
+  const result = mockFindClosestHostileMobRaw(...args);
+  // If a predicate filter was passed (4th arg), apply it
+  const predicate = args[3];
+  if (result && typeof predicate === 'function' && !predicate(result)) {
+    return null;
+  }
+  return result;
+});
+const mockIsRangedHostile: jest.Mock = jest.fn((entity: any) => {
+  const name = String(entity?.name || '').toLowerCase();
+  return ['skeleton', 'stray', 'bogged', 'parched'].includes(name);
+});
 jest.mock('../../bots/collector/reactive_behaviors/hostile_mob_behavior', () => ({
   findClosestHostileMob: (...args: any) => mockFindClosestHostileMob(...args),
-  hasLineOfSight: jest.fn(() => true)
+  hasLineOfSight: jest.fn(() => true),
+  isRangedHostile: (...args: any) => mockIsRangedHostile(...args)
 }));
 
 import { hostileFleeBehavior, FLEE_MEMORY_MS } from '../../bots/collector/reactive_behaviors/hostile_flee_behavior';
@@ -85,7 +101,8 @@ describe('unit: hostile_flee_behavior', () => {
     jest.clearAllMocks();
     mockFindClosestCreeper.mockReturnValue(null);
     mockFindShieldItem.mockReturnValue(null);
-    mockFindClosestHostileMob.mockReturnValue(null);
+    mockIsShieldUsable.mockReturnValue(true);
+    mockFindClosestHostileMobRaw.mockReturnValue(null);
     mockGoalXZ.mockImplementation((x: number, z: number) => ({ x, z }));
   });
 
@@ -108,8 +125,9 @@ describe('unit: hostile_flee_behavior', () => {
   });
 
   describe('shouldActivate', () => {
-    test('returns false when bot has a shield', () => {
-      mockFindShieldItem.mockReturnValue({ name: 'shield' });
+    test('returns false when bot has a usable shield', () => {
+      mockFindShieldItem.mockReturnValue({ name: 'shield', maxDurability: 336, durabilityUsed: 0 });
+      mockIsShieldUsable.mockReturnValue(true);
       const bot = makeBot();
       expect(hostileFleeBehavior.shouldActivate(bot)).toBe(false);
     });
@@ -123,15 +141,15 @@ describe('unit: hostile_flee_behavior', () => {
 
     test('returns true when low health and hostile mob nearby', () => {
       const zombie = makeZombie(5, 0);
-      mockFindClosestHostileMob.mockReturnValue(zombie);
-      const bot = makeBot({ health: 8, maxHealth: 20 });
+      mockFindClosestHostileMobRaw.mockReturnValue(zombie);
+      const bot = makeBot({ health: 10, maxHealth: 20 });
       expect(hostileFleeBehavior.shouldActivate(bot)).toBe(true);
     });
 
-    test('returns false when healthy and no creeper', () => {
+    test('returns false when health at or above 60% threshold', () => {
       const zombie = makeZombie(5, 0);
-      mockFindClosestHostileMob.mockReturnValue(zombie);
-      const bot = makeBot({ health: 20, maxHealth: 20 });
+      mockFindClosestHostileMobRaw.mockReturnValue(zombie);
+      const bot = makeBot({ health: 13, maxHealth: 20 });
       expect(hostileFleeBehavior.shouldActivate(bot)).toBe(false);
     });
 
@@ -211,7 +229,7 @@ describe('unit: hostile_flee_behavior', () => {
 
       result.stateMachine.onStateEntered();
 
-      creeper.position.x = 30;
+      creeper.position.x = 35;
       jest.advanceTimersByTime(800);
       result.stateMachine.update();
       expect(result.stateMachine.isFinished()).toBe(true);
@@ -225,7 +243,8 @@ describe('unit: hostile_flee_behavior', () => {
 
       result.stateMachine.onStateEntered();
 
-      mockFindShieldItem.mockReturnValue({ name: 'shield' });
+      mockFindShieldItem.mockReturnValue({ name: 'shield', maxDurability: 336, durabilityUsed: 0 });
+      mockIsShieldUsable.mockReturnValue(true);
       result.stateMachine.update();
       expect(result.stateMachine.isFinished()).toBe(true);
     });
@@ -348,11 +367,73 @@ describe('unit: hostile_flee_behavior', () => {
       result.stateMachine.onStateEntered();
 
       mockFindClosestCreeper.mockReturnValue(null);
-      botPos.x = 30;
+      botPos.x = 40;
 
       jest.advanceTimersByTime(1000);
       result.stateMachine.update();
       expect(result.stateMachine.isFinished()).toBe(true);
+    });
+  });
+
+  describe('skeleton-specific flee with armor check', () => {
+    test('returns true when ranged hostile nearby and armor < 10, even at full health', () => {
+      const skeleton = { name: 'skeleton', displayName: 'Skeleton', position: { x: 5, y: 64, z: 0 }, health: 20 };
+      mockFindClosestHostileMobRaw.mockReturnValue(skeleton);
+      const bot = makeBot({ health: 20, maxHealth: 20 });
+      expect(hostileFleeBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('returns false when ranged hostile nearby and armor >= 10 and full health', () => {
+      const skeleton = { name: 'skeleton', displayName: 'Skeleton', position: { x: 5, y: 64, z: 0 }, health: 20 };
+      mockFindClosestHostileMobRaw.mockReturnValue(skeleton);
+      const bot = makeBot({
+        health: 20,
+        maxHealth: 20,
+        entity: {
+          position: { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
+            const dx = 0 - other.x; const dy = 64 - other.y; const dz = 0 - other.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+          }},
+          yaw: 0, pitch: 0,
+          attributes: { 'generic.armor': { value: 12 } }
+        }
+      });
+      expect(hostileFleeBehavior.shouldActivate(bot)).toBe(false);
+    });
+
+    test('returns true when ranged hostile nearby and armor >= 10 but low health', () => {
+      const skeleton = { name: 'skeleton', displayName: 'Skeleton', position: { x: 5, y: 64, z: 0 }, health: 20 };
+      mockFindClosestHostileMobRaw.mockReturnValue(skeleton);
+      const bot = makeBot({
+        health: 8,
+        maxHealth: 20,
+        entity: {
+          position: { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
+            const dx = 0 - other.x; const dy = 64 - other.y; const dz = 0 - other.z;
+            return Math.sqrt(dx * dx + dy * dy + dz * dz);
+          }},
+          yaw: 0, pitch: 0,
+          attributes: { 'generic.armor': { value: 12 } }
+        }
+      });
+      expect(hostileFleeBehavior.shouldActivate(bot)).toBe(true);
+    });
+  });
+
+  describe('shield durability bypass', () => {
+    test('returns true (flees) when shield durability below 15% and threat present', () => {
+      mockFindShieldItem.mockReturnValue({ name: 'shield', maxDurability: 336, durabilityUsed: 300 });
+      mockIsShieldUsable.mockReturnValue(false);
+      mockFindClosestHostileMobRaw.mockReturnValue({ name: 'zombie', position: { x: 5, y: 64, z: 0 }, health: 20 });
+      const bot = makeBot({ health: 8, maxHealth: 20 });
+      expect(hostileFleeBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    test('returns false when shield durability above 15%', () => {
+      mockFindShieldItem.mockReturnValue({ name: 'shield', maxDurability: 336, durabilityUsed: 100 });
+      mockIsShieldUsable.mockReturnValue(true);
+      const bot = makeBot({ health: 8, maxHealth: 20 });
+      expect(hostileFleeBehavior.shouldActivate(bot)).toBe(false);
     });
   });
 
