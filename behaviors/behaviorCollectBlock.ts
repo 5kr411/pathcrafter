@@ -106,8 +106,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   } catch (_) {}
 
   let currentBlockCount = 0; // Will be set by resetBaseline on first entry
-  let pathfindingFailureCount = 0;
-  const MAX_PATHFINDING_FAILURES = 5;
+  let wanderCount = 0;
+  const MAX_WANDERS = 5;
   const MINE_REACH_DISTANCE = 5;
   let missingToolInfo: { requiredTool?: string; blockName?: string; currentTool?: string } | null = null;
   let lastFailureReason: 'not_found' | 'pathfinding' | null = null;
@@ -185,7 +185,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const microWander = new BehaviorWander(bot, MICRO_WANDER_BASE_DISTANCE);
   addStateLogging(microWander, 'MicroWander', {
     logEnter: true,
-    getExtraInfo: () => `repositioning ${microWander.distance} blocks (attempt ${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES})`
+    getExtraInfo: () => `repositioning ${microWander.distance} blocks (wander ${wanderCount}/${MAX_WANDERS})`
   });
 
   const mineBlock = new BehaviorMineBlock(bot, targets);
@@ -295,7 +295,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       return shouldGo;
     },
     onTransition: () => {
-      pathfindingFailureCount = 0;
+      wanderCount = 0;
       missingToolInfo = null;
       lastFailureReason = null;
       try {
@@ -428,8 +428,24 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       targets.position = targets.blockPosition;
-      pathfindingFailureCount = 0; // Reset on successful reach
+      wanderCount = 0; // Reset on successful reach
       logger.debug('go to block -> mine block');
+    }
+  });
+
+  const goToBlockToFindBlockRotate = new StateTransition({
+    parent: goToBlock,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: go to block -> find block (try next candidate)',
+    shouldTransition: () => {
+      const finished = goToBlock.isFinished();
+      const distance = goToBlock.distanceToTarget();
+      if (!finished || distance < MINE_REACH_DISTANCE) return false;
+      return typeof findBlock.hasMoreCandidates === 'function' && findBlock.hasMoreCandidates();
+    },
+    onTransition: () => {
+      const distance = goToBlock.distanceToTarget();
+      logger.info(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName}, distance=${distance.toFixed(2)}, trying next candidate`);
     }
   });
 
@@ -440,14 +456,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      return finished && distance >= MINE_REACH_DISTANCE && pathfindingFailureCount < MAX_PATHFINDING_FAILURES;
+      if (!finished || distance < MINE_REACH_DISTANCE) return false;
+      const hasMore = typeof findBlock.hasMoreCandidates === 'function' && findBlock.hasMoreCandidates();
+      return !hasMore && wanderCount < MAX_WANDERS;
     },
     onTransition: () => {
-      pathfindingFailureCount++;
-      // Linear wander distance: 4, 8, 12, 16, 20, 24, 28, 32
-      microWander.distance = Math.min(32, MICRO_WANDER_BASE_DISTANCE + (pathfindingFailureCount - 1) * 4);
+      wanderCount++;
+      microWander.distance = Math.min(32, MICRO_WANDER_BASE_DISTANCE + (wanderCount - 1) * 4);
       const distance = goToBlock.distanceToTarget();
-      logger.warn(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName} (${pathfindingFailureCount}/${MAX_PATHFINDING_FAILURES}), distance=${distance.toFixed(2)}, micro-wandering ${microWander.distance} blocks to reposition`);
+      logger.warn(`BehaviorCollectBlock: candidates exhausted for ${targets.blockName}, distance=${distance.toFixed(2)}, micro-wandering ${microWander.distance} blocks (wander ${wanderCount}/${MAX_WANDERS})`);
     }
   });
 
@@ -468,11 +485,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      return finished && distance >= MINE_REACH_DISTANCE && pathfindingFailureCount >= MAX_PATHFINDING_FAILURES;
+      if (!finished || distance < MINE_REACH_DISTANCE) return false;
+      const hasMore = typeof findBlock.hasMoreCandidates === 'function' && findBlock.hasMoreCandidates();
+      return !hasMore && wanderCount >= MAX_WANDERS;
     },
     onTransition: () => {
       stateMachine.stepSucceeded = false;
-      logger.error(`BehaviorCollectBlock: pathfinding failed ${pathfindingFailureCount} times for ${targets.blockName}, giving up`);
+      logger.error(`BehaviorCollectBlock: wandered ${wanderCount} times for ${targets.blockName}, giving up`);
       lastFailureReason = 'pathfinding';
     }
   });
@@ -667,6 +686,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findBlockToGoToBlock,
     findBlockToExitMissingTool,
     goToBlockToMine,
+    goToBlockToFindBlockRotate,
     goToBlockToMicroWander,
     microWanderToFindBlock,
     goToBlockToExitPathfail,
@@ -685,7 +705,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   // which is critical when MineOneOf/MineAnyOf reuse the same CollectBlock instance.
   enter.onStateEntered = () => {
     resetBaseline();
-    pathfindingFailureCount = 0;
+    wanderCount = 0;
   };
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);

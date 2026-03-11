@@ -49,6 +49,8 @@ class BehaviorSafeFindBlock {
   private _excluded: Set<string>;
   private _returnCounts: Map<string, number>;
   private _countThreshold: number;
+  private _candidateList: Vec3[];
+  private _candidateIndex: number;
 
   constructor(bot: Bot, targets: Targets) {
     this.stateName = 'safeFindBlock';
@@ -68,6 +70,8 @@ class BehaviorSafeFindBlock {
       1,
       Number(getSafeFindRepeatThreshold && getSafeFindRepeatThreshold()) || 3
     );
+    this._candidateList = [];
+    this._candidateIndex = 0;
   }
 
   clearExclusions(): void {
@@ -157,6 +161,18 @@ class BehaviorSafeFindBlock {
   }
 
   onStateEntered(): void {
+    // If we have remaining candidates from a previous scan, rotate instead of rescanning
+    if (this.hasMoreCandidates()) {
+      this._scanning = true;
+      const popped = this.tryNextCandidate();
+      if (!popped) {
+        this.targets.position = undefined;
+      }
+      this._scanning = false;
+      return;
+    }
+
+    // Fresh scan
     this._scanning = true;
     this._runScan().catch(() => {
       this.targets.position = undefined;
@@ -192,7 +208,7 @@ class BehaviorSafeFindBlock {
         nearLiquid: boolean;
       };
 
-      let best: RankedCandidate | null = null;
+      const ranked: RankedCandidate[] = [];
 
       for (const p of sorted) {
         if (this.isExcluded(p)) continue;
@@ -229,22 +245,19 @@ class BehaviorSafeFindBlock {
         }
 
         const score = distSq + penalty;
-
-        if (!best || score < best.score || (score === best.score && distSq < best.distSq)) {
-          best = { pos: p, score, distSq, nearLiquid };
-        } else if (nearLiquid && best && score >= best.score) {
-          try {
-            logger.debug(
-              `BehaviorSafeFindBlock: skipping near-liquid candidate at (${p.x}, ${p.y}, ${p.z}) due to higher score (${score.toFixed(2)} >= ${best.score.toFixed(2)})`
-            );
-          } catch (_) {
-            /* ignore */
-          }
-        }
+        ranked.push({ pos: p, score, distSq, nearLiquid });
       }
 
-      if (best) {
+      // Sort by score ascending, ties broken by distSq
+      ranked.sort((a, b) => a.score - b.score || a.distSq - b.distSq);
+
+      this._candidateList = ranked.map(r => r.pos);
+      this._candidateIndex = 0;
+
+      if (ranked.length > 0) {
+        const best = ranked[0];
         this.targets.position = best.pos;
+        this._candidateIndex = 1;
         this._recordReturn(best.pos);
         if (best.nearLiquid) {
           try {
@@ -267,6 +280,21 @@ class BehaviorSafeFindBlock {
 
   isFinished(): boolean {
     return !this._scanning;
+  }
+
+  hasMoreCandidates(): boolean {
+    return this._candidateIndex < this._candidateList.length;
+  }
+
+  tryNextCandidate(): boolean {
+    if (this._candidateIndex >= this._candidateList.length) {
+      return false;
+    }
+    const next = this._candidateList[this._candidateIndex];
+    this._candidateIndex++;
+    this.targets.position = next;
+    this._recordReturn(next);
+    return true;
   }
 
   private _distanceSq(pos: Vec3): number {
