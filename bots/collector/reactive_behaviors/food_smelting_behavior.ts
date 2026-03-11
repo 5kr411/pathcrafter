@@ -21,10 +21,14 @@ const FOOD_SMELTING_PRIORITY = 40;
 const DEFAULT_COOLDOWN_MS = 60_000;
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 const DEFAULT_RADII = [32, 64, 96, 128];
+const MAX_CONSECUTIVE_FAILURES = 3;
+const POSITION_RESET_DISTANCE = 50;
 
 let lastFailedAttempt = 0;
 let cooldownMs = DEFAULT_COOLDOWN_MS;
 let lastThrottledLogTime = 0;
+let consecutiveFailures = 0;
+let lastFailurePosition: { x: number; y: number; z: number } | null = null;
 
 /**
  * Sets the cooldown duration after failed smelting attempts
@@ -38,6 +42,8 @@ export function setFoodSmeltingCooldown(ms: number): void {
  */
 export function resetFoodSmeltingCooldown(): void {
   lastFailedAttempt = 0;
+  consecutiveFailures = 0;
+  lastFailurePosition = null;
 }
 
 /**
@@ -46,6 +52,16 @@ export function resetFoodSmeltingCooldown(): void {
 function isInCooldown(): boolean {
   if (lastFailedAttempt === 0) return false;
   return Date.now() - lastFailedAttempt < cooldownMs;
+}
+
+function distanceFromLastFailure(bot: Bot): number {
+  if (!lastFailurePosition) return Infinity;
+  const pos = bot.entity?.position;
+  if (!pos) return Infinity;
+  const dx = pos.x - lastFailurePosition.x;
+  const dy = pos.y - lastFailurePosition.y;
+  const dz = pos.z - lastFailurePosition.z;
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 interface RawFoodItem {
@@ -89,8 +105,13 @@ async function tryPlanForCookedFood(
     const inventoryMap = new Map(Object.entries(inventory));
     const version = (bot as any).version || '1.20.1';
     const mcData = minecraftData(version);
-    
-    const tree = planner(mcData, cookedItemName, targetCount, {
+
+    // Target total cooked food (existing + raw) so the planner correctly
+    // deducts what we already have and plans to smelt only the remainder.
+    const existingCooked = inventoryMap.get(cookedItemName) || 0;
+    const totalTarget = existingCooked + targetCount;
+
+    const tree = planner(mcData, cookedItemName, totalTarget, {
       inventory: inventoryMap,
       log: false,
       pruneWithWorld: !!snapshot,
@@ -178,6 +199,19 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
       return false;
     }
 
+    // Check consecutive failure cap (bot hasn't moved from failed location)
+    if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+      if (distanceFromLastFailure(bot) < POSITION_RESET_DISTANCE) {
+        if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+          logger.debug(`FoodSmelting: suppressed after ${consecutiveFailures} consecutive failures (moved ${distanceFromLastFailure(bot).toFixed(0)} blocks, need ${POSITION_RESET_DISTANCE})`);
+          lastThrottledLogTime = now;
+        }
+        return false;
+      }
+      consecutiveFailures = 0;
+      lastFailurePosition = null;
+    }
+
     if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
       const items = rawFoodItems.map(f => `${f.count}x ${f.rawName}`).join(', ');
       logger.debug(`FoodSmelting: should activate - raw food: ${items}`);
@@ -220,6 +254,11 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
       if (!path || path.length === 0) {
         logger.info('FoodSmelting: no viable path found');
         lastFailedAttempt = Date.now();
+        consecutiveFailures++;
+        lastFailurePosition = bot.entity?.position
+          ? { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z }
+          : null;
+        logger.info(`FoodSmelting: consecutive failures: ${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES}`);
         if (sendChat) {
           sendChat(`cannot smelt ${rawName} - no viable path (missing resources?)`);
         }
@@ -227,7 +266,9 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
       }
       
       logger.info(`FoodSmelting: executing path with ${path.length} steps`);
-      
+      consecutiveFailures = 0;
+      lastFailurePosition = null;
+
       const startCookedCount = getItemCountInInventory(bot as any, cookedName);
       let outcome: { success: boolean; smelted: number } | null = null;
       let stateMachineFinished = false;
@@ -244,6 +285,8 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
           if (smelted > 0) {
             logger.info(`FoodSmelting: complete, smelted ${smelted}x ${cookedName}`);
             lastFailedAttempt = 0;
+            consecutiveFailures = 0;
+            lastFailurePosition = null;
           } else {
             logger.info(`FoodSmelting: failed to smelt ${cookedName} (execution failed)`);
             lastFailedAttempt = Date.now();
@@ -282,6 +325,10 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
     } catch (err: any) {
       logger.info(`FoodSmelting: failed to create state machine - ${err?.message || err}`);
       lastFailedAttempt = Date.now();
+      consecutiveFailures++;
+      lastFailurePosition = bot.entity?.position
+        ? { x: bot.entity.position.x, y: bot.entity.position.y, z: bot.entity.position.z }
+        : null;
       return null;
     }
   }

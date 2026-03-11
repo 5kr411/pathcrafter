@@ -176,6 +176,107 @@ describe('foodSmeltingBehavior', () => {
       const bot = createBotWithRawFood({ beef: 5 });
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(false);
     });
+
+    it('returns false after MAX_CONSECUTIVE_FAILURES at the same location', async () => {
+      jest.useRealTimers();
+
+      const bot = createBotWithRawFood({ beef: 7 });
+      bot.entity = { position: { x: 100, y: 20, z: 100 }, yaw: 0, pitch: 0 };
+
+      setFoodSmeltingCooldown(10);
+      resetFoodSmeltingCooldown();
+
+      captureAdaptiveSnapshot.mockResolvedValue({
+        snapshot: { radius: 32 }, radiusUsed: 32, attemptsCount: 1
+      });
+      plannerMock.mockReturnValue(null);
+
+      for (let i = 0; i < 3; i++) {
+        expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
+        const state = await foodSmeltingBehavior.createState(bot);
+        expect(state).toBeNull();
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+
+      expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(false);
+
+      jest.useFakeTimers();
+    });
+
+    it('resets failure counter when bot moves far enough', async () => {
+      jest.useRealTimers();
+
+      const bot = createBotWithRawFood({ beef: 7 });
+      bot.entity = { position: { x: 100, y: 20, z: 100 }, yaw: 0, pitch: 0 };
+
+      setFoodSmeltingCooldown(10);
+      resetFoodSmeltingCooldown();
+
+      captureAdaptiveSnapshot.mockResolvedValue({
+        snapshot: { radius: 32 }, radiusUsed: 32, attemptsCount: 1
+      });
+      plannerMock.mockReturnValue(null);
+
+      for (let i = 0; i < 3; i++) {
+        expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
+        await foodSmeltingBehavior.createState(bot);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+
+      expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(false);
+
+      bot.entity.position = { x: 160, y: 20, z: 100 };
+
+      expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
+
+      jest.useFakeTimers();
+    });
+
+    it('resets failure counter on successful smelting', async () => {
+      jest.useRealTimers();
+
+      const bot = createBotWithRawFood({ beef: 7 });
+      bot.entity = { position: { x: 100, y: 20, z: 100 }, yaw: 0, pitch: 0 };
+
+      setFoodSmeltingCooldown(10);
+      resetFoodSmeltingCooldown();
+
+      captureAdaptiveSnapshot.mockResolvedValue({
+        snapshot: { radius: 32 }, radiusUsed: 32, attemptsCount: 1
+      });
+      plannerMock.mockReturnValue(null);
+
+      for (let i = 0; i < 2; i++) {
+        await foodSmeltingBehavior.createState(bot);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+
+      plannerMock.mockReturnValue({ children: [] });
+      enumerateActionPathsGenerator.mockImplementation(function* () {
+        yield [{ action: 'smelt', what: 'cooked_beef', count: 7 }];
+      });
+      buildStateMachineForPath.mockImplementation((_bot: any, _path: any[], onFinished?: (success: boolean) => void) => {
+        let finished = false;
+        return {
+          onStateEntered: jest.fn(),
+          update: () => { if (!finished) { finished = true; if (onFinished) onFinished(true); } },
+          isFinished: () => finished
+        };
+      });
+
+      const state = await foodSmeltingBehavior.createState(bot);
+      expect(state).not.toBeNull();
+
+      plannerMock.mockReturnValue(null);
+      for (let i = 0; i < 2; i++) {
+        await foodSmeltingBehavior.createState(bot);
+        await new Promise(resolve => setTimeout(resolve, 20));
+      }
+
+      expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
+
+      jest.useFakeTimers();
+    });
   });
 
   describe('createState', () => {
@@ -221,6 +322,36 @@ describe('foodSmeltingBehavior', () => {
       const plannerCall = plannerMock.mock.calls[0];
       expect(plannerCall[1]).toBe('cooked_beef');
       expect(plannerCall[2]).toBe(5);
+    });
+
+    it('targets total cooked count (existing + raw) so planner deducts correctly', async () => {
+      // Bot has 3 raw beef AND 8 cooked_beef already
+      const bot = createBotWithRawFood({ beef: 3, cooked_beef: 8 });
+
+      plannerMock.mockReturnValue({ children: [] });
+      enumerateActionPathsGenerator.mockImplementation(function* () {
+        yield [{ action: 'smelt', what: 'cooked_beef', count: 3 }];
+      });
+      captureAdaptiveSnapshot.mockResolvedValue({
+        snapshot: { radius: 32 }, radiusUsed: 32, attemptsCount: 1
+      });
+      buildStateMachineForPath.mockImplementation((_bot: any, _path: any[], onFinished?: (success: boolean) => void) => {
+        let finished = false;
+        return {
+          onStateEntered: jest.fn(),
+          update: () => { if (!finished) { finished = true; if (onFinished) onFinished(true); } },
+          isFinished: () => finished
+        };
+      });
+
+      const state = await foodSmeltingBehavior.createState(bot);
+
+      expect(state).not.toBeNull();
+      expect(plannerMock).toHaveBeenCalled();
+      const plannerCall = plannerMock.mock.calls[0];
+      expect(plannerCall[1]).toBe('cooked_beef');
+      // Should target 8 + 3 = 11 total, so planner deducts 8 existing and plans 3
+      expect(plannerCall[2]).toBe(11);
     });
 
     it('returns null when no viable path found', async () => {
