@@ -316,10 +316,12 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
           logger.info(`BehaviorMineAnyOf: goal reached! ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
       } else if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+        stateMachine.stepSucceeded = false;
         try {
           logger.error(`BehaviorMineAnyOf: giving up after ${consecutiveFailures} consecutive failures; collected ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
       } else {
+        stateMachine.stepSucceeded = false;
         try {
           logger.error(`BehaviorMineAnyOf: no viable candidates found; collected ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
@@ -345,10 +347,10 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       const failureReason = typeof (collectBehavior as any).getLastFailureReason === 'function'
         ? (collectBehavior as any).getLastFailureReason()
         : null;
-      if (failureReason === 'not_found' && selection?.chosen?.blockName) {
+      if (failureReason === 'not_found' && selection?.chosen?.blockName && collectedCount === 0) {
         failedBlocks.add(selection.chosen.blockName);
         try {
-          logger.warn(`MineAnyOf: excluding ${selection.chosen.blockName} after find failure`);
+          logger.warn(`MineAnyOf: excluding ${selection.chosen.blockName} after find failure (0 collected)`);
         } catch (_) {}
       }
       

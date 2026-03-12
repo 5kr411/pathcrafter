@@ -70,6 +70,56 @@ describe('BehaviorSafeFindBlock candidate rotation', () => {
     expect(finder.hasMoreCandidates()).toBe(false);
   });
 
+  describe('matchesBlock cave_vines filtering', () => {
+    function makeBlock(name: string, type: number, properties: Record<string, any> = {}) {
+      return {
+        name,
+        type,
+        getProperties() { return properties; },
+      } as any;
+    }
+
+    it('rejects cave_vines without berries', () => {
+      const targets: any = {};
+      const finder = createSafeFindBlock(makeBot(new Vec3(0, 64, 0)), targets);
+      finder.blocks = [100];
+      const block = makeBlock('cave_vines', 100, { berries: false });
+      expect(finder.matchesBlock(block)).toBe(false);
+    });
+
+    it('accepts cave_vines with berries=true', () => {
+      const targets: any = {};
+      const finder = createSafeFindBlock(makeBot(new Vec3(0, 64, 0)), targets);
+      finder.blocks = [100];
+      const block = makeBlock('cave_vines', 100, { berries: true });
+      expect(finder.matchesBlock(block)).toBe(true);
+    });
+
+    it('rejects cave_vines_plant without berries', () => {
+      const targets: any = {};
+      const finder = createSafeFindBlock(makeBot(new Vec3(0, 64, 0)), targets);
+      finder.blocks = [101];
+      const block = makeBlock('cave_vines_plant', 101, { berries: false });
+      expect(finder.matchesBlock(block)).toBe(false);
+    });
+
+    it('accepts cave_vines_plant with berries=true', () => {
+      const targets: any = {};
+      const finder = createSafeFindBlock(makeBot(new Vec3(0, 64, 0)), targets);
+      finder.blocks = [101];
+      const block = makeBlock('cave_vines_plant', 101, { berries: true });
+      expect(finder.matchesBlock(block)).toBe(true);
+    });
+
+    it('accepts non-cave-vines blocks without berries check', () => {
+      const targets: any = {};
+      const finder = createSafeFindBlock(makeBot(new Vec3(0, 64, 0)), targets);
+      finder.blocks = [1];
+      const block = makeBlock('stone', 1, {});
+      expect(finder.matchesBlock(block)).toBe(true);
+    });
+  });
+
   it('onStateEntered does fresh scan when no candidates remain', () => {
     const targets: any = {};
     const bot = makeBot(new Vec3(0, 64, 0));

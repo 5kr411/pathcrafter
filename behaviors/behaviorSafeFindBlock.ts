@@ -104,6 +104,11 @@ class BehaviorSafeFindBlock {
     try {
       if (!this.blocks || this.blocks.length === 0) return false;
       if (!this.blocks.includes(block.type)) return false;
+      // Cave vines without berries drop nothing — skip them
+      if ((block.name === 'cave_vines' || block.name === 'cave_vines_plant')
+          && block.getProperties?.().berries !== true) {
+        return false;
+      }
       if (this.preventXRay) {
         if (!this.bot.canSeeBlock(block)) return false;
       }

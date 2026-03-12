@@ -104,6 +104,7 @@ function createInnerPlaceState(bot: Bot, targets: Targets): any {
           const hdist = Math.sqrt(dx * dx + dz * dz);
           if (hdist < 1 || hdist > 8) continue;
           const ground = botPos.clone().offset(dx, dy, dz);
+          if (failedPositions.has(posKey(ground))) continue;
           try {
             const b = bot.blockAt(ground, false);
             if (!b || b.type === 0 || b.boundingBox !== 'block') continue;
@@ -154,6 +155,12 @@ function createInnerPlaceState(bot: Bot, targets: Targets): any {
   let placeStartTime = 0;
   let standingPosition: Vec3Like | undefined = undefined;
   const moveTimeoutMs = 15000;
+
+  const failedPositions = new Set<string>();
+
+  function posKey(pos: Vec3Like): string {
+    return `${Math.floor(pos.x)},${Math.floor(pos.y)},${Math.floor(pos.z)}`;
+  }
 
   function setupPlaceTransition() {
     targets.blockFace = new Vec3(0, 1, 0);
@@ -261,6 +268,9 @@ function createInnerPlaceState(bot: Bot, targets: Targets): any {
       return !blockPlacedCorrectly();
     },
     onTransition: () => {
+      if (targets.placePosition) {
+        failedPositions.add(posKey(targets.placePosition));
+      }
       const placedBlock = targets.placedPosition ? bot.blockAt(targets.placedPosition, false) : null;
       const refBlock = targets.placePosition ? bot.blockAt(targets.placePosition, false) : null;
       const botDist = targets.placePosition ? bot.entity.position.distanceTo(targets.placePosition).toFixed(1) : '?';

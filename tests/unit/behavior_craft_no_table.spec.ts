@@ -83,6 +83,34 @@ describe('unit: behaviorCraftNoTable', () => {
     expect((sm as any).isFinished()).toBe(true);
   });
 
+  test('retry: craft fails once then succeeds on retry', async () => {
+    const bot = makeBot();
+    const counts: Record<string, number> = { stick: 0 };
+    jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation((...args: any[]) => {
+      const name = String(args[1]);
+      return counts[name] || 0;
+    });
+    let callCount = 0;
+    (bot.craft as jest.Mock).mockImplementation(async () => {
+      callCount++;
+      if (callCount === 1) {
+        throw new Error('inventory desync');
+      }
+      counts.stick += 4;
+    });
+
+    const targets = { itemName: 'stick', amount: 4 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      await runWithFakeClock(bot, sm, { maxMs: 3000, stepMs: 50, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    expect(bot.craft).toHaveBeenCalledTimes(2);
+    expect(counts.stick).toBe(4);
+  });
+
   test('consecutive crafts: does not short-circuit when item already in inventory', async () => {
     // Simulates the bug: planner generates two "craft 4 planks" steps.
     // Step 1 produces 4 planks. Step 2 must produce 4 MORE, not exit early.

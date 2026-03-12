@@ -37,7 +37,7 @@ export class BehaviorSmartMoveTo {
   private checkInterval: NodeJS.Timeout | null = null;
   private allowUnstick: boolean = true;
   private unstickAttempts: number = 0;
-  private readonly MAX_UNSTICK_ATTEMPTS = 3;
+  private readonly MAX_UNSTICK_ATTEMPTS = 5;
   private _gaveUp: boolean = false;
   private _pathfindingSettled: boolean = false;
   private _enteredAt: number = 0;
@@ -307,14 +307,16 @@ export class BehaviorSmartMoveTo {
     this.unstickAttempts++;
     const currentPos = this.bot.entity.position;
     const randomAngle = Math.random() * 2 * Math.PI;
-    const unstickDistance = 5;
+    const unstickDistance = 2 * this.unstickAttempts;
 
     const offsetX = unstickDistance * Math.cos(randomAngle);
     const offsetZ = unstickDistance * Math.sin(randomAngle);
 
+    const offsetY = this.unstickAttempts >= 3 ? 4 : 0;
+
     this.unstickTarget = {
       x: currentPos.x + offsetX,
-      y: currentPos.y,
+      y: currentPos.y + offsetY,
       z: currentPos.z + offsetZ
     };
 

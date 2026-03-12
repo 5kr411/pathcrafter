@@ -506,7 +506,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   let lastBreakPosition: Vec3Like | null = null;
   let dropsCollectedThisCycle = 0;
   let targetCountBeforeFollow = 0;
+  let failedFollowAttempts = 0;
+  let reachedDropTime: number | null = null;
   const MAX_DROPS_PER_CYCLE = 8;
+  const MAX_FOLLOW_DROP_TRIES = 8;
+  const PICKUP_GRACE_MS = 300;
   const DROP_COLLECT_RADIUS = 6;
 
   // Air-mine circuit breaker: if we detected air at the mine position, skip the
@@ -572,6 +576,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => targets.entity !== null,
     onTransition: () => {
       goToBlockStartTime = Date.now();
+      reachedDropTime = null;
       targetCountBeforeFollow = getItemCountInInventory(bot, targets.itemName);
       try {
         const pos = targets.entity && targets.entity.position;
@@ -614,13 +619,27 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  // Helper to check if we reached the drop
+  // Helper to check if we reached the drop.
+  // Requires a grace period after first reaching pickup distance so the server
+  // has time to process the item pickup and send the inventory update packet.
   const reachedDrop = () => {
     const dropTimeouts = getDropFollowTimeoutMs();
     const isValuable = isValuableBlock(targets.blockName);
     const timeout = isValuable ? dropTimeouts.valuable : dropTimeouts.common;
     const timeElapsed = Date.now() - goToBlockStartTime;
-    return goToDrop.distanceToTarget() <= 0.75 || timeElapsed > timeout;
+
+    if (timeElapsed > timeout) return true;
+
+    if (goToDrop.distanceToTarget() <= 0.75) {
+      if (!reachedDropTime) {
+        reachedDropTime = Date.now();
+      }
+      return Date.now() - reachedDropTime >= PICKUP_GRACE_MS;
+    }
+
+    // Moved away from drop — reset grace timer
+    reachedDropTime = null;
+    return false;
   };
 
   // Helper to check if target item count increased after following
@@ -641,6 +660,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       dropsCollectedThisCycle++;
+      failedFollowAttempts = 0;
+      wanderCount = 0; // Reset on successful collection — don't bail early on long runs
       const currentCount = getItemCountInInventory(bot, targets.itemName);
       logger.info(`go to drop -> find block (target increased ${targetCountBeforeFollow} -> ${currentCount}, ${dropsCollectedThisCycle} drops this cycle)`);
       lastBreakPosition = null;
@@ -657,14 +678,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       if (!reachedDrop()) return false;
       if (collectedCount() >= targets.amount) return false;
       if (targetItemIncreased()) return false; // Don't collect more if we got target
-      
-      // Check if we should collect more drops this cycle
-      return dropsCollectedThisCycle < MAX_DROPS_PER_CYCLE;
+
+      // Check if we should collect more drops this cycle and haven't hit cumulative bailout
+      return dropsCollectedThisCycle < MAX_DROPS_PER_CYCLE && failedFollowAttempts < MAX_FOLLOW_DROP_TRIES;
     },
     onTransition: () => {
       dropsCollectedThisCycle++;
+      failedFollowAttempts++;
       targets.entity = null; // Clear entity so findDrop searches again
-      logger.debug(`go to drop -> find more drops (${dropsCollectedThisCycle}/${MAX_DROPS_PER_CYCLE} this cycle, target didn't increase)`);
+      logger.debug(`go to drop -> find more drops (${dropsCollectedThisCycle}/${MAX_DROPS_PER_CYCLE} this cycle, ${failedFollowAttempts}/${MAX_FOLLOW_DROP_TRIES} cumulative, target didn't increase)`);
     }
   });
 
@@ -676,12 +698,21 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       if (!reachedDrop()) return false;
       if (collectedCount() >= targets.amount) return false;
       if (targetItemIncreased()) return false; // Handled by goToDropToFindBlockGotTarget
-      
-      // Only go to find block if we've collected enough drops this cycle
-      return dropsCollectedThisCycle >= MAX_DROPS_PER_CYCLE;
+
+      // Fire if we've exhausted this cycle's drops OR hit the cumulative bailout
+      return dropsCollectedThisCycle >= MAX_DROPS_PER_CYCLE || failedFollowAttempts >= MAX_FOLLOW_DROP_TRIES;
     },
     onTransition: () => {
-      logger.info(`go to drop -> find block (collected ${dropsCollectedThisCycle} drops this cycle, target didn't drop)`);
+      if (failedFollowAttempts >= MAX_FOLLOW_DROP_TRIES) {
+        const pos = lastBreakPosition || targets.blockPosition;
+        if (pos && findBlock && typeof findBlock.addExcludedPosition === 'function') {
+          findBlock.addExcludedPosition(pos);
+        }
+        logger.warn(`go to drop -> find block (bailing after ${failedFollowAttempts} failed drop follows, excluded position (${pos?.x}, ${pos?.y}, ${pos?.z}))`);
+        failedFollowAttempts = 0;
+      } else {
+        logger.info(`go to drop -> find block (collected ${dropsCollectedThisCycle} drops this cycle, target didn't drop)`);
+      }
       logger.info(`Blocks collected: ${collectedCount()}/${targets.amount} ${targets.itemName}`);
       lastBreakPosition = null;
       dropsCollectedThisCycle = 0;
@@ -691,11 +722,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const goToDropToExit = new StateTransition({
     parent: goToDrop,
     child: exit,
-    name: 'BehaviorCollectBlock: go to drop -> exit',
+    name: 'BehaviorCollectBlock: go to drop -> exit (target met)',
     shouldTransition: () => {
       const timeElapsed = Date.now() - goToBlockStartTime;
-      return (goToDrop.distanceToTarget() <= 0.75 && timeElapsed > 1000) ||
-        (collectedCount() >= targets.amount && timeElapsed > 1000);
+      return collectedCount() >= targets.amount && timeElapsed > 1000;
     },
     onTransition: () => {
       logger.info(
@@ -734,6 +764,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   enter.onStateEntered = () => {
     resetBaseline();
     wanderCount = 0;
+    failedFollowAttempts = 0;
   };
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);

@@ -166,7 +166,15 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
 
       logger.info(`BehaviorCraftNoTable: Attempting to craft ${timesToCraft} times`);
 
-      await bot.craft(recipe, timesToCraft, null);
+      try {
+        await bot.craft(recipe, timesToCraft, null);
+      } catch (craftErr) {
+        const errMsg = craftErr instanceof Error ? craftErr.message : String(craftErr);
+        logger.warn(`BehaviorCraftNoTable: craft failed (${errMsg}), retrying once`);
+        await clearCraftingSlots(bot);
+        await new Promise(r => setTimeout(r, 100));
+        await bot.craft(recipe, timesToCraft, null);
+      }
       // Wait a tick for server inventory sync to avoid desync from rapid crafting
       await new Promise(r => setTimeout(r, 50));
 
@@ -182,7 +190,8 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
 
       return newCount >= targetCount;
     } catch (err) {
-      logger.error(`BehaviorCraftNoTable: Error crafting ${itemName}:`, err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logger.error(`BehaviorCraftNoTable: Error crafting ${itemName}: ${errMsg}`);
       await clearCraftingSlots(bot);
       return false;
     }

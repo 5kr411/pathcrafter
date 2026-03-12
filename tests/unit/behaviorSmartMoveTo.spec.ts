@@ -164,19 +164,19 @@ describe('BehaviorSmartMoveTo', () => {
         expect.stringContaining('Moving to unstick position')
       );
 
-      // Still stuck while unsticking → unstick attempt 2
+      // Still stuck while unsticking → unstick attempts 2-5
       triggerStuck();
       expect(logger.warn).toHaveBeenCalledWith(
         expect.stringContaining('Still stuck while unsticking')
       );
-
-      // Still stuck while unsticking → unstick attempt 3
+      triggerStuck();
+      triggerStuck();
       triggerStuck();
 
-      // Still stuck → should give up (3 attempts exhausted)
+      // Still stuck → should give up (5 attempts exhausted)
       triggerStuck();
       expect(logger.warn).toHaveBeenCalledWith(
-        expect.stringContaining('Gave up after 3 unstick attempts')
+        expect.stringContaining('Gave up after 5 unstick attempts')
       );
     });
 
@@ -186,10 +186,12 @@ describe('BehaviorSmartMoveTo', () => {
       // Even if moveTo says not finished, gaveUp should override
       mockMoveTo!.setFinished(false);
 
-      // Trigger stuck + 3 failed unstick attempts + final give-up
+      // Trigger stuck + 5 failed unstick attempts + final give-up
       triggerStuck(); // stuck → attempt 1
       triggerStuck(); // still stuck → attempt 2
       triggerStuck(); // still stuck → attempt 3
+      triggerStuck(); // still stuck → attempt 4
+      triggerStuck(); // still stuck → attempt 5
       triggerStuck(); // still stuck → gave up
 
       expect(behavior.isFinished()).toBe(true);
