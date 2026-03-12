@@ -93,17 +93,28 @@ describe('TargetExecutor wander on retry', () => {
     expect(targetExecutor['failureHandled']).toBe(true);
   });
 
-  it('beginWander creates a wander behavior with 2x max snapshot radius', () => {
+  it('beginWander uses exponential distance based on retry count', () => {
     const targets = [{ item: 'diamond', count: 5 }];
     targetExecutor.setTargets(targets);
     targetExecutor['running'] = true;
 
+    // retry 1 -> 16, retry 2 -> 32, retry 3 -> 64, retry 4 -> 128, retry 5 -> 256
+    targetExecutor['targetRetryCount'].set(0, 1);
     targetExecutor['beginWander']();
+    expect(targetExecutor['wanderBehavior']!.distance).toBe(16);
+    targetExecutor['cleanupWander']();
 
-    expect(targetExecutor['wanderBehavior']).not.toBeNull();
+    targetExecutor['targetRetryCount'].set(0, 3);
+    targetExecutor['beginWander']();
     expect(targetExecutor['wanderBehavior']!.distance).toBe(64);
+    targetExecutor['cleanupWander']();
+
+    targetExecutor['targetRetryCount'].set(0, 5);
+    targetExecutor['beginWander']();
+    expect(targetExecutor['wanderBehavior']!.distance).toBe(256);
+    targetExecutor['cleanupWander']();
+
     expect(targetExecutor['wanderDone']).toBe(false);
-    expect(chatMessages.some(msg => msg.includes('wandering 64 blocks'))).toBe(true);
   });
 
   it('updateWander sets wanderDone and chats when behavior finishes', () => {

@@ -784,17 +784,15 @@ export class TargetExecutor implements StateBehavior {
   }
 
   private getWanderDistance(): number {
-    const radii = this.config.snapshotRadii;
-    const maxRadius = Array.isArray(radii) && radii.length > 0
-      ? Math.max(...radii)
-      : 128;
-    return maxRadius * 2;
+    const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 1;
+    return 16 * Math.pow(2, retryCount - 1);
   }
 
   beginWander(): void {
     this.wanderDone = false;
     const distance = this.getWanderDistance();
-    logInfo(`Collector: wandering ${distance} blocks before retry`);
+    const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 1;
+    logInfo(`Collector: wandering ${distance} blocks before retry (attempt ${retryCount}/${MAX_RETRIES})`);
     this.safeChat(`wandering ${distance} blocks before retry`);
     this.wanderBehavior = new BehaviorWander(this.bot, distance);
     this.wanderBehavior.onStateEntered();
