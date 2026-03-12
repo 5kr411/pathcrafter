@@ -18,7 +18,7 @@ interface FindBlocksOptions {
  * Non-blocking replacement for bot.findBlocks().
  *
  * Iterates block positions with bot.blockAt(), yielding to the event loop
- * via setImmediate every ~50K checks to prevent keepalive timeouts.
+ * via setImmediate every ~10K checks to prevent keepalive timeouts.
  *
  * Returns matching positions sorted nearest-first, limited to `count`.
  */
@@ -64,7 +64,7 @@ export async function findBlocksNonBlocking(
 
   const results: { pos: Vec3; d2: number }[] = [];
   let blocksScanned = 0;
-  const YIELD_EVERY = 50000;
+  const YIELD_EVERY = 10000;
   const startTime = Date.now();
 
   for (let x = xMin; x <= xMax; x++) {

@@ -45,6 +45,29 @@ bot.loadPlugin(require('mineflayer-tool').plugin);
 bot.once('login', () => {
   installExplosionSanitizer(bot);
   installPacketErrorSuppressor(bot);
+
+  // Keepalive monitoring — track round-trip to detect silent drops
+  let lastKeepaliveReceived = Date.now();
+  let keepaliveCount = 0;
+
+  bot._client.on('keep_alive', () => {
+    const now = Date.now();
+    const gap = now - lastKeepaliveReceived;
+    lastKeepaliveReceived = now;
+    keepaliveCount++;
+    if (gap > 10000) {
+      logger.warn(`Keepalive: received after ${gap}ms gap (expected ~4s), count=${keepaliveCount}`);
+    } else {
+      logger.debug(`Keepalive: received, gap=${gap}ms, count=${keepaliveCount}`);
+    }
+
+    // Check if the serializer can actually write the response
+    const writable = bot._client.serializer?.writable;
+    if (!writable) {
+      logger.error(`Keepalive: serializer NOT writable — response will be silently dropped! count=${keepaliveCount}`);
+    }
+
+  });
 });
 
 bot.once('spawn', () => {
