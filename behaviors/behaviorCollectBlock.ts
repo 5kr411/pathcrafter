@@ -190,16 +190,22 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
 
   const mineBlock = new BehaviorMineBlock(bot, targets);
 
-  // Add detailed logging to MineBlock with timing
+  // Add detailed logging to MineBlock with timing + air-mine detection
   let mineStartTime: number | null = null;
+  let minedAir = false;
   const originalMineOnStateEntered =
     typeof mineBlock.onStateEntered === 'function' ? mineBlock.onStateEntered.bind(mineBlock) : null;
   mineBlock.onStateEntered = function () {
     mineStartTime = Date.now();
+    minedAir = false;
     const pos = targets.position;
     try {
       const block = pos ? bot.blockAt?.(pos) : null;
       const blockName = block?.name || targets.blockName || 'unknown';
+      if (!block || block.name === 'air') {
+        minedAir = true;
+        logger.warn(`BehaviorCollectBlock: mined air at (${pos?.x}, ${pos?.y}, ${pos?.z}), will force-exclude`);
+      }
       logger.debug(`MineBlock: mining ${blockName} at (${pos?.x}, ${pos?.y}, ${pos?.z})`);
     } catch (_) {
       logger.debug(`MineBlock: mining ${targets.blockName || 'unknown block'}`);
@@ -503,6 +509,27 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const MAX_DROPS_PER_CYCLE = 8;
   const DROP_COLLECT_RADIUS = 6;
 
+  // Air-mine circuit breaker: if we detected air at the mine position, skip the
+  // entire drop cycle and go straight back to findBlock with the position excluded.
+  // This prevents the infinite loop where stale world state causes findBlocksNonBlocking
+  // to return ghost blocks that are actually air.
+  const mineBlockToFindBlockAir = new StateTransition({
+    parent: mineBlock,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: mine block -> find block (mined air)',
+    shouldTransition: () => minedAir && mineBlock.isFinished,
+    onTransition: () => {
+      const pos = targets.blockPosition || targets.position;
+      if (pos && findBlock && typeof findBlock.addExcludedPosition === 'function') {
+        findBlock.addExcludedPosition(pos);
+      }
+      logger.warn(`BehaviorCollectBlock: air-mine circuit breaker — force-excluded (${pos?.x}, ${pos?.y}, ${pos?.z})`);
+      minedAir = false;
+      lastBreakPosition = null;
+      dropsCollectedThisCycle = 0;
+    }
+  });
+
   const mineBlockToFindDrop = new StateTransition({
     parent: mineBlock,
     child: findDrop,
@@ -690,6 +717,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     goToBlockToMicroWander,
     microWanderToFindBlock,
     goToBlockToExitPathfail,
+    mineBlockToFindBlockAir,
     mineBlockToFindDrop,
     findDropToGoToDrop,
     findDropToExit,

@@ -142,21 +142,23 @@ class BehaviorSafeFindBlock {
     }
   }
 
+  // BUG HISTORY: This method was previously wrapped entirely in try/catch which
+  // silently swallowed all errors. In a 10-bot swarm (2026-03-11), the same position
+  // was returned 14,416 times with zero exclusions firing — the count increment or
+  // threshold check was failing silently. The try/catch has been removed from the
+  // critical path so errors surface instead of causing infinite loops.
   private _recordReturn(pos: Vec3): void {
-    try {
-      const key = posKey(pos);
-      const next = (this._returnCounts.get(key) || 0) + 1;
-      this._returnCounts.set(key, next);
-      if (next >= this._countThreshold && !this._excluded.has(key)) {
-        this._excluded.add(key);
-        try {
-          logger.info('BehaviorSafeFindBlock: excluding position after repeats', pos);
-        } catch (_) {
-          // Ignore logging errors
-        }
+    const key = posKey(pos);
+    const next = (this._returnCounts.get(key) || 0) + 1;
+    this._returnCounts.set(key, next);
+    logger.debug(`_recordReturn: key=${key}, count=${next}, threshold=${this._countThreshold}`);
+    if (next >= this._countThreshold && !this._excluded.has(key)) {
+      this._excluded.add(key);
+      try {
+        logger.info(`BehaviorSafeFindBlock: excluding position after ${next} repeats`, pos);
+      } catch (_) {
+        // Only logging is allowed to fail silently
       }
-    } catch (_) {
-      // Ignore errors
     }
   }
 
@@ -215,7 +217,12 @@ class BehaviorSafeFindBlock {
 
         try {
           const block = this.bot.blockAt(p, false);
-          if (!block) continue;
+          if (!block || block.name === 'air') {
+            if (block?.name === 'air') {
+              logger.debug(`_runScan: filtered air block at (${p.x}, ${p.y}, ${p.z}) — stale world state`);
+            }
+            continue;
+          }
           if (typeof this.bot.canDigBlock === 'function' && !this.bot.canDigBlock(block)) continue;
         } catch (_) {
           continue;
