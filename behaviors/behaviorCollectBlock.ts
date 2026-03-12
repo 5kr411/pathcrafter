@@ -429,6 +429,20 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         return false;
       }
 
+      // Pre-mine validation: proactively exclude air blocks
+      const pos = targets.blockPosition || targets.position;
+      if (pos) {
+        try {
+          const block = bot.blockAt?.(pos);
+          if (!block || block.name === 'air') {
+            logger.warn(`BehaviorCollectBlock: pre-mine check — block at (${pos.x}, ${pos.y}, ${pos.z}) is ${block?.name ?? 'null'}, pre-excluding`);
+            if (findBlock && typeof findBlock.addAirExcludedPosition === 'function') {
+              findBlock.addAirExcludedPosition(pos);
+            }
+          }
+        } catch (_) {}
+      }
+
       logger.info(`BehaviorCollectBlock: reached target block at distance ${distance.toFixed(2)}, proceeding to mine`);
       return true;
     },
@@ -524,8 +538,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => minedAir && mineBlock.isFinished,
     onTransition: () => {
       const pos = targets.blockPosition || targets.position;
-      if (pos && findBlock && typeof findBlock.addExcludedPosition === 'function') {
-        findBlock.addExcludedPosition(pos);
+      if (pos && findBlock && typeof findBlock.addAirExcludedPosition === 'function') {
+        findBlock.addAirExcludedPosition(pos);
       }
       logger.warn(`BehaviorCollectBlock: air-mine circuit breaker — force-excluded (${pos?.x}, ${pos?.y}, ${pos?.z})`);
       minedAir = false;

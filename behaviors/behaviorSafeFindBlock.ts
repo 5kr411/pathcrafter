@@ -46,7 +46,8 @@ class BehaviorSafeFindBlock {
   preventXRay: boolean;
 
   private _scanning: boolean;
-  private _excluded: Set<string>;
+  private _airExcluded: Set<string>;   // permanent — survives clearExclusions()
+  private _pathExcluded: Set<string>;  // clearable — pathfinding/return-count exclusions
   private _returnCounts: Map<string, number>;
   private _countThreshold: number;
   private _candidateList: Vec3[];
@@ -64,7 +65,8 @@ class BehaviorSafeFindBlock {
 
     this._scanning = false;
 
-    this._excluded = new Set<string>();
+    this._airExcluded = new Set<string>();
+    this._pathExcluded = new Set<string>();
     this._returnCounts = new Map<string, number>();
     this._countThreshold = Math.max(
       1,
@@ -75,7 +77,13 @@ class BehaviorSafeFindBlock {
   }
 
   clearExclusions(): void {
-    this._excluded.clear();
+    this._pathExcluded.clear();
+    this._returnCounts.clear();
+  }
+
+  clearAllExclusions(): void {
+    this._airExcluded.clear();
+    this._pathExcluded.clear();
     this._returnCounts.clear();
   }
 
@@ -83,7 +91,17 @@ class BehaviorSafeFindBlock {
     try {
       if (!pos) return;
       const key = posKey(pos);
-      this._excluded.add(key);
+      this._pathExcluded.add(key);
+    } catch (_) {
+      // Ignore errors
+    }
+  }
+
+  addAirExcludedPosition(pos: Vec3 | null | undefined): void {
+    try {
+      if (!pos) return;
+      const key = posKey(pos);
+      this._airExcluded.add(key);
     } catch (_) {
       // Ignore errors
     }
@@ -92,7 +110,8 @@ class BehaviorSafeFindBlock {
   isExcluded(pos: Vec3 | null | undefined): boolean {
     try {
       const key = posKey(pos);
-      if (this._excluded.has(key)) return true;
+      if (this._airExcluded.has(key)) return true;
+      if (this._pathExcluded.has(key)) return true;
       const cnt = this._returnCounts.get(key) || 0;
       return cnt >= this._countThreshold;
     } catch (_) {
@@ -157,8 +176,8 @@ class BehaviorSafeFindBlock {
     const next = (this._returnCounts.get(key) || 0) + 1;
     this._returnCounts.set(key, next);
     logger.debug(`_recordReturn: key=${key}, count=${next}, threshold=${this._countThreshold}`);
-    if (next >= this._countThreshold && !this._excluded.has(key)) {
-      this._excluded.add(key);
+    if (next >= this._countThreshold && !this._pathExcluded.has(key)) {
+      this._pathExcluded.add(key);
       try {
         logger.info(`BehaviorSafeFindBlock: excluding position after ${next} repeats`, pos);
       } catch (_) {
@@ -168,6 +187,11 @@ class BehaviorSafeFindBlock {
   }
 
   onStateEntered(): void {
+    // Clear stale position from previous state — prevents the state machine from
+    // immediately firing findBlockToGoToBlock with an old (possibly air) position
+    // before a fresh scan has completed.
+    this.targets.position = undefined;
+
     // If we have remaining candidates from a previous scan, rotate instead of rescanning
     if (this.hasMoreCandidates()) {
       this._scanning = true;
@@ -299,14 +323,29 @@ class BehaviorSafeFindBlock {
   }
 
   tryNextCandidate(): boolean {
-    if (this._candidateIndex >= this._candidateList.length) {
-      return false;
+    while (this._candidateIndex < this._candidateList.length) {
+      const next = this._candidateList[this._candidateIndex];
+      this._candidateIndex++;
+
+      // Skip excluded positions
+      if (this.isExcluded(next)) continue;
+
+      // Re-validate block at this position — world state may have changed
+      try {
+        const block = this.bot.blockAt(next, false);
+        if (!block || block.name === 'air') {
+          this.addAirExcludedPosition(next);
+          continue;
+        }
+      } catch (_) {
+        continue;
+      }
+
+      this.targets.position = next;
+      this._recordReturn(next);
+      return true;
     }
-    const next = this._candidateList[this._candidateIndex];
-    this._candidateIndex++;
-    this.targets.position = next;
-    this._recordReturn(next);
-    return true;
+    return false;
   }
 
   private _distanceSq(pos: Vec3): number {
