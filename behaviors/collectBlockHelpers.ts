@@ -51,8 +51,9 @@ export function isDropEntityCandidate(params: {
   mcData?: MinecraftDataLike;
   dropCollectRadius: number;
   botRange: number;
+  targetItemName?: string | null;
 }): { ok: boolean; dropInfo: DroppedItemInfo; distToTarget: number } {
-  const { entity, botPos, targetPos, mcData, dropCollectRadius, botRange } = params;
+  const { entity, botPos, targetPos, mcData, dropCollectRadius, botRange, targetItemName } = params;
 
   if (!botPos || !entity?.position?.distanceTo) {
     return { ok: false, dropInfo: { name: null, count: 0 }, distToTarget: Number.POSITIVE_INFINITY };
@@ -61,6 +62,11 @@ export function isDropEntityCandidate(params: {
   const dropInfo = getDroppedItemInfo(entity, mcData);
   const isItem = entity.displayName === 'Item' || entity.name === 'item' || !!dropInfo.name;
   if (!isItem) {
+    return { ok: false, dropInfo, distToTarget: Number.POSITIVE_INFINITY };
+  }
+
+  // If we know the target item and the drop name, skip non-matching drops
+  if (targetItemName && dropInfo.name && dropInfo.name !== targetItemName) {
     return { ok: false, dropInfo, distToTarget: Number.POSITIVE_INFINITY };
   }
 

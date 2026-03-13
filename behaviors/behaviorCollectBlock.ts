@@ -23,6 +23,7 @@ import createSafeFindBlockState from './behaviorSafeFindBlock';
 import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 import { getDropFollowTimeoutMs } from '../bots/collector/config';
 import { getHarvestToolNames, inventoryItemsToMap, isDropEntityCandidate } from './collectBlockHelpers';
+import { EntitySpawnTracker } from '../utils/entitySpawnTracker';
 
 const minecraftData = require('minecraft-data');
 
@@ -165,8 +166,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
     if (Number.isFinite(r) && r > 0) {
       findBlock.maxDistance = r;
+      if (bot.pathfinder) bot.pathfinder.searchRadius = r;
     } else {
       findBlock.maxDistance = 64;
+      if (bot.pathfinder) bot.pathfinder.searchRadius = 64;
     }
   } catch (_) {
     findBlock.maxDistance = 64;
@@ -197,6 +200,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     typeof mineBlock.onStateEntered === 'function' ? mineBlock.onStateEntered.bind(mineBlock) : null;
   mineBlock.onStateEntered = function () {
     mineStartTime = Date.now();
+    lastMineStartTime = mineStartTime;
     minedAir = false;
     const pos = targets.position;
     try {
@@ -232,18 +236,25 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       targetPos,
       mcData,
       dropCollectRadius: DROP_COLLECT_RADIUS,
-      botRange: 12
+      botRange: 12,
+      targetItemName: targets.itemName
     });
 
-    if (ok) {
-      logger.debug(
-        `Found drop near mined block (${targetPos?.x},${targetPos?.y},${targetPos?.z}): metaName=${dropInfo.name}, count=${dropInfo.count}, distToMine=${distToTarget.toFixed(
-          2
-        )}`
-      );
-      return true;
+    if (!ok) return false;
+
+    // Reject drops that existed before we started mining — likely from another bot
+    if (lastMineStartTime > 0 && entity.id != null) {
+      if (!spawnTracker.spawnedAfter(entity.id, lastMineStartTime)) {
+        return false;
+      }
     }
-    return false;
+
+    logger.debug(
+      `Found drop near mined block (${targetPos?.x},${targetPos?.y},${targetPos?.z}): metaName=${dropInfo.name}, count=${dropInfo.count}, distToMine=${distToTarget.toFixed(
+        2
+      )}`
+    );
+    return true;
   });
 
   // Add logging to GetClosestEntity
@@ -310,7 +321,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         // Keep search radius in sync with snapshot radius on each entry
         try {
           const r = Number(getLastSnapshotRadius && getLastSnapshotRadius());
-          if (Number.isFinite(r) && r > 0) findBlock.maxDistance = r;
+          if (Number.isFinite(r) && r > 0) {
+            findBlock.maxDistance = r;
+            if (bot.pathfinder) bot.pathfinder.searchRadius = r;
+          }
         } catch (_) {}
         logger.info(`enter -> find block (target=${targets.blockName}#${currentId}, maxDistance=${findBlock.maxDistance})`);
       } catch (_) {
@@ -527,6 +541,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const PICKUP_GRACE_MS = 300;
   const DROP_COLLECT_RADIUS = 6;
 
+  const spawnTracker = new EntitySpawnTracker();
+  let lastMineStartTime: number = 0;
+
   // Air-mine circuit breaker: if we detected air at the mine position, skip the
   // entire drop cycle and go straight back to findBlock with the position excluded.
   // This prevents the infinite loop where stale world state causes findBlocksNonBlocking
@@ -561,6 +578,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       mineBlockFinishTime = undefined;
+      spawnTracker.prune();
       // Save break position for collecting nearby drops
       lastBreakPosition = targets.blockPosition ? { ...targets.blockPosition } : null;
       dropsCollectedThisCycle = 0;
@@ -718,11 +736,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       if (failedFollowAttempts >= MAX_FOLLOW_DROP_TRIES) {
-        const pos = lastBreakPosition || targets.blockPosition;
-        if (pos && findBlock && typeof findBlock.addExcludedPosition === 'function') {
-          findBlock.addExcludedPosition(pos);
-        }
-        logger.warn(`go to drop -> find block (bailing after ${failedFollowAttempts} failed drop follows, excluded position (${pos?.x}, ${pos?.y}, ${pos?.z}))`);
+        // Don't exclude break position for drop follow failures — the mining
+        // succeeded, the drops were just grabbed by another bot or despawned.
+        // Excluding the position would prevent future mining in a valid area.
+        logger.warn(`go to drop -> find block (bailing after ${failedFollowAttempts} failed drop follows at (${(lastBreakPosition || targets.blockPosition)?.x}, ${(lastBreakPosition || targets.blockPosition)?.y}, ${(lastBreakPosition || targets.blockPosition)?.z}))`);
         failedFollowAttempts = 0;
       } else {
         logger.info(`go to drop -> find block (collected ${dropsCollectedThisCycle} drops this cycle, target didn't drop)`);
@@ -779,6 +796,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     resetBaseline();
     wanderCount = 0;
     failedFollowAttempts = 0;
+    lastMineStartTime = 0;
+    spawnTracker.attach(bot);
   };
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
@@ -797,6 +816,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   stateMachine.onStateExited = function() {
     logger.debug('CollectBlock: cleaning up on state exit');
     missingToolInfo = null;
+
+    spawnTracker.detach();
     // NOTE: Do NOT clear lastFailureReason here - MineAnyOf needs to read it
     // in its onTransition. It gets reset in enterToFindBlock.onTransition instead.
 
