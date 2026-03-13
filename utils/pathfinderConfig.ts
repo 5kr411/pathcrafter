@@ -25,6 +25,7 @@ export interface PathfinderPrecisionConfig {
   dontBreakDripstone?: boolean;
   placeCost?: number;
   breakCost?: number;
+  thinkTimeout?: number;
   exclusionAreasStep?: Array<(block: any) => number>;
   exclusionAreasBreak?: Array<(block: any) => number>;
   exclusionAreasPlace?: Array<(block: any) => number>;
@@ -33,20 +34,21 @@ export interface PathfinderPrecisionConfig {
 export const PRECISE_MOVEMENTS_CONFIG: PathfinderPrecisionConfig = {
   searchRadius: 80,
   allow1by1towers: true,
-  allowFreeMotion: false,
-  allowParkour: false,
+  allowFreeMotion: true,
+  allowParkour: true,
   allowSprinting: true,
   canDig: true,
   canOpenDoors: true,
   dontCreateFlow: true,
   dontMineUnderFallingBlock: true,
   maxDropDown: 4,
-  infiniteLiquidDropdownDistance: false,
-  avoidWater: true,
+  infiniteLiquidDropdownDistance: true,
+  avoidWater: false,
   avoidLava: true,
   dontBreakDripstone: true,
   placeCost: 1,
-  breakCost: 1
+  breakCost: 1,
+  thinkTimeout: 15000
 };
 
 export function configurePrecisePathfinder(
@@ -195,6 +197,10 @@ export function configurePrecisePathfinder(
     
     if (config.searchRadius !== undefined) {
       bot.pathfinder.searchRadius = config.searchRadius;
+    }
+
+    if (config.thinkTimeout !== undefined) {
+      bot.pathfinder.thinkTimeout = config.thinkTimeout;
     }
   } catch (err) {
     console.error('Failed to configure precise pathfinder:', err);
