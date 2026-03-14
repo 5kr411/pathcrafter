@@ -19,6 +19,7 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getLastSnapshotRadius } from '../utils/context';
 import createSafeFindBlockState from './behaviorSafeFindBlock';
+import createClearObstructionsState from './behaviorClearObstructions';
 
 import { ExecutionContext, signalToolIssue } from '../bots/collector/execution_context';
 import { getDropFollowTimeoutMs } from '../bots/collector/config';
@@ -192,6 +193,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   });
 
   const mineBlock = new BehaviorMineBlock(bot, targets);
+  const clearObstructions = createClearObstructionsState(bot, targets);
 
   // Add detailed logging to MineBlock with timing + air-mine detection
   let mineStartTime: number | null = null;
@@ -429,10 +431,10 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     }
   });
 
-  const goToBlockToMine = new StateTransition({
+  const goToBlockToClear = new StateTransition({
     parent: goToBlock,
-    child: mineBlock,
-    name: 'BehaviorCollectBlock: go to block -> mine block',
+    child: clearObstructions,
+    name: 'BehaviorCollectBlock: go to block -> clear obstructions',
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
@@ -463,7 +465,38 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       targets.position = targets.blockPosition;
       wanderCount = 0; // Reset on successful reach
-      logger.debug('go to block -> mine block');
+      logger.debug('go to block -> clear obstructions');
+    }
+  });
+
+  const clearToMine = new StateTransition({
+    parent: clearObstructions,
+    child: mineBlock,
+    name: 'BehaviorCollectBlock: clear obstructions -> mine block',
+    shouldTransition: () => {
+      const finished = typeof clearObstructions.isFinished === 'function' ? clearObstructions.isFinished() : false;
+      return finished && clearObstructions.exitReason === 'clear';
+    },
+    onTransition: () => {
+      targets.position = targets.blockPosition;
+      logger.info('clear obstructions -> mine block (line of sight clear)');
+    }
+  });
+
+  const clearToFindBlock = new StateTransition({
+    parent: clearObstructions,
+    child: findBlock,
+    name: 'BehaviorCollectBlock: clear obstructions -> find block (failed)',
+    shouldTransition: () => {
+      const finished = typeof clearObstructions.isFinished === 'function' ? clearObstructions.isFinished() : false;
+      return finished && clearObstructions.exitReason === 'failed';
+    },
+    onTransition: () => {
+      const pos = targets.blockPosition;
+      if (pos && findBlock && typeof findBlock.addExcludedPosition === 'function') {
+        findBlock.addExcludedPosition(pos);
+      }
+      logger.warn(`BehaviorCollectBlock: could not clear obstructions to ${targets.blockName} at (${pos?.x}, ${pos?.y}, ${pos?.z}), excluding position`);
     }
   });
 
@@ -773,7 +806,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     findBlockToExit,
     findBlockToGoToBlock,
     findBlockToExitMissingTool,
-    goToBlockToMine,
+    goToBlockToClear,
+    clearToMine,
+    clearToFindBlock,
     goToBlockToFindBlockRotate,
     goToBlockToMicroWander,
     microWanderToFindBlock,
@@ -827,6 +862,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         logger.debug('CollectBlock: cleaned up goToBlock');
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up goToBlock: ${err.message}`);
+      }
+    }
+
+    if (clearObstructions && typeof clearObstructions.onStateExited === 'function') {
+      try {
+        clearObstructions.onStateExited();
+        logger.debug('CollectBlock: cleaned up clearObstructions');
+      } catch (err: any) {
+        logger.warn(`CollectBlock: error cleaning up clearObstructions: ${err.message}`);
       }
     }
 
