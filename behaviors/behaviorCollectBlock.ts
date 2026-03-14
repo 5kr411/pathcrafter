@@ -198,6 +198,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   // Add detailed logging to MineBlock with timing + air-mine detection
   let mineStartTime: number | null = null;
   let minedAir = false;
+  let preMineAirDetected = false;
   const originalMineOnStateEntered =
     typeof mineBlock.onStateEntered === 'function' ? mineBlock.onStateEntered.bind(mineBlock) : null;
   mineBlock.onStateEntered = function () {
@@ -389,6 +390,15 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         }
         return false;
       }
+      // Pre-navigation air check: don't commit to walking if block is already gone
+      const block = bot.blockAt?.(targets.position!);
+      if (!block || block.name === 'air') {
+        logger.warn(`BehaviorCollectBlock: pre-navigation air check — block at (${targets.position!.x}, ${targets.position!.y}, ${targets.position!.z}) is ${block?.name ?? 'null'}, skipping`);
+        if (findBlock && typeof findBlock.addAirExcludedPosition === 'function') {
+          findBlock.addAirExcludedPosition(targets.position!);
+        }
+        return false;
+      }
       return true;
     },
     onTransition: () => {
@@ -455,6 +465,8 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
             if (findBlock && typeof findBlock.addAirExcludedPosition === 'function') {
               findBlock.addAirExcludedPosition(pos);
             }
+            preMineAirDetected = true;
+            return false;
           }
         } catch (_) {}
       }
@@ -507,10 +519,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      if (!finished || distance < MINE_REACH_DISTANCE) return false;
+      if (!finished || (distance < MINE_REACH_DISTANCE && !preMineAirDetected)) return false;
       return typeof findBlock.hasMoreCandidates === 'function' && findBlock.hasMoreCandidates();
     },
     onTransition: () => {
+      preMineAirDetected = false;
       const distance = goToBlock.distanceToTarget();
       logger.info(`BehaviorCollectBlock: pathfinding failed for ${targets.blockName}, distance=${distance.toFixed(2)}, trying next candidate`);
     }
@@ -523,11 +536,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      if (!finished || distance < MINE_REACH_DISTANCE) return false;
+      if (!finished || (distance < MINE_REACH_DISTANCE && !preMineAirDetected)) return false;
       const hasMore = typeof findBlock.hasMoreCandidates === 'function' && findBlock.hasMoreCandidates();
       return !hasMore && wanderCount < MAX_WANDERS;
     },
     onTransition: () => {
+      preMineAirDetected = false;
       wanderCount++;
       microWander.distance = Math.min(32, MICRO_WANDER_BASE_DISTANCE + (wanderCount - 1) * 4);
       const distance = goToBlock.distanceToTarget();
@@ -552,11 +566,12 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     shouldTransition: () => {
       const finished = goToBlock.isFinished();
       const distance = goToBlock.distanceToTarget();
-      if (!finished || distance < MINE_REACH_DISTANCE) return false;
+      if (!finished || (distance < MINE_REACH_DISTANCE && !preMineAirDetected)) return false;
       const hasMore = typeof findBlock.hasMoreCandidates === 'function' && findBlock.hasMoreCandidates();
       return !hasMore && wanderCount >= MAX_WANDERS;
     },
     onTransition: () => {
+      preMineAirDetected = false;
       stateMachine.stepSucceeded = false;
       logger.error(`BehaviorCollectBlock: wandered ${wanderCount} times for ${targets.blockName}, giving up`);
       lastFailureReason = 'pathfinding';
