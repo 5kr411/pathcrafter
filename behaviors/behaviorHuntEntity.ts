@@ -51,7 +51,7 @@ interface Targets {
  */
 function createHuntEntityState(bot: Bot, targets: Targets): any {
   const HUNT_TIMEOUT = 60000; // 1 minute
-  const PVP_APPROACH_RANGE = targets.pvpApproachRange ?? 16;
+  const PVP_APPROACH_RANGE = targets.pvpApproachRange ?? 6;
   let huntStartTime = 0;
   let huntTimeoutId: NodeJS.Timeout | null = null;
   let huntTimedOut = false;
@@ -80,7 +80,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   pvpAttackState = new BehaviorPvpAttack(bot, targets, {
     attackRange: targets.attackRange ?? 3.0,
     followRange: targets.followRange ?? 2.0,
-    viewDistance: targets.detectionRange ?? 48,
+    viewDistance: Math.min(targets.detectionRange ?? 48, 128),
     onStopped: (reason) => {
       logger.info(`BehaviorHuntEntity: pvp stopped - reason: ${reason}`);
     }
@@ -175,7 +175,8 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       huntStartTime = Date.now();
       startHuntTimeout();
       setupEntityTracking();
-      logger.info(`BehaviorHuntEntity: entity provided, approaching to ${PVP_APPROACH_RANGE} blocks`);
+      const dist = getDistanceToTarget();
+      logger.info(`BehaviorHuntEntity: entity provided at ${dist.toFixed(1)} blocks, approaching to ${PVP_APPROACH_RANGE} blocks`);
     }
   });
 
@@ -214,7 +215,9 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       setupEntityTracking();
-      logger.info('BehaviorHuntEntity: within approach range, starting pvp attack');
+      const dist = getDistanceToTarget();
+      const approachMs = Date.now() - huntStartTime;
+      logger.info(`BehaviorHuntEntity: within approach range (dist=${dist.toFixed(1)}), starting pvp attack after ${(approachMs / 1000).toFixed(1)}s approach`);
     }
   });
 

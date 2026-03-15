@@ -55,8 +55,8 @@ bot.once('login', () => {
     const gap = now - lastKeepaliveReceived;
     lastKeepaliveReceived = now;
     keepaliveCount++;
-    if (gap > 10000) {
-      logger.warn(`Keepalive: received after ${gap}ms gap (expected ~4s), count=${keepaliveCount}`);
+    if (gap > 25000) {
+      logger.warn(`Keepalive: received after ${gap}ms gap (expected ~15s), count=${keepaliveCount}`);
     } else {
       logger.debug(`Keepalive: received, gap=${gap}ms, count=${keepaliveCount}`);
     }
@@ -145,8 +145,23 @@ bot.once('spawn', () => {
     getTargets: () => executor.getTargets()
   });
 
+  let lastDeathMessage: string | null = null;
+
+  bot.on('message', (jsonMsg: any) => {
+    const text = jsonMsg.toString?.() || '';
+    if (text.includes(bot.username)) {
+      lastDeathMessage = text;
+    }
+  });
+
   bot.on('death', () => {
-    logger.info('Collector: bot died, resetting and retrying all targets');
+    const food = bot.food ?? '?';
+    const health = bot.health ?? '?';
+    const pos = bot.entity?.position;
+    const posStr = pos ? `(${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}, ${pos.z.toFixed(0)})` : '?';
+    const cause = lastDeathMessage || 'unknown';
+    logger.info(`Collector: bot died at ${posStr}, health=${health}, food=${food}, cause="${cause}" — resetting and retrying all targets`);
+    lastDeathMessage = null;
     if (executor.isRunning() || executor.getTargets().length > 0) {
       executor.resetAndRestart();
     }

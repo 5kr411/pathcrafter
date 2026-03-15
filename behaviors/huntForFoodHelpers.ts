@@ -1,5 +1,6 @@
 import { DroppedItemInfo, getDroppedItemInfo, MinecraftDataLike } from '../utils/droppedItems';
 import { HUNTABLE_LAND_ANIMALS } from '../utils/foodConfig';
+const minecraftData = require('minecraft-data');
 
 export interface Vec3Like {
   x: number;
@@ -11,6 +12,26 @@ export interface Vec3Like {
 export interface BotLike {
   entity?: { position?: Vec3Like };
   entities?: Record<string, any>;
+  version?: string;
+}
+
+const babyIndexCache = new Map<string, number | null>();
+
+function getBabyMetadataIndex(entityName: string, version: string | undefined): number | null {
+  if (!version) return null;
+  const key = `${version}:${entityName}`;
+  if (babyIndexCache.has(key)) return babyIndexCache.get(key)!;
+  try {
+    const mcData = minecraftData(version);
+    const entityData = mcData.entitiesByName[entityName];
+    const idx = entityData?.metadataKeys?.indexOf('baby');
+    const result = idx >= 0 ? idx : null;
+    babyIndexCache.set(key, result);
+    return result;
+  } catch {
+    babyIndexCache.set(key, null);
+    return null;
+  }
 }
 
 export interface HuntableAnimal {
@@ -43,6 +64,9 @@ export function findClosestHuntableAnimal(
 
     if (typeof entity.isAlive === 'function' && !entity.isAlive()) continue;
     if (typeof entity.health === 'number' && entity.health <= 0) continue;
+
+    const babyIdx = getBabyMetadataIndex(name, bot.version);
+    if (babyIdx !== null && entity.metadata?.[babyIdx] === true) continue;
 
     const dist = bot.entity.position.distanceTo!(entity.position);
     if (dist < closestDist) {

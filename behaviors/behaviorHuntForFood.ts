@@ -89,7 +89,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
       const name = (entity.name || '').toLowerCase();
       return name === huntedAnimalType;
     },
-    detectionRange: 48,
+    detectionRange: Infinity,
     attackRange: 3.0,
     followRange: 2.0
   };
@@ -221,7 +221,12 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
       return false;
     },
     onTransition: () => {
-      logger.info(`HuntForFood: found ${huntedAnimalType}, preparing weapon before hunting for ${rawMeatItem} -> ${cookedMeatItem}`);
+      const animalPos = huntTargets.entity?.position;
+      const botPos = bot.entity?.position;
+      const dist = (animalPos && botPos && typeof animalPos.distanceTo === 'function')
+        ? animalPos.distanceTo(botPos).toFixed(1)
+        : '?';
+      logger.info(`HuntForFood: found ${huntedAnimalType} at ${dist} blocks, preparing weapon before hunting for ${rawMeatItem} -> ${cookedMeatItem}`);
     }
   });
 
