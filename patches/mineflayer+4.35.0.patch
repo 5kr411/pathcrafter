@@ -1,8 +1,8 @@
 diff --git a/node_modules/mineflayer/lib/plugins/blocks.js b/node_modules/mineflayer/lib/plugins/blocks.js
-index f128f71..8de5da0 100644
+index 4c98d57..01df3e3 100644
 --- a/node_modules/mineflayer/lib/plugins/blocks.js
 +++ b/node_modules/mineflayer/lib/plugins/blocks.js
-@@ -200,6 +200,61 @@ function inject (bot, { version, storageBuilder, hideErrors }) {
+@@ -206,6 +206,61 @@ function inject (bot, { version, storageBuilder, hideErrors }) {
      return blocks
    }
  
