@@ -34,7 +34,8 @@
     "scripts/**/*.ts",
     "workers/**/*.ts",
     "utils/**/*.ts",
-    "tests/**/*.ts"
+    "tests/**/*.ts",
+    "e2e/**/*.ts"
   ],
   "exclude": [
     "node_modules",

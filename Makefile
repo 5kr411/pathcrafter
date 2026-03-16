@@ -1,4 +1,4 @@
-.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food bot-agent bot-agent-config
+.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food bot-agent bot-agent-config e2e
 
 # Build TypeScript sources
 build:
@@ -62,3 +62,7 @@ bot-agent: build
 
 bot-agent-config: build
 	node dist/bots/agent_runner.js --config $(CONFIG)
+
+# E2E: spin up disposable Minecraft server and run bot swarm
+e2e: build
+	node dist/e2e/run_e2e.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(BIOME),--biome $(BIOME)) $(if $(DIFFICULTY),--difficulty $(DIFFICULTY))
