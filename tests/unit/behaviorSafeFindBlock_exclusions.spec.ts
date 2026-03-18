@@ -113,6 +113,53 @@ describe('BehaviorSafeFindBlock exclusion splitting', () => {
     });
   });
 
+  describe('tryNextCandidate after addAirExcludedPosition', () => {
+    it('skips air-excluded positions via the exclusion list', () => {
+      const bot = {
+        ...makeBot(),
+        // All blocks appear solid — exclusion must come from the exclusion list, not blockAt
+        blockAt: () => ({ type: 16, name: 'coal_ore' }),
+      };
+      const targets = makeTargets();
+      const fb = createSafeFindBlock(bot as any, targets);
+
+      const excludedPos = vec3(10, 5, 10);
+      const validPos = vec3(20, 5, 20);
+
+      // Air-exclude the first position before calling tryNextCandidate
+      fb.addAirExcludedPosition(excludedPos as any);
+
+      (fb as any)._candidateList = [excludedPos, validPos];
+      (fb as any)._candidateIndex = 0;
+
+      const result = fb.tryNextCandidate();
+      expect(result).toBe(true);
+      expect(targets.position).toEqual(validPos);
+    });
+
+    it('returns false when all candidates were air-excluded', () => {
+      const bot = {
+        ...makeBot(),
+        blockAt: () => ({ type: 16, name: 'coal_ore' }),
+      };
+      const targets = makeTargets();
+      const fb = createSafeFindBlock(bot as any, targets);
+
+      const pos1 = vec3(10, 5, 10);
+      const pos2 = vec3(20, 5, 20);
+
+      fb.addAirExcludedPosition(pos1 as any);
+      fb.addAirExcludedPosition(pos2 as any);
+
+      (fb as any)._candidateList = [pos1, pos2];
+      (fb as any)._candidateIndex = 0;
+
+      const result = fb.tryNextCandidate();
+      expect(result).toBe(false);
+      expect(targets.position).toBeUndefined();
+    });
+  });
+
   it('return-count threshold still auto-excludes into path set', () => {
     const fb = createSafeFindBlock(makeBot() as any, makeTargets());
     const pos = vec3(10, 5, 10);

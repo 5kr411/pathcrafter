@@ -397,6 +397,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         if (findBlock && typeof findBlock.addAirExcludedPosition === 'function') {
           findBlock.addAirExcludedPosition(targets.position!);
         }
+        // Advance to next candidate; if exhausted, clear position so findBlockToExit fires
+        if (findBlock && typeof findBlock.tryNextCandidate === 'function') {
+          if (!findBlock.tryNextCandidate()) {
+            targets.position = undefined;
+          }
+        } else {
+          targets.position = undefined;
+        }
         return false;
       }
       return true;

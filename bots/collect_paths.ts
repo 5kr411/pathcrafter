@@ -7,6 +7,7 @@ import { ReactiveBehaviorRegistry } from './collector/reactive_behavior_registry
 import { hostileMobBehavior } from './collector/reactive_behaviors/hostile_mob_behavior';
 import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_defense_behavior';
 import { hostileFleeBehavior } from './collector/reactive_behaviors/hostile_flee_behavior';
+import { waterEscapeBehavior } from './collector/reactive_behaviors/water_escape_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
 import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
@@ -117,6 +118,7 @@ bot.once('spawn', () => {
   setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 60 });
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileFleeBehavior);
+  reactiveBehaviorRegistry.register(waterEscapeBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
   reactiveBehaviorRegistry.register(foodCollectionBehavior);
