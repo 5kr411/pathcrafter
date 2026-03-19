@@ -83,6 +83,7 @@ export function beginSnapshotScan(bot: Bot, opts: SnapshotOptions = {}): ScanSta
     includeAir,
     center: { cx, cy, cz },
     maxRadius,
+    innerRadius: Number.isFinite(opts.innerRadius) ? Math.max(0, opts.innerRadius!) : 0,
     yMin,
     yMax,
     r: 0,
@@ -138,6 +139,7 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 40): P
   const { cx, cy, cz } = st.center;
   const R = st.maxRadius;
   const R2 = R * R;
+  const innerR2 = st.innerRadius > 0 ? st.innerRadius * st.innerRadius : 0;
   const xMin = cx - R;
   const xMax = cx + R;
   const yLo = Math.max(st.yMin, cy - R);
@@ -166,6 +168,7 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 40): P
         const dz = z - cz;
         const d2 = dx * dx + dy * dy + dz * dz;
         if (d2 > R2) continue;
+        if (innerR2 > 0 && d2 <= innerR2) continue;
 
         const blk = st.bot.blockAt!(new Vec3(x, y, z), false);
         if (!blk) continue;

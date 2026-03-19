@@ -66,6 +66,8 @@ export interface SnapshotOptions {
   version?: string;
   /** Minecraft data override */
   mcData?: any;
+  /** Inner radius to skip (for ring scanning). Blocks at distance <= innerRadius are skipped. */
+  innerRadius?: number;
 }
 
 /**
@@ -135,6 +137,8 @@ export interface ScanState {
     cz: number;
   };
   maxRadius: number;
+  /** Inner radius — blocks within this distance are skipped (ring scanning) */
+  innerRadius: number;
   yMin: number;
   yMax: number;
   r: number;

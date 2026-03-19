@@ -172,6 +172,8 @@ export async function captureAdaptiveSnapshot(
   pruneCacheEntries(cache, startNow, startPosition, dimension, version);
   const largestRadius = sortedRadii[sortedRadii.length - 1];
   let lastLargestSnapshot: WorldSnapshot | null = null;
+  let previousAgg: Map<string, { count: number; sumDist: number; closest: number }> | null = null;
+  let previousRadius = 0;
 
   for (const radius of sortedRadii) {
     attemptsCount++;
@@ -199,6 +201,8 @@ export async function captureAdaptiveSnapshot(
 
     if (cachedEntry && cachedValid) {
       snapshot = cachedEntry.snapshot;
+      previousAgg = null;
+      previousRadius = 0;
       const ageMs = attemptNow - cachedEntry.capturedAt;
       const moved = Math.sqrt(distanceSq(cachedEntry.position, attemptPosition));
       const attemptTime = Date.now() - attemptStart;
@@ -207,11 +211,27 @@ export async function captureAdaptiveSnapshot(
         onProgress(`Using cached snapshot for radius ${radius}`);
       }
     } else {
-      // Single-pass snapshot capture (fast, no incremental scanning)
-      const scan = beginSnapshotScan(bot, snapOpts);
-      await stepSnapshotScan(scan);
+      // Ring scanning: reuse previous aggregation to skip inner blocks
+      if (previousAgg && previousRadius > 0) {
+        snapOpts.innerRadius = previousRadius;
+      }
 
+      const scan = beginSnapshotScan(bot, snapOpts);
+
+      // Pre-seed with previous aggregation data for ring merge
+      if (previousAgg) {
+        for (const [name, rec] of previousAgg) {
+          scan.blockAgg.set(name, { ...rec });
+        }
+      }
+
+      await stepSnapshotScan(scan);
       snapshot = snapshotFromState(scan);
+
+      // Save aggregation for potential next radius
+      previousAgg = scan.blockAgg;
+      previousRadius = radius;
+
       const attemptTime = Date.now() - attemptStart;
       logger.info(`AdaptiveSnapshot: radius ${radius} captured in ${attemptTime} ms`);
 
