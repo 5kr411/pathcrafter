@@ -195,9 +195,15 @@ describe('Nested pre-emption stack integrity', () => {
     }
     expect(toolReplacementExecutor.isActive()).toBe(false);
 
+    // With conditional resume, the original state machine survives (no tool dep).
+    // Verify the original targetTicks counter continues incrementing.
     const targetTicksDuringReactiveAndTool = targetTicks;
-    bot.emit('physicTick');
-    await flush();
+    for (let i = 0; i < 5; i += 1) {
+      bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
+      await flush();
+    }
+
     expect(targetTicks).toBeGreaterThan(targetTicksDuringReactiveAndTool);
   });
 });

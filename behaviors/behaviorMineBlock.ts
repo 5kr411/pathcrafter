@@ -26,8 +26,8 @@ export class BehaviorMineBlock {
     }
 
     const block = this.bot.blockAt(this.targets.position);
-    
-    if (block == null || !this.bot.canDigBlock(block)) {
+
+    if (block == null || !this.bot.canDigBlock(block) || block.boundingBox === 'empty') {
       this.isFinished = true;
       return;
     }

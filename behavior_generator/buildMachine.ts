@@ -128,7 +128,8 @@ export function buildStateMachineForPath(
   bot: Bot,
   pathSteps: ActionPath,
   onFinished?: (success: boolean) => void,
-  executionContext?: ExecutionContext
+  executionContext?: ExecutionContext,
+  onStepEntered?: (stepIndex: number) => void
 ): any {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
@@ -179,6 +180,9 @@ export function buildStateMachineForPath(
           else whatStr = JSON.stringify(step.what);
         }
         logger.info(`PathBuilder: step ${stepIndex} -> ${step.action}: ${whatStr}${step.count ? ` x${step.count}` : ''}`);
+        if (typeof onStepEntered === 'function') {
+          onStepEntered(stepIndex);
+        }
       }
     }));
 

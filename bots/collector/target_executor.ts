@@ -9,6 +9,7 @@ import { createExecutionContext, ToolIssue } from './execution_context';
 import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
 import { ToolReplacementExecutor } from './tool_replacement_executor';
 import { isDelayReady, resolveTargetFailure } from './targetExecutorHelpers';
+import { stepDependenciesSatisfied } from './plan_validation';
 import { BehaviorWander } from '../../behaviors/behaviorWander';
 
 function logInfo(msg: string, ...args: any[]): void {
@@ -252,6 +253,7 @@ export class TargetExecutor implements StateBehavior {
   private restartReady = false;
   private restartDelayUntil = 0;
   private stopRequested = false;
+  private currentStepIndex = 0;
   private shouldWander = false;
   private wanderDone = false;
   private wanderBehavior: BehaviorWander | null = null;
@@ -466,6 +468,16 @@ export class TargetExecutor implements StateBehavior {
   onStateExited(): void {
     this.active = false;
     this.suspend();
+
+    if (this.shouldInvalidatePlan()) {
+      logInfo('Collector: plan invalidated after preemption, will re-plan');
+      this.clearActiveState();
+      this.flowStarted = false;
+      this.planningOutcome = 'idle';
+      this.planningId = null;
+    } else {
+      logInfo('Collector: plan deps satisfied, resuming without re-plan');
+    }
   }
 
   resetAndRestart(): void {
@@ -658,6 +670,7 @@ export class TargetExecutor implements StateBehavior {
   beginExecution(): void {
     this.executionDone = false;
     this.executionSuccess = false;
+    this.currentStepIndex = 0;
     this.clearActiveState();
 
     if (!this.planPath || this.planPath.length === 0) {
@@ -684,7 +697,10 @@ export class TargetExecutor implements StateBehavior {
         this.executionDone = true;
         this.executionSuccess = success;
       },
-      executionContext
+      executionContext,
+      (stepIndex: number) => {
+        this.currentStepIndex = stepIndex;
+      }
     );
 
     this.activeStateMachine = sm;
@@ -857,6 +873,19 @@ export class TargetExecutor implements StateBehavior {
     } catch (_) {}
   }
 
+  private shouldInvalidatePlan(): boolean {
+    if (!this.activeStateMachine || !this.planPath) return true;
+    if (this.executionDone) return true;
+
+    const inventory = getInventoryObject(this.bot);
+    const remaining = this.planPath.slice(this.currentStepIndex);
+    for (const step of remaining) {
+      if (!stepDependenciesSatisfied(step, inventory)) return true;
+    }
+
+    return false;
+  }
+
   private clearActiveState(): void {
     if (this.activeStateMachine && typeof this.activeStateMachine.onStateExited === 'function') {
       try {
@@ -867,6 +896,11 @@ export class TargetExecutor implements StateBehavior {
   }
 
   private suspend(): void {
+    try {
+      if (typeof this.bot.stopDigging === 'function') {
+        this.bot.stopDigging();
+      }
+    } catch (_) {}
     try {
       this.bot.clearControlStates();
       logDebug('Collector: cleared bot control states during suspend');

@@ -146,8 +146,11 @@ describe('Tool Replacement Pre-emption', () => {
     }
     await replacementPromise;
 
+    // With conditional resume, the original state machine survives (no tool dep).
+    // Verify the original targetTicks counter continues incrementing.
     for (let i = 0; i < 5; i += 1) {
       bot.emit('physicTick');
+      // eslint-disable-next-line no-await-in-loop
       await flush();
     }
 
