@@ -1,10 +1,16 @@
 import { execSync, execFileSync } from 'child_process';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
 
 const CONTAINER_NAME = 'pathcrafter-e2e';
 const IMAGE = 'itzg/minecraft-server';
 const HEALTH_POLL_INTERVAL_MS = 3000;
-const HEALTH_TIMEOUT_MS = 120_000;
+const HEALTH_TIMEOUT_MS = 240_000;
 
 export type Difficulty = 'peaceful' | 'easy' | 'normal' | 'hard';
 
@@ -37,6 +43,7 @@ export function startServer(options: ServerOptions = {}): void {
     '-e', `DIFFICULTY=${difficulty}`,
     '-e', 'SPAWN_PROTECTION=0',
     '-e', 'MAX_PLAYERS=100',
+    ...opsVolumeArgs(),
     '-p', `${port}:25565`,
     IMAGE
   ];
@@ -48,11 +55,37 @@ export function startServer(options: ServerOptions = {}): void {
   console.log('Server is ready.');
 }
 
-export function grantOp(username: string): void {
-  execFileSync(
-    'docker', ['exec', CONTAINER_NAME, 'rcon-cli', `op ${username}`],
-    { stdio: 'pipe' }
-  );
+/** Compute offline-mode UUID for a username (same algorithm as Minecraft server). */
+function offlineUuid(username: string): string {
+  const md5 = crypto.createHash('md5').update(`OfflinePlayer:${username}`).digest();
+  // Set version (3) and variant bits per RFC 4122
+  md5[6] = (md5[6] & 0x0f) | 0x30;
+  md5[8] = (md5[8] & 0x3f) | 0x80;
+  const hex = md5.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+/** Write ops.json to a temp file and return docker volume mount args.
+ *  Always includes setup bots so they can run privileged commands. */
+function opsVolumeArgs(): string[] {
+  const ops = process.env.E2E_OPS;
+  const envUsernames = ops ? ops.split(',').map(s => s.trim()).filter(Boolean) : [];
+
+  // Always include bots that need op, plus any E2E_OPS users
+  const allNames = new Set(['spawn_setup_bot', ...envUsernames]);
+  const usernames = [...allNames];
+
+  const opsJson = usernames.map(name => ({
+    uuid: offlineUuid(name),
+    name,
+    level: 4,
+    bypassesPlayerLimit: false
+  }));
+
+  const tmpFile = path.join(os.tmpdir(), `pathcrafter-e2e-ops-${process.pid}.json`);
+  fs.writeFileSync(tmpFile, JSON.stringify(opsJson, null, 2));
+  console.log(`Ops: ${usernames.join(', ')} (mounted from ${tmpFile})`);
+  return ['-v', `${tmpFile}:/data/ops.json`];
 }
 
 export function stopServer(): void {

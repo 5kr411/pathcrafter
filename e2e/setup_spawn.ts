@@ -1,6 +1,5 @@
 const mineflayer = require('mineflayer');
 import { pickRandomBiome, GOOD_BIOMES } from './biomes';
-import { grantOp } from './server';
 
 const SETUP_TIMEOUT_MS = 60_000;
 const SETUP_USERNAME = 'spawn_setup_bot';
@@ -39,11 +38,6 @@ export async function setupSpawn(options: SetupOptions = {}): Promise<void> {
       try {
         // Wait a moment for server to fully register the player
         await sleep(2000);
-
-        // Grant op via rcon now that the player has joined
-        console.log('Granting op via rcon...');
-        grantOp(SETUP_USERNAME);
-        await sleep(1000);
 
         // Creative mode — setup bot is throwaway, no reason to leave survival
         bot.chat('/gamemode creative');
