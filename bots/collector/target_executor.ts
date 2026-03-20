@@ -429,6 +429,15 @@ export class TargetExecutor implements StateBehavior {
     return this.running;
   }
 
+  isInWorkstationPhase(): boolean {
+    if (!this.planPath || this.executionDone) return false;
+    const step = this.planPath[this.currentStepIndex];
+    if (!step) return false;
+    if (step.action === 'smelt') return true;
+    if (step.action === 'craft' && step.what?.variants?.some((v: any) => v.value === 'table')) return true;
+    return false;
+  }
+
   setTargets(targets: Target[]): void {
     this.sequenceTargets = targets.slice();
     this.sequenceIndex = 0;
@@ -874,6 +883,10 @@ export class TargetExecutor implements StateBehavior {
   }
 
   private shouldInvalidatePlan(): boolean {
+    // Still in planning/snapshot phase — nothing to invalidate, preserve state
+    // so the planning result can be used when the executor resumes.
+    if (this.planningOutcome === 'pending') return false;
+
     if (!this.activeStateMachine || !this.planPath) return true;
     if (this.executionDone) return true;
 

@@ -48,12 +48,12 @@ describe('foodCollectionBehavior', () => {
 
   describe('shouldActivate', () => {
     it('returns true when food points are below trigger', () => {
-      const bot = createBotWithFood({ bread: 3 });
+      const bot = createBotWithFood({ apple: 2 });  // 8 points < trigger (10)
       expect(foodCollectionBehavior.shouldActivate(bot)).toBe(true);
     });
 
     it('returns false when food points are at trigger', () => {
-      const bot = createBotWithFood({ bread: 4 });
+      const bot = createBotWithFood({ bread: 2 });  // 10 points >= trigger (10)
       expect(foodCollectionBehavior.shouldActivate(bot)).toBe(false);
     });
 

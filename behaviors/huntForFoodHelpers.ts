@@ -42,7 +42,8 @@ export interface HuntableAnimal {
 export function findClosestHuntableAnimal(
   bot: BotLike,
   filter?: string[],
-  animals: HuntableAnimal[] = HUNTABLE_LAND_ANIMALS as HuntableAnimal[]
+  animals: HuntableAnimal[] = HUNTABLE_LAND_ANIMALS as HuntableAnimal[],
+  maxDistance?: number
 ): { entity: any; animalType: string } | null {
   if (!bot.entities || !bot.entity?.position) return null;
 
@@ -69,6 +70,7 @@ export function findClosestHuntableAnimal(
     if (babyIdx !== null && entity.metadata?.[babyIdx] === true) continue;
 
     const dist = bot.entity.position.distanceTo!(entity.position);
+    if (maxDistance !== undefined && dist > maxDistance) continue;
     if (dist < closestDist) {
       closest = entity;
       closestDist = dist;

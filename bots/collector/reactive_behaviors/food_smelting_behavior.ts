@@ -7,6 +7,7 @@
  */
 
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
+import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getInventoryObject, getItemCountInInventory } from '../../../utils/inventory';
 import { FOOD_SMELT_MAPPINGS, calculateFoodPointsInInventory } from '../../../utils/foodConfig';
 import { getFoodCollectionConfig, isFoodCollectionInCooldown } from './food_collection_behavior';
@@ -153,6 +154,7 @@ export const foodSmeltingBehavior: ReactiveBehavior = {
   name: 'food_smelting',
   
   shouldActivate: (bot: Bot): boolean => {
+    if (isWorkstationLocked()) return false;
     const now = Date.now();
     
     // Don't smelt when food collection would actually run -- that is,

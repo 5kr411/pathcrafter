@@ -6,6 +6,7 @@ import {
 } from 'mineflayer-statemachine';
 
 import { ReactiveBehavior, Bot } from './types';
+import { isWorkstationLocked } from '../../../utils/workstationLock';
 import logger from '../../../utils/logger';
 
 const minecraftData = require('minecraft-data');
@@ -371,6 +372,7 @@ export const foodEatingBehavior: ReactiveBehavior = {
   name: 'food_eating',
 
   shouldActivate: (bot: Bot): boolean => {
+    if (isWorkstationLocked()) return false;
     return shouldEat(bot);
   },
 

@@ -10,6 +10,8 @@ import { hostileFleeBehavior } from './collector/reactive_behaviors/hostile_flee
 import { waterEscapeBehavior } from './collector/reactive_behaviors/water_escape_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
+import { droppedFoodPickupBehavior } from './collector/reactive_behaviors/dropped_food_pickup_behavior';
+import { opportunisticFoodHuntBehavior } from './collector/reactive_behaviors/opportunistic_food_hunt_behavior';
 import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
 import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
 import { inventoryManagementBehavior, setInventoryManagementConfig } from './collector/reactive_behaviors/inventory_management_behavior';
@@ -116,7 +118,7 @@ bot.once('spawn', () => {
   );
 
   const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
-  setFoodCollectionConfig({ triggerFoodPoints: 20, targetFoodPoints: 60 });
+  setFoodCollectionConfig({ triggerFoodPoints: 10, targetFoodPoints: 20 });
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileFleeBehavior);
   reactiveBehaviorRegistry.register(waterEscapeBehavior);
@@ -124,6 +126,8 @@ bot.once('spawn', () => {
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
   reactiveBehaviorRegistry.register(foodCollectionBehavior);
   reactiveBehaviorRegistry.register(foodEatingBehavior);
+  reactiveBehaviorRegistry.register(droppedFoodPickupBehavior);
+  reactiveBehaviorRegistry.register(opportunisticFoodHuntBehavior);
   reactiveBehaviorRegistry.register(foodSmeltingBehavior);
   reactiveBehaviorRegistry.register(inventoryManagementBehavior);
 

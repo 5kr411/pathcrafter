@@ -6,6 +6,7 @@ import { ReactiveBehaviorManager } from './reactive_behavior_manager';
 import { ToolReplacementExecutor } from './tool_replacement_executor';
 import { TargetExecutor } from './target_executor';
 import { StateMachineRunner } from './state_machine_runner';
+import { setWorkstationPhaseProvider } from '../../utils/workstationLock';
 
 export type ControlMode = 'idle' | 'reactive' | 'tool' | 'target';
 
@@ -50,6 +51,8 @@ export class CollectorControlStack {
       this.toolLayer,
       this.toolsBeingReplaced
     );
+
+    setWorkstationPhaseProvider(() => this.targetLayer.isInWorkstationPhase());
 
     this.rootStateMachine = this.createRootStateMachine();
     this.runner = new StateMachineRunner(this.bot, this.rootStateMachine);

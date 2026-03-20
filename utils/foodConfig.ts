@@ -55,9 +55,9 @@ export interface FoodCollectionConfig {
  * Default food collection configuration
  */
 export const DEFAULT_FOOD_CONFIG: FoodCollectionConfig = {
-  triggerFoodPoints: 20,
-  minFoodThreshold: 20,
-  targetFoodPoints: 60
+  triggerFoodPoints: 10,
+  minFoodThreshold: 10,
+  targetFoodPoints: 20
 };
 
 /**

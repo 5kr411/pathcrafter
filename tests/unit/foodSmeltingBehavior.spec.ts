@@ -146,34 +146,34 @@ describe('foodSmeltingBehavior', () => {
     });
 
     it('returns false when raw food exists but food points are below trigger', () => {
-      const bot = createBotWithRawFood({ beef: 5 });
+      const bot = createBotWithRawFood({ beef: 3 });  // 9 points < trigger (10)
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(false);
     });
 
     it('returns false when raw food exists but food points are just below trigger', () => {
-      const bot = createBotWithRawFood({ beef: 1, cooked_beef: 2 });
+      const bot = createBotWithRawFood({ beef: 3 });  // 9 points < trigger (10)
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(false);
     });
 
     it('returns true when raw food exists and food points are exactly at trigger', () => {
-      const bot = createBotWithRawFood({ beef: 4, cooked_beef: 1 });
+      const bot = createBotWithRawFood({ beef: 2, apple: 1 });  // 6 + 4 = 10 = trigger
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
     });
 
     it('returns true when food points above trigger but below target', () => {
-      const bot = createBotWithRawFood({ beef: 9, bread: 1 });
+      const bot = createBotWithRawFood({ beef: 5 });  // 15 points, above trigger (10)
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
     });
 
     it('returns true when food points below trigger but food collection is in cooldown', () => {
       jest.setSystemTime(1000);
-      const bot = createBotWithRawFood({ beef: 5 });
+      const bot = createBotWithRawFood({ beef: 3 });  // 9 points < trigger (10)
       triggerFoodCollectionCooldown();
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(true);
     });
 
     it('returns false when food points below trigger and food collection is not in cooldown', () => {
-      const bot = createBotWithRawFood({ beef: 5 });
+      const bot = createBotWithRawFood({ beef: 3 });  // 9 points < trigger (10)
       expect(foodSmeltingBehavior.shouldActivate(bot)).toBe(false);
     });
 

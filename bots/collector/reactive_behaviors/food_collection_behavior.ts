@@ -6,6 +6,7 @@
  */
 
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
+import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getInventoryObject } from '../../../utils/inventory';
 import {
   calculateFoodPointsInInventory,
@@ -24,6 +25,7 @@ let foodCollectionConfig: FoodCollectionConfig = { ...DEFAULT_FOOD_CONFIG };
 let lastFailedAttempt = Date.now(); // Start in cooldown to delay first run after join
 let cooldownMs = DEFAULT_COOLDOWN_MS;
 let lastThrottledLogTime = 0;
+let foodCollectionActive = false;
 
 function getTriggerThreshold(): number {
   const trigger = Number(foodCollectionConfig.triggerFoodPoints);
@@ -90,6 +92,13 @@ export function isFoodCollectionInCooldown(): boolean {
 }
 
 /**
+ * Checks if food collection is currently running
+ */
+export function isFoodCollectionActive(): boolean {
+  return foodCollectionActive;
+}
+
+/**
  * Calculates total food points in the bot's inventory
  */
 function getBotFoodPoints(bot: Bot): number {
@@ -102,6 +111,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
   name: 'food_collection',
   
   shouldActivate: (bot: Bot): boolean => {
+    if (isWorkstationLocked()) return false;
     const foodPoints = getBotFoodPoints(bot);
     const trigger = getTriggerThreshold();
     const now = Date.now();
@@ -141,6 +151,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       logger.debug(`FoodCollection: skipping start (in cooldown)`);
       return null;
     }
+    foodCollectionActive = true;
     logger.info(`FoodCollection: starting - current food points = ${currentFoodPoints}`);
     
     if (sendChat) {
@@ -214,6 +225,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
         isFinished: () => (typeof (stateMachine as any).isFinished === 'function' ? (stateMachine as any).isFinished() : false),
         wasSuccessful: () => computeOutcome().success,
         onStop: (reason: ReactiveBehaviorStopReason) => {
+          foodCollectionActive = false;
           if (reason === 'completed') {
             finalizeCompletion();
           } else {
@@ -222,6 +234,7 @@ export const foodCollectionBehavior: ReactiveBehavior = {
         }
       };
     } catch (err: any) {
+      foodCollectionActive = false;
       logger.info(`FoodCollection: failed to create state machine - ${err?.message || err}`);
       return null;
     }

@@ -98,15 +98,15 @@ describe('integration: food smelting behavior', () => {
   });
 
   it('does not activate when raw food exists but food points below trigger', async () => {
-    const bot = createBotWithRawFood({ beef: 5 });
-    
+    const bot = createBotWithRawFood({ beef: 3 });  // 9 points < trigger (10)
+
     const shouldActivate = await Promise.resolve(foodSmeltingBehavior.shouldActivate(bot));
     expect(shouldActivate).toBe(false);
   });
 
   it('activates when food points below trigger but food collection is in cooldown', async () => {
     jest.setSystemTime(1000);
-    const bot = createBotWithRawFood({ beef: 5 });
+    const bot = createBotWithRawFood({ beef: 3 });  // 9 points < trigger (10)
     triggerFoodCollectionCooldown();
     
     const shouldActivate = await Promise.resolve(foodSmeltingBehavior.shouldActivate(bot));

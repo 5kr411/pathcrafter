@@ -157,7 +157,7 @@ describe('Conditional plan resume after preemption', () => {
     expect(executor.planningOutcome).toBe('idle');
   });
 
-  it('invalidates when no activeStateMachine exists', async () => {
+  it('preserves planning state when preempted during planning phase', async () => {
     targetExecutor.setTargets([{ item: 'oak_log', count: 1 }]);
     await targetExecutor.startNextTarget();
 
@@ -170,12 +170,14 @@ describe('Conditional plan resume after preemption', () => {
     // Still in planning state — no activeStateMachine
     const executor = targetExecutor as any;
     expect(executor.activeStateMachine).toBeNull();
+    expect(executor.planningOutcome).toBe('pending');
 
-    // Simulate preemption
+    // Simulate preemption — should preserve planning state
     targetExecutor.onStateExited();
 
-    expect(executor.flowStarted).toBe(false);
-    expect(executor.planningOutcome).toBe('idle');
+    expect(executor.flowStarted).toBe(true);
+    expect(executor.planningOutcome).toBe('pending');
+    expect(executor.planningId).not.toBeNull();
   });
 
   it('invalidates when executionDone is true', async () => {
