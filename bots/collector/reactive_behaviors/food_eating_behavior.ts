@@ -12,7 +12,6 @@ const minecraftData = require('minecraft-data');
 
 const EATING_SUCCESS_COOLDOWN_MS = 3000;
 const EATING_FAILURE_COOLDOWN_MS = 15000;
-const EAT_HUNGER_THRESHOLD = 14;
 
 let lastEatAttempt = 0;
 
@@ -131,7 +130,25 @@ function selectBestFood(_bot: Bot, foods: FoodItem[]): FoodItem | null {
   return sorted[0];
 }
 
+const NEGATIVE_EFFECT_FOODS = new Set([
+  'rotten_flesh',     // hunger effect
+  'spider_eye',       // poison
+  'poisonous_potato', // poison
+  'pufferfish',       // poison + hunger + nausea
+  'chicken',          // hunger effect (raw chicken)
+  'suspicious_stew'   // random effects, can be negative
+]);
+
+function hasNegativeEffects(food: FoodItem): boolean {
+  return NEGATIVE_EFFECT_FOODS.has(food.item.name);
+}
+
 function canEatFood(bot: Bot, food: FoodItem): boolean {
+  // Don't eat foods with negative effects unless health is below full
+  if (hasNegativeEffects(food) && isFullHealth(bot)) {
+    return false;
+  }
+
   const hungerRoom = getHungerRoom(bot);
 
   if (hungerRoom >= food.foodInfo.foodPoints) {
@@ -167,20 +184,37 @@ function shouldEat(bot: Bot): boolean {
   }
 
   const hunger = getBotFood(bot);
+  const health = getBotHealth(bot);
 
+  // If both health and hunger are full, no need to eat
+  if (hunger >= 20 && health >= 20) {
+    return false;
+  }
+
+  // If hunger is full but health isn't, can't eat (Minecraft won't allow it)
   if (hunger >= 20) {
     return false;
   }
 
-  // Only eat when hunger is meaningfully low, not on every trivial
-  // depletion from walking around. This prevents eating from constantly
-  // preempting lower-priority behaviors like food collection.
-  if (hunger > EAT_HUNGER_THRESHOLD && isFullHealth(bot)) {
+  // Always eat if health is below full and hunger is below full
+  if (health < 20 && hunger < 20) {
+    const bestFood = findBestEatableFood(bot);
+    return bestFood !== null;
+  }
+
+  // Health is full — eat as soon as the smallest food item in inventory
+  // would not be wasted (hunger room >= its food points)
+  const allFoods = getFoodItems(bot);
+  if (allFoods.length === 0) {
+    return false;
+  }
+  const minFoodPoints = Math.min(...allFoods.map(f => f.foodInfo.foodPoints));
+  const hungerRoom = 20 - hunger;
+  if (hungerRoom < minFoodPoints) {
     return false;
   }
 
-  const bestFood = findBestEatableFood(bot);
-  return bestFood !== null;
+  return findBestEatableFood(bot) !== null;
 }
 
 function stopBotActions(bot: Bot): void {
@@ -243,6 +277,13 @@ class BehaviorEatFood implements StateBehavior {
     }
 
     try {
+      // Clear any active item use (shield, etc.) before eating
+      try {
+        if (typeof this.bot.deactivateItem === 'function') {
+          this.bot.deactivateItem();
+        }
+      } catch (_) {}
+
       await this.bot.equip(food.item, 'hand');
 
       const heldItem = this.bot?.heldItem;

@@ -31,6 +31,8 @@ class ShieldHoldState implements StateBehavior {
   private lastShieldDamage: number | null = null;
   private lastShieldItemType: number | null = null;
   private swingArmListener: ((entity: any) => void) | null = null;
+  private shieldStartTime: number = 0;
+  private static readonly MAX_SHIELD_DURATION_MS = 15_000;
 
   constructor(
     private readonly bot: any,
@@ -44,6 +46,7 @@ class ShieldHoldState implements StateBehavior {
     this.finished = false;
     this.pendingThreat = null;
     this.active = true;
+    this.shieldStartTime = Date.now();
 
     try {
       if (typeof this.bot?.activateItem === 'function') {
@@ -167,7 +170,14 @@ class ShieldHoldState implements StateBehavior {
 
       const continueShielding = this.evaluateShouldContinue();
       logger.debug(`ShieldDefense: hold timer fired - continueShielding=${continueShielding}, isCreeper=${this.isCreeper(this.currentThreat)}, pendingThreat=${!!this.pendingThreat}`);
-      
+
+      const elapsed = Date.now() - this.shieldStartTime;
+      if (elapsed >= ShieldHoldState.MAX_SHIELD_DURATION_MS) {
+        logger.info(`ShieldDefense: max shield duration reached (${(elapsed / 1000).toFixed(1)}s), exiting to allow flee`);
+        this.finished = true;
+        return;
+      }
+
       if (this.isCreeper(this.currentThreat)) {
         logger.debug('ShieldDefense: hold timer restarting for creeper');
         this.startHoldTimer();
@@ -441,6 +451,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     }
   });
 
+  let lastShieldExitLogTime = 0;
   const shieldToExit = new StateTransition({
     name: 'ShieldDefense: shield -> exit',
     parent: shieldHold,
@@ -448,8 +459,12 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     shouldTransition: () => {
       const isFinished = shieldHold.isFinished();
       const nextThreat = shieldHold.getNextThreat();
-      
-      logger.debug(`ShieldDefense: shieldToExit check - isFinished=${isFinished}, nextThreat=${!!nextThreat}`);
+
+      const now = Date.now();
+      if (now - lastShieldExitLogTime >= 1000) {
+        logger.debug(`ShieldDefense: shieldToExit check - isFinished=${isFinished}, nextThreat=${!!nextThreat}`);
+        lastShieldExitLogTime = now;
+      }
       
       if (isFinished && !nextThreat) {
         logger.info('ShieldDefense: shieldToExit firing - no threats');

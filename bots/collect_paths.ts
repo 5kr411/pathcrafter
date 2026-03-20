@@ -104,7 +104,8 @@ bot.once('spawn', () => {
   const runDir = resolveRunDir();
   logger.initFileLogging(runDir, botOptions.username);
 
-  logger.milestone('bot ready');
+  const sp = bot.entity.position;
+  logger.milestone(`bot ready — spawned at (${sp.x.toFixed(1)}, ${sp.y.toFixed(1)}, ${sp.z.toFixed(1)})`);
   safeChat('collector ready');
 
   const workerManager = new WorkerManager(

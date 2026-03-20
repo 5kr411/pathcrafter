@@ -34,7 +34,7 @@ export interface PathfinderPrecisionConfig {
 export const PRECISE_MOVEMENTS_CONFIG: PathfinderPrecisionConfig = {
   searchRadius: 80,
   allow1by1towers: true,
-  allowFreeMotion: true,
+  allowFreeMotion: false,
   allowParkour: true,
   allowSprinting: true,
   canDig: true,

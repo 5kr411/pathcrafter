@@ -172,7 +172,7 @@ function getCachedHostileMobNames(mcData: any, version: string): Set<string> {
 
 const SKELETON_VARIANT_NAMES = new Set(['skeleton', 'stray', 'bogged', 'parched']);
 
-export const COMBAT_BLACKLIST = new Set<string>(['enderman', 'zombified_piglin']);
+export const COMBAT_BLACKLIST = new Set<string>(['enderman', 'zombified_piglin', 'creeper']);
 
 export function isRangedHostile(entity: any): boolean {
   const name = String(entity?.name || entity?.displayName || '').toLowerCase();

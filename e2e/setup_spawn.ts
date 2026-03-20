@@ -72,6 +72,13 @@ export async function setupSpawn(options: SetupOptions = {}): Promise<void> {
         await sleep(1000);
         console.log('World spawn set.');
 
+        // Spread bots out on spawn to reduce resource contention
+        bot.chat('/gamerule respawn_radius 32');
+        await sleep(1000);
+        bot.chat('/gamerule respawn_radius');
+        const radiusResponse = await waitForChatResponse(bot, 'respawn_radius', 5000);
+        console.log(`Spawn radius response: ${radiusResponse}`);
+
         clearTimeout(timeout);
         bot.quit();
         resolve();
@@ -146,6 +153,25 @@ function waitForTeleport(bot: any, targetX: number, targetZ: number): Promise<vo
       clearInterval(check);
       resolve();
     }, 15_000);
+  });
+}
+
+function waitForChatResponse(bot: any, keyword: string, timeoutMs: number): Promise<string> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      bot.removeListener('message', onMsg);
+      resolve('(no response)');
+    }, timeoutMs);
+
+    function onMsg(jsonMsg: any): void {
+      const text = jsonMsg.toString();
+      if (text.includes(keyword)) {
+        clearTimeout(timer);
+        bot.removeListener('message', onMsg);
+        resolve(text);
+      }
+    }
+    bot.on('message', onMsg);
   });
 }
 
