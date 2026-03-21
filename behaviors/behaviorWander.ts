@@ -20,6 +20,13 @@ interface BotLike {
   [key: string]: any;
 }
 
+export interface WanderAngleConstraint {
+  /** Angle to avoid, in radians (e.g., direction toward a threat) */
+  avoidAngle: number;
+  /** Half-width of the excluded arc in radians. Default π/2 (90° excluded = ±45° around avoidAngle) */
+  avoidArcHalf?: number;
+}
+
 export class BehaviorWander {
   bot: BotLike;
   distance: number;
@@ -32,10 +39,16 @@ export class BehaviorWander {
   private targetX: number = 0;
   private targetZ: number = 0;
   private lastGoalSetTime: number = 0;
+  private angleConstraint: WanderAngleConstraint | null = null;
 
-  constructor(bot: BotLike, distance: number = DEFAULT_DISTANCE) {
+  constructor(bot: BotLike, distance: number = DEFAULT_DISTANCE, angleConstraint?: WanderAngleConstraint) {
     this.bot = bot;
     this.distance = distance;
+    this.angleConstraint = angleConstraint ?? null;
+  }
+
+  setAngleConstraint(constraint: WanderAngleConstraint | null): void {
+    this.angleConstraint = constraint;
   }
 
   onStateEntered(): void {
@@ -95,10 +108,26 @@ export class BehaviorWander {
   }
 
   private pickTarget(pos: { x: number; y: number; z: number }): void {
-    const angle = randomAngle();
+    const angle = this.pickAngle();
     const target = offsetFromAngle(pos.x, pos.z, angle, this.distance);
     this.targetX = target.x;
     this.targetZ = target.z;
+  }
+
+  private pickAngle(): number {
+    if (!this.angleConstraint) {
+      return randomAngle();
+    }
+
+    const { avoidAngle, avoidArcHalf = Math.PI / 2 } = this.angleConstraint;
+    // Pick a random angle in the allowed range (full circle minus the excluded arc)
+    const allowedRange = 2 * Math.PI - 2 * avoidArcHalf;
+    if (allowedRange <= 0) {
+      // Arc excludes everything — just go opposite
+      return avoidAngle + Math.PI;
+    }
+    const offset = avoidArcHalf + Math.random() * allowedRange;
+    return avoidAngle + offset;
   }
 
   private setGoal(): void {

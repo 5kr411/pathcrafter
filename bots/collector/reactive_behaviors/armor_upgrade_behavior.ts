@@ -1,6 +1,7 @@
 import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import logger from '../../../utils/logger';
+import { isWorkstationLocked } from '../../../utils/workstationLock';
 
 type ArmorSlot = 'head' | 'torso' | 'legs' | 'feet';
 type EquipSlot = ArmorSlot | 'off-hand';
@@ -362,6 +363,8 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
   name: 'armor_upgrade',
 
   shouldActivate: (bot: Bot): boolean => {
+    if (isWorkstationLocked()) return false;
+
     const armorCandidate = selectArmorUpgrade(bot, () => !isSlotCooling());
     if (armorCandidate !== null) {
       return true;

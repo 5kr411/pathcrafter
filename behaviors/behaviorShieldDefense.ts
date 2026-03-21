@@ -6,8 +6,11 @@ import {
 } from 'mineflayer-statemachine';
 
 import { BehaviorPvpAttack } from './behaviorPvpAttack';
+import { BehaviorWander } from './behaviorWander';
 import logger from '../utils/logger';
 import { Vec3 } from 'vec3';
+
+const CREEPER_FLEE_WANDER_DISTANCE = 24;
 
 const MAX_SHIELD_CYCLES = 5;
 
@@ -32,6 +35,7 @@ class ShieldHoldState implements StateBehavior {
   private lastShieldItemType: number | null = null;
   private swingArmListener: ((entity: any) => void) | null = null;
   private shieldStartTime: number = 0;
+  private _creeperTimedOut: boolean = false;
   private static readonly MAX_SHIELD_DURATION_MS = 15_000;
 
   constructor(
@@ -44,6 +48,7 @@ class ShieldHoldState implements StateBehavior {
   onStateEntered(): void {
     logger.debug('ShieldDefense: onStateEntered called, resetting state');
     this.finished = false;
+    this._creeperTimedOut = false;
     this.pendingThreat = null;
     this.active = true;
     this.shieldStartTime = Date.now();
@@ -94,6 +99,14 @@ class ShieldHoldState implements StateBehavior {
 
   isFinished(): boolean {
     return this.finished;
+  }
+
+  get creeperTimedOut(): boolean {
+    return this._creeperTimedOut;
+  }
+
+  getCurrentThreat(): any | null {
+    return this.currentThreat;
   }
 
   getNextThreat(): any | null {
@@ -173,7 +186,12 @@ class ShieldHoldState implements StateBehavior {
 
       const elapsed = Date.now() - this.shieldStartTime;
       if (elapsed >= ShieldHoldState.MAX_SHIELD_DURATION_MS) {
-        logger.info(`ShieldDefense: max shield duration reached (${(elapsed / 1000).toFixed(1)}s), exiting to allow flee`);
+        if (this.isCreeper(this.currentThreat)) {
+          logger.info(`ShieldDefense: max shield duration reached (${(elapsed / 1000).toFixed(1)}s) against creeper, will wander away`);
+          this._creeperTimedOut = true;
+        } else {
+          logger.info(`ShieldDefense: max shield duration reached (${(elapsed / 1000).toFixed(1)}s), exiting to allow flee`);
+        }
         this.finished = true;
         return;
       }
@@ -385,6 +403,8 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     }
   });
 
+  const creeperFleeWander = new BehaviorWander(bot, CREEPER_FLEE_WANDER_DISTANCE);
+
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
@@ -448,6 +468,41 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
       }
       cycleCount += 1;
       logger.debug(`ShieldDefense: transitioning to pvp counter-attack (cycle ${cycleCount})`);
+    }
+  });
+
+  const shieldToWander = new StateTransition({
+    name: 'ShieldDefense: shield -> creeper flee wander',
+    parent: shieldHold,
+    child: creeperFleeWander,
+    shouldTransition: () => {
+      return shieldHold.isFinished() && shieldHold.creeperTimedOut;
+    },
+    onTransition: () => {
+      const threat = shieldHold.getCurrentThreat();
+      const botPos = bot?.entity?.position;
+      if (threat?.position && botPos) {
+        const dx = threat.position.x - botPos.x;
+        const dz = threat.position.z - botPos.z;
+        const angleTowardCreeper = Math.atan2(dz, dx);
+        creeperFleeWander.setAngleConstraint({ avoidAngle: angleTowardCreeper });
+      } else {
+        creeperFleeWander.setAngleConstraint(null);
+      }
+      shieldHold.consumeNextThreat();
+      config.targets.entity = null;
+      logger.info(`ShieldDefense: creeper standoff timeout, wandering ${CREEPER_FLEE_WANDER_DISTANCE} blocks to break standoff`);
+    }
+  });
+
+  const wanderToExit = new StateTransition({
+    name: 'ShieldDefense: creeper flee wander -> exit',
+    parent: creeperFleeWander,
+    child: exit,
+    shouldTransition: () => creeperFleeWander.isFinished,
+    onTransition: () => {
+      logger.info('ShieldDefense: creeper flee wander complete, exiting');
+      notifyFinished(true);
     }
   });
 
@@ -560,8 +615,10 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
 
   const transitions = [
     enterToShield,
+    shieldToWander,
     shieldToAttack,
     shieldToExit,
+    wanderToExit,
     attackToExit,
     attackToShield
   ];

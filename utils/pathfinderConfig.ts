@@ -32,7 +32,6 @@ export interface PathfinderPrecisionConfig {
 }
 
 export const PRECISE_MOVEMENTS_CONFIG: PathfinderPrecisionConfig = {
-  searchRadius: 80,
   allow1by1towers: true,
   allowFreeMotion: false,
   allowParkour: true,
@@ -48,7 +47,7 @@ export const PRECISE_MOVEMENTS_CONFIG: PathfinderPrecisionConfig = {
   dontBreakDripstone: true,
   placeCost: 1,
   breakCost: 1,
-  thinkTimeout: 15000
+  thinkTimeout: 5000
 };
 
 export function configurePrecisePathfinder(
