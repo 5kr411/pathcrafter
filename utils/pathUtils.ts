@@ -1,4 +1,5 @@
 import { ActionPath, ActionStep } from '../action_tree/types';
+import { getWorkstationCraftCost, isKnownWorkstation } from './workstationCostCache';
 
 /**
  * Path weight computation utilities
@@ -29,7 +30,19 @@ export function stepWeight(step: ActionStep | null | undefined): number {
   }
 
   if (step.action === 'smelt') return 100 * count;
-  if (step.action === 'mine') return 1000 * count;
+  if (step.action === 'mine') {
+    const variants = step.what?.variants;
+    if (variants && variants.length > 0) {
+      const blockName = variants[0].value;
+      if (isKnownWorkstation(blockName)) {
+        const craftCost = getWorkstationCraftCost(blockName);
+        if (craftCost !== undefined) {
+          return (craftCost + 1) * count;
+        }
+      }
+    }
+    return 1000 * count;
+  }
   if (step.action === 'hunt') return 10000 * count;
 
   return 0;
@@ -54,21 +67,7 @@ export function computePathWeight(path: ActionPath): number {
 
   let total = 0;
   for (const step of path) {
-    if (!step || !step.action) continue;
-
-    const count = Number(step.count) || 0;
-    if (count <= 0) continue;
-
-    if (step.action === 'craft') {
-      const whatValue = step.what.variants[0].value;
-      total += (whatValue === 'inventory' ? 1 : 10) * count;
-    } else if (step.action === 'smelt') {
-      total += 100 * count;
-    } else if (step.action === 'mine') {
-      total += 1000 * count;
-    } else if (step.action === 'hunt') {
-      total += 10000 * count;
-    }
+    total += stepWeight(step);
   }
 
   return total;

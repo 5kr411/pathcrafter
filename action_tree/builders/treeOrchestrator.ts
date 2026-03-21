@@ -103,7 +103,7 @@ function buildRecipeTreeInternal(
     }
   }
 
-  targetCount = deductFromInventory(invMap, variantsToUse, targetCount);
+  targetCount = deductFromInventory(invMap, variantsToUse, targetCount, variantMode);
 
   // Restore persistent item counts so they remain available for tool checks
   if (invMap && persistentItemCounts.size > 0) {
@@ -210,17 +210,45 @@ function buildRecipeTreeInternal(
 }
 
 /**
- * Deducts items from inventory across all variants
+ * Deducts items from inventory across variants.
+ *
+ * For `any_of` (fungible variants like diamond_ore / deepslate_diamond_ore),
+ * sums across all variants — any combination satisfies the requirement.
+ *
+ * For `one_of` (mutually exclusive variants like planks types for shield),
+ * credits only the single best variant — at runtime the bot must pick ONE
+ * type, so mixed-variant totals are not usable.
  */
 function deductFromInventory(
   invMap: Map<string, number> | undefined,
   variantsToUse: string[],
-  targetCount: number
+  targetCount: number,
+  variantMode: 'one_of' | 'any_of' = 'any_of'
 ): number {
   if (!invMap || invMap.size === 0 || targetCount <= 0) {
     return targetCount;
   }
 
+  if (variantMode === 'one_of') {
+    // Only credit the single variant with the highest inventory count.
+    let bestName: string | null = null;
+    let bestCount = 0;
+    for (const name of variantsToUse) {
+      const have = invMap.get(name) || 0;
+      if (have > bestCount) {
+        bestCount = have;
+        bestName = name;
+      }
+    }
+    if (bestName && bestCount > 0) {
+      const use = Math.min(bestCount, targetCount);
+      invMap.set(bestName, bestCount - use);
+      targetCount -= use;
+    }
+    return targetCount;
+  }
+
+  // any_of: sum across all variants (they are fungible)
   for (const name of variantsToUse) {
     const have = invMap.get(name) || 0;
     if (have > 0) {
