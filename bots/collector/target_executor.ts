@@ -257,6 +257,7 @@ export class TargetExecutor implements StateBehavior {
   private shouldWander = false;
   private wanderDone = false;
   private wanderBehavior: BehaviorWander | null = null;
+  private targetStartTime = 0;
 
   constructor(
     private bot: Bot,
@@ -490,7 +491,16 @@ export class TargetExecutor implements StateBehavior {
   }
 
   resetAndRestart(): void {
-    logInfo('Collector: resetting all targets and restarting from beginning');
+    // Log context about what was happening before the reset
+    const target = this.sequenceTargets[this.sequenceIndex];
+    const targetDesc = target ? `${target.item} x${target.count}` : 'none';
+    const stepDesc = this.planPath ? `step ${this.currentStepIndex}/${this.planPath.length}` : 'no plan';
+    const inv = getInventoryObject(this.bot);
+    const invItems = Object.entries(inv).filter(([, v]) => v > 0).map(([k, v]) => `${k}:${v}`).join(', ');
+    logInfo(
+      `Collector: death reset | was on target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${targetDesc} (${stepDesc}) | inventory: ${invItems || 'empty'}`
+    );
+
     const hasQueuedTargets = Array.isArray(this.sequenceTargets) && this.sequenceTargets.length > 0;
 
     if (!hasQueuedTargets) {
@@ -562,6 +572,7 @@ export class TargetExecutor implements StateBehavior {
       );
     }
 
+    this.targetStartTime = Date.now();
     const invObj = getInventoryObject(this.bot);
     this.currentTargetStartInventory = { ...invObj };
     const inventoryMap = new Map(Object.entries(invObj));
@@ -741,7 +752,9 @@ export class TargetExecutor implements StateBehavior {
     const currentTarget = this.sequenceTargets[this.sequenceIndex];
     if (currentTarget) {
       const completedDesc = `${currentTarget.item} x${currentTarget.count}`;
-      logger.milestone(`target complete: ${completedDesc}`);
+      const elapsedMs = this.targetStartTime ? Date.now() - this.targetStartTime : 0;
+      const elapsedSec = (elapsedMs / 1000).toFixed(1);
+      logger.milestone(`target complete: ${completedDesc} (${elapsedSec}s)`);
       this.safeChat(`collected ${completedDesc}`);
     }
 
@@ -776,7 +789,11 @@ export class TargetExecutor implements StateBehavior {
     }
 
     this.shouldWander = false;
-    logger.milestone(`target ${this.sequenceIndex + 1} failed after ${MAX_RETRIES} attempts, moving to next target`);
+    const failTarget = this.sequenceTargets[this.sequenceIndex];
+    const failDesc = failTarget ? `${failTarget.item} x${failTarget.count}` : 'unknown';
+    const failElapsedMs = this.targetStartTime ? Date.now() - this.targetStartTime : 0;
+    const failElapsedSec = (failElapsedMs / 1000).toFixed(1);
+    logger.milestone(`target ${this.sequenceIndex + 1} failed after ${MAX_RETRIES} attempts, moving to next target | ${failDesc} (${failElapsedSec}s)`);
     this.safeChat(`target failed after ${MAX_RETRIES} attempts, moving on`);
     this.targetRetryCount.delete(this.sequenceIndex);
     this.sequenceIndex++;
@@ -817,7 +834,9 @@ export class TargetExecutor implements StateBehavior {
     this.wanderDone = false;
     const distance = this.getWanderDistance();
     const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 1;
-    logInfo(`Collector: wandering ${distance} blocks before retry (attempt ${retryCount}/${MAX_RETRIES})`);
+    const target = this.sequenceTargets[this.sequenceIndex];
+    const targetDesc = target ? `${target.item} x${target.count}` : 'unknown';
+    logInfo(`Collector: wandering ${distance} blocks before retry (attempt ${retryCount}/${MAX_RETRIES}) for target ${this.sequenceIndex + 1}/${this.sequenceTargets.length}: ${targetDesc}`);
     this.safeChat(`wandering ${distance} blocks before retry`);
     this.wanderBehavior = new BehaviorWander(this.bot, distance);
     this.wanderBehavior.onStateEntered();

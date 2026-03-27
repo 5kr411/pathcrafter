@@ -317,11 +317,13 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         } catch (_) {}
       } else if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
         stateMachine.stepSucceeded = false;
+        stateMachine.stepFailureReason = `consecutive_failures:${consecutiveFailures}:${collected}/${totalRequiredAmount}`;
         try {
           logger.error(`BehaviorMineAnyOf: giving up after ${consecutiveFailures} consecutive failures; collected ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}
       } else {
         stateMachine.stepSucceeded = false;
+        stateMachine.stepFailureReason = `no_viable_candidates:${collected}/${totalRequiredAmount}`;
         try {
           logger.error(`BehaviorMineAnyOf: no viable candidates found; collected ${collected}/${totalRequiredAmount} (${breakdown})`);
         } catch (_) {}

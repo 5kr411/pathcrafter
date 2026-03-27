@@ -123,6 +123,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     shouldTransition: () => !targets.itemName || targets.amount == null,
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = 'missing_item_or_amount';
       logger.error('CraftWithTable: Missing itemName or amount');
     }
   });
@@ -152,6 +153,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     },
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = `place_table_failed:${targets.itemName}`;
       logger.error('CraftWithTable: Failed to place crafting table');
     }
   });
@@ -195,6 +197,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
       const have = getItemCountInInventory(bot, targets.itemName!);
       if (have < targets.amount! && !craftingOk) {
         stateMachine.stepSucceeded = false;
+        stateMachine.stepFailureReason = `craft_failed:${targets.itemName}:${have}/${targets.amount}`;
         logger.info(`CraftWithTable: Crafting failed (${have}/${targets.amount}), breaking table (had ${tableCountBeforeBreak})`);
       } else {
         if (!craftingOk) {
@@ -338,6 +341,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 6000 && pickupAttempts >= 2,
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = `dropped_table_lost:${targets.itemName}`;
       const have = getItemCountInInventory(bot, targets.itemName!);
       logger.warn(`CraftWithTable: Could not find dropped table, exiting (${have}/${targets.amount} ${targets.itemName})`);
     }
@@ -369,6 +373,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     shouldTransition: () => Date.now() - followStartTime > 5000,
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = `follow_timeout:${targets.itemName}`;
       const have = getItemCountInInventory(bot, targets.itemName!);
       logger.warn(`CraftWithTable: Follow timeout, exiting (${have}/${targets.amount} ${targets.itemName})`);
     }

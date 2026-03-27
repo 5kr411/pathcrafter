@@ -352,6 +352,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = `block_not_found:${targets.blockName}`;
       logger.error(`BehaviorCollectBlock: find block -> exit (could not find ${targets.blockName})`);
       lastFailureReason = 'not_found';
     }
@@ -442,6 +443,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       const blockName = info?.blockName || targets.blockName;
       const required = info?.requiredTool || 'unknown tool';
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = `missing_tool:${required}:for:${blockName}`;
       logger.error(
         `BehaviorCollectBlock: cannot collect ${blockName} - missing required tool ${required}`
       );
@@ -581,6 +583,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       preMineAirDetected = false;
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = `wander_exhausted:${targets.blockName}`;
       logger.error(`BehaviorCollectBlock: wandered ${wanderCount} times for ${targets.blockName}, giving up`);
       lastFailureReason = 'pathfinding';
     }

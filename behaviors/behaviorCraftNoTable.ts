@@ -210,6 +210,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = targets.itemName == null ? 'no_item_name' : 'no_amount';
       if (targets.itemName == null && !targets.variantStep) {
         logger.error('BehaviorCraftNoTable: Error: No item name');
       }
@@ -298,6 +299,9 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
         }
       } else {
         stateMachine.stepSucceeded = false;
+        stateMachine.stepFailureReason = timedOut
+          ? `craft_timeout:${targets.itemName}:${have}/${needed}`
+          : `craft_failed:${targets.itemName}:${have}/${needed}`;
         if (timedOut) {
           logger.info(`BehaviorCraftNoTable: wait for craft -> exit (timeout ${have}/${needed})`);
         } else {

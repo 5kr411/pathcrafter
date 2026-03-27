@@ -78,6 +78,7 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
     },
     onTransition: () => {
       stateMachine.stepSucceeded = false;
+      stateMachine.stepFailureReason = 'variant_selection_failed';
       logger.error('BehaviorCraftWithTableIfNeeded: enter -> exit: variant selection failed, cannot craft');
     }
   });

@@ -20,6 +20,52 @@ import * as genHunt from './hunt';
 import logger from '../utils/logger';
 
 /**
+ * Formats a human-readable description of a step for log messages.
+ * e.g. "step 0 -> craft: table x1 (one_of: oak_planks, spruce_planks)"
+ */
+function formatStepDescription(step: ActionStep, stepIndex: number): string {
+  // Format the "what" target
+  let whatStr: string = String(step.what);
+  if (typeof step.what === 'object' && step.what !== null) {
+    const variants = (step.what as any).variants;
+    if (Array.isArray(variants) && variants.length > 0) {
+      whatStr = variants.map((v: any) => v.value).filter(Boolean).join(', ');
+    } else if ((step.what as any).item) {
+      whatStr = (step.what as any).item;
+    } else if ((step.what as any).name) {
+      whatStr = (step.what as any).name;
+    }
+  }
+
+  let desc = `step ${stepIndex} -> ${step.action}: ${whatStr}`;
+  if (step.count) desc += ` x${step.count}`;
+
+  // Add result item names for craft steps (what's being crafted)
+  if (step.result?.variants?.length) {
+    const resultItems = step.result.variants
+      .map((v: any) => v.value?.item)
+      .filter(Boolean);
+    const unique = [...new Set(resultItems)];
+    if (unique.length > 0 && unique[0] !== whatStr) {
+      desc += ` -> ${unique.join('|')}`;
+    }
+  }
+
+  // Add variant mode + ingredient summary for multi-variant steps
+  if (step.ingredients?.variants && step.ingredients.variants.length > 1) {
+    const variantItems = step.ingredients.variants.map((v: any) => {
+      const ings = v.value || [];
+      return ings.map((i: any) => `${i.item}x${i.perCraftCount}`).join('+');
+    });
+    desc += ` (${step.variantMode}: ${variantItems.slice(0, 3).join(' | ')}`;
+    if (variantItems.length > 3) desc += ` | ...${variantItems.length - 3} more`;
+    desc += ')';
+  }
+
+  return desc;
+}
+
+/**
  * Creates a behavior state for a single action step
  * 
  * @param bot - Mineflayer bot instance
@@ -166,20 +212,15 @@ export function buildStateMachineForPath(
         };
 
     const stepIndex = index;
+    const stepDesc = formatStepDescription(step, stepIndex);
+
     transitions.push(new StateTransition({
       parent,
       child: st,
       name: `step:${stepIndex}:${step.action}:${step.what}`,
       shouldTransition: should,
       onTransition: () => {
-        // Format step.what for logging
-        let whatStr: string = String(step.what);
-        if (typeof step.what === 'object' && step.what !== null) {
-          if ((step.what as any).item) whatStr = (step.what as any).item;
-          else if ((step.what as any).name) whatStr = (step.what as any).name;
-          else whatStr = JSON.stringify(step.what);
-        }
-        logger.info(`PathBuilder: step ${stepIndex} -> ${step.action}: ${whatStr}${step.count ? ` x${step.count}` : ''}`);
+        logger.info(`PathBuilder: ${stepDesc}`);
         if (typeof onStepEntered === 'function') {
           onStepEntered(stepIndex);
         }
@@ -202,7 +243,12 @@ export function buildStateMachineForPath(
         onTransition: () => {
           shared.failed = true;
           const reason = (st as any).stepSucceeded === false ? 'step failure' : 'tool issue';
-          logger.warn(`PathBuilder: aborting plan at step ${stepIndex} due to ${reason}`);
+          const failDetail = (st as any).stepFailureReason || '';
+          logger.warn(
+            `PathBuilder: aborting plan at step ${stepIndex}/${pathSteps.length - 1} due to ${reason}` +
+            ` | ${stepDesc}` +
+            (failDetail ? ` | reason: ${failDetail}` : '')
+          );
           try {
             if (typeof onFinished === 'function') onFinished(false);
           } catch (_) {}

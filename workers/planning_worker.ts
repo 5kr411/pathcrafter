@@ -169,8 +169,19 @@ parentPort.on('message', async (msg: PlanMessage) => {
     
     if (ranked.length > 0) {
       const firstPath = ranked[0];
-      const hasMining = firstPath.some((step: any) => step.action === 'mine');
-      logger.debug(`PlanningWorker: ranked[0] has ${firstPath.length} steps, hasMining=${hasMining}`);
+      const topWeight = computePathWeight(firstPath);
+      const topActions = firstPath.map((s: any) => s.action).join('→');
+      const planMs = Date.now() - t0;
+      let weightSummary = `w=${topWeight}`;
+      if (ranked.length >= 2) {
+        weightSummary += `, runner-up w=${computePathWeight(ranked[1])}`;
+      }
+      logger.info(
+        `PlanningWorker: selected path for ${item} x${count} | ${firstPath.length} steps (${topActions}) | ${weightSummary} | ${ranked.length} candidates | ${planMs}ms`
+      );
+    } else {
+      const planMs = Date.now() - t0;
+      logger.info(`PlanningWorker: no viable paths for ${item} x${count} | ${merged.length} pre-filter | ${planMs}ms`);
     }
 
     if (getPlanningTelemetryEnabled()) {

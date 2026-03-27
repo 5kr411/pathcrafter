@@ -7,6 +7,7 @@ import { ToolReplacementExecutor } from './tool_replacement_executor';
 import { TargetExecutor } from './target_executor';
 import { StateMachineRunner } from './state_machine_runner';
 import { setWorkstationPhaseProvider } from '../../utils/workstationLock';
+import logger from '../../utils/logger';
 
 export type ControlMode = 'idle' | 'reactive' | 'tool' | 'target';
 
@@ -88,12 +89,20 @@ export class CollectorControlStack {
     for (const parent of states) {
       for (const child of states) {
         if (parent === child) continue;
+        const fromMode = modeByState.get(parent)!;
+        const toMode = modeByState.get(child)!;
         transitions.push(
           new StateTransition({
             parent,
             child,
-            name: `control: ${modeByState.get(parent)} -> ${modeByState.get(child)}`,
-            shouldTransition: () => this.getDesiredMode() === modeByState.get(child)
+            name: `control: ${fromMode} -> ${toMode}`,
+            shouldTransition: () => this.getDesiredMode() === toMode,
+            onTransition: () => {
+              // Only log non-idle transitions to avoid spam
+              if (fromMode !== 'idle' || toMode !== 'idle') {
+                logger.info(`ControlStack: ${fromMode} -> ${toMode}`);
+              }
+            }
           })
         );
       }
