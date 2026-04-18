@@ -4,7 +4,7 @@ import { getInventoryObject } from '../../../../utils/inventory';
 export const collectItemTool: ToolImpl = {
   schema: {
     name: 'collect_item',
-    description: 'Collect one or more items by name and count. Uses the planner + full reactive safety layer. Takes a list of targets so multi-item goals use a single planning pass.',
+    description: 'Acquire items by name and count. Use this for ANY material goal — the target can be a raw resource (oak_log, cobblestone, iron_ore), a crafted item (wooden_pickaxe, iron_sword, crafting_table), a smelted item (iron_ingot, cooked_beef, glass), or any multi-step recipe output. The planner decomposes recipes, acquires prerequisite tools and workstations (crafting_table, furnace), mines raw materials, and crafts/smelts as needed — the reactive safety layer handles combat/food/shelter throughout. Prefer a single call with the full target list over sequential decomposition; do NOT manually decompose "wooden_pickaxe" into "collect logs then planks then sticks" — pass {item: "wooden_pickaxe", count: 1} and the planner handles it.',
     inputSchema: {
       type: 'object',
       properties: {

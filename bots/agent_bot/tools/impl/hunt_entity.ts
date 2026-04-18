@@ -12,7 +12,7 @@ import type { AgentAction } from '../../action_executor';
 export const huntEntityTool: ToolImpl = {
   schema: {
     name: 'hunt_entity',
-    description: 'Pursue and attack an entity by id until it dies, despawns, or times out.',
+    description: 'Pursue and attack a specific entity (mob, animal, player) by its entity id until it dies, despawns, or times out. Use for explicit "kill that" / "go attack" goals. Do NOT use to farm for food (collect_item with cooked_beef or similar is better — the planner handles the full loop including cooking). For getting food from mobs, prefer collect_item. Get entity ids from get_entities.',
     inputSchema: {
       type: 'object',
       properties: {

@@ -10,7 +10,7 @@ import { eatFoodItem, findBestSafeFood, getFoodItems, type FoodItem } from './he
 export const eatFoodTool: ToolImpl = {
   schema: {
     name: 'eat_food',
-    description: 'Eat a food item from inventory. If `item` is provided, eat that specific food; otherwise eat the best available safe food by saturation.',
+    description: 'Explicitly eat a food item from inventory. You rarely need this — the reactive safety layer eats automatically when hunger drops. Use only when the player explicitly asks you to eat, or when you need to top off saturation before a known-strenuous task. If `item` is provided, eat that specific food; otherwise pick the best available safe food.',
     inputSchema: {
       type: 'object',
       properties: {

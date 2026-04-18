@@ -3,7 +3,7 @@ import type { ToolImpl } from '../types';
 export const sendChatTool: ToolImpl = {
   schema: {
     name: 'send_chat',
-    description: 'Send a chat message in the game. Useful for announcing intentions or responding to players.',
+    description: 'Send an intermediate chat message to the player while work is in progress — e.g. "on it, getting logs", "found 40/64", "crafting the pickaxe now". Use this for goal acknowledgement and mid-task milestone updates on long-running operations so the player knows you heard them and what you\'re doing. Do NOT use this for the final reply at end-of-goal — that is the assistant\'s text message, emitted by returning text without any tool calls.',
     inputSchema: {
       type: 'object',
       properties: { message: { type: 'string' } },
