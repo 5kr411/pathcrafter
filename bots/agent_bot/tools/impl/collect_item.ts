@@ -33,6 +33,11 @@ export const collectItemTool: ToolImpl = {
     ctx.targetExecutor.setTargets(targets);
 
     const onAbort = () => {
+      // Hard-cancel: stop() alone is soft — the underlying state machine can
+      // still be waiting on an in-flight planning job from the worker, which
+      // returns seconds later and auto-resumes the suspended plan. Clear the
+      // target list so there's nothing left to resume to, then stop.
+      try { ctx.targetExecutor.setTargets([]); } catch (_) {}
       try { ctx.targetExecutor.stop(); } catch (_) {}
     };
     ctx.signal.addEventListener('abort', onAbort, { once: true });
