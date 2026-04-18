@@ -23,6 +23,10 @@ export class AgentSession {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private state: 'empty' | 'running' | 'idle' | 'dead' = 'empty';
   private toolsUsedThisSession = 0;
+  /** User message arrived while a tool loop was running. Drained by run()
+   *  after the current tool batch has pushed all tool_result blocks, so
+   *  tool_use/tool_result adjacency is preserved. */
+  private pendingUserMessage: string | null = null;
   private readonly idleMs: number;
   private readonly maxTools: number;
 
@@ -41,21 +45,28 @@ export class AgentSession {
   ): Promise<void> {
     if (this.state === 'dead') this.reset();
     const wrapped = this.wrapUserMessage(text, metadata);
+    this.clearIdleTimer();
 
     if (this.state === 'running') {
-      // Mid-turn interruption: abort current tool, append new user message, loop will pick it up.
+      // Mid-turn interruption: queue the new message and fire the abort.
+      // We must NOT push it to `messages` yet — the in-flight tool loop still
+      // has pending tool_result blocks to push for already-issued tool_use
+      // blocks in the current assistant turn. Interleaving a user message
+      // between a tool_use and its tool_result makes the conversation
+      // ill-formed (Anthropic rejects it with a 400). The run loop drains
+      // the queue once all tool_results have been pushed.
+      this.pendingUserMessage = wrapped;
       this.abort.abort();
       this.abort = new AbortController();
+      return;
     }
 
     this.messages.push({ role: 'user', content: wrapped });
-    this.clearIdleTimer();
 
     if (this.state === 'idle' || this.state === 'empty') {
       this.state = 'running';
       this.run().catch(err => logger.info(`AgentSession: loop crashed: ${err?.message ?? err}`));
     }
-    // If already running, the existing loop will see the new message after the abort resolves.
   }
 
   destroy(): void {
@@ -63,6 +74,7 @@ export class AgentSession {
     this.clearIdleTimer();
     this.state = 'dead';
     this.messages = [];
+    this.pendingUserMessage = null;
   }
 
   private async run(): Promise<void> {
@@ -78,9 +90,10 @@ export class AgentSession {
       if ((this.state as string) === 'dead') return;
 
       if (result.stopReason === 'cancelled') {
-        // Provider aborted mid-turn (either by new user message, or destroy). If a new user
-        // message is already appended, loop and process it; otherwise exit.
-        if (this.lastMessageIsUser()) continue;
+        // Provider aborted mid-turn (either by new user message, or destroy).
+        // If a new user message is queued (or already appended), continue;
+        // otherwise exit.
+        if (this.drainPendingUserMessage() || this.lastMessageIsUser()) continue;
         break;
       }
       if (result.stopReason === 'error') {
@@ -107,8 +120,26 @@ export class AgentSession {
         return;
       }
 
-      // Execute each tool sequentially; append tool_result.
+      // Execute each tool sequentially; append tool_result for each tool_use.
+      // Once the abort fires, synthesize cancelled tool_result entries for
+      // remaining tool_uses so the assistant turn stays well-formed.
+      let abortedMidBatch = false;
       for (const call of result.toolCalls) {
+        if (abortedMidBatch) {
+          const synthetic = { ok: false, error: 'cancelled', cancelled: true };
+          logger.info(`AgentSession: tool ${call.name} -> synthesized cancelled tool_result (abort mid-batch)`);
+          this.messages.push({
+            role: 'tool',
+            content: [{
+              type: 'tool_result',
+              toolCallId: call.id,
+              name: call.name,
+              content: JSON.stringify(synthetic),
+              isError: true
+            }]
+          });
+          continue;
+        }
         this.toolsUsedThisSession++;
         const ctx: ToolContext = {
           bot: this.deps.bot,
@@ -134,9 +165,21 @@ export class AgentSession {
             isError: !toolResult.ok
           }]
         });
-        if (this.abort.signal.aborted) break;
+        if (this.abort.signal.aborted) abortedMidBatch = true;
       }
+
+      // Drain any user message queued during the tool batch, now that all
+      // tool_results have been pushed and tool_use/tool_result adjacency is
+      // preserved.
+      this.drainPendingUserMessage();
     }
+  }
+
+  private drainPendingUserMessage(): boolean {
+    if (this.pendingUserMessage === null) return false;
+    this.messages.push({ role: 'user', content: this.pendingUserMessage });
+    this.pendingUserMessage = null;
+    return true;
   }
 
   private wrapUserMessage(
@@ -170,6 +213,7 @@ export class AgentSession {
     this.abort = new AbortController();
     this.toolsUsedThisSession = 0;
     this.state = 'empty';
+    this.pendingUserMessage = null;
     this.clearIdleTimer();
   }
 }
