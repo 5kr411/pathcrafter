@@ -20,6 +20,7 @@ import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import { installExplosionSanitizer } from '../utils/explosionSanitizer';
 import { installPacketErrorSuppressor } from '../utils/packetErrorSuppressor';
+import { createRateLimitedChat } from '../utils/rateLimitedChat';
 import logger from '../utils/logger';
 import { parseCliTargets } from '../utils/cli';
 import { resolveRunDir } from '../utils/runDir';
@@ -84,12 +85,7 @@ bot.once('spawn', () => {
     setLiquidAvoidanceDistance(Math.max(0, Math.floor(config.liquidAvoidanceDistance)));
   }
 
-  const safeChat = (msg: string): void => {
-    try {
-      if (bot && bot._client && !bot._client.ended) bot.chat(msg);
-    } catch (_) {}
-  };
-
+  const safeChat = createRateLimitedChat(bot);
   (bot as any).safeChat = safeChat;
 
   bot.on('kicked', (reason: string, loggedIn: boolean) => {
