@@ -9,7 +9,7 @@ import { StateMachineRunner } from './state_machine_runner';
 import { setWorkstationPhaseProvider } from '../../utils/workstationLock';
 import logger from '../../utils/logger';
 
-export type ControlMode = 'idle' | 'reactive' | 'tool' | 'target';
+export type ControlMode = 'idle' | 'reactive' | 'tool' | 'target' | 'agent_action';
 
 export interface ControlStackConfig {
   snapshotRadii: number[];
@@ -25,6 +25,7 @@ export class CollectorControlStack {
   readonly reactiveLayer: ReactiveBehaviorManager;
   readonly toolLayer: ToolReplacementExecutor;
   readonly targetLayer: TargetExecutor;
+  readonly agentActionLayer: any | null;
   readonly rootStateMachine: NestedStateMachine;
 
   private readonly toolsBeingReplaced = new Set<string>();
@@ -34,7 +35,8 @@ export class CollectorControlStack {
     private readonly workerManager: WorkerManager,
     private readonly safeChat: (msg: string) => void,
     private readonly config: ControlStackConfig,
-    reactiveRegistry: ReactiveBehaviorRegistry
+    reactiveRegistry: ReactiveBehaviorRegistry,
+    agentActionLayer: any | null = null
   ) {
     this.reactiveLayer = new ReactiveBehaviorManager(this.bot, reactiveRegistry);
     this.toolLayer = new ToolReplacementExecutor(
@@ -52,6 +54,7 @@ export class CollectorControlStack {
       this.toolLayer,
       this.toolsBeingReplaced
     );
+    this.agentActionLayer = agentActionLayer;
 
     setWorkstationPhaseProvider(() => this.targetLayer.isInWorkstationPhase());
 
@@ -67,6 +70,9 @@ export class CollectorControlStack {
     this.reactiveLayer.stop();
     this.toolLayer.stop();
     this.targetLayer.stop();
+    if (this.agentActionLayer && typeof this.agentActionLayer.stop === 'function') {
+      try { this.agentActionLayer.stop(); } catch (_) {}
+    }
     this.runner.stop();
   }
 
@@ -76,13 +82,17 @@ export class CollectorControlStack {
     const tool = this.toolLayer;
     const target = this.targetLayer;
 
-    const states = [idle, reactive, tool, target];
+    const states: any[] = [idle, reactive, tool, target];
     const modeByState = new Map<any, ControlMode>([
       [idle, 'idle'],
       [reactive, 'reactive'],
       [tool, 'tool'],
       [target, 'target']
     ]);
+    if (this.agentActionLayer) {
+      states.push(this.agentActionLayer);
+      modeByState.set(this.agentActionLayer, 'agent_action');
+    }
 
     const transitions: StateTransition[] = [];
 
@@ -115,6 +125,9 @@ export class CollectorControlStack {
     if (this.reactiveLayer.hasWork()) return 'reactive';
     if (this.toolLayer.hasWork()) return 'tool';
     if (this.targetLayer.hasWork()) return 'target';
+    if (this.agentActionLayer && typeof this.agentActionLayer.hasWork === 'function' && this.agentActionLayer.hasWork()) {
+      return 'agent_action';
+    }
     return 'idle';
   }
 }
