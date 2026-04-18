@@ -25,13 +25,21 @@ function makeToolExecutor(runImpl?: (call: any, ctx: any) => Promise<any>): Tool
 
 function baseDeps(overrides: Partial<ConstructorParameters<typeof AgentSession>[0]> = {}) {
   const safeChat = jest.fn();
+  const targetExecutor: any = {
+    setTargets: () => {},
+    startNextTarget: async () => {},
+    stop: () => {},
+    isRunning: () => false,
+    getTargets: () => []
+  };
+  const agentActionExecutor: any = { run: async () => ({ ok: true }), stop: () => {} };
   return {
     deps: {
       bot: {},
       provider: makeFakeProvider([]),
       toolExecutor: makeToolExecutor(),
-      targetExecutor: {},
-      agentActionExecutor: {},
+      targetExecutor,
+      agentActionExecutor,
       safeChat,
       idleMs: 50,
       maxToolsPerSession: 30,

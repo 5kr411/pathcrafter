@@ -1,15 +1,17 @@
 import type { LLMProvider, Message } from './providers/types';
 import type { ToolExecutor } from './tools/executor';
-import type { ToolContext } from './tools/types';
+import type { ToolContext, TargetExecutorLike, AgentActionExecutorLike } from './tools/types';
 import logger from '../../utils/logger';
 import { SYSTEM_PROMPT } from './system_prompt';
+
+export type { TargetExecutorLike, AgentActionExecutorLike };
 
 export interface SessionDeps {
   bot: any;
   provider: LLMProvider;
   toolExecutor: ToolExecutor;
-  targetExecutor: any;
-  agentActionExecutor: any;
+  targetExecutor: TargetExecutorLike;
+  agentActionExecutor: AgentActionExecutorLike;
   safeChat: (msg: string) => void;
   idleMs?: number;
   maxToolsPerSession?: number;
