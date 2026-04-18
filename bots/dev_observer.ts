@@ -24,7 +24,7 @@ fs.writeFileSync(chatOut, '', { flag: 'a' });
 const bot = mineflayer.createBot({ host, port, username: 'dev_observer' });
 
 bot.once('spawn', () => {
-  bot.chat('/gamemode creative');
+  bot.chat('/gamemode spectator');
   setTimeout(() => bot.chat('/tp @s ~ ~100 ~'), 500);
   setupPolling();
 });
