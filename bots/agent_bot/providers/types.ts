@@ -29,6 +29,8 @@ export interface TurnResult {
   toolCalls: ToolCall[];
   stopReason: StopReason;
   usage?: { inputTokens: number; outputTokens: number };
+  /** Short human-readable error detail when stopReason is 'error'. */
+  errorDetail?: string;
 }
 
 export interface TurnParams {

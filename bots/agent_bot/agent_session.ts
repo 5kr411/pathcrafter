@@ -84,8 +84,11 @@ export class AgentSession {
         break;
       }
       if (result.stopReason === 'error') {
-        this.deps.safeChat('(agent error — try again)');
-        break;
+        const detail = result.errorDetail ? `: ${result.errorDetail}` : '';
+        this.deps.safeChat(`(agent error${detail})`);
+        this.state = 'idle';
+        this.armIdleTimer();
+        return;
       }
 
       // Append assistant turn.

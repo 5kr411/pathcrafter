@@ -41,13 +41,15 @@ export class AnthropicProvider implements LLMProvider {
         body: JSON.stringify(body),
         signal: params.signal
       });
-    } catch (_err: any) {
+    } catch (err: any) {
       if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
-      return { text: null, toolCalls: [], stopReason: 'error' };
+      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
     }
 
     if (!resp.ok) {
-      return { text: null, toolCalls: [], stopReason: 'error' };
+      const body = await resp.text().catch(() => '');
+      const detail = extractErrorMessage(body) ?? `HTTP ${resp.status}`;
+      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
     }
 
     const data: any = await resp.json();
@@ -97,5 +99,15 @@ export class AnthropicProvider implements LLMProvider {
         return b;
       })
     };
+  }
+}
+
+function extractErrorMessage(body: string): string | null {
+  if (!body) return null;
+  try {
+    const parsed = JSON.parse(body);
+    return parsed?.error?.message ?? parsed?.message ?? null;
+  } catch (_) {
+    return body.slice(0, 200);
   }
 }
