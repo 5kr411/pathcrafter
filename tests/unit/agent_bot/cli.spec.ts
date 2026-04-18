@@ -41,4 +41,25 @@ describe('parseAgentBotArgs', () => {
       { ANTHROPIC_API_KEY: 'k' });
     expect(r.targets).toEqual([{ item: 'oak_log', count: 5 }, { item: 'coal', count: 3 }]);
   });
+
+  it('rejects --targets entry with missing count', () => {
+    expect(() => parseAgentBotArgs(
+      ['h', '1', 'b', '--provider', 'anthropic', '--model', 'm', '--targets', 'spruce_log'],
+      { ANTHROPIC_API_KEY: 'k' }
+    )).toThrow(/count|invalid target/i);
+  });
+
+  it('rejects --targets entry with non-numeric count', () => {
+    expect(() => parseAgentBotArgs(
+      ['h', '1', 'b', '--provider', 'anthropic', '--model', 'm', '--targets', 'spruce_log abc'],
+      { ANTHROPIC_API_KEY: 'k' }
+    )).toThrow(/count|invalid target/i);
+  });
+
+  it('rejects --targets entry with count 0', () => {
+    expect(() => parseAgentBotArgs(
+      ['h', '1', 'b', '--provider', 'anthropic', '--model', 'm', '--targets', 'spruce_log 0'],
+      { ANTHROPIC_API_KEY: 'k' }
+    )).toThrow(/count|invalid target/i);
+  });
 });

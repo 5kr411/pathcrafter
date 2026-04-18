@@ -47,8 +47,13 @@ export function parseAgentBotArgs(argv: string[], env: NodeJS.ProcessEnv = proce
   const targetsStr = get('--targets');
   const targets = targetsStr
     ? targetsStr.split(',').map(s => {
-        const [item, c] = s.trim().split(/\s+/);
-        return { item, count: parseInt(c, 10) };
+        const raw = s.trim();
+        const [item, c] = raw.split(/\s+/);
+        const count = parseInt(c, 10);
+        if (!item || !Number.isInteger(count) || count < 1) {
+          throw new Error(`invalid target "${raw}": count must be a positive integer (e.g. "oak_log 5")`);
+        }
+        return { item, count };
       })
     : undefined;
 
