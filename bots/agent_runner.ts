@@ -1,9 +1,9 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as crypto from 'crypto';
-import { parseAgentConfig, AgentConfig } from './agent/config_parser';
-import { LogMonitor } from './agent/log_monitor';
-import { BotStatus, RunSummary, computeExitCode, computeOverallResult, writeSummary } from './agent/summary';
+import { parseAgentConfig, AgentConfig } from './collector_runner/config_parser';
+import { LogMonitor } from './collector_runner/log_monitor';
+import { BotStatus, RunSummary, computeExitCode, computeOverallResult, writeSummary } from './collector_runner/summary';
 import { createRunDir } from '../utils/runDir';
 import logger from '../utils/logger';
 

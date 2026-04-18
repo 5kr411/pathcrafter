@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { parseAgentConfig } from '../../bots/agent/config_parser';
+import { parseAgentConfig } from '../../bots/collector_runner/config_parser';
 
 describe('parseAgentConfig', () => {
   it('parses --targets from argv', () => {

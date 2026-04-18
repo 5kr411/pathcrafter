@@ -2,8 +2,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
-import { computeExitCode, computeOverallResult, writeSummary, RunSummary } from '../../bots/agent/summary';
-import { LogMonitor } from '../../bots/agent/log_monitor';
+import { computeExitCode, computeOverallResult, writeSummary, RunSummary } from '../../bots/collector_runner/summary';
+import { LogMonitor } from '../../bots/collector_runner/log_monitor';
 
 // This is a unit-level integration test that verifies the agent runner components
 // work together correctly. It does NOT require a live Minecraft server.

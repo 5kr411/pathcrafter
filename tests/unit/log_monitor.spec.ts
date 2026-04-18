@@ -1,4 +1,4 @@
-import { LogMonitor, LogEvent } from '../../bots/agent/log_monitor';
+import { LogMonitor, LogEvent } from '../../bots/collector_runner/log_monitor';
 
 describe('LogMonitor', () => {
   function createMonitor(): LogMonitor {
