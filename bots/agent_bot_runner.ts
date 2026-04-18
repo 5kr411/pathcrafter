@@ -91,7 +91,9 @@ async function run(): Promise<void> {
   }
 
   const startTime = new Date();
-  const runDir = createRunDir();
+  // When launched under the dev harness, land artifacts in the dev rundir
+  // alongside chat_in / chat_out so `make dev-logs BOT=...` finds them.
+  const runDir = process.env.PATHCRAFTER_DEV_RUN_DIR ?? createRunDir();
   const runId = path.basename(runDir);
 
   logger.info(`Agent bot runner started — runId=${runId}, bots=${specs.length}, timeout=${cli.timeoutMs}ms`);
