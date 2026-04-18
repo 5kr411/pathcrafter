@@ -66,4 +66,33 @@ describe('AgentChatHandler', () => {
       position: undefined
     });
   });
+
+  it('routes bare <botname> messages (no @ required)', () => {
+    const session = makeSession();
+    const bot = makeBot({
+      players: { alice: { entity: { position: { x: 0, y: 64, z: 0 } } } }
+    });
+    const handler = new AgentChatHandler(bot, session);
+    handler.handle('alice', 'agent_bot come here');
+    expect(session.submitUserMessage).toHaveBeenCalledWith('come here', {
+      speaker: 'alice',
+      position: { x: 0, y: 64, z: 0 }
+    });
+  });
+
+  it('does NOT route bare <other_bot> messages', () => {
+    const session = makeSession();
+    const bot = makeBot();
+    const handler = new AgentChatHandler(bot, session);
+    handler.handle('alice', 'other_bot hi');
+    expect(session.submitUserMessage).not.toHaveBeenCalled();
+  });
+
+  it('requires @ for broadcast (bare "all" does not broadcast)', () => {
+    const session = makeSession();
+    const bot = makeBot();
+    const handler = new AgentChatHandler(bot, session);
+    handler.handle('alice', 'all collect wood');
+    expect(session.submitUserMessage).not.toHaveBeenCalled();
+  });
 });

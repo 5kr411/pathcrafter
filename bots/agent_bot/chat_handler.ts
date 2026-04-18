@@ -18,7 +18,9 @@ export class AgentChatHandler {
     const name = String(this.bot.username ?? '').toLowerCase();
     const low = msg.toLowerCase();
     if (low.startsWith('@all ')) return msg.substring(5).trim();
-    if (name && low.startsWith(`@${name} `)) return msg.substring(name.length + 2).trim();
+    if (!name) return null;
+    if (low.startsWith(`@${name} `)) return msg.substring(name.length + 2).trim();
+    if (low.startsWith(`${name} `)) return msg.substring(name.length + 1).trim();
     return null;
   }
 }
