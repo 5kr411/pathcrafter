@@ -62,7 +62,10 @@ function spawnAgentRunner(config: DevConfig, runDir: string): ChildProcess {
     scriptPath,
     '--roster', config.roster,
     '--host', config.host,
-    '--port', String(config.port)
+    '--port', String(config.port),
+    // Dev harness is long-running; the runner's 10-minute default would
+    // SIGTERM bots mid-goal. Use a 30-day effective-infinity instead.
+    '--timeout', String(30 * 24 * 60 * 60 * 1000)
   ];
   const proc = spawn('node', args, {
     stdio: 'inherit',
