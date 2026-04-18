@@ -355,7 +355,7 @@ The collection bot is an end-to-end mineflayer bot that can acquire items in a l
 ### Starting a Single Bot
 
 ```bash
-make bot-collect
+make bot-collector
 ```
 
 The bot connects to `localhost:25565` by default. You can customize connection settings:
@@ -364,21 +364,15 @@ The bot connects to `localhost:25565` by default. You can customize connection s
 node dist/bots/collect_paths.js <host> <port> [username] [password]
 ```
 
-### Running Multiple Bots
+### Running a Collector Swarm
 
-Run multiple collector instances in parallel (default 10):
-
-```bash
-make bot-collect-multi
-```
-
-Customize the number of bots and connection:
+Run multiple collector instances against an existing server:
 
 ```bash
-make bot-collect-multi NUM=20 HOST=localhost PORT=25565 NAME=collector
+make swarm-collector TARGETS="oak_log 16" NUM=10
 ```
 
-This spawns bots named `collector1`, `collector2`, ..., `collector20`.
+Each bot gets a random-hex name (`collector_<hex>`); override the base with `--username-base` when invoking `collector_runner.js` directly.
 
 ### In-Game Commands
 

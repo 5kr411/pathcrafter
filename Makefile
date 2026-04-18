@@ -1,4 +1,4 @@
-.PHONY: build clean test bot-collect bot-collect-multi bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food bot-agent bot-agent-config e2e
+.PHONY: build clean tests bot-collector bot-craft-inv bot-craft-table bot-main bot-mine bot-mine-oneof bot-mine-anyof bot-smelt bot-attack bot-follow-attack bot-hunt bot-shield bot-food swarm-collector swarm-collector-config e2e-collector e2e-agent
 
 # Build TypeScript sources
 build:
@@ -12,14 +12,9 @@ clean:
 tests: build
 	npm test
 
-# E2E Bots
-bot-collect: build
+# -- Single-bot entry points (connect to an existing server) ------------------
+bot-collector: build
 	node dist/bots/collect_paths.js $(if $(TARGETS),--targets "$(TARGETS)")
-
-# Run multiple collector instances (default 10)
-# Usage: make bot-collect-multi [NUM=10] [HOST=localhost] [PORT=25565] [NAME=collector]
-bot-collect-multi: build
-	node dist/bots/collect_paths_multi.js $(or $(NUM),10) $(or $(HOST),localhost) $(or $(PORT),25565) $(or $(NAME),collector) $(if $(TARGETS),--targets "$(TARGETS)")
 
 bot-craft-inv: build
 	node dist/bots/craft_inventory.js
@@ -57,15 +52,22 @@ bot-shield: build
 bot-food: build
 	node dist/bots/food_collection.js
 
-bot-agent: build
+# -- Swarms (multi-bot, connect to an existing server) ------------------------
+swarm-collector: build
 	node dist/bots/collector_runner.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(HOST),--host $(HOST)) $(if $(PORT),--port $(PORT))
 
-bot-agent-config: build
+swarm-collector-config: build
 	node dist/bots/collector_runner.js --config $(CONFIG)
 
-# E2E: spin up disposable Minecraft server and run bot swarm
-e2e: build
+# -- Bounded E2E (ephemeral Docker MC + bots, tears down on completion) -------
+# e2e-collector: deterministic planner-based collector swarm
+e2e-collector: build
 	node dist/e2e/run_e2e.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(BIOME),--biome $(BIOME)) $(if $(DIFFICULTY),--difficulty $(DIFFICULTY))
+
+# e2e-agent: LLM-powered agent swarm. ROSTER OR (PROVIDER + MODEL + NUM) required.
+# TARGETS is optional — agents may idle until timeout if no initial goal.
+e2e-agent: build
+	node dist/e2e/run_e2e_agent.js $(if $(ROSTER),--roster $(ROSTER)) $(if $(PROVIDER),--provider $(PROVIDER)) $(if $(MODEL),--model $(MODEL)) $(if $(NUM),--num-bots $(NUM)) $(if $(TARGETS),--targets "$(TARGETS)") $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(BIOME),--biome $(BIOME)) $(if $(DIFFICULTY),--difficulty $(DIFFICULTY))
 
 # -- Dev harness --------------------------------------------------------------
 # Drive a swarm of LLM-agent bots in real time via filesystem chat channels.

@@ -42,7 +42,7 @@ function parseArgs(): E2eConfig {
   };
 }
 
-async function runAgentRunner(config: E2eConfig): Promise<number> {
+async function runCollectorRunner(config: E2eConfig): Promise<number> {
   const scriptPath = path.resolve(__dirname, '../bots/collector_runner.js');
 
   const args = [
@@ -104,8 +104,8 @@ async function main(): Promise<void> {
   }
 
   // Step 3: Run bots
-  console.log('Starting bot swarm...');
-  const exitCode = await runAgentRunner(config);
+  console.log('Starting collector swarm...');
+  const exitCode = await runCollectorRunner(config);
 
   // Step 4: Teardown
   teardown();
