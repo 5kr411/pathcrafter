@@ -17,6 +17,7 @@ interface RunnerCliConfig {
   timeoutMs: number;
   staggerMs: number;
   targetsArg?: string;
+  persist: boolean;
 }
 
 const DEFAULTS = {
@@ -54,6 +55,7 @@ function parseRunnerCli(argv: string[] = process.argv.slice(2)): RunnerCliConfig
   const staggerMs = Number(getArgValue(argv, '--stagger-ms') ?? DEFAULTS.staggerMs);
 
   const targetsArg = getArgValue(argv, '--targets');
+  const persist = argv.includes('--persist');
 
   return {
     rosterArgs: {
@@ -70,7 +72,8 @@ function parseRunnerCli(argv: string[] = process.argv.slice(2)): RunnerCliConfig
     port,
     timeoutMs,
     staggerMs,
-    targetsArg
+    targetsArg,
+    persist
   };
 }
 
@@ -210,7 +213,9 @@ async function run(): Promise<void> {
     monitor.onEvent((event) => {
       if (event.type === 'all_complete') {
         logger.info(`Bot ${botName} completed all targets`);
-        checkAllComplete();
+        // In persist mode (dev harness), don't tear down on target completion —
+        // the bot stays up to accept more chat-initiated goals.
+        if (!cli.persist) checkAllComplete();
       }
     });
 
