@@ -525,6 +525,11 @@ export class TargetExecutor implements StateBehavior {
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
     this.clearActiveState();
+    // Invalidate any in-flight worker planning job so its result is discarded
+    // on arrival instead of auto-resuming into the cancelled target.
+    this.planningId = null;
+    this.planningOutcome = 'idle';
+    this.planPath = null;
     this.stopRequested = true;
     this.safeChat('stopped');
   }
