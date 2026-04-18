@@ -106,4 +106,7 @@ dev-logs:
 
 dev-down:
 	@pkill -f "dist/e2e/run_dev.js" || true
+	@pkill -f "dist/bots/agent_bot_runner.js" || true
+	@pkill -f "dist/bots/agent_bot.js" || true
+	@pkill -f "dist/bots/dev_observer.js" || true
 	@docker rm -f pathcrafter-e2e 2>/dev/null || true
