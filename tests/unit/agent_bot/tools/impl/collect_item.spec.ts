@@ -46,6 +46,43 @@ describe('collect_item', () => {
     }
   });
 
+  it('removes its abort listener after successful resolution (no leak)', async () => {
+    const addSpy = jest.fn();
+    const removeSpy = jest.fn();
+    const fakeSignal: any = {
+      aborted: false,
+      addEventListener: (ev: string, fn: any, opts?: any) => { addSpy(ev, fn, opts); },
+      removeEventListener: (ev: string, fn: any) => { removeSpy(ev, fn); },
+      dispatchEvent: () => true
+    };
+    const targetExecutor = {
+      setTargets: jest.fn(),
+      startNextTarget: jest.fn().mockResolvedValue(undefined),
+      isRunning: () => false,
+      stop: jest.fn(),
+      getTargets: () => []
+    };
+    const ctx: any = {
+      bot: { inventory: { items: () => [], slots: [] } },
+      signal: fakeSignal,
+      targetExecutor,
+      agentActionExecutor: {},
+      safeChat: () => {}
+    };
+
+    const r = await collectItemTool.execute({ targets: [{ item: 'oak_log', count: 4 }] }, ctx);
+    expect(r.ok).toBe(true);
+
+    const abortAdds = addSpy.mock.calls.filter(c => c[0] === 'abort');
+    const abortRemoves = removeSpy.mock.calls.filter(c => c[0] === 'abort');
+    // Every registered abort listener must be removed on resolution.
+    expect(abortRemoves.length).toBe(abortAdds.length);
+    // Each listener fn added must appear in removes.
+    for (const [, fn] of abortAdds) {
+      expect(abortRemoves.some(r => r[1] === fn)).toBe(true);
+    }
+  });
+
   it('computes acquired diff and missing counts', async () => {
     const invSnapshots: Array<Array<{ name: string; count: number }>> = [
       [],

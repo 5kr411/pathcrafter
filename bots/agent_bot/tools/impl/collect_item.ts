@@ -64,14 +64,20 @@ export const collectItemTool: ToolImpl = {
 function waitUntilIdle(executor: any, signal: AbortSignal, pollMs = 500): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) return reject(new Error('aborted'));
-    const iv = setInterval(() => {
-      if (signal.aborted) { clearInterval(iv); return reject(new Error('aborted')); }
+    let iv: ReturnType<typeof setInterval> | null = null;
+    const cleanup = () => {
+      if (iv) { clearInterval(iv); iv = null; }
+      signal.removeEventListener('abort', onAbort);
+    };
+    const onAbort = () => { cleanup(); reject(new Error('aborted')); };
+    iv = setInterval(() => {
+      if (signal.aborted) { cleanup(); return reject(new Error('aborted')); }
       if (!executor.isRunning() || (executor.getTargets?.() ?? []).length === 0) {
-        clearInterval(iv);
+        cleanup();
         resolve();
       }
     }, pollMs);
-    signal.addEventListener('abort', () => { clearInterval(iv); reject(new Error('aborted')); }, { once: true });
+    signal.addEventListener('abort', onAbort, { once: true });
   });
 }
 
