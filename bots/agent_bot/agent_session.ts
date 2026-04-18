@@ -117,7 +117,12 @@ export class AgentSession {
           agentActionExecutor: this.deps.agentActionExecutor,
           safeChat: this.deps.safeChat
         };
+        logger.info(`AgentSession: tool call ${call.name} input=${JSON.stringify(call.input).slice(0, 200)}`);
         const toolResult = await this.deps.toolExecutor.run(call, ctx);
+        const resSummary = toolResult.ok
+          ? `ok data=${JSON.stringify((toolResult as any).data ?? null).slice(0, 200)}`
+          : `err=${(toolResult as any).error}${(toolResult as any).cancelled ? ' (cancelled)' : ''}${(toolResult as any).preempted ? ' (preempted)' : ''}`;
+        logger.info(`AgentSession: tool ${call.name} -> ${resSummary}`);
         if ((this.state as string) === 'dead') return;
         this.messages.push({
           role: 'tool',

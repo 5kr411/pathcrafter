@@ -3,7 +3,7 @@ import type { ToolImpl } from '../types';
 export const dropItemTool: ToolImpl = {
   schema: {
     name: 'drop_item',
-    description: 'Drop a number of items (by item name) from the bot\'s inventory. If count is omitted, drops all matching items.',
+    description: 'Drop items from the bot\'s inventory onto the ground at the bot\'s current location. If count is omitted, drops all matching items. Required to "give", "deliver", or "hand" items to a player — nothing else in this toolset transfers items from bot to player. To deliver at the player\'s feet: first goto_entity with the player\'s entity id (so the bot walks to them), THEN drop_item. Calling drop_item alone drops where the bot is standing, which may be far from the player.',
     inputSchema: {
       type: 'object',
       properties: {
