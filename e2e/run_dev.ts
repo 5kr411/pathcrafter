@@ -39,7 +39,7 @@ function parseArgs(): DevConfig {
 
 function makeRunDir(): string {
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
-  const dir = path.resolve(__dirname, '..', 'artifacts', `dev-${ts}`);
+  const dir = path.resolve(process.cwd(), 'artifacts', `dev-${ts}`);
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

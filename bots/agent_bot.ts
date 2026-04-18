@@ -1,5 +1,5 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
+import { loadEnv } from '../utils/loadEnv';
+loadEnv();
 
 const mineflayer = require('mineflayer');
 

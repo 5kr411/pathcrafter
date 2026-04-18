@@ -1,5 +1,5 @@
-import * as dotenv from 'dotenv';
-dotenv.config();
+import { loadEnv } from '../utils/loadEnv';
+loadEnv();
 
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';

@@ -3,9 +3,9 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as dotenv from 'dotenv';
+import { loadEnv } from '../utils/loadEnv';
 
-dotenv.config();
+loadEnv();
 
 const CONTAINER_NAME = 'pathcrafter-e2e';
 const IMAGE = 'itzg/minecraft-server';
