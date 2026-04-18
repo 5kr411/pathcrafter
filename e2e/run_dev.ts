@@ -64,8 +64,9 @@ function spawnAgentRunner(config: DevConfig, runDir: string): ChildProcess {
     '--host', config.host,
     '--port', String(config.port),
     // Dev harness is long-running; the runner's 10-minute default would
-    // SIGTERM bots mid-goal. Use a 30-day effective-infinity instead.
-    '--timeout', String(30 * 24 * 60 * 60 * 1000)
+    // SIGTERM bots mid-goal. Use 7 days — effectively infinite for a dev
+    // session, and safely under Node's 32-bit setTimeout cap (~24.8 days).
+    '--timeout', String(7 * 24 * 60 * 60 * 1000)
   ];
   const proc = spawn('node', args, {
     stdio: 'inherit',
