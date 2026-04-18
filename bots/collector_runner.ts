@@ -87,9 +87,7 @@ async function run(): Promise<void> {
     }
 
     const suffix = crypto.randomBytes(2).toString('hex');
-    const botName = config.numBots === 1
-      ? `${config.usernameBase}_${suffix}`
-      : `${config.usernameBase}_${i}_${suffix}`;
+    const botName = `${config.usernameBase}_${suffix}`;
 
     logger.info(`Spawning bot ${i + 1}/${config.numBots}: ${botName}`);
 

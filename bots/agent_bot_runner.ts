@@ -82,6 +82,10 @@ function formatTargets(targets: BotSpec['targets']): string | undefined {
   return targets.map(t => `${t.item} ${t.count}`).join(', ');
 }
 
+function providerTag(provider: string): string {
+  return provider === 'openai-compat' ? 'local' : provider;
+}
+
 async function run(): Promise<void> {
   let cli: RunnerCliConfig;
   let specs: BotSpec[];
@@ -165,7 +169,7 @@ async function run(): Promise<void> {
 
     const spec = specs[i];
     const suffix = crypto.randomBytes(2).toString('hex');
-    const botName = spec.name ?? `agent_${i}_${suffix}`;
+    const botName = spec.name ?? `${providerTag(spec.provider)}_${suffix}`;
 
     logger.info(`Spawning bot ${i + 1}/${specs.length}: ${botName} (${spec.provider}/${spec.model})`);
 

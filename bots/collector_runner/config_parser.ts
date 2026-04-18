@@ -17,7 +17,7 @@ const DEFAULTS: Omit<AgentConfig, 'targets'> = {
   numBots: 1,
   host: 'localhost',
   port: 25565,
-  usernameBase: 'abot',
+  usernameBase: 'collector',
   timeoutMs: 600000,
   perTargetTimeoutMs: 120000,
   staggerMs: 2000
