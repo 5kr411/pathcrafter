@@ -43,7 +43,7 @@ function parseArgs(): E2eConfig {
 }
 
 async function runAgentRunner(config: E2eConfig): Promise<number> {
-  const scriptPath = path.resolve(__dirname, '../bots/agent_runner.js');
+  const scriptPath = path.resolve(__dirname, '../bots/collector_runner.js');
 
   const args = [
     scriptPath,
@@ -65,7 +65,7 @@ async function runAgentRunner(config: E2eConfig): Promise<number> {
     });
 
     proc.on('error', (err) => {
-      console.error('Failed to spawn agent_runner:', err.message);
+      console.error('Failed to spawn collector_runner:', err.message);
       resolve(2);
     });
 

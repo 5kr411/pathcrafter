@@ -5,7 +5,7 @@ import { parseAgentConfig } from '../../bots/collector_runner/config_parser';
 
 describe('parseAgentConfig', () => {
   it('parses --targets from argv', () => {
-    const argv = ['node', 'agent_runner.js', '--targets', 'oak_log 16, cobblestone 32'];
+    const argv = ['node', 'collector_runner.js', '--targets', 'oak_log 16, cobblestone 32'];
     const config = parseAgentConfig(argv);
     expect(config.targets).toEqual([
       { item: 'oak_log', count: 16 },
@@ -19,7 +19,7 @@ describe('parseAgentConfig', () => {
 
   it('parses --num-bots, --host, --port, --timeout', () => {
     const argv = [
-      'node', 'agent_runner.js',
+      'node', 'collector_runner.js',
       '--targets', 'diamond 4',
       '--num-bots', '3',
       '--host', 'mc.example.com',
@@ -36,12 +36,12 @@ describe('parseAgentConfig', () => {
   });
 
   it('throws when no --targets or --config provided', () => {
-    const argv = ['node', 'agent_runner.js'];
+    const argv = ['node', 'collector_runner.js'];
     expect(() => parseAgentConfig(argv)).toThrow('Either --targets or --config must be provided');
   });
 
   it('throws when --targets value is invalid', () => {
-    const argv = ['node', 'agent_runner.js', '--targets', 'gibberish'];
+    const argv = ['node', 'collector_runner.js', '--targets', 'gibberish'];
     expect(() => parseAgentConfig(argv)).toThrow('No valid targets');
   });
 
@@ -64,7 +64,7 @@ describe('parseAgentConfig', () => {
         host: 'remote.server'
       }));
 
-      const argv = ['node', 'agent_runner.js', '--config', cfgPath];
+      const argv = ['node', 'collector_runner.js', '--config', cfgPath];
       const config = parseAgentConfig(argv);
       expect(config.targets).toEqual([
         { item: 'oak_log', count: 8 },
@@ -80,7 +80,7 @@ describe('parseAgentConfig', () => {
         targets: [{ item: 'diamond', count: 4 }]
       }));
 
-      const argv = ['node', 'agent_runner.js', '--config', cfgPath];
+      const argv = ['node', 'collector_runner.js', '--config', cfgPath];
       const config = parseAgentConfig(argv);
       expect(config.targets).toEqual([{ item: 'diamond', count: 4 }]);
     });
@@ -91,7 +91,7 @@ describe('parseAgentConfig', () => {
         targets: 'iron_ore 8'
       }));
 
-      const argv = ['node', 'agent_runner.js', '--config', cfgPath];
+      const argv = ['node', 'collector_runner.js', '--config', cfgPath];
       const config = parseAgentConfig(argv);
       expect(config.numBots).toBe(1);
       expect(config.host).toBe('localhost');

@@ -58,10 +58,10 @@ bot-food: build
 	node dist/bots/food_collection.js
 
 bot-agent: build
-	node dist/bots/agent_runner.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(HOST),--host $(HOST)) $(if $(PORT),--port $(PORT))
+	node dist/bots/collector_runner.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(HOST),--host $(HOST)) $(if $(PORT),--port $(PORT))
 
 bot-agent-config: build
-	node dist/bots/agent_runner.js --config $(CONFIG)
+	node dist/bots/collector_runner.js --config $(CONFIG)
 
 # E2E: spin up disposable Minecraft server and run bot swarm
 e2e: build
