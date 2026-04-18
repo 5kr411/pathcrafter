@@ -8,8 +8,12 @@ import {
 import { ReactiveBehavior, Bot } from './types';
 import { isWorkstationLocked } from '../../../utils/workstationLock';
 import logger from '../../../utils/logger';
-
-const minecraftData = require('minecraft-data');
+import {
+  getFoodItems,
+  selectBestFood,
+  hasNegativeEffects,
+  type FoodItem
+} from '../../agent_bot/tools/impl/helpers/eat';
 
 const EATING_SUCCESS_COOLDOWN_MS = 3000;
 const EATING_FAILURE_COOLDOWN_MS = 15000;
@@ -26,18 +30,6 @@ function setCooldown(durationMs: number): void {
 
 export function resetFoodEatingCooldown(): void {
   lastEatAttempt = 0;
-}
-
-interface FoodInfo {
-  id: number;
-  name: string;
-  foodPoints: number;
-  saturation: number;
-}
-
-interface FoodItem {
-  item: any;
-  foodInfo: FoodInfo;
 }
 
 function getBotHealth(bot: Bot): number {
@@ -58,90 +50,6 @@ function isFullHunger(bot: Bot): boolean {
 
 function getHungerRoom(bot: Bot): number {
   return 20 - getBotFood(bot);
-}
-
-function getFoodDataMap(bot: Bot): Map<string, FoodInfo> {
-  const mcData = minecraftData(bot.version);
-  const foodMap = new Map<string, FoodInfo>();
-
-  if (!mcData?.foods) {
-    return foodMap;
-  }
-
-  const foodsArray = mcData.foodsArray || Object.values(mcData.foods);
-  for (const food of foodsArray) {
-    if (food && typeof food.name === 'string') {
-      foodMap.set(food.name, {
-        id: food.id,
-        name: food.name,
-        foodPoints: food.foodPoints || 0,
-        saturation: food.saturation || 0
-      });
-    }
-  }
-
-  return foodMap;
-}
-
-function getInventoryItems(bot: Bot): any[] {
-  const inventory: any = (bot as any)?.inventory;
-  if (!inventory) {
-    return [];
-  }
-
-  try {
-    if (typeof inventory.items === 'function') {
-      const items = inventory.items();
-      if (Array.isArray(items)) {
-        return items.filter((item: any) => !!item);
-      }
-    }
-  } catch (err: any) {
-    logger.debug(`FoodEating: failed to enumerate inventory items - ${err?.message || err}`);
-  }
-
-  return [];
-}
-
-function getFoodItems(bot: Bot): FoodItem[] {
-  const foodDataMap = getFoodDataMap(bot);
-  const inventoryItems = getInventoryItems(bot);
-  const foodItems: FoodItem[] = [];
-
-  for (const item of inventoryItems) {
-    if (!item || typeof item.name !== 'string') {
-      continue;
-    }
-
-    const foodInfo = foodDataMap.get(item.name);
-    if (foodInfo && foodInfo.foodPoints > 0) {
-      foodItems.push({ item, foodInfo });
-    }
-  }
-
-  return foodItems;
-}
-
-function selectBestFood(_bot: Bot, foods: FoodItem[]): FoodItem | null {
-  if (foods.length === 0) {
-    return null;
-  }
-
-  const sorted = [...foods].sort((a, b) => b.foodInfo.saturation - a.foodInfo.saturation);
-  return sorted[0];
-}
-
-const NEGATIVE_EFFECT_FOODS = new Set([
-  'rotten_flesh',     // hunger effect
-  'spider_eye',       // poison
-  'poisonous_potato', // poison
-  'pufferfish',       // poison + hunger + nausea
-  'chicken',          // hunger effect (raw chicken)
-  'suspicious_stew'   // random effects, can be negative
-]);
-
-function hasNegativeEffects(food: FoodItem): boolean {
-  return NEGATIVE_EFFECT_FOODS.has(food.item.name);
 }
 
 function canEatFood(bot: Bot, food: FoodItem): boolean {
@@ -176,7 +84,7 @@ function findBestEatableFood(bot: Bot): FoodItem | null {
     return null;
   }
 
-  return selectBestFood(bot, eatableFoods);
+  return selectBestFood(eatableFoods);
 }
 
 function shouldEat(bot: Bot): boolean {
