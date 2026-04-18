@@ -57,19 +57,16 @@ export const opportunisticFoodHuntBehavior: ReactiveBehavior = {
   },
 
   createState: (bot: Bot) => {
-    const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
-      ? (bot as any).safeChat.bind(bot)
-      : null;
-
     const result = findClosestHuntableAnimal(bot as any, undefined, undefined, MAX_HUNT_DISTANCE);
     if (!result) return null;
 
     const { entity: targetAnimal, animalType } = result;
     logger.info(`OpportunisticFoodHunt: starting - hunting ${animalType}`);
 
-    if (sendChat) {
-      sendChat(`hunting nearby ${animalType} for food`);
-    }
+    // Chat announcements per-hunt used to spam rapidly when many animals
+    // were nearby (the bot killed 5 pigs in 700ms and got kicked for chat
+    // spam). Keep the logger line for observability; let the food_collection
+    // parent behavior announce the meta-goal "food collection complete".
 
     const huntAnimalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
     let huntFinished = false;
@@ -111,11 +108,10 @@ export const opportunisticFoodHuntBehavior: ReactiveBehavior = {
         cleanup();
         if (reason === 'completed') {
           if (huntFinished) {
-            // Timed out
             lastFailedAttempt = Date.now();
-            if (sendChat) sendChat(`hunt timed out`);
+            logger.info(`OpportunisticFoodHunt: hunt timed out (${animalType})`);
           } else {
-            if (sendChat) sendChat(`done hunting ${animalType}`);
+            logger.info(`OpportunisticFoodHunt: done hunting ${animalType}`);
           }
         } else {
           logger.debug(`OpportunisticFoodHunt: stopped (${reason})`);
