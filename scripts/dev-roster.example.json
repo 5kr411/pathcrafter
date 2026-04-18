@@ -1,0 +1,4 @@
+[
+  { "name": "agent_claude",  "provider": "anthropic",    "model": "claude-sonnet-4-6" },
+  { "name": "agent_local",   "provider": "openai-compat", "model": "qwen2.5-coder:32b", "baseUrl": "http://host.docker.internal:11434/v1" }
+]

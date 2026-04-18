@@ -66,3 +66,42 @@ bot-agent-config: build
 # E2E: spin up disposable Minecraft server and run bot swarm
 e2e: build
 	node dist/e2e/run_e2e.js --targets "$(TARGETS)" $(if $(NUM),--num-bots $(NUM)) $(if $(TIMEOUT),--timeout $(TIMEOUT)) $(if $(BIOME),--biome $(BIOME)) $(if $(DIFFICULTY),--difficulty $(DIFFICULTY))
+
+# -- Dev harness --------------------------------------------------------------
+# Drive a swarm of LLM-agent bots in real time via filesystem chat channels.
+#
+#   make dev-up ROSTER=scripts/dev-roster.example.json
+#   make dev-say MSG='@agent_claude hi'
+#   make dev-tail
+#   make dev-logs BOT=agent_claude
+#   make dev-down
+
+DEV_ARTIFACT_GLOB := artifacts/dev-*
+LATEST_RUNDIR = $$(ls -dt $(DEV_ARTIFACT_GLOB) 2>/dev/null | head -n 1)
+RUNDIR ?= $(LATEST_RUNDIR)
+
+.PHONY: dev-up dev-down dev-say dev-tail dev-logs
+
+dev-up:
+	@test -n "$(ROSTER)" || (echo "ROSTER=path/to/roster.json required" && exit 1)
+	npx tsc
+	node dist/e2e/run_dev.js --roster $(ROSTER) $(DEV_ARGS)
+
+dev-say:
+	@test -n "$(RUNDIR)" || (echo "no dev rundir found" && exit 1)
+	@test -n "$(MSG)" || (echo "MSG='...' required" && exit 1)
+	@printf '%s\n' '$(MSG)' >> $(RUNDIR)/chat_in
+	@echo "sent to $(RUNDIR)/chat_in: $(MSG)"
+
+dev-tail:
+	@test -n "$(RUNDIR)" || (echo "no dev rundir found" && exit 1)
+	tail -f $(RUNDIR)/chat_out
+
+dev-logs:
+	@test -n "$(RUNDIR)" || (echo "no dev rundir found" && exit 1)
+	@test -n "$(BOT)" || (echo "BOT=<botname> required" && exit 1)
+	tail -f $(RUNDIR)/$(BOT).log
+
+dev-down:
+	@pkill -f "dist/e2e/run_dev.js" || true
+	@docker rm -f pathcrafter-e2e 2>/dev/null || true
