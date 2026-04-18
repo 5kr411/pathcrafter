@@ -6,6 +6,7 @@
 const mineflayer = require('mineflayer');
 import * as fs from 'fs';
 import * as path from 'path';
+import { pollChatIn } from './dev_observer/poll';
 
 const host = process.argv[2] ?? 'localhost';
 const port = parseInt(process.argv[3] ?? '25565', 10);
@@ -49,17 +50,8 @@ function setupPolling(): void {
   } catch (_) {}
   setInterval(() => {
     try {
-      const stat = fs.statSync(chatIn);
-      if (stat.size <= lastSize) return;
-      const fd = fs.openSync(chatIn, 'r');
-      const buf = Buffer.alloc(stat.size - lastSize);
-      fs.readSync(fd, buf, 0, buf.length, lastSize);
-      fs.closeSync(fd);
-      lastSize = stat.size;
-      for (const line of buf.toString('utf8').split('\n')) {
-        const t = line.trim();
-        if (t) bot.chat(t);
-      }
+      const r = pollChatIn(chatIn, lastSize, (line) => bot.chat(line));
+      lastSize = r.lastSize;
     } catch (err: any) {
       appendOut(`${new Date().toISOString()} [err] poll: ${err.message}`);
     }
