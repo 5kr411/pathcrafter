@@ -90,6 +90,43 @@ describe('GeminiProvider', () => {
     expect(r.stopReason).toBe('error');
   });
 
+  it('propagates tool_result name into functionResponse.name (multi-turn)', async () => {
+    const fakeFetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [{
+          content: { role: 'model', parts: [{ text: 'ok' }] },
+          finishReason: 'STOP'
+        }]
+      })
+    });
+    const provider = new GeminiProvider(
+      { provider: 'gemini', model: 'gemini-1.5-pro', apiKey: 'sk' },
+      fakeFetch as any
+    );
+    await provider.runTurn({
+      system: '',
+      messages: [
+        { role: 'user', content: 'hi' },
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'call_0', name: 'get_position', input: {} }] },
+        {
+          role: 'tool',
+          content: [{ type: 'tool_result', toolCallId: 'call_0', name: 'get_position', content: '{"x":1,"y":2,"z":3}' }]
+        }
+      ],
+      tools: [],
+      signal: new AbortController().signal
+    });
+
+    const body = JSON.parse(fakeFetch.mock.calls[0][1].body);
+    // Third content is the tool role -> functionResponse
+    const toolContent = body.contents[2];
+    expect(toolContent.role).toBe('user');
+    const fr = toolContent.parts[0].functionResponse;
+    expect(fr.name).toBe('get_position');
+    expect(fr.response).toEqual({ content: '{"x":1,"y":2,"z":3}' });
+  });
+
   it('honors AbortSignal', async () => {
     const fakeFetch = jest.fn((_url: string, init: any) =>
       new Promise((_resolve, reject) => {

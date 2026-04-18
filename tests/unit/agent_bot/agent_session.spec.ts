@@ -76,6 +76,11 @@ describe('AgentSession', () => {
       m.role === 'tool' && Array.isArray(m.content) && m.content.some((c: any) => c.type === 'tool_result')
     );
     expect(hasToolResult).toBe(true);
+    // Tool result block should carry the originating tool's name for Gemini multi-turn.
+    const toolResultBlock = messages
+      .flatMap(m => Array.isArray(m.content) ? m.content : [])
+      .find((c: any) => c.type === 'tool_result');
+    expect(toolResultBlock.name).toBe('fake_tool');
   });
 
   it('mid-turn new user message fires abort on the in-flight tool', async () => {

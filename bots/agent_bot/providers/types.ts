@@ -2,7 +2,7 @@ export type Role = 'user' | 'assistant' | 'tool';
 
 export interface TextBlock { type: 'text'; text: string; }
 export interface ToolUseBlock { type: 'tool_use'; id: string; name: string; input: unknown; }
-export interface ToolResultBlock { type: 'tool_result'; toolCallId: string; content: string; isError?: boolean; }
+export interface ToolResultBlock { type: 'tool_result'; toolCallId: string; content: string; isError?: boolean; name?: string; }
 export type ContentBlock = TextBlock | ToolUseBlock | ToolResultBlock;
 
 export interface Message {

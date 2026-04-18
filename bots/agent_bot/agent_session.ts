@@ -119,6 +119,7 @@ export class AgentSession {
           content: [{
             type: 'tool_result',
             toolCallId: call.id,
+            name: call.name,
             content: JSON.stringify(toolResult),
             isError: !toolResult.ok
           }]
