@@ -110,6 +110,25 @@ describe('AgentActionExecutor', () => {
     expect(() => exec.run(action, new AbortController().signal)).toThrow(/already running/);
   });
 
+  it('surfaces repeated update() throws after 10 consecutive failures', async () => {
+    const exec = new AgentActionExecutor({} as any);
+    const action: AgentAction = {
+      name: 'throwy',
+      start: () => {},
+      update: () => { throw new Error('boom'); },
+      stop: () => {},
+      isFinished: () => false,
+      result: () => ({ ok: true })
+    };
+    const p = exec.run(action, new AbortController().signal);
+    exec.onStateEntered();
+    for (let i = 0; i < 11; i++) exec.update();
+    const r = await p;
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/update failed/i);
+    expect(exec.hasWork()).toBe(false);
+  });
+
   it('returns immediate cancelled if signal already aborted', async () => {
     const exec = new AgentActionExecutor({} as any);
     const ctrl = new AbortController();

@@ -1,4 +1,7 @@
 import type { StateBehavior } from 'mineflayer-statemachine';
+import logger from '../../utils/logger';
+
+const MAX_CONSECUTIVE_UPDATE_ERRORS = 10;
 
 /**
  * A long-running "sustained" action driven by the control-stack state machine.
@@ -31,6 +34,7 @@ export class AgentActionExecutor implements StateBehavior {
   private currentSignal: AbortSignal | null = null;
   private abortListener: (() => void) | null = null;
   private cancelled = false;
+  private consecutiveUpdateErrors = 0;
 
   constructor(private readonly bot: any) {}
 
@@ -74,7 +78,19 @@ export class AgentActionExecutor implements StateBehavior {
       this.resolveWith({ ok: false, error: 'cancelled', cancelled: true });
       return;
     }
-    try { this.current.update(); } catch (_) {}
+    try {
+      this.current.update();
+      this.consecutiveUpdateErrors = 0;
+    } catch (err: any) {
+      this.consecutiveUpdateErrors++;
+      try {
+        logger.info(`AgentActionExecutor: ${this.current.name}.update() threw (${this.consecutiveUpdateErrors}/${MAX_CONSECUTIVE_UPDATE_ERRORS}): ${err?.message ?? err}`);
+      } catch (_) {}
+      if (this.consecutiveUpdateErrors >= MAX_CONSECUTIVE_UPDATE_ERRORS) {
+        this.resolveWith({ ok: false, error: `action update failed repeatedly: ${err?.message ?? err}` });
+        return;
+      }
+    }
     if (this.current && this.current.isFinished()) {
       const result = this.current.result();
       this.resolveWith(result);
@@ -108,6 +124,7 @@ export class AgentActionExecutor implements StateBehavior {
     this.currentSignal = null;
     this.abortListener = null;
     this.cancelled = false;
+    this.consecutiveUpdateErrors = 0;
     if (resolve) resolve(result);
   }
 }
