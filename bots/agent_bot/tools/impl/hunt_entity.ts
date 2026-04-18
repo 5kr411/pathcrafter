@@ -30,11 +30,13 @@ export const huntEntityTool: ToolImpl = {
     const deadline = Date.now() + timeout * 1000;
     const FAR_THRESHOLD = 64;
     const FAR_GRACE_MS = 10_000;
+    const MISSING_GRACE_MS = 2_000;
 
     let target: any = null;
     let killed = false;
     let lost = false;
     let farSince = 0;
+    let missingSince = 0;
 
     const resolve = (): any | null => {
       return ctx.bot?.entities?.[entityId] || null;
@@ -44,7 +46,11 @@ export const huntEntityTool: ToolImpl = {
       name: 'hunt_entity',
       start(bot) {
         target = resolve();
-        if (!target) { lost = true; return; }
+        if (!target) {
+          // Entity never resolved at start — treat as lost immediately (no grace).
+          lost = true;
+          return;
+        }
         try {
           if (bot.pvp && typeof bot.pvp.attack === 'function') {
             bot.pvp.attack(target);
@@ -57,17 +63,22 @@ export const huntEntityTool: ToolImpl = {
       update() {
         const e = resolve();
         if (!e) {
-          // Entity gone → check if it was alive recently; mineflayer-pvp will
-          // normally stop automatically. We treat this as killed if the target
-          // reference existed, else as lost.
-          if (target) {
-            killed = true;
-          } else {
+          // Entity missing. Use a grace window to tolerate chunk unloads / view
+          // distance blips. Only flag lost if it stays gone past grace.
+          if (!missingSince) missingSince = Date.now();
+          if (Date.now() - missingSince > MISSING_GRACE_MS) {
             lost = true;
           }
           return;
         }
+        // Entity is back — clear the missing-since clock.
+        missingSince = 0;
         target = e;
+        // Explicit death flag: killed.
+        if (typeof e.isValid === 'boolean' && !e.isValid) {
+          killed = true;
+          return;
+        }
         const botPos = ctx.bot?.entity?.position;
         if (botPos && e.position) {
           const d = Math.hypot(
@@ -100,8 +111,13 @@ export const huntEntityTool: ToolImpl = {
         if (Date.now() >= deadline) return true;
         const e = resolve();
         if (!e) {
-          if (target) { killed = true; } else { lost = true; }
-          return true;
+          // Still within grace → not finished yet.
+          if (!missingSince) missingSince = Date.now();
+          if (Date.now() - missingSince > MISSING_GRACE_MS) {
+            lost = true;
+            return true;
+          }
+          return false;
         }
         if (typeof e.isValid === 'boolean' && !e.isValid) {
           killed = true;

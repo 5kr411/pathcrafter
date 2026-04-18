@@ -51,28 +51,39 @@ describe('hunt_entity tool', () => {
     expect(captured).toBeTruthy();
   });
 
-  it('isFinished + result returns killed when entity disappears after start', async () => {
+  it('isFinished + result returns lost when entity disappears and stays gone past grace', async () => {
     let captured: any = null;
     const entities: any = { 7: { position: { x: 2, y: 64, z: 0 }, isValid: true } };
-    const ctx: any = {
-      bot: {
-        entity: { position: { x: 0, y: 64, z: 0 } },
-        entities,
-        pvp: { target: null, attack: jest.fn(), stop: jest.fn() },
-        pathfinder: { stop: jest.fn() }
-      },
-      signal: new AbortController().signal,
-      targetExecutor: {},
-      agentActionExecutor: {
-        run: jest.fn().mockImplementation(async (action: any) => { captured = action; action.start(ctx.bot); return { ok: true }; })
-      },
-      safeChat: () => {}
-    };
-    await huntEntityTool.execute({ entityId: 7 }, ctx);
-    // Entity disappears
-    delete entities[7];
-    expect(captured.isFinished()).toBe(true);
-    expect(captured.result()).toEqual({ ok: true, data: { killed: true, entityId: 7 } });
+    let now = 1_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const ctx: any = {
+        bot: {
+          entity: { position: { x: 0, y: 64, z: 0 } },
+          entities,
+          pvp: { target: null, attack: jest.fn(), stop: jest.fn() },
+          pathfinder: { stop: jest.fn() }
+        },
+        signal: new AbortController().signal,
+        targetExecutor: {},
+        agentActionExecutor: {
+          run: jest.fn().mockImplementation(async (action: any) => { captured = action; action.start(ctx.bot); return { ok: true }; })
+        },
+        safeChat: () => {}
+      };
+      await huntEntityTool.execute({ entityId: 7 }, ctx);
+      // Entity disappears
+      delete entities[7];
+      captured.update();
+      // Still within grace window.
+      expect(captured.isFinished()).toBe(false);
+      now += 3000;
+      captured.update();
+      expect(captured.isFinished()).toBe(true);
+      expect(captured.result()).toEqual({ ok: false, error: 'lost' });
+    } finally {
+      nowSpy.mockRestore();
+    }
   });
 
   it('returns lost when entity never existed', async () => {
@@ -96,6 +107,130 @@ describe('hunt_entity tool', () => {
     const r = captured.result();
     expect(r.ok).toBe(false);
     expect(r.error).toBe('lost');
+  });
+
+  it('tolerates transient disappearance within grace window', async () => {
+    jest.useFakeTimers();
+    try {
+      let captured: any = null;
+      const entities: any = { 7: { position: { x: 2, y: 64, z: 0 }, isValid: true } };
+      const ctx: any = {
+        bot: {
+          entity: { position: { x: 0, y: 64, z: 0 } },
+          entities,
+          pvp: { target: null, attack: jest.fn(), stop: jest.fn() },
+          pathfinder: { stop: jest.fn() }
+        },
+        signal: new AbortController().signal,
+        targetExecutor: {},
+        agentActionExecutor: {
+          run: jest.fn().mockImplementation(async (action: any) => { captured = action; action.start(ctx.bot); return { ok: true }; })
+        },
+        safeChat: () => {}
+      };
+      await huntEntityTool.execute({ entityId: 7 }, ctx);
+      // Entity briefly disappears.
+      delete entities[7];
+      captured.update();
+      // Grace period has not expired → not finished yet.
+      expect(captured.isFinished()).toBe(false);
+      // Entity reappears before grace expires.
+      entities[7] = { position: { x: 2, y: 64, z: 0 }, isValid: true };
+      captured.update();
+      expect(captured.isFinished()).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('flags lost after entity is missing past grace window', async () => {
+    let captured: any = null;
+    const entities: any = { 7: { position: { x: 2, y: 64, z: 0 }, isValid: true } };
+    let now = 1_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const ctx: any = {
+        bot: {
+          entity: { position: { x: 0, y: 64, z: 0 } },
+          entities,
+          pvp: { target: null, attack: jest.fn(), stop: jest.fn() },
+          pathfinder: { stop: jest.fn() }
+        },
+        signal: new AbortController().signal,
+        targetExecutor: {},
+        agentActionExecutor: {
+          run: jest.fn().mockImplementation(async (action: any) => { captured = action; action.start(ctx.bot); return { ok: true }; })
+        },
+        safeChat: () => {}
+      };
+      await huntEntityTool.execute({ entityId: 7 }, ctx);
+      // Entity disappears.
+      delete entities[7];
+      captured.update();
+      // Within grace → not finished.
+      expect(captured.isFinished()).toBe(false);
+      // Advance beyond grace window.
+      now += 3000;
+      captured.update();
+      expect(captured.isFinished()).toBe(true);
+      const r = captured.result();
+      expect(r.ok).toBe(false);
+      expect(r.error).toBe('lost');
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('flags lost if entity never resolved and grace passes', async () => {
+    let captured: any = null;
+    let now = 1_000_000;
+    const nowSpy = jest.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const ctx: any = {
+        bot: {
+          entity: { position: { x: 0, y: 64, z: 0 } },
+          entities: {},
+          pvp: { target: null, attack: jest.fn(), stop: jest.fn() },
+          pathfinder: { stop: jest.fn() }
+        },
+        signal: new AbortController().signal,
+        targetExecutor: {},
+        agentActionExecutor: {
+          run: jest.fn().mockImplementation(async (action: any) => { captured = action; action.start(ctx.bot); return { ok: false, error: 'lost' }; })
+        },
+        safeChat: () => {}
+      };
+      await huntEntityTool.execute({ entityId: 99 }, ctx);
+      expect(captured.isFinished()).toBe(true);
+      const r = captured.result();
+      expect(r.ok).toBe(false);
+      expect(r.error).toBe('lost');
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('flags killed immediately when entity.isValid becomes false', async () => {
+    let captured: any = null;
+    const entities: any = { 7: { position: { x: 2, y: 64, z: 0 }, isValid: true } };
+    const ctx: any = {
+      bot: {
+        entity: { position: { x: 0, y: 64, z: 0 } },
+        entities,
+        pvp: { target: null, attack: jest.fn(), stop: jest.fn() },
+        pathfinder: { stop: jest.fn() }
+      },
+      signal: new AbortController().signal,
+      targetExecutor: {},
+      agentActionExecutor: {
+        run: jest.fn().mockImplementation(async (action: any) => { captured = action; action.start(ctx.bot); return { ok: true }; })
+      },
+      safeChat: () => {}
+    };
+    await huntEntityTool.execute({ entityId: 7 }, ctx);
+    entities[7].isValid = false;
+    expect(captured.isFinished()).toBe(true);
+    expect(captured.result()).toEqual({ ok: true, data: { killed: true, entityId: 7 } });
   });
 
   it('stop calls pvp.stop and pathfinder.stop', async () => {
