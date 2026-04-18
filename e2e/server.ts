@@ -72,7 +72,7 @@ function opsVolumeArgs(): string[] {
   const envUsernames = ops ? ops.split(',').map(s => s.trim()).filter(Boolean) : [];
 
   // Always include bots that need op, plus any E2E_OPS users
-  const allNames = new Set(['spawn_setup_bot', ...envUsernames]);
+  const allNames = new Set(['spawn_setup_bot', 'dev_observer', ...envUsernames]);
   const usernames = [...allNames];
 
   const opsJson = usernames.map(name => ({
