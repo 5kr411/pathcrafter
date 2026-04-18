@@ -2,10 +2,10 @@ import { execSync, execFileSync } from 'child_process';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
-import * as dotenv from 'dotenv';
 import * as path from 'path';
+import * as dotenv from 'dotenv';
 
-dotenv.config({ path: path.resolve(__dirname, '..', '..', '.env') });
+dotenv.config();
 
 const CONTAINER_NAME = 'pathcrafter-e2e';
 const IMAGE = 'itzg/minecraft-server';

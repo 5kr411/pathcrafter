@@ -1,3 +1,6 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 const mineflayer = require('mineflayer');
 
 import { getConfig } from './collector/config';

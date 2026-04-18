@@ -1,3 +1,6 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import { spawn, ChildProcess } from 'child_process';
 import * as path from 'path';
 import * as crypto from 'crypto';
