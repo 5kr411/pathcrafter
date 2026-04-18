@@ -156,9 +156,12 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 40): P
   }
 
   let x = st._iterX!;
-  let blocksScanned = 0;
-  // Yield every ~50K position checks to keep ticks under ~20ms
-  const YIELD_EVERY = 50000;
+  // Yield budget by wall-clock time rather than block count — block count was
+  // a poor proxy because blockAt latency varies (chunk load state, dimension).
+  // Keep event loop latency under 15 ms per slice so keepalive responses and
+  // socket.write drains don't stall during a scan.
+  const YIELD_MS = 15;
+  let sliceStart = Date.now();
 
   while (x <= xMax) {
     for (let y = yLo; y <= yHi; y++) {
@@ -179,10 +182,9 @@ export async function stepSnapshotScan(st: ScanState, _budgetMs: number = 40): P
         updateAggregation(st.blockAgg, name, Math.sqrt(d2));
       }
 
-      blocksScanned += (zMax - zMin + 1);
-      if (blocksScanned >= YIELD_EVERY) {
-        blocksScanned = 0;
+      if (Date.now() - sliceStart >= YIELD_MS) {
         await new Promise(resolve => setImmediate(resolve));
+        sliceStart = Date.now();
       }
     }
     x++;

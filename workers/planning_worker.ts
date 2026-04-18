@@ -10,6 +10,7 @@ import { dedupePersistentItemsInPaths } from '../path_optimizations/dedupePersis
 import { removeOrphanedIngredientsInPaths } from '../path_optimizations/removeOrphans';
 import { WorkerPool } from '../utils/workerPool';
 import plan, { _internals } from '../planner';
+import { initWorkstationCostCache, isWorkstationCacheReady } from '../utils/workstationCostCache';
 import logger from '../utils/logger';
 import { serializeTree } from '../action_tree/serialize';
 
@@ -58,6 +59,16 @@ parentPort.on('message', async (msg: PlanMessage) => {
     const t0 = Date.now();
     logger.debug(`PlanningWorker: resolving minecraft data for ${mcVersion || '1.20.1'}`);
     const mcData = _internals.resolveMcData(mcVersion || '1.20.1');
+
+    // Populate the workstation cost cache once per worker. stepWeight() uses it
+    // to penalize mining a persistent workstation (crafting_table, furnace, …)
+    // above the craft-from-scratch cost — without this, mine paths beat craft
+    // paths by a few points and bots on village-less maps loop forever looking
+    // for a natural crafting_table to mine.
+    if (!isWorkstationCacheReady()) {
+      initWorkstationCostCache(mcData);
+    }
+
     logger.debug(`PlanningWorker: building recipe tree`);
     const tBuildStart = Date.now();
     

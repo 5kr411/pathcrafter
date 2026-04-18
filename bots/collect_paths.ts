@@ -12,7 +12,7 @@ import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgra
 import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
 import { droppedFoodPickupBehavior } from './collector/reactive_behaviors/dropped_food_pickup_behavior';
 import { opportunisticFoodHuntBehavior } from './collector/reactive_behaviors/opportunistic_food_hunt_behavior';
-import { foodCollectionBehavior, setFoodCollectionConfig } from './collector/reactive_behaviors/food_collection_behavior';
+import { foodCollectionBehavior, setFoodCollectionConfig, resetFoodCollectionCooldown } from './collector/reactive_behaviors/food_collection_behavior';
 import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
 import { inventoryManagementBehavior, setInventoryManagementConfig } from './collector/reactive_behaviors/inventory_management_behavior';
 import { CollectorControlStack } from './collector/control_stack';
@@ -92,14 +92,57 @@ bot.once('spawn', () => {
 
   (bot as any).safeChat = safeChat;
 
-  bot.on('kicked', (reason: string) => {
-    logger.info('Collector: kicked', reason);
+  bot.on('kicked', (reason: string, loggedIn: boolean) => {
+    logger.info(`Collector: kicked reason=${JSON.stringify(reason)} loggedIn=${loggedIn}`);
   });
-  bot.on('end', () => {
-    logger.info('Collector: connection ended');
+  bot.on('end', (reason?: string) => {
+    const endReason = reason ?? bot._client?._endReason ?? 'unknown';
+    const ended = !!bot._client?.ended;
+    const state = bot._client?.state;
+    const socketWritable = !!bot._client?.socket?.writable;
+    const serializerWritable = !!bot._client?.serializer?.writable;
+    logger.info(`Collector: connection ended reason=${JSON.stringify(endReason)} ended=${ended} state=${state} sockWritable=${socketWritable} serWritable=${serializerWritable}`);
   });
   bot.on('error', (err: any) => {
-    logger.info('Collector: bot error', err && err.code ? err.code : err);
+    const code = err && err.code ? err.code : '';
+    const msg = err && err.message ? err.message : String(err);
+    const stack = err && err.stack ? err.stack.split('\n').slice(0, 4).join(' | ') : '';
+    logger.info(`Collector: bot error code=${code} msg=${msg} stack=${stack}`);
+  });
+
+  // Surface low-level client errors separately — these are normally only routed through bot.on('error')
+  // which mineflayer-loader installs, but catching at the client level gives us earlier signal.
+  if (bot._client && typeof bot._client.on === 'function') {
+    bot._client.on('error', (err: any) => {
+      const code = err && err.code ? err.code : '';
+      const msg = err && err.message ? err.message : String(err);
+      logger.info(`Collector: _client error code=${code} msg=${msg}`);
+    });
+  }
+
+  // Intercept client.end() so we can see WHO (what code path) is closing the socket and WHY.
+  // This preserves original behavior — we just log before delegating.
+  if (bot._client && typeof bot._client.end === 'function' && !bot._client._endWrapped) {
+    const origEnd = bot._client.end.bind(bot._client);
+    bot._client._endWrapped = true;
+    bot._client.end = function(reason?: any, ...rest: any[]) {
+      const stack = new Error().stack?.split('\n').slice(1, 6).join(' | ');
+      logger.info(`Collector: _client.end called reason=${JSON.stringify(reason)} stack=${stack}`);
+      return origEnd(reason, ...rest);
+    };
+  }
+
+  // Node-level uncaught rejection / exception — if anything in our pipeline throws asynchronously
+  // and isn't caught, this is where it'll show up.
+  process.on('unhandledRejection', (reason: any) => {
+    const msg = reason && reason.message ? reason.message : String(reason);
+    const stack = reason && reason.stack ? reason.stack.split('\n').slice(0, 6).join(' | ') : '';
+    logger.info(`Collector: unhandledRejection msg=${msg} stack=${stack}`);
+  });
+  process.on('uncaughtException', (err: any) => {
+    const msg = err && err.message ? err.message : String(err);
+    const stack = err && err.stack ? err.stack.split('\n').slice(0, 6).join(' | ') : '';
+    logger.info(`Collector: uncaughtException msg=${msg} stack=${stack}`);
   });
 
   // Initialize file logging
@@ -169,6 +212,10 @@ bot.once('spawn', () => {
     const cause = lastDeathMessage || 'unknown';
     logger.info(`Collector: bot died at ${posStr}, health=${health}, food=${food}, cause="${cause}" — resetting and retrying all targets`);
     lastDeathMessage = null;
+    // Reset food cooldown: respawn restores hunger to 20, so any prior "food is scarce" cooldown
+    // is stale. Without this, a bot that died during its cooldown keeps the cooldown post-respawn
+    // and may starve again before it can retry food collection.
+    resetFoodCollectionCooldown();
     if (executor.isRunning() || executor.getTargets().length > 0) {
       executor.resetAndRestart();
     }

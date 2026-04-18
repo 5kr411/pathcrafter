@@ -18,7 +18,8 @@ import createGetFoodState from '../../../behaviors/behaviorGetFood';
 import logger from '../../../utils/logger';
 
 const FOOD_COLLECTION_PRIORITY = 50;
-const DEFAULT_COOLDOWN_MS = 1_200_000; // 20 minute cooldown after failed collection
+const DEFAULT_COOLDOWN_MS = 1_200_000; // 20 minute cooldown after failed collection (prevents churn when food is scarce)
+const EMERGENCY_HUNGER_THRESHOLD = 6; // bot.food <= this bypasses cooldown (can't sprint, health regen blocked)
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000; // Only log "should activate" every 10s
 
 let foodCollectionConfig: FoodCollectionConfig = { ...DEFAULT_FOOD_CONFIG };
@@ -117,13 +118,28 @@ export const foodCollectionBehavior: ReactiveBehavior = {
     const now = Date.now();
 
     if (foodPoints < trigger) {
-      // Check cooldown
-      if (isFoodCollectionInCooldown()) {
+      // Emergency override: if actual hunger bar is critically low, bypass cooldown.
+      // At bot.food <= 6 the bot can't sprint and health regen is blocked, so waiting out
+      // a cooldown means dying to any mob hit or starvation damage.
+      const botHunger = (bot as any)?.food;
+      const inEmergency = typeof botHunger === 'number' && botHunger <= EMERGENCY_HUNGER_THRESHOLD;
+
+      // Check cooldown (skipped in emergency)
+      if (!inEmergency && isFoodCollectionInCooldown()) {
         if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
           logger.debug(`FoodCollection: in cooldown`);
           lastThrottledLogTime = now;
         }
         return false;
+      }
+
+      if (inEmergency && isFoodCollectionInCooldown()) {
+        // Clear cooldown so createState() doesn't also block.
+        lastFailedAttempt = 0;
+        if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+          logger.info(`FoodCollection: emergency bypass - bot.food=${botHunger} <= ${EMERGENCY_HUNGER_THRESHOLD}, clearing cooldown`);
+          lastThrottledLogTime = now;
+        }
       }
 
       if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
@@ -174,11 +190,35 @@ export const foodCollectionBehavior: ReactiveBehavior = {
       const startFoodPoints = currentFoodPoints;
       let outcome: { success: boolean; gainedFood: boolean; endFoodPoints: number } | null = null;
 
-      const stateMachine = createGetFoodState(bot as any, {
-        targetFoodPoints: foodCollectionConfig.targetFoodPoints,
-        minFoodThreshold: getTriggerThreshold(),
-        worldSnapshot
-      });
+      // Diagnostic: snapshot bot state right before creating the GetFood state machine.
+      // This is the point adjacent to where the 9/20 disconnect pattern manifests.
+      try {
+        const cl: any = (bot as any)?._client;
+        const listenerCount = typeof (bot as any)?.listenerCount === 'function'
+          ? (bot as any).listenerCount('physicsTick')
+          : -1;
+        const pathfinder: any = (bot as any)?.pathfinder;
+        const pfIsMoving = typeof pathfinder?.isMoving === 'function' ? !!pathfinder.isMoving() : false;
+        const pfIsMining = typeof pathfinder?.isMining === 'function' ? !!pathfinder.isMining() : false;
+        logger.debug(
+          `FoodCollection: pre-createState bot state food=${(bot as any)?.food} health=${(bot as any)?.health} ` +
+          `clientState=${cl?.state} ended=${!!cl?.ended} sockWritable=${!!cl?.socket?.writable} ` +
+          `serWritable=${!!cl?.serializer?.writable} physListeners=${listenerCount} ` +
+          `pfMoving=${pfIsMoving} pfMining=${pfIsMining}`
+        );
+      } catch (_) {}
+
+      let stateMachine: any;
+      try {
+        stateMachine = createGetFoodState(bot as any, {
+          targetFoodPoints: foodCollectionConfig.targetFoodPoints,
+          minFoodThreshold: getTriggerThreshold(),
+          worldSnapshot
+        });
+      } catch (err: any) {
+        logger.info(`FoodCollection: createGetFoodState threw - msg=${err?.message || err} stack=${err?.stack?.split('\n').slice(0, 6).join(' | ')}`);
+        throw err;
+      }
 
       const computeOutcome = () => {
         if (outcome) {

@@ -193,7 +193,7 @@ export function configurePrecisePathfinder(
     }
     
     bot.pathfinder.setMovements(movements);
-    
+
     if (config.searchRadius !== undefined) {
       bot.pathfinder.searchRadius = config.searchRadius;
     }
@@ -201,6 +201,14 @@ export function configurePrecisePathfinder(
     if (config.thinkTimeout !== undefined) {
       bot.pathfinder.thinkTimeout = config.thinkTimeout;
     }
+
+    // Default tickTimeout is 40 ms per physicsTick, leaving only ~10 ms out of
+    // each 50 ms tick for I/O (keepalive responses, socket.write drains).
+    // Under server stress that's enough to push marginally-late keepalives
+    // past the 30 s threshold and cause silent disconnects. 30 ms trades a
+    // little astar throughput for a 20 ms I/O headroom per tick — 3x what the
+    // default gives us, without halving pathfinder CPU the way 20 did.
+    bot.pathfinder.tickTimeout = 30;
   } catch (err) {
     console.error('Failed to configure precise pathfinder:', err);
   }

@@ -33,7 +33,12 @@ class ReactiveBehaviorRun {
     if (machine && typeof machine.onStateEntered === 'function') {
       try {
         machine.onStateEntered();
-      } catch (_) {}
+      } catch (err: any) {
+        logger.info(
+          `ReactiveBehaviorRun: state machine onStateEntered threw for ${this.state.behavior?.name} - ` +
+          `msg=${err?.message || err} stack=${err?.stack?.split('\n').slice(0, 6).join(' | ')}`
+        );
+      }
     }
   }
 
@@ -43,7 +48,12 @@ class ReactiveBehaviorRun {
     if (machine && typeof machine.update === 'function') {
       try {
         machine.update();
-      } catch (_) {}
+      } catch (err: any) {
+        logger.info(
+          `ReactiveBehaviorRun: state machine update threw for ${this.state.behavior?.name} - ` +
+          `msg=${err?.message || err} stack=${err?.stack?.split('\n').slice(0, 6).join(' | ')}`
+        );
+      }
     }
     this.checkForCompletion();
   }

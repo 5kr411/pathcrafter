@@ -9,8 +9,13 @@ const { goals } = require('mineflayer-pathfinder');
 
 const DEFAULT_DISTANCE = 128;
 const TIMEOUT_SECONDS_PER_BLOCK = 1.5;
-const GOAL_RESET_COOLDOWN_MS = 2000;
 const GOAL_REACH_RANGE = 16;
+// When pathfinder goes idle without reaching the goal, the current target is
+// very likely unreachable from here. Re-issuing the *same* setGoal every 2 s
+// (old behavior) just spams resetPath + packets; re-issuing the same goal
+// never succeeds anyway. Instead, pick a fresh random target and retry, with
+// a long enough cooldown that we don't flood the server's socket buffers.
+const IDLE_REPICK_COOLDOWN_MS = 8000;
 
 interface BotLike {
   entity?: { position: { x: number; y: number; z: number } };
@@ -94,11 +99,22 @@ export class BehaviorWander {
     if (this.isFinished) return;
     const pathfinder = this.bot?.pathfinder;
     if (!pathfinder || typeof pathfinder.isMoving !== 'function') return;
+    if (pathfinder.isMoving()) return;
 
-    if (!pathfinder.isMoving() && Date.now() - this.lastGoalSetTime > GOAL_RESET_COOLDOWN_MS) {
-      logger.info('BehaviorWander: pathfinder idle, re-setting goal');
-      this.setGoal();
-    }
+    // Pathfinder is idle. Previous behavior re-set the *same* goal every 2 s,
+    // which never changed the outcome (astar already decided it couldn't
+    // reach it) but did generate a packet flurry per retry — multiplied by
+    // 50 bots that was enough to push sockets into EPIPE. Instead, pick a
+    // fresh random target on a long cooldown and let pathfinder try that.
+    const pos = this.bot.entity?.position;
+    if (!pos) return;
+    if (Date.now() - this.lastGoalSetTime < IDLE_REPICK_COOLDOWN_MS) return;
+
+    this.pickTarget(pos);
+    logger.info(
+      `BehaviorWander: pathfinder idle — picked new target (${this.targetX.toFixed(1)}, ${this.targetZ.toFixed(1)})`
+    );
+    this.setGoal();
   }
 
   onStateExited(): void {
