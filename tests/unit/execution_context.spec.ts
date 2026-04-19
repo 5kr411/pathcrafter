@@ -26,24 +26,6 @@ describe('ExecutionContext', () => {
   });
 
   describe('signalToolIssue', () => {
-    it('should signal durability issue', () => {
-      const callback = jest.fn();
-      const context = createExecutionContext(5, callback);
-      
-      const issue = {
-        type: 'durability' as const,
-        toolName: 'wooden_pickaxe',
-        blockName: 'stone'
-      };
-      
-      signalToolIssue(context, issue);
-      
-      expect(context.toolIssueDetected).toBe(true);
-      expect(context.toolIssue).toEqual(issue);
-      expect(callback).toHaveBeenCalledWith(issue);
-      expect(callback).toHaveBeenCalledTimes(1);
-    });
-
     it('should signal requirement issue', () => {
       const callback = jest.fn();
       const context = createExecutionContext(5, callback);
@@ -67,7 +49,7 @@ describe('ExecutionContext', () => {
       const context = createExecutionContext(5, callback);
       
       const issue1 = {
-        type: 'durability' as const,
+        type: 'requirement' as const,
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       };
@@ -90,7 +72,7 @@ describe('ExecutionContext', () => {
       const context = createExecutionContext(5);
       
       const issue = {
-        type: 'durability' as const,
+        type: 'requirement' as const,
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       };
@@ -108,7 +90,7 @@ describe('ExecutionContext', () => {
       const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
       
       const issue = {
-        type: 'durability' as const,
+        type: 'requirement' as const,
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       };
@@ -127,7 +109,7 @@ describe('ExecutionContext', () => {
       const context = createExecutionContext(5, callback);
       
       const issue = {
-        type: 'durability' as const,
+        type: 'requirement' as const,
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       };
@@ -145,7 +127,7 @@ describe('ExecutionContext', () => {
       const context = createExecutionContext(5, callback);
       
       const issue1 = {
-        type: 'durability' as const,
+        type: 'requirement' as const,
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       };
@@ -177,7 +159,7 @@ describe('ExecutionContext', () => {
       const context = createExecutionContext(5);
       
       signalToolIssue(context, {
-        type: 'durability',
+        type: 'requirement',
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       });
@@ -189,7 +171,7 @@ describe('ExecutionContext', () => {
       const context = createExecutionContext(5);
       
       signalToolIssue(context, {
-        type: 'durability',
+        type: 'requirement',
         toolName: 'wooden_pickaxe',
         blockName: 'stone'
       });

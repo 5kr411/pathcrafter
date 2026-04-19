@@ -43,35 +43,6 @@ describe('createToolIssueHandler', () => {
     expect(toolsBeingReplaced.has('iron_pickaxe')).toBe(false);
   });
 
-  test('handles durability issues with replacement flow', async () => {
-    const safeChat = jest.fn();
-    const executeReplacement = jest.fn().mockResolvedValue(true);
-    const toolsBeingReplaced = new Set<string>();
-    const scheduler = makeScheduler();
-
-    const handler = createToolIssueHandler({
-      toolReplacementExecutor: { executeReplacement } as unknown as ToolReplacementExecutor,
-      toolsBeingReplaced,
-      bot: baseBot,
-      safeChat,
-      schedule: scheduler.schedule
-    });
-
-    const issue: ToolIssue = {
-      type: 'durability',
-      toolName: 'stone_pickaxe',
-      currentToolName: 'stone_pickaxe'
-    };
-
-    handler(issue);
-    await scheduler.wait();
-
-    expect(executeReplacement).toHaveBeenCalledWith('stone_pickaxe');
-    expect(safeChat).toHaveBeenCalledWith('tool low, replacing stone_pickaxe');
-    expect(safeChat).toHaveBeenCalledWith('replaced stone_pickaxe');
-    expect(toolsBeingReplaced.size).toBe(0);
-  });
-
   test('ignores tool issues without a tool name', async () => {
     const safeChat = jest.fn();
     const executeReplacement = jest.fn().mockResolvedValue(true);
@@ -87,7 +58,7 @@ describe('createToolIssueHandler', () => {
     });
 
     const issue: ToolIssue = {
-      type: 'durability',
+      type: 'requirement',
       toolName: '',
       currentToolName: 'stone_pickaxe'
     };

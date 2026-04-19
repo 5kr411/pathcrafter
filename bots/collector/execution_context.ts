@@ -1,5 +1,5 @@
 export interface ToolIssue {
-  type: 'durability' | 'requirement';
+  type: 'requirement';
   toolName: string;
   blockName?: string;
   currentToolName?: string;

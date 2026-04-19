@@ -54,48 +54,36 @@ export function createToolIssueHandler(options: {
       return;
     }
 
-    if (issue.type === 'requirement') {
-      logInfo(
-        `Collector: missing required tool ${toolLabel}${issue.blockName ? ` for ${issue.blockName}` : ''}`
-      );
-    } else {
-      logInfo(`Collector: tool durability low - ${toolLabel}`);
-    }
+    logInfo(
+      `Collector: missing required tool ${toolLabel}${issue.blockName ? ` for ${issue.blockName}` : ''}`
+    );
 
     schedule(async () => {
       if (!toolReplacementExecutor || toolsBeingReplaced.has(toolLabel)) {
         return;
       }
 
-      if (issue.type === 'requirement') {
-        safeChat(`missing tool, acquiring ${toolLabel}`);
-      } else {
-        safeChat(`tool low, replacing ${toolLabel}`);
-      }
+      safeChat(`missing tool, acquiring ${toolLabel}`);
 
       try {
         const invBefore = getInventoryObject(bot);
         logInfo(
-          `Collector: tool replacement starting for ${toolLabel} (inventory=${invBefore[toolLabel] || 0})`
+          `Collector: tool acquisition starting for ${toolLabel} (inventory=${invBefore[toolLabel] || 0})`
         );
         const success = await toolReplacementExecutor.executeReplacement(toolLabel);
         const invAfter = getInventoryObject(bot);
         logInfo(
-          `Collector: tool replacement completed for ${toolLabel} (success=${success}, inventory=${invAfter[toolLabel] || 0})`
+          `Collector: tool acquisition completed for ${toolLabel} (success=${success}, inventory=${invAfter[toolLabel] || 0})`
         );
         if (success) {
-          const msg =
-            issue.type === 'requirement'
-              ? `acquired ${toolLabel}`
-              : `replaced ${toolLabel}`;
-          logInfo(`Collector: tool replacement succeeded for ${toolLabel}`);
-          safeChat(msg);
+          logInfo(`Collector: tool acquisition succeeded for ${toolLabel}`);
+          safeChat(`acquired ${toolLabel}`);
         } else {
-          logInfo(`Collector: tool replacement failed for ${toolLabel}`);
-          safeChat(`failed to replace ${toolLabel}`);
+          logInfo(`Collector: tool acquisition failed for ${toolLabel}`);
+          safeChat(`failed to acquire ${toolLabel}`);
         }
       } catch (err: any) {
-        logInfo(`Collector: tool replacement error - ${err?.message || err}`);
+        logInfo(`Collector: tool acquisition error - ${err?.message || err}`);
       }
     });
   };
