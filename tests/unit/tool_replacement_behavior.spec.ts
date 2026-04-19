@@ -202,6 +202,35 @@ describe('tool_replacement_behavior', () => {
       expect(executor.executeReplacement).toHaveBeenCalledWith('iron_pickaxe');
     });
 
+    it('stamps a failure cooldown when executor resolves false, suppressing re-trigger', async () => {
+      const executor: any = {
+        executeReplacement: jest.fn(() => Promise.resolve(false))
+      };
+      const behavior = createToolReplacementBehavior({
+        executor,
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const bot = makeBot([makeItem('iron_pickaxe', 237, 250)]);
+
+      expect(await behavior.shouldActivate(bot)).toBe(true);
+      const state: any = await behavior.createState(bot);
+      state.stateMachine.onStateEntered?.();
+      // Drive the NSM so the dispatch state actually enters (transitions
+      // from the initial BehaviorIdle → DispatchState).
+      for (let i = 0; i < 3; i++) {
+        state.stateMachine.update?.();
+        await Promise.resolve();
+      }
+      expect(executor.executeReplacement).toHaveBeenCalledWith('iron_pickaxe');
+      // Let the resolved-false promise run through microtasks so the
+      // onOutcome callback stamps the cooldown before we re-query.
+      await new Promise((r) => setImmediate(r));
+
+      // Cooldown is now set; the next shouldActivate should skip this tool.
+      expect(await behavior.shouldActivate(bot)).toBe(false);
+    });
+
     it('finishes immediately after dispatching (fire-and-forget; does not await executor)', async () => {
       // Executor promise intentionally never resolves — the reactive behavior
       // must still finish promptly. Awaiting would deadlock the control stack

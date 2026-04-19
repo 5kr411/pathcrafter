@@ -9,6 +9,12 @@ import logger from '../../../utils/logger';
 const DURABLE_OTHER = ['bow', 'crossbow', 'fishing_rod', 'shears', 'flint_and_steel', 'trident'] as const;
 const TOOL_TYPE_SUFFIXES = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword'] as const;
 
+// Minimum time between replacement attempts for the same tool name.
+// Prevents chat spam and planner thrashing when the planner can produce
+// paths the world doesn't support (e.g. a stone_shovel recipe that needs
+// dead_bush for sticks in a biome without dead bushes).
+const FAILURE_COOLDOWN_MS = 60_000;
+
 interface ParsedTool {
   tier: string | null;
   type: string;
@@ -76,7 +82,9 @@ function collectToolInstances(bot: Bot): ToolInstance[] {
 function findReplacementTarget(
   bot: Bot,
   threshold: number,
-  toolsBeingReplaced: Set<string>
+  toolsBeingReplaced: Set<string>,
+  failureCooldownUntil: Map<string, number>,
+  now: number
 ): string | null {
   const instances = collectToolInstances(bot);
   if (instances.length === 0) return null;
@@ -107,6 +115,8 @@ function findReplacementTarget(
     }
     if (!bestName) continue;
     if (toolsBeingReplaced.has(bestName)) continue;
+    const cooldownUntil = failureCooldownUntil.get(bestName);
+    if (cooldownUntil !== undefined && cooldownUntil > now) continue;
 
     return bestName;
   }
@@ -121,7 +131,8 @@ class DispatchState implements StateBehavior {
   constructor(
     private readonly executor: ToolReplacementExecutor,
     private readonly toolName: string,
-    private readonly safeChat: ((msg: string) => void) | null
+    private readonly safeChat: ((msg: string) => void) | null,
+    private readonly onOutcome: (success: boolean) => void
   ) {}
 
   onStateEntered(): void {
@@ -136,10 +147,15 @@ class DispatchState implements StateBehavior {
     // would deadlock (tool layer can't run while reactive is busy). The
     // executor runs on its own lifecycle once the reactive layer releases
     // control; the `toolsBeingReplaced` Set prevents re-dispatch on the
-    // next scheduler tick. Failure is logged by the executor.
-    this.executor.executeReplacement(this.toolName).catch((err: any) => {
-      logger.debug(`ToolReplacement: dispatch rejected — ${err?.message || err}`);
-    });
+    // next scheduler tick. Outcome is observed via the promise callback
+    // to stamp a failure cooldown when replacement fails.
+    this.executor.executeReplacement(this.toolName).then(
+      (ok) => this.onOutcome(!!ok),
+      (err: any) => {
+        logger.debug(`ToolReplacement: dispatch rejected — ${err?.message || err}`);
+        this.onOutcome(false);
+      }
+    );
     this.done = true;
   }
 
@@ -154,10 +170,11 @@ class DispatchState implements StateBehavior {
 function buildDispatchStateMachine(
   executor: ToolReplacementExecutor,
   toolName: string,
-  safeChat: ((msg: string) => void) | null
+  safeChat: ((msg: string) => void) | null,
+  onOutcome: (success: boolean) => void
 ): ReactiveBehaviorState {
   const enter = new BehaviorIdle();
-  const dispatch = new DispatchState(executor, toolName, safeChat);
+  const dispatch = new DispatchState(executor, toolName, safeChat, onOutcome);
   const exit = new BehaviorIdle();
 
   const transitions = [
@@ -196,13 +213,20 @@ export interface ToolReplacementBehaviorDeps {
 export function createToolReplacementBehavior(deps: ToolReplacementBehaviorDeps): ReactiveBehavior {
   const { executor, toolsBeingReplaced, durabilityThreshold } = deps;
   let pendingTarget: string | null = null;
+  const failureCooldownUntil = new Map<string, number>();
 
   return {
     priority: 70,
     name: 'tool_replacement',
     shouldActivate: (bot: Bot): boolean => {
       if (isWorkstationLocked()) return false;
-      const target = findReplacementTarget(bot, durabilityThreshold, toolsBeingReplaced);
+      const target = findReplacementTarget(
+        bot,
+        durabilityThreshold,
+        toolsBeingReplaced,
+        failureCooldownUntil,
+        Date.now()
+      );
       pendingTarget = target;
       return target !== null;
     },
@@ -212,7 +236,13 @@ export function createToolReplacementBehavior(deps: ToolReplacementBehaviorDeps)
       pendingTarget = null;
       const safeChat: ((msg: string) => void) | null =
         typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
-      return buildDispatchStateMachine(executor, tool, safeChat);
+      const onOutcome = (success: boolean) => {
+        if (!success) {
+          failureCooldownUntil.set(tool, Date.now() + FAILURE_COOLDOWN_MS);
+          logger.debug(`ToolReplacement: ${tool} failed, cooldown ${FAILURE_COOLDOWN_MS}ms`);
+        }
+      };
+      return buildDispatchStateMachine(executor, tool, safeChat, onOutcome);
     }
   };
 }
