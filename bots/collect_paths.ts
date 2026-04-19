@@ -15,6 +15,7 @@ import { opportunisticFoodHuntBehavior } from './collector/reactive_behaviors/op
 import { foodCollectionBehavior, setFoodCollectionConfig, resetFoodCollectionCooldown } from './collector/reactive_behaviors/food_collection_behavior';
 import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
 import { inventoryManagementBehavior, setInventoryManagementConfig } from './collector/reactive_behaviors/inventory_management_behavior';
+import { createToolReplacementBehavior } from './collector/reactive_behaviors/tool_replacement_behavior';
 import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
@@ -186,6 +187,12 @@ bot.once('spawn', () => {
   );
   controlStack.start();
   const executor = controlStack.targetLayer;
+
+  reactiveBehaviorRegistry.register(createToolReplacementBehavior({
+    executor: controlStack.toolLayer,
+    toolsBeingReplaced: controlStack.toolsBeingReplaced,
+    durabilityThreshold: config.toolDurabilityThreshold
+  }));
 
   setInventoryManagementConfig({
     getTargets: () => executor.getTargets()
