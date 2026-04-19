@@ -385,11 +385,16 @@ describe('unit: shield_defense_behavior', () => {
       const lastCall = nsmCalls[nsmCalls.length - 1];
       const transitions = lastCall[0];
 
-      // transitions: [enterToShield, shieldToAttack, shieldToExit, attackToExit, attackToShield]
-      const enterToShield = transitions[0];
-      const shieldToAttack = transitions[1];
-      const attackToExit = transitions[3];
-      const attackToShield = transitions[4];
+      const findTransition = (suffix: string) => {
+        const match = transitions.find((t: any) => typeof t.name === 'string' && t.name.endsWith(suffix));
+        if (!match) throw new Error(`transition ending in "${suffix}" not found`);
+        return match;
+      };
+
+      const enterToShield = findTransition('enter -> shield');
+      const shieldToAttack = findTransition('shield -> attack');
+      const attackToExit = findTransition('attack -> exit');
+      const attackToShield = findTransition('attack -> shield');
       const shieldHold = enterToShield.child;
       const pvpAttack = shieldToAttack.child;
 

@@ -177,7 +177,7 @@ describe('BehaviorWander', () => {
     expect(wander.isFinished).toBe(true);
   });
 
-  it('re-sets goal on update when pathfinder is idle after cooldown', () => {
+  it('re-picks a fresh target on update when pathfinder is idle after cooldown', () => {
     const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
     const setGoalSpy = jest.fn();
     bot.pathfinder.setGoal = setGoalSpy;
@@ -187,14 +187,10 @@ describe('BehaviorWander', () => {
     wander.onStateEntered();
     expect(setGoalSpy).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(2001);
+    jest.advanceTimersByTime(8001);
     wander.update();
 
     expect(setGoalSpy).toHaveBeenCalledTimes(2);
-    const firstGoal = setGoalSpy.mock.calls[0][0];
-    const secondGoal = setGoalSpy.mock.calls[1][0];
-    expect(secondGoal.x).toBe(firstGoal.x);
-    expect(secondGoal.z).toBe(firstGoal.z);
   });
 
   it('does not re-set goal on update before cooldown expires', () => {
@@ -207,7 +203,7 @@ describe('BehaviorWander', () => {
     wander.onStateEntered();
     expect(setGoalSpy).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(1000);
+    jest.advanceTimersByTime(2000);
     wander.update();
 
     expect(setGoalSpy).toHaveBeenCalledTimes(1);
@@ -223,7 +219,7 @@ describe('BehaviorWander', () => {
     wander.onStateEntered();
     expect(setGoalSpy).toHaveBeenCalledTimes(1);
 
-    jest.advanceTimersByTime(3000);
+    jest.advanceTimersByTime(9000);
     wander.update();
 
     expect(setGoalSpy).toHaveBeenCalledTimes(1);
@@ -241,7 +237,7 @@ describe('BehaviorWander', () => {
     expect(wander.isFinished).toBe(true);
 
     setGoalSpy.mockClear();
-    jest.advanceTimersByTime(3000);
+    jest.advanceTimersByTime(9000);
     wander.update();
 
     expect(setGoalSpy).not.toHaveBeenCalled();
