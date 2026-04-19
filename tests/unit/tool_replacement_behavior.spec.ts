@@ -95,6 +95,34 @@ describe('tool_replacement_behavior', () => {
       expect(result).toBe(false);
     });
 
+    it('returns false when best tier is dying but a lower tier is a usable fallback', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const items = [
+        makeItem('iron_pickaxe', 237, 250),   // 5% — dying best
+        makeItem('wooden_pickaxe', 10, 59)    // 83% — healthy fallback
+      ];
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(false);
+    });
+
+    it('triggers on the best-tier name when every tool in the group is dying', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const items = [
+        makeItem('iron_pickaxe', 237, 250),  // 5%
+        makeItem('wooden_pickaxe', 56, 59)   // 5%
+      ];
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(true);
+    });
+
     it('returns false when the best tool is already in toolsBeingReplaced', async () => {
       const set = new Set<string>(['iron_pickaxe']);
       const behavior = createToolReplacementBehavior({

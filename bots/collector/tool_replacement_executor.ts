@@ -556,7 +556,17 @@ export class ToolReplacementExecutor implements StateBehavior {
   }
 
   stop(): void {
-    this.queue.splice(0, this.queue.length);
+    // Resolve any queued requests before dropping them so callers awaiting
+    // their promises don't hang. Each resolves to false (not fulfilled).
+    const queued = this.queue.splice(0, this.queue.length);
+    for (const req of queued) {
+      try {
+        req.resolve(false);
+      } catch (_) {}
+      if (this.toolsBeingReplaced) {
+        this.toolsBeingReplaced.delete(req.toolName);
+      }
+    }
     if (this.currentTask) {
       this.currentTask.abort();
       this.resolveCurrent(false);
@@ -569,6 +579,7 @@ export class ToolReplacementExecutor implements StateBehavior {
       try {
         this.currentRequest.resolve(success);
       } catch (_) {}
+      this.inFlight.delete(this.currentRequest.toolName);
       if (this.toolsBeingReplaced) {
         this.toolsBeingReplaced.delete(this.currentRequest.toolName);
       }

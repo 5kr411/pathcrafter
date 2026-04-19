@@ -89,6 +89,13 @@ function findReplacementTarget(
   }
 
   for (const [, group] of byType) {
+    // Any tool in this type group above threshold counts as a spare —
+    // a healthy wooden_sword is a fine fallback for a dying iron_sword
+    // while a replacement is being acquired. Only trigger replacement
+    // when every instance in the group is below threshold.
+    const hasSpare = group.some(i => i.remainingRatio >= threshold);
+    if (hasSpare) continue;
+
     let bestRank = -Infinity;
     let bestName: string | null = null;
     for (const inst of group) {
@@ -100,10 +107,6 @@ function findReplacementTarget(
     }
     if (!bestName) continue;
     if (toolsBeingReplaced.has(bestName)) continue;
-
-    const sameName = group.filter(i => i.name === bestName);
-    const hasSpare = sameName.some(i => i.remainingRatio >= threshold);
-    if (hasSpare) continue;
 
     return bestName;
   }
