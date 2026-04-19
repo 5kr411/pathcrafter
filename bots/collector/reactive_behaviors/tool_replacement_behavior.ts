@@ -4,6 +4,7 @@ import { ToolReplacementExecutor } from '../tool_replacement_executor';
 import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getPersistentTools } from '../../../utils/persistentItemsConfig';
 import { rank } from '../../../utils/items';
+import logger from '../../../utils/logger';
 
 const DURABLE_OTHER = ['bow', 'crossbow', 'fishing_rod', 'shears', 'flint_and_steel', 'trident'] as const;
 const TOOL_TYPE_SUFFIXES = ['pickaxe', 'axe', 'shovel', 'hoe', 'sword'] as const;
@@ -112,9 +113,7 @@ function findReplacementTarget(
 class DispatchState implements StateBehavior {
   public stateName = 'ToolReplacementDispatch';
   public active = false;
-  private finishedFlag = false;
-  private successFlag = false;
-  private dispatched = false;
+  private done = false;
 
   constructor(
     private readonly executor: ToolReplacementExecutor,
@@ -124,23 +123,29 @@ class DispatchState implements StateBehavior {
 
   onStateEntered(): void {
     this.active = true;
-    if (this.dispatched) return;
-    this.dispatched = true;
+    if (this.done) return;
     if (this.safeChat) {
       try { this.safeChat(`tool low, replacing ${this.toolName}`); } catch (_) {}
     }
-    this.executor.executeReplacement(this.toolName).then(
-      (ok) => { this.finishedFlag = true; this.successFlag = !!ok; },
-      (_err) => { this.finishedFlag = true; this.successFlag = false; }
-    );
+    // Fire-and-forget: queue the replacement on the tool layer and exit
+    // immediately. We must NOT await the promise here — the reactive layer
+    // has priority over the tool layer in the control stack, so awaiting
+    // would deadlock (tool layer can't run while reactive is busy). The
+    // executor runs on its own lifecycle once the reactive layer releases
+    // control; the `toolsBeingReplaced` Set prevents re-dispatch on the
+    // next scheduler tick. Failure is logged by the executor.
+    this.executor.executeReplacement(this.toolName).catch((err: any) => {
+      logger.debug(`ToolReplacement: dispatch rejected — ${err?.message || err}`);
+    });
+    this.done = true;
   }
 
   onStateExited(): void {
     this.active = false;
   }
 
-  isFinished(): boolean { return this.finishedFlag; }
-  wasSuccessful(): boolean { return this.successFlag; }
+  isFinished(): boolean { return this.done; }
+  wasSuccessful(): boolean { return true; }
 }
 
 function buildDispatchStateMachine(

@@ -174,10 +174,13 @@ describe('tool_replacement_behavior', () => {
       expect(executor.executeReplacement).toHaveBeenCalledWith('iron_pickaxe');
     });
 
-    it('state machine finishes after executor promise resolves', async () => {
-      let resolveFn: (v: boolean) => void = () => {};
+    it('finishes immediately after dispatching (fire-and-forget; does not await executor)', async () => {
+      // Executor promise intentionally never resolves — the reactive behavior
+      // must still finish promptly. Awaiting would deadlock the control stack
+      // (reactive holds priority over tool; tool can only run once reactive
+      // releases).
       const executor: any = {
-        executeReplacement: jest.fn(() => new Promise<boolean>((res) => { resolveFn = res; }))
+        executeReplacement: jest.fn(() => new Promise<boolean>(() => { /* never resolves */ }))
       };
       const behavior = createToolReplacementBehavior({
         executor,
@@ -193,10 +196,7 @@ describe('tool_replacement_behavior', () => {
         state.stateMachine.update?.();
         await Promise.resolve();
       }
-      expect(state.isFinished?.()).toBe(false);
-
-      resolveFn(true);
-      await new Promise((r) => setImmediate(r));
+      expect(executor.executeReplacement).toHaveBeenCalledWith('iron_pickaxe');
       expect(state.isFinished?.()).toBe(true);
       expect(state.wasSuccessful?.()).toBe(true);
     });
