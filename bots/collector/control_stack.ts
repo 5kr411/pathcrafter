@@ -28,7 +28,7 @@ export class CollectorControlStack {
   readonly agentActionLayer: any | null;
   readonly rootStateMachine: NestedStateMachine;
 
-  private readonly toolsBeingReplaced = new Set<string>();
+  public readonly toolsBeingReplaced = new Set<string>();
 
   constructor(
     private readonly bot: Bot,
