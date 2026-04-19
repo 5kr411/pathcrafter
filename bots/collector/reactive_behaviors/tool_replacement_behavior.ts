@@ -1,4 +1,5 @@
-import { ReactiveBehavior, Bot } from './types';
+import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
+import { ReactiveBehavior, ReactiveBehaviorState, ReactiveBehaviorStopReason, Bot } from './types';
 import { ToolReplacementExecutor } from '../tool_replacement_executor';
 import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getPersistentTools } from '../../../utils/persistentItemsConfig';
@@ -108,6 +109,76 @@ function findReplacementTarget(
   return null;
 }
 
+class DispatchState implements StateBehavior {
+  public stateName = 'ToolReplacementDispatch';
+  public active = false;
+  private finishedFlag = false;
+  private successFlag = false;
+  private dispatched = false;
+
+  constructor(
+    private readonly executor: ToolReplacementExecutor,
+    private readonly toolName: string,
+    private readonly safeChat: ((msg: string) => void) | null
+  ) {}
+
+  onStateEntered(): void {
+    this.active = true;
+    if (this.dispatched) return;
+    this.dispatched = true;
+    if (this.safeChat) {
+      try { this.safeChat(`tool low, replacing ${this.toolName}`); } catch (_) {}
+    }
+    this.executor.executeReplacement(this.toolName).then(
+      (ok) => { this.finishedFlag = true; this.successFlag = !!ok; },
+      (_err) => { this.finishedFlag = true; this.successFlag = false; }
+    );
+  }
+
+  onStateExited(): void {
+    this.active = false;
+  }
+
+  isFinished(): boolean { return this.finishedFlag; }
+  wasSuccessful(): boolean { return this.successFlag; }
+}
+
+function buildDispatchStateMachine(
+  executor: ToolReplacementExecutor,
+  toolName: string,
+  safeChat: ((msg: string) => void) | null
+): ReactiveBehaviorState {
+  const enter = new BehaviorIdle();
+  const dispatch = new DispatchState(executor, toolName, safeChat);
+  const exit = new BehaviorIdle();
+
+  const transitions = [
+    new StateTransition({
+      parent: enter,
+      child: dispatch,
+      name: 'tool-replacement: enter -> dispatch',
+      shouldTransition: () => true
+    }),
+    new StateTransition({
+      parent: dispatch,
+      child: exit,
+      name: 'tool-replacement: dispatch -> exit',
+      shouldTransition: () => dispatch.isFinished()
+    })
+  ];
+
+  const stateMachine = new NestedStateMachine(transitions, enter, exit);
+
+  return {
+    stateMachine,
+    isFinished: () => dispatch.isFinished(),
+    wasSuccessful: () => dispatch.wasSuccessful(),
+    onStop: (_reason: ReactiveBehaviorStopReason) => {
+      // Executor lifecycle is independent of the reactive NSM; nothing to tear down.
+    }
+  };
+}
+
 export interface ToolReplacementBehaviorDeps {
   executor: ToolReplacementExecutor;
   toolsBeingReplaced: Set<string>;
@@ -115,7 +186,8 @@ export interface ToolReplacementBehaviorDeps {
 }
 
 export function createToolReplacementBehavior(deps: ToolReplacementBehaviorDeps): ReactiveBehavior {
-  const { toolsBeingReplaced, durabilityThreshold } = deps;
+  const { executor, toolsBeingReplaced, durabilityThreshold } = deps;
+  let pendingTarget: string | null = null;
 
   return {
     priority: 70,
@@ -123,8 +195,16 @@ export function createToolReplacementBehavior(deps: ToolReplacementBehaviorDeps)
     shouldActivate: (bot: Bot): boolean => {
       if (isWorkstationLocked()) return false;
       const target = findReplacementTarget(bot, durabilityThreshold, toolsBeingReplaced);
+      pendingTarget = target;
       return target !== null;
     },
-    createState: async (_bot: Bot) => null
+    createState: async (bot: Bot): Promise<ReactiveBehaviorState | null> => {
+      if (!pendingTarget) return null;
+      const tool = pendingTarget;
+      pendingTarget = null;
+      const safeChat: ((msg: string) => void) | null =
+        typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
+      return buildDispatchStateMachine(executor, tool, safeChat);
+    }
   };
 }

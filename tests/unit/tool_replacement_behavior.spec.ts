@@ -147,4 +147,58 @@ describe('tool_replacement_behavior', () => {
       });
     });
   });
+
+  describe('createState dispatch', () => {
+    it('calls executor.executeReplacement with the target tool name', async () => {
+      const executor = makeExecutor();
+      const behavior = createToolReplacementBehavior({
+        executor,
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const bot = makeBot([makeItem('iron_pickaxe', 237, 250)]);
+      const activated = await behavior.shouldActivate(bot);
+      expect(activated).toBe(true);
+
+      const state: any = await behavior.createState(bot);
+      expect(state).not.toBeNull();
+      expect(state.stateMachine).toBeDefined();
+
+      state.stateMachine.onStateEntered?.();
+      // Run the scheduler-style update loop a few ticks to allow
+      // mineflayer-statemachine transitions to fire.
+      for (let i = 0; i < 3; i++) {
+        state.stateMachine.update?.();
+        await Promise.resolve();
+      }
+      expect(executor.executeReplacement).toHaveBeenCalledWith('iron_pickaxe');
+    });
+
+    it('state machine finishes after executor promise resolves', async () => {
+      let resolveFn: (v: boolean) => void = () => {};
+      const executor: any = {
+        executeReplacement: jest.fn(() => new Promise<boolean>((res) => { resolveFn = res; }))
+      };
+      const behavior = createToolReplacementBehavior({
+        executor,
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const bot = makeBot([makeItem('iron_pickaxe', 237, 250)]);
+      await behavior.shouldActivate(bot);
+      const state: any = await behavior.createState(bot);
+
+      state.stateMachine.onStateEntered?.();
+      for (let i = 0; i < 3; i++) {
+        state.stateMachine.update?.();
+        await Promise.resolve();
+      }
+      expect(state.isFinished?.()).toBe(false);
+
+      resolveFn(true);
+      await new Promise((r) => setImmediate(r));
+      expect(state.isFinished?.()).toBe(true);
+      expect(state.wasSuccessful?.()).toBe(true);
+    });
+  });
 });
