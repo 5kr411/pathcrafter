@@ -3,9 +3,16 @@ import { computePathWeight } from './pathUtils';
 import { ActionPath } from '../action_tree/types';
 import logger from './logger';
 
-// Module-level cache
-let cache: Map<string, number> | null = null;
+// Per-workstation cost cache. A present entry means computation has run:
+// `number` is a valid cost, `null` means no crafting path was found.
+let cache: Map<string, number | null> | null = null;
+let cachedCtx: any = null;
 const workstationSet = new Set(getPersistentWorkstations());
+
+// Workstations currently mid-computation. Queries for these return undefined
+// so that a `mine X` step weight inside X's own cost computation falls back
+// to the default (1000 * count) instead of recursing into another compute.
+const computing = new Set<string>();
 
 /** Maximum paths to inspect per workstation when searching for a craft path */
 const MAX_PATHS_PER_ITEM = 50;
@@ -22,63 +29,89 @@ function isDirectMinePath(path: ActionPath, targetItem: string): boolean {
   return variant === targetItem;
 }
 
-/**
- * Computes the minimum craft-from-scratch cost for each workstation
- * by running the planner with empty inventory and no world budget,
- * then taking the lowest-weight path that actually crafts the item
- * (skipping paths that simply mine the workstation from the world).
- *
- * @param ctx - Planner context (version string, mcData instance, etc.)
- * @param workstationSubset - Optional subset of workstations to compute (defaults to all)
- */
-export function initWorkstationCostCache(ctx: any, workstationSubset?: readonly string[]): void {
+function computeWorkstationCost(ctx: any, workstation: string): number | null {
   // Lazy-require to avoid circular deps at module load time
   const { plan } = require('../planner');
   const { enumerateLowestWeightPathsGenerator } = require('../path_generators/lowestWeightPathsGenerator');
 
-  cache = new Map<string, number>();
+  try {
+    const tree = plan(ctx, workstation, 1, {
+      inventory: new Map<string, number>(),
+      log: false,
+    });
 
-  const items = workstationSubset ?? getPersistentWorkstations();
+    const gen = enumerateLowestWeightPathsGenerator(tree, {});
+    let inspected = 0;
 
-  for (const workstation of items) {
-    try {
-      const tree = plan(ctx, workstation, 1, {
-        inventory: new Map<string, number>(),
-        log: false,
-      });
-
-      const gen = enumerateLowestWeightPathsGenerator(tree, {});
-      let inspected = 0;
-
-      for (const path of gen) {
-        inspected++;
-        if (inspected > MAX_PATHS_PER_ITEM) break;
-
-        // Skip paths that just mine the workstation directly from the world
-        if (isDirectMinePath(path, workstation)) continue;
-
-        const weight = computePathWeight(path);
-        if (weight > 0) {
-          cache.set(workstation, weight);
-          logger.debug(`WorkstationCostCache: ${workstation} = ${weight}`);
-        }
-        break;
+    for (const path of gen) {
+      inspected++;
+      if (inspected > MAX_PATHS_PER_ITEM) break;
+      if (isDirectMinePath(path, workstation)) continue;
+      const weight = computePathWeight(path);
+      if (weight > 0) {
+        logger.debug(`WorkstationCostCache: ${workstation} = ${weight}`);
+        return weight;
       }
-    } catch (err) {
-      logger.debug(`WorkstationCostCache: failed to compute cost for ${workstation}: ${err}`);
     }
+  } catch (err) {
+    logger.debug(`WorkstationCostCache: failed to compute cost for ${workstation}: ${err}`);
   }
+  return null;
+}
 
-  logger.info(`WorkstationCostCache: initialized ${cache.size} workstation costs`);
+/**
+ * Initializes the workstation cost cache.
+ *
+ * Behavior depends on whether a subset is supplied:
+ * - Without a subset (production call from planning_worker): stashes the planner
+ *   context and marks the cache ready, but defers all computation. Each
+ *   workstation's cost is computed on first query via getWorkstationCraftCost.
+ *   This avoids a multi-minute upfront cost that was dominating first-plan latency.
+ * - With a subset (tests / callers that want deterministic eager init): eagerly
+ *   computes the listed workstations' costs upfront. Callers can still query
+ *   other workstations later; those will fall through to lazy computation.
+ */
+export function initWorkstationCostCache(ctx: any, workstationSubset?: readonly string[]): void {
+  cache = new Map<string, number | null>();
+  cachedCtx = ctx;
+
+  if (workstationSubset && workstationSubset.length > 0) {
+    // Route through the lazy entrypoint so the in-progress guard applies —
+    // this prevents infinite recursion if a workstation's cost computation
+    // references its own mine step inside the path evaluation.
+    for (const workstation of workstationSubset) {
+      getWorkstationCraftCost(workstation);
+    }
+    logger.info(`WorkstationCostCache: eagerly initialized ${cache.size} workstation costs`);
+  } else {
+    logger.info('WorkstationCostCache: ready (lazy mode — costs computed on first query)');
+  }
 }
 
 /**
  * Returns the cached craft-from-scratch cost for a workstation block,
- * or undefined if the block is not a workstation or has no craft path.
+ * computing it on demand if not yet cached.
+ *
+ * Returns undefined if the cache is not initialized, the block is not a
+ * known workstation, or no crafting path was found.
  */
 export function getWorkstationCraftCost(blockName: string): number | undefined {
   if (!cache) return undefined;
-  return cache.get(blockName);
+  if (cache.has(blockName)) {
+    const v = cache.get(blockName);
+    return v === null ? undefined : v;
+  }
+  if (!workstationSet.has(blockName)) return undefined;
+  if (computing.has(blockName)) return undefined;
+
+  computing.add(blockName);
+  try {
+    const cost = computeWorkstationCost(cachedCtx, blockName);
+    cache.set(blockName, cost);
+    return cost === null ? undefined : cost;
+  } finally {
+    computing.delete(blockName);
+  }
 }
 
 /**
@@ -100,4 +133,6 @@ export function isWorkstationCacheReady(): boolean {
  */
 export function clearWorkstationCostCache(): void {
   cache = null;
+  cachedCtx = null;
+  computing.clear();
 }
