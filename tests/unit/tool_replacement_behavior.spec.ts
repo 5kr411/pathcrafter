@@ -1,4 +1,27 @@
 import { createToolReplacementBehavior } from '../../bots/collector/reactive_behaviors/tool_replacement_behavior';
+import { setWorkstationPhaseProvider } from '../../utils/workstationLock';
+
+const NAME_TO_ID: Record<string, number> = {
+  iron_pickaxe: 256,
+  wooden_pickaxe: 270,
+  stone_pickaxe: 274,
+  iron_axe: 258,
+  iron_sword: 267,
+  diamond_pickaxe: 278,
+  shield: 999,
+  bow: 261
+};
+function nameToId(name: string) { return NAME_TO_ID[name] ?? 1; }
+
+function makeItem(name: string, durabilityUsed: number, maxDurability: number, count = 1) {
+  return {
+    name,
+    type: nameToId(name),
+    count,
+    durabilityUsed,
+    maxDurability
+  };
+}
 
 function makeBot(items: any[] = []) {
   const registryItems: Record<number, any> = {};
@@ -30,6 +53,98 @@ describe('tool_replacement_behavior', () => {
       });
       const result = await behavior.shouldActivate(makeBot([]));
       expect(result).toBe(false);
+    });
+
+    it('returns true when the sole tool is below threshold', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      // 237/250 used → 5.2% remaining
+      const items = [makeItem('iron_pickaxe', 237, 250)];
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(true);
+    });
+
+    it('returns false when a spare of the same name is healthy', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const items = [
+        makeItem('iron_pickaxe', 237, 250), // 5% — low
+        makeItem('iron_pickaxe', 50, 250)   // 80% — spare
+      ];
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(false);
+    });
+
+    it('returns false when best tier is healthy but a lower tier is dying', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const items = [
+        makeItem('iron_pickaxe', 10, 250),   // 96% — healthy best
+        makeItem('wooden_pickaxe', 58, 59)   // 1.7% — dying lower tier (ignored)
+      ];
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(false);
+    });
+
+    it('returns false when the best tool is already in toolsBeingReplaced', async () => {
+      const set = new Set<string>(['iron_pickaxe']);
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: set,
+        durabilityThreshold: 0.1
+      });
+      const items = [makeItem('iron_pickaxe', 237, 250)];
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(false);
+    });
+
+    it('ignores shield entirely', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const items = [makeItem('shield', 330, 336)]; // ~1.8% remaining
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(false);
+    });
+
+    it('triggers for tierless durable tools (bow)', async () => {
+      const behavior = createToolReplacementBehavior({
+        executor: makeExecutor(),
+        toolsBeingReplaced: new Set<string>(),
+        durabilityThreshold: 0.1
+      });
+      const items = [makeItem('bow', 380, 384)]; // ~1% remaining
+      const result = await behavior.shouldActivate(makeBot(items));
+      expect(result).toBe(true);
+    });
+
+    describe('workstation lock', () => {
+      afterEach(() => {
+        setWorkstationPhaseProvider(null);
+      });
+
+      it('returns false while workstation is locked', async () => {
+        setWorkstationPhaseProvider(() => true);
+        const behavior = createToolReplacementBehavior({
+          executor: makeExecutor(),
+          toolsBeingReplaced: new Set<string>(),
+          durabilityThreshold: 0.1
+        });
+        const items = [makeItem('iron_pickaxe', 237, 250)];
+        const result = await behavior.shouldActivate(makeBot(items));
+        expect(result).toBe(false);
+      });
     });
   });
 });
