@@ -16,6 +16,7 @@ import createLookAtState from '../../../behaviors/behaviorLookAt';
 const INVENTORY_MANAGEMENT_PRIORITY = 30;
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 const FREE_SLOT_BUFFER = 2;
+const MACHINE_SAFETY_TIMEOUT_MS = 30_000;
 const WANDER_DISTANCE = 5;
 const CLEAR_AREA_AHEAD_BLOCKS = 2;
 const CLEAR_RADIUS_HORIZONTAL = 0;
@@ -313,7 +314,7 @@ function runMachine(stateMachine: any): Promise<void> {
     safety = setTimeout(() => {
       logger.warn('inventoryManagementMachine: 30s safety timeout - forcing resolve');
       settle();
-    }, 30_000);
+    }, MACHINE_SAFETY_TIMEOUT_MS);
   });
 }
 

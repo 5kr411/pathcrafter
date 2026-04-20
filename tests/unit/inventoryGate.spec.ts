@@ -48,4 +48,11 @@ describe('ensureInventoryRoom', () => {
     mod.buildInventoryManagementMachine.mockReturnValue({ run, stateMachine: {}, droppedCount: () => 0 });
     await expect(ensureInventoryRoom(bot, 2)).resolves.toBeUndefined();
   });
+
+  it('resolves immediately when freeSlots equals minFreeSlots (boundary)', async () => {
+    const bot = mkBot(2);
+    await ensureInventoryRoom(bot, 2);
+    const mod = require('../../bots/collector/reactive_behaviors/inventory_management_behavior');
+    expect(mod.buildInventoryManagementMachine).not.toHaveBeenCalled();
+  });
 });
