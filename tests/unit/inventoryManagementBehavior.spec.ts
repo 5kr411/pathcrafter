@@ -89,6 +89,7 @@ jest.mock('mineflayer-statemachine', () => {
 import {
   inventoryManagementBehavior,
   setInventoryManagementConfig,
+  getInventoryManagementConfig,
   resetInventoryManagementCooldown,
   triggerInventoryManagementCooldown,
   calculateItemsToDrop,
@@ -550,6 +551,24 @@ describe('inventoryManagementBehavior', () => {
       setInventoryManagementConfig({ triggerFreeSlots: 5 });
       const bot = createBot(fillSlots(32));
       expect(inventoryManagementBehavior.shouldActivate(bot)).toBe(true);
+    });
+
+    it('prefers explicit reactiveThreshold over triggerFreeSlots alias when both supplied', () => {
+      setInventoryManagementConfig({ triggerFreeSlots: 5, reactiveThreshold: 3 });
+      const bot = createBot(fillSlots(32)); // 4 free slots
+      // reactiveThreshold=3 wins → 4 > 3 → no activation
+      expect(inventoryManagementBehavior.shouldActivate(bot)).toBe(false);
+    });
+
+    it('exposes preGateThreshold default via getInventoryManagementConfig', () => {
+      // reset to defaults
+      setInventoryManagementConfig({
+        reactiveThreshold: 3,
+        preGateThreshold: 2,
+        cooldownMs: 60_000
+      });
+      const cfg = getInventoryManagementConfig();
+      expect(cfg.preGateThreshold).toBe(2);
     });
   });
 });
