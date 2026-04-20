@@ -381,6 +381,9 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
         onTransition: () => {
           if (targets.originPosition) {
             const o = targets.originPosition;
+            // SmartMoveTo snapshots targets.position in onStateEntered, so
+            // overwriting here (after LookAt wrote a forward-looking point
+            // into it) is safe.
             targets.position = new Vec3(o.x, o.y, o.z);
           }
         }

@@ -751,6 +751,107 @@ describe('inventoryManagementBehavior', () => {
       expect(state!.isFinished!()).toBe(true);
     });
 
+    it('falls back to bot.entity.yaw when Wander did not publish wanderYaw', async () => {
+      // Override the BehaviorWander mock just for this test so it does NOT
+      // write targets.wanderYaw. The wander→lookAt transition should then
+      // fall back to bot.entity.yaw via `?? bot.entity.yaw ?? 0`.
+      const BehaviorWanderMod = require('../../behaviors/behaviorWander');
+      const orig = BehaviorWanderMod.BehaviorWander;
+      class BehaviorWanderNoYaw {
+        stateName = 'wander';
+        active = false;
+        isFinished: any = false;
+        bot: any;
+        distance: number;
+        _c: any;
+        targets: any;
+        constructor(bot: any, distance: number, _c?: any, targets?: any) {
+          this.bot = bot;
+          this.distance = distance;
+          this._c = _c;
+          this.targets = targets;
+        }
+        onStateEntered() {
+          this.active = true;
+          // intentionally DOES NOT write targets.wanderYaw
+          this.isFinished = true;
+        }
+        onStateExited() { this.active = false; }
+        update() {}
+      }
+      BehaviorWanderMod.BehaviorWander = BehaviorWanderNoYaw;
+      BehaviorWanderMod.default = BehaviorWanderNoYaw;
+
+      try {
+        setInventoryManagementConfig({
+          reactiveThreshold: 3,
+          getTargets: () => [{ item: 'cobblestone', count: 64 }]
+        });
+        const bot = createBot([
+          { name: 'cobblestone', count: 64 },
+          { name: 'cobblestone', count: 64 },
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        bot.entity.yaw = 1.5; // sanity: bot has a yaw to fall back to
+
+        const state = await inventoryManagementBehavior.createState!(bot);
+        expect(state).not.toBeNull();
+        state!.stateMachine.onStateEntered();
+        // If the fallback worked we reached the end of the machine without crashing.
+        expect(state!.isFinished!()).toBe(true);
+      } finally {
+        BehaviorWanderMod.BehaviorWander = orig;
+        BehaviorWanderMod.default = orig;
+      }
+    });
+
+    it('finishes machine even when originPosition was never captured', async () => {
+      // Override BehaviorCaptureOrigin so it does not write targets.originPosition.
+      // The toss→moveBack transition should skip the position write but the
+      // machine should still complete cleanly.
+      const BehaviorCaptureOriginMod = require('../../behaviors/behaviorCaptureOrigin');
+      const orig = BehaviorCaptureOriginMod.BehaviorCaptureOrigin;
+      class BehaviorCaptureOriginNoWrite {
+        stateName = 'CaptureOrigin';
+        active = false;
+        private finished = false;
+        bot: any;
+        targets: any;
+        constructor(bot: any, targets: any) {
+          this.bot = bot;
+          this.targets = targets;
+        }
+        onStateEntered() {
+          this.active = true;
+          // intentionally does NOT write targets.originPosition
+          this.finished = true;
+        }
+        onStateExited() { this.active = false; }
+        isFinished() { return this.finished; }
+      }
+      BehaviorCaptureOriginMod.BehaviorCaptureOrigin = BehaviorCaptureOriginNoWrite;
+      BehaviorCaptureOriginMod.default = BehaviorCaptureOriginNoWrite;
+
+      try {
+        setInventoryManagementConfig({
+          reactiveThreshold: 3,
+          getTargets: () => [{ item: 'cobblestone', count: 64 }]
+        });
+        const bot = createBot([
+          { name: 'cobblestone', count: 64 },
+          { name: 'cobblestone', count: 64 },
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        const state = await inventoryManagementBehavior.createState!(bot);
+        expect(state).not.toBeNull();
+        state!.stateMachine.onStateEntered();
+        expect(state!.isFinished!()).toBe(true); // machine completes regardless
+      } finally {
+        BehaviorCaptureOriginMod.BehaviorCaptureOrigin = orig;
+        BehaviorCaptureOriginMod.default = orig;
+      }
+    });
+
     it('captures origin position on entry and routes it to SmartMoveTo back', async () => {
       setInventoryManagementConfig({
         reactiveThreshold: 3,
