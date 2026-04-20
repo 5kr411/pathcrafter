@@ -64,22 +64,29 @@ function isInCooldown(): boolean {
 function isProtectedItem(_bot: Bot, itemName: string): boolean {
   if (isFood(itemName)) return true;
   if (isWorkstation(itemName)) return true;
+  return false;
+}
 
+function getProtectedQuantity(itemName: string): number {
+  if (isFood(itemName)) return Infinity;
+  if (isWorkstation(itemName)) return Infinity;
   try {
     const targets = config.getTargets?.() ?? [];
-    for (const target of targets) {
-      if (target?.item === itemName) return true;
+    let total = 0;
+    for (const t of targets) {
+      if (t?.item === itemName) total += t.count || 0;
     }
-  } catch (_) {}
-
-  return false;
+    return total;
+  } catch (_) {
+    return 0;
+  }
 }
 
 // --- Drop candidate logic ---
 
 export interface DropCandidate {
   item: any;
-  reason: 'lower_tier_tool' | 'duplicate_stack';
+  reason: 'lower_tier_tool' | 'duplicate_stack' | 'excess_over_target';
 }
 
 function getMainInventoryItems(bot: Bot): any[] {
@@ -103,11 +110,52 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
   const candidates: DropCandidate[] = [];
   const addedItems = new Set<any>();
 
+  // Group items by name once; used by Phase 0 and for held-vs-protected checks.
+  const byName = new Map<string, any[]>();
+  for (const item of items) {
+    const arr = byName.get(item.name) || [];
+    arr.push(item);
+    byName.set(item.name, arr);
+  }
+
+  // Phase 0: excess over target
+  for (const [name, stacks] of byName) {
+    const protectedQty = getProtectedQuantity(name);
+    if (protectedQty === Infinity) continue;
+    if (protectedQty <= 0) continue; // no target → Phase 0 does not apply
+    const held = stacks.reduce((s: number, it: any) => s + (it.count || 0), 0);
+    let excess = held - protectedQty;
+    if (excess <= 0) continue;
+    // Smallest stacks first so we preserve large near-target stacks.
+    const sorted = stacks.slice().sort((a: any, b: any) => (a.count || 0) - (b.count || 0));
+    for (const stack of sorted) {
+      if (excess <= 0) break;
+      if ((stack.count || 0) > excess) continue; // whole-stack only
+      if (addedItems.has(stack)) continue;
+      candidates.push({ item: stack, reason: 'excess_over_target' });
+      addedItems.add(stack);
+      excess -= stack.count || 0;
+      if (candidates.length >= slotsToFree) return candidates;
+    }
+  }
+
+  // Helper: whether an item should be skipped by Phase 1/2 because its total
+  // held count does not exceed the protected (target + food/workstation) amount.
+  const heldExceedsProtected = (itemName: string): boolean => {
+    const protectedQty = getProtectedQuantity(itemName);
+    if (protectedQty === Infinity) return false;
+    if (protectedQty <= 0) return true;
+    const stacks = byName.get(itemName) || [];
+    const held = stacks.reduce((s: number, it: any) => s + (it.count || 0), 0);
+    return held > protectedQty;
+  };
+
   // Phase 1: lower-tier duplicate tools
   const toolGroups = new Map<string, any[]>();
   for (const item of items) {
     if (!isTool(item.name)) continue;
     if (isProtectedItem(bot, item.name)) continue;
+    if (!heldExceedsProtected(item.name)) continue;
     const suffix = getSuffixTokenFromName(item.name);
     const group = toolGroups.get(suffix) || [];
     group.push(item);
@@ -136,6 +184,7 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
   const stackGroups = new Map<string, any[]>();
   for (const item of items) {
     if (isProtectedItem(bot, item.name)) continue;
+    if (!heldExceedsProtected(item.name)) continue;
     if (addedItems.has(item)) continue;
     const group = stackGroups.get(item.name) || [];
     group.push(item);

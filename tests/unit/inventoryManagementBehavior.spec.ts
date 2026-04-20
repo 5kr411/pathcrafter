@@ -333,7 +333,10 @@ describe('inventoryManagementBehavior', () => {
     });
 
     describe('protected items', () => {
-      it('does not drop items matching the current target', () => {
+      it('protects the target stack but drops excess target items', () => {
+        // Under Phase 0, target items are protected only up to the target quantity.
+        // target=64 oak_log, held=74 (64 + 10) → excess=10, 10-stack dropped,
+        // 64-stack preserved.
         setInventoryManagementConfig({
           getTargets: () => [{ item: 'oak_log', count: 64 }]
         });
@@ -346,7 +349,9 @@ describe('inventoryManagementBehavior', () => {
 
         const drops = calculateItemsToDrop(bot, 4);
         const oakDrops = drops.filter((d: DropCandidate) => d.item.name === 'oak_log');
-        expect(oakDrops).toHaveLength(0);
+        expect(oakDrops).toHaveLength(1);
+        expect(oakDrops[0].reason).toBe('excess_over_target');
+        expect(oakDrops[0].item.count).toBe(10);
       });
 
       it('does not drop food items', () => {
@@ -392,11 +397,9 @@ describe('inventoryManagementBehavior', () => {
 
     describe('edge cases', () => {
       it('returns empty when all items are protected', () => {
-        setInventoryManagementConfig({
-          getTargets: () => [{ item: 'cobblestone', count: 64 }]
-        });
-
-        const items = fillSlots(36, { name: 'cobblestone', count: 64 });
+        // Food is fully protected regardless of targets, so a pure-food
+        // inventory yields no drop candidates.
+        const items = fillSlots(36, { name: 'cooked_beef', count: 32 });
         const bot = createBot(items);
 
         const drops = calculateItemsToDrop(bot, 4);
@@ -439,15 +442,81 @@ describe('inventoryManagementBehavior', () => {
         expect(drops[0].reason).toBe('lower_tier_tool');
       });
     });
+
+    describe('Phase 0: excess over target', () => {
+      it('drops excess stacks when held > target', () => {
+        // target=64 cobble, held = two stacks of 64 = 128, excess = 64
+        setInventoryManagementConfig({
+          getTargets: () => [{ item: 'cobblestone', count: 64 }]
+        });
+        const bot = createBot([
+          { name: 'cobblestone', count: 64 },
+          { name: 'cobblestone', count: 64 },
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        const candidates = calculateItemsToDrop(bot, 2);
+        expect(candidates.length).toBeGreaterThan(0);
+        expect(candidates[0].reason).toBe('excess_over_target');
+        expect(candidates[0].item.name).toBe('cobblestone');
+      });
+
+      it('skips a stack when dropping it would exceed excess', () => {
+        // target=64, held=70 (64 + 6), excess=6, drop only the 6-stack
+        setInventoryManagementConfig({
+          getTargets: () => [{ item: 'cobblestone', count: 64 }]
+        });
+        const bot = createBot([
+          { name: 'cobblestone', count: 64 },
+          { name: 'cobblestone', count: 6 },
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        const candidates = calculateItemsToDrop(bot, 2);
+        const phase0 = candidates.filter(c => c.reason === 'excess_over_target');
+        expect(phase0).toHaveLength(1);
+        expect(phase0[0].item.count).toBe(6);
+      });
+
+      it('sums multiple targets for same item', () => {
+        setInventoryManagementConfig({
+          getTargets: () => [
+            { item: 'cobblestone', count: 64 },
+            { item: 'cobblestone', count: 32 }
+          ]
+        });
+        const bot = createBot([
+          { name: 'cobblestone', count: 64 }, // held=64, protected=96, excess<=0
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        const candidates = calculateItemsToDrop(bot, 2);
+        expect(candidates.filter(c => c.reason === 'excess_over_target')).toHaveLength(0);
+      });
+
+      it('does not run Phase 0 when no targets configured', () => {
+        setInventoryManagementConfig({ getTargets: () => [] });
+        const bot = createBot(fillSlots(35, { name: 'cobblestone', count: 64 }));
+        const candidates = calculateItemsToDrop(bot, 2);
+        expect(candidates.every(c => c.reason !== 'excess_over_target')).toBe(true);
+      });
+
+      it('still protects food and workstations from Phase 0', () => {
+        setInventoryManagementConfig({
+          getTargets: () => [{ item: 'cooked_beef', count: 1 }]
+        });
+        const bot = createBot([
+          { name: 'cooked_beef', count: 64 }, // held=64, target=1, would be excess 63
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        const candidates = calculateItemsToDrop(bot, 2);
+        expect(candidates.every(c => c.item.name !== 'cooked_beef')).toBe(true);
+      });
+    });
   });
 
   describe('createState', () => {
     it('returns null and starts cooldown when nothing can be dropped', async () => {
-      setInventoryManagementConfig({
-        getTargets: () => [{ item: 'cobblestone', count: 64 }]
-      });
-
-      const items = fillSlots(36, { name: 'cobblestone', count: 64 });
+      // An inventory of pure food (fully protected) yields no drop candidates,
+      // so createState returns null and starts the cooldown.
+      const items = fillSlots(36, { name: 'cooked_beef', count: 32 });
       const bot = createBot(items);
 
       const state = await inventoryManagementBehavior.createState(bot);
