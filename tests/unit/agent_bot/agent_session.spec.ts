@@ -162,4 +162,37 @@ describe('AgentSession', () => {
     expect((session as any).messages).toEqual([]);
     expect(session.isActive()).toBe(false);
   });
+
+  it('abortInFlight from running state transitions to idle and does not deadlock next message', async () => {
+    // First turn tool_use → abort fires mid-tool → cancellation → should reach idle.
+    const provider = makeFakeProvider([
+      { text: null, toolCalls: [{ id: 't1', name: 'slow_tool', input: {} }], stopReason: 'tool_use' },
+      { text: 'after recovery', toolCalls: [], stopReason: 'end' }
+    ]);
+    let abortedDuringTool = false;
+    const toolExecutor = makeToolExecutor(async (_call, ctx) => {
+      await new Promise<void>((resolve) => {
+        if (ctx.signal.aborted) { abortedDuringTool = true; return resolve(); }
+        ctx.signal.addEventListener('abort', () => { abortedDuringTool = true; resolve(); }, { once: true });
+      });
+      return { ok: false, error: 'cancelled', cancelled: true };
+    });
+    const { deps, safeChat } = baseDeps({ provider, toolExecutor });
+    const session = new AgentSession(deps);
+
+    await session.submitUserMessage('do slow thing', { speaker: 'alice' });
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+
+    session.abortInFlight();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
+    expect(abortedDuringTool).toBe(true);
+
+    // A follow-up message must not deadlock — loop should run turn #2.
+    await session.submitUserMessage('are you back?', { speaker: 'alice' });
+    for (let i = 0; i < 5; i++) await Promise.resolve();
+
+    expect(safeChat).toHaveBeenCalledWith('after recovery');
+    expect(provider.calls.length).toBe(2);
+  });
 });

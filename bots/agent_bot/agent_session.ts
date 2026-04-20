@@ -77,6 +77,21 @@ export class AgentSession {
     this.pendingUserMessage = null;
   }
 
+  /**
+   * Halt any in-flight tool loop without wiping conversation state.
+   * Unlike destroy(), keeps messages so a subsequent injectSystemNotification
+   * or submitUserMessage can resume with context. Transitions state to 'idle'
+   * so the next inject restarts the run loop cleanly.
+   */
+  abortInFlight(): void {
+    if (this.state === 'running') {
+      this.abort.abort();
+      this.abort = new AbortController();
+      this.state = 'idle';
+      this.armIdleTimer();
+    }
+  }
+
   private async run(): Promise<void> {
     while (this.state === 'running') {
       const tools = this.deps.toolExecutor.schemas();
