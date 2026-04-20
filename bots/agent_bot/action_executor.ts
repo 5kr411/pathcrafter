@@ -93,6 +93,7 @@ export class AgentActionExecutor implements StateBehavior {
     }
     if (this.current && this.current.isFinished()) {
       const result = this.current.result();
+      try { this.current.stop(); } catch (_) {}
       this.resolveWith(result);
     }
   }

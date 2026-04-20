@@ -152,12 +152,22 @@ describe('BehaviorSafeFollowEntity', () => {
   describe('isFinished and distanceToTarget', () => {
     it('should delegate isFinished to underlying follow entity when not unsticking', () => {
       behavior.onStateEntered();
-      
+
       mockFollowEntity!.setFinished(false);
       expect(behavior.isFinished()).toBe(false);
-      
+
       mockFollowEntity!.setFinished(true);
       expect(behavior.isFinished()).toBe(true);
+    });
+
+    // Regression: mineflayer-statemachine@1.7's BehaviorFollowEntity has no
+    // isFinished method. Calling behavior.isFinished() must not throw —
+    // previously it did, which locked the reactive layer during hunts.
+    it('should return false (not throw) when underlying follow has no isFinished', () => {
+      behavior.onStateEntered();
+      (mockFollowEntity as any).isFinished = undefined;
+      expect(() => behavior.isFinished()).not.toThrow();
+      expect(behavior.isFinished()).toBe(false);
     });
     
     it('should return false for isFinished when unsticking', () => {

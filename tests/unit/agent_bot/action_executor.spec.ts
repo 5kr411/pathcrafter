@@ -9,11 +9,12 @@ describe('AgentActionExecutor', () => {
 
   it('runs an action and resolves its promise on completion', async () => {
     const exec = new AgentActionExecutor({} as any);
+    const stopSpy = jest.fn();
     const action: AgentAction = {
       name: 'mock',
       start: () => {},
       update: () => {},
-      stop: () => {},
+      stop: stopSpy,
       isFinished: () => !!(action as any)._done,
       result: () => ({ ok: true, data: 'done' })
     };
@@ -23,11 +24,14 @@ describe('AgentActionExecutor', () => {
     expect(exec.active).toBe(true);
     // Tick 1: not done yet
     exec.update();
+    expect(stopSpy).not.toHaveBeenCalled();
     (action as any)._done = true;
-    // Tick 2: now done → resolves
+    // Tick 2: now done → resolves AND calls stop() so side effects
+    // (pathfinder goals, pvp targets) don't leak past completion.
     exec.update();
     const r = await p;
     expect(r).toEqual({ ok: true, data: 'done' });
+    expect(stopSpy).toHaveBeenCalledTimes(1);
     expect(exec.hasWork()).toBe(false);
   });
 

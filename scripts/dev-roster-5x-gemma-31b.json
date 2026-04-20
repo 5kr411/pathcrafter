@@ -1,0 +1,7 @@
+[
+  { "name": "gemma-4-31b_01", "provider": "openai-compat", "model": "google/gemma-4-31b", "baseUrl": "http://localhost:1234" },
+  { "name": "gemma-4-31b_02", "provider": "openai-compat", "model": "google/gemma-4-31b", "baseUrl": "http://localhost:1234" },
+  { "name": "gemma-4-31b_03", "provider": "openai-compat", "model": "google/gemma-4-31b", "baseUrl": "http://localhost:1234" },
+  { "name": "gemma-4-31b_04", "provider": "openai-compat", "model": "google/gemma-4-31b", "baseUrl": "http://localhost:1234" },
+  { "name": "gemma-4-31b_05", "provider": "openai-compat", "model": "google/gemma-4-31b", "baseUrl": "http://localhost:1234" }
+]

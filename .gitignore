@@ -6,3 +6,4 @@ artifacts/
 .env
 docs/
 .worktrees/
+.claude/scheduled_tasks.lock

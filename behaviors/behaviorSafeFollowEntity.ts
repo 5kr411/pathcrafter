@@ -74,7 +74,12 @@ export class BehaviorSafeFollowEntity {
     if (this.isUnsticking) {
       return false;
     }
-    return this.followEntity.isFinished();
+    // BehaviorFollowEntity in mineflayer-statemachine@1.7 has no isFinished().
+    // Treat missing as "not finished" — follow runs until target is lost or
+    // callers decide to exit based on distance.
+    return typeof this.followEntity.isFinished === 'function'
+      ? this.followEntity.isFinished()
+      : false;
   }
 
   distanceToTarget(): number {
