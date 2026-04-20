@@ -63,4 +63,42 @@ describe('BehaviorTossCandidates', () => {
     expect(bot.toss).toHaveBeenCalledWith(item.type, null, item.count);
     expect(s.droppedCount()).toBe(1);
   });
+
+  it('finishes safely when targets.dropCandidates is undefined', async () => {
+    const bot: any = {
+      tossStack: jest.fn().mockResolvedValue(undefined),
+      toss: jest.fn().mockResolvedValue(undefined),
+      safeChat: jest.fn()
+    };
+    const targets: any = {}; // no dropCandidates
+    const s = new BehaviorTossCandidates(bot, targets);
+    s.onStateEntered();
+    await new Promise(setImmediate);
+    expect(s.isFinished()).toBe(true);
+    expect(bot.tossStack).not.toHaveBeenCalled();
+    expect(s.droppedCount()).toBe(0);
+    expect(s.wasSuccessful()).toBe(false);
+  });
+
+  it('stops tossing when onStateExited runs mid-sequence', async () => {
+    const bot: any = {
+      tossStack: jest.fn().mockResolvedValue(undefined),
+      toss: jest.fn().mockResolvedValue(undefined),
+      safeChat: jest.fn()
+    };
+    const targets: any = { dropCandidates: [
+      { item: { name: 'a', count: 1, type: 1 }, reason: 'duplicate_stack' },
+      { item: { name: 'b', count: 1, type: 2 }, reason: 'duplicate_stack' },
+      { item: { name: 'c', count: 1, type: 3 }, reason: 'duplicate_stack' }
+    ]};
+    const s = new BehaviorTossCandidates(bot, targets);
+    s.onStateEntered();
+    // Let the first toss complete, then exit mid-delay (before the second)
+    await new Promise(r => setTimeout(r, 50));
+    s.onStateExited();
+    // Wait past where the full sequence would have completed
+    await new Promise(r => setTimeout(r, 1000));
+    expect(bot.tossStack.mock.calls.length).toBeLessThan(3);
+    expect(s.isFinished()).toBe(true);
+  });
 });
