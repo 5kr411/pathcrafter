@@ -86,6 +86,117 @@ jest.mock('mineflayer-statemachine', () => {
   return { BehaviorIdle, StateTransition, NestedStateMachine };
 });
 
+// Mock composed sub-behaviors so the test can step through transitions
+// without needing a real pathfinder / world.
+jest.mock('../../behaviors/behaviorCaptureOrigin', () => {
+  class BehaviorCaptureOrigin {
+    stateName = 'CaptureOrigin';
+    active = false;
+    private finished = false;
+    constructor(public bot: any, public targets: any) {}
+    onStateEntered() {
+      this.active = true;
+      const pos = this.bot?.entity?.position;
+      if (pos) this.targets.originPosition = { x: pos.x, y: pos.y, z: pos.z };
+      this.finished = true;
+    }
+    onStateExited() { this.active = false; }
+    isFinished() { return this.finished; }
+  }
+  return { BehaviorCaptureOrigin, default: BehaviorCaptureOrigin };
+});
+
+jest.mock('../../behaviors/behaviorTossCandidates', () => {
+  class BehaviorTossCandidates {
+    stateName = 'TossCandidates';
+    active = false;
+    private finished = false;
+    private dropped = 0;
+    constructor(public bot: any, public targets: any) {}
+    onStateEntered() {
+      this.active = true;
+      this.finished = false;
+      this.dropped = 0;
+      for (const c of this.targets?.dropCandidates || []) {
+        try {
+          this.bot.tossStack?.(c.item);
+          this.dropped++;
+        } catch (_) { /* ignore */ }
+      }
+      this.finished = true;
+    }
+    onStateExited() { this.active = false; }
+    isFinished() { return this.finished; }
+    droppedCount() { return this.dropped; }
+    wasSuccessful() { return this.dropped > 0; }
+  }
+  return { BehaviorTossCandidates, default: BehaviorTossCandidates };
+});
+
+jest.mock('../../behaviors/behaviorWander', () => {
+  class BehaviorWander {
+    stateName = 'wander';
+    active = false;
+    isFinished: any = false;
+    constructor(public bot: any, public distance: number, public _c?: any, public targets?: any) {}
+    onStateEntered() {
+      this.active = true;
+      if (this.targets) this.targets.wanderYaw = Math.PI; // 180° → due south in MC
+      this.isFinished = true;
+    }
+    onStateExited() { this.active = false; }
+    update() {}
+  }
+  return { BehaviorWander, default: BehaviorWander };
+});
+
+jest.mock('../../behaviors/behaviorSmartMoveTo', () => {
+  class BehaviorSmartMoveTo {
+    stateName = 'smartMoveTo';
+    active = false;
+    private finished = false;
+    constructor(public bot: any, public targets: any) {}
+    onStateEntered() {
+      this.active = true;
+      this.finished = true;
+    }
+    onStateExited() { this.active = false; }
+    isFinished() { return this.finished; }
+  }
+  return { BehaviorSmartMoveTo, default: BehaviorSmartMoveTo };
+});
+
+jest.mock('../../behaviors/behaviorLookAt', () => {
+  // Factory returning an object with state-machine surface.
+  function createLookAtState(_bot: any, _targets: any) {
+    const machine: any = {
+      stateName: 'LookAt',
+      _entered: false,
+      _finished: false,
+      onStateEntered() { this._entered = true; this._finished = true; },
+      onStateExited() { this._entered = false; },
+      isFinished() { return this._finished; }
+    };
+    return machine;
+  }
+  return { __esModule: true, default: createLookAtState };
+});
+
+jest.mock('../../behaviors/behaviorClearArea', () => {
+  function createClearAreaState(_bot: any, _targets: any) {
+    const machine: any = {
+      stateName: 'ClearArea',
+      _entered: false,
+      _finished: false,
+      onStateEntered() { this._entered = true; this._finished = true; },
+      onStateExited() { this._entered = false; },
+      isFinished() { return this._finished; }
+    };
+    return machine;
+  }
+  return { __esModule: true, default: createClearAreaState };
+});
+
 import {
   inventoryManagementBehavior,
   setInventoryManagementConfig,
@@ -530,7 +641,7 @@ describe('inventoryManagementBehavior', () => {
     });
   });
 
-  describe('createState', () => {
+  describe('createState (composed)', () => {
     it('returns null and starts cooldown when nothing can be dropped', async () => {
       // An inventory of pure food (fully protected) yields no drop candidates,
       // so createState returns null and starts the cooldown.
@@ -612,6 +723,65 @@ describe('inventoryManagementBehavior', () => {
       expect(bot.safeChat).toHaveBeenCalledWith(
         expect.stringContaining('inventory nearly full')
       );
+    });
+
+    it('walks the composed machine to completion and tosses candidates', async () => {
+      setInventoryManagementConfig({
+        reactiveThreshold: 3,
+        preGateThreshold: 2,
+        cooldownMs: 30_000,
+        getTargets: () => [{ item: 'cobblestone', count: 64 }]
+      });
+      const bot = createBot([
+        { name: 'cobblestone', count: 64 },
+        { name: 'cobblestone', count: 64 },
+        ...fillSlots(34, { name: 'dirt', count: 64 })
+      ]);
+
+      const state = await inventoryManagementBehavior.createState(bot);
+      expect(state).not.toBeNull();
+
+      // Step the machine through all states. Our mocked NestedStateMachine
+      // advances synchronously as long as each sub-state's isFinished() is
+      // true after onStateEntered, which our sub-state mocks guarantee.
+      state!.stateMachine.onStateEntered();
+
+      expect(bot.tossStack).toHaveBeenCalled();
+      expect(state!.wasSuccessful!()).toBe(true);
+      expect(state!.isFinished!()).toBe(true);
+    });
+
+    it('captures origin position on entry and routes it to SmartMoveTo back', async () => {
+      setInventoryManagementConfig({
+        reactiveThreshold: 3,
+        preGateThreshold: 2,
+        cooldownMs: 30_000,
+        getTargets: () => [{ item: 'cobblestone', count: 64 }]
+      });
+      const bot = createBot([
+        { name: 'cobblestone', count: 64 },
+        { name: 'cobblestone', count: 64 },
+        ...fillSlots(34, { name: 'dirt', count: 64 })
+      ]);
+      bot.entity.position = { x: 42, y: 70, z: -17 };
+
+      const state = await inventoryManagementBehavior.createState(bot);
+      expect(state).not.toBeNull();
+      state!.stateMachine.onStateEntered();
+
+      // The mocked state machine will have executed every transition. After
+      // toss → moveBack, targets.position should be a Vec3 built from the
+      // captured origin position.
+      const sm: any = state!.stateMachine;
+      // Reach inside the NestedStateMachine and find the Wander→LookAt
+      // transition's shared targets (all share the same instance).
+      const sharedTargets = sm.transitions[0].parent.targets;
+      expect(sharedTargets.originPosition).toEqual({ x: 42, y: 70, z: -17 });
+      // After the toss→moveBack transition, targets.position is set.
+      expect(sharedTargets.position).toBeDefined();
+      expect(sharedTargets.position.x).toBe(42);
+      expect(sharedTargets.position.y).toBe(70);
+      expect(sharedTargets.position.z).toBe(-17);
     });
   });
 

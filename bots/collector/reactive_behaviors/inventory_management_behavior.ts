@@ -1,4 +1,4 @@
-import { BehaviorIdle, NestedStateMachine, StateBehavior, StateTransition } from 'mineflayer-statemachine';
+import { BehaviorIdle, NestedStateMachine, StateTransition } from 'mineflayer-statemachine';
 import { Vec3 } from 'vec3';
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { getEmptySlotCount } from '../../../utils/inventory';
@@ -6,12 +6,22 @@ import { isFood } from '../../../utils/foodConfig';
 import { isWorkstation, isTool } from '../../../utils/persistentItemsConfig';
 import { rank, getSuffixTokenFromName } from '../../../utils/items';
 import logger from '../../../utils/logger';
+import { BehaviorCaptureOrigin } from '../../../behaviors/behaviorCaptureOrigin';
+import { BehaviorTossCandidates } from '../../../behaviors/behaviorTossCandidates';
+import { BehaviorWander } from '../../../behaviors/behaviorWander';
+import { BehaviorSmartMoveTo } from '../../../behaviors/behaviorSmartMoveTo';
+import createClearAreaState from '../../../behaviors/behaviorClearArea';
+import createLookAtState from '../../../behaviors/behaviorLookAt';
 
 const INVENTORY_MANAGEMENT_PRIORITY = 30;
-const TOSS_DELAY_MS = 300;
-const TOSS_PITCH = -0.3; // ~17 degrees above horizontal so items fly farther
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 const FREE_SLOT_BUFFER = 2;
+const WANDER_DISTANCE = 5;
+const CLEAR_AREA_AHEAD_BLOCKS = 2;
+const CLEAR_RADIUS_HORIZONTAL = 0;
+const CLEAR_RADIUS_VERTICAL = 2;
+const EYE_HEIGHT_OFFSET = 1;
+const LOOK_AT_DISTANCE = 5;
 
 export interface InventoryManagementConfig {
   reactiveThreshold: number;
@@ -212,139 +222,44 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
   return candidates;
 }
 
-// --- Direction finding ---
+// --- State machine helpers ---
 
-function findClearDirection(bot: Bot): number {
-  const currentYaw = (bot as any)?.entity?.yaw ?? 0;
-  const behindYaw = currentYaw + Math.PI;
-
-  if (!bot.entity?.position || typeof (bot as any).blockAt !== 'function') {
-    return behindYaw;
-  }
-
-  const candidates = [
-    behindYaw,
-    behindYaw + Math.PI / 2,
-    behindYaw - Math.PI / 2,
-    currentYaw
-  ];
-
-  for (const yaw of candidates) {
-    if (isDirectionClear(bot, yaw)) return yaw;
-  }
-
-  return behindYaw;
+/**
+ * Synthesize a look-at point `LOOK_AT_DISTANCE` blocks ahead of the bot along
+ * `yaw`, at eye height. LookAt reads targets.position, so we compute a Vec3
+ * that represents the direction we want the bot to face.
+ */
+function computeLookAtPoint(bot: Bot, yaw: number): Vec3 | null {
+  const pos = (bot as any)?.entity?.position;
+  if (!pos) return null;
+  const dx = -Math.sin(yaw) * LOOK_AT_DISTANCE;
+  const dz = -Math.cos(yaw) * LOOK_AT_DISTANCE;
+  return new Vec3(pos.x + dx, pos.y + EYE_HEIGHT_OFFSET, pos.z + dz);
 }
 
-function isDirectionClear(bot: Bot, yaw: number): boolean {
-  const pos = bot.entity?.position;
-  if (!pos) return true;
-
-  const dx = -Math.sin(yaw);
-  const dz = -Math.cos(yaw);
-
-  for (let dist = 1; dist <= 3; dist++) {
-    const x = Math.floor(pos.x + dx * dist);
-    const y = Math.floor(pos.y + 1);
-    const z = Math.floor(pos.z + dz * dist);
-
-    const block = (bot as any).blockAt(new Vec3(x, y, z));
-    if (block && block.boundingBox !== 'empty') return false;
-  }
-  return true;
+/**
+ * Place the clear-area center a couple of blocks in front of the bot along
+ * `yaw`. ClearArea will dig a compact box (h=0,v=2 → 1×2×1) so tossed items
+ * land in open space without over-digging.
+ */
+function computeClearBoxOrigin(bot: Bot, yaw: number): Vec3 | null {
+  const pos = (bot as any)?.entity?.position;
+  if (!pos) return null;
+  const dx = -Math.sin(yaw) * CLEAR_AREA_AHEAD_BLOCKS;
+  const dz = -Math.cos(yaw) * CLEAR_AREA_AHEAD_BLOCKS;
+  return new Vec3(Math.floor(pos.x + dx), Math.floor(pos.y), Math.floor(pos.z + dz));
 }
 
-// --- State machine ---
-
-class BehaviorTossItems implements StateBehavior {
-  public stateName = 'TossItems';
-  public active = false;
-  private finished = false;
-  private success = false;
-  private droppedCount = 0;
-
-  constructor(
-    private readonly bot: Bot,
-    private readonly candidates: DropCandidate[],
-    private readonly sendChat: ((msg: string) => void) | null
-  ) {}
-
-  onStateEntered(): void {
-    this.active = true;
-    this.finished = false;
-    this.success = false;
-    this.droppedCount = 0;
-    this.executeTossSequence();
-  }
-
-  onStateExited(): void {
-    this.active = false;
-  }
-
-  isFinished(): boolean {
-    return this.finished;
-  }
-
-  wasSuccessful(): boolean {
-    return this.success;
-  }
-
-  private async executeTossSequence(): Promise<void> {
+function subStateFinished(s: any): boolean {
+  if (!s) return true;
+  if (typeof s.isFinished === 'function') {
     try {
-      const tossYaw = findClearDirection(this.bot);
-      const originalYaw = (this.bot as any)?.entity?.yaw ?? 0;
-      const originalPitch = (this.bot as any)?.entity?.pitch ?? 0;
-
-      if (typeof (this.bot as any)?.look === 'function') {
-        await (this.bot as any).look(tossYaw, TOSS_PITCH);
-      }
-
-      for (const candidate of this.candidates) {
-        if (!this.active) break;
-
-        try {
-          logger.debug(
-            `InventoryManagement: dropping ${candidate.item.name} x${candidate.item.count} (${candidate.reason})`
-          );
-
-          if (typeof (this.bot as any)?.tossStack === 'function') {
-            await (this.bot as any).tossStack(candidate.item);
-          } else if (typeof (this.bot as any)?.toss === 'function') {
-            await (this.bot as any).toss(candidate.item.type, null, candidate.item.count);
-          }
-
-          this.droppedCount++;
-
-          if (this.active && this.candidates.indexOf(candidate) < this.candidates.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, TOSS_DELAY_MS));
-          }
-        } catch (err: any) {
-          logger.debug(
-            `InventoryManagement: failed to drop ${candidate.item.name} - ${err?.message || err}`
-          );
-        }
-      }
-
-      if (typeof (this.bot as any)?.look === 'function') {
-        try {
-          await (this.bot as any).look(originalYaw, originalPitch);
-        } catch (_) {}
-      }
-
-      this.success = this.droppedCount > 0;
-
-      if (this.success) {
-        logger.info(`InventoryManagement: dropped ${this.droppedCount} item(s)`);
-        if (this.sendChat) {
-          this.sendChat(`dropped ${this.droppedCount} item(s) to free inventory space`);
-        }
-      }
-    } catch (err: any) {
-      logger.info(`InventoryManagement: toss sequence failed - ${err?.message || err}`);
-    } finally {
-      this.finished = true;
+      return !!s.isFinished();
+    } catch (_) {
+      return false;
     }
   }
+  return s.isFinished === true;
 }
 
 // --- Behavior export ---
@@ -387,46 +302,104 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
 
     const freeSlots = getEmptySlotCount(bot as any);
     const targetFree = config.reactiveThreshold + FREE_SLOT_BUFFER;
-    const candidates = calculateItemsToDrop(bot, targetFree);
+    const dropCandidates = calculateItemsToDrop(bot, targetFree);
 
-    if (candidates.length === 0) {
+    if (dropCandidates.length === 0) {
       logger.info(`InventoryManagement: no safe items to drop (${freeSlots} free slots)`);
       lastManagementTime = Date.now();
       return null;
     }
 
     logger.info(
-      `InventoryManagement: starting - ${freeSlots} free slots, ${candidates.length} item(s) to drop`
+      `InventoryManagement: starting - ${freeSlots} free slots, ${dropCandidates.length} item(s) to drop`
     );
     if (sendChat) {
-      sendChat(`inventory nearly full (${freeSlots} free slots), dropping ${candidates.length} item(s)`);
+      sendChat(`inventory nearly full (${freeSlots} free slots), dropping ${dropCandidates.length} item(s)`);
     }
 
-    const enter = new BehaviorIdle();
+    // Shared targets object drives every sub-state. CaptureOrigin writes
+    // originPosition; Wander writes wanderYaw; we populate targets.position
+    // (for LookAt and SmartMoveTo) and targets.placePosition (for ClearArea)
+    // inside transition `onTransition` callbacks once the upstream state has
+    // produced the data we need.
+    const targets: any = { dropCandidates };
+
+    const capture = new BehaviorCaptureOrigin(bot as any, targets);
+    const wander = new BehaviorWander(bot as any, WANDER_DISTANCE, undefined, targets);
+    const lookAt = createLookAtState(bot as any, targets);
+    const clear = createClearAreaState(bot as any, targets);
+    const toss = new BehaviorTossCandidates(bot as any, targets);
+    const back = new BehaviorSmartMoveTo(bot as any, targets);
     const exit = new BehaviorIdle();
-    const toss = new BehaviorTossItems(bot, candidates, sendChat);
 
-    const enterToToss = new StateTransition({
-      parent: enter,
-      child: toss,
-      name: 'inventory-mgmt: enter -> toss',
-      shouldTransition: () => true
-    });
+    const transitions = [
+      new StateTransition({
+        parent: capture,
+        child: wander,
+        name: 'inv-mgmt: capture -> wander',
+        shouldTransition: () => capture.isFinished()
+      }),
+      new StateTransition({
+        parent: wander,
+        child: lookAt,
+        name: 'inv-mgmt: wander -> lookAt',
+        shouldTransition: () => subStateFinished(wander),
+        onTransition: () => {
+          const yaw = typeof targets.wanderYaw === 'number'
+            ? targets.wanderYaw
+            : ((bot as any)?.entity?.yaw ?? 0);
+          const point = computeLookAtPoint(bot, yaw);
+          if (point) targets.position = point;
+        }
+      }),
+      new StateTransition({
+        parent: lookAt,
+        child: clear,
+        name: 'inv-mgmt: lookAt -> clearArea',
+        shouldTransition: () => subStateFinished(lookAt),
+        onTransition: () => {
+          const yaw = typeof targets.wanderYaw === 'number' ? targets.wanderYaw : 0;
+          const boxOrigin = computeClearBoxOrigin(bot, yaw);
+          if (boxOrigin) {
+            targets.placePosition = boxOrigin;
+            targets.clearRadiusHorizontal = CLEAR_RADIUS_HORIZONTAL;
+            targets.clearRadiusVertical = CLEAR_RADIUS_VERTICAL;
+          }
+        }
+      }),
+      new StateTransition({
+        parent: clear,
+        child: toss,
+        name: 'inv-mgmt: clearArea -> toss',
+        shouldTransition: () => subStateFinished(clear)
+      }),
+      new StateTransition({
+        parent: toss,
+        child: back as any,
+        name: 'inv-mgmt: toss -> moveBack',
+        shouldTransition: () => toss.isFinished(),
+        onTransition: () => {
+          if (targets.originPosition) {
+            const o = targets.originPosition;
+            targets.position = new Vec3(o.x, o.y, o.z);
+          }
+        }
+      }),
+      new StateTransition({
+        parent: back as any,
+        child: exit,
+        name: 'inv-mgmt: moveBack -> exit',
+        shouldTransition: () => subStateFinished(back)
+      })
+    ];
 
-    const tossToExit = new StateTransition({
-      parent: toss,
-      child: exit,
-      name: 'inventory-mgmt: toss -> exit',
-      shouldTransition: () => toss.isFinished()
-    });
-
-    const stateMachine = new NestedStateMachine([enterToToss, tossToExit], enter, exit);
+    const stateMachine = new NestedStateMachine(transitions, capture, exit);
 
     return {
       stateMachine,
       isFinished: () =>
         typeof stateMachine.isFinished === 'function' ? stateMachine.isFinished() : false,
-      wasSuccessful: () => toss.wasSuccessful(),
+      wasSuccessful: () => toss.droppedCount() > 0,
       onStop: (reason: ReactiveBehaviorStopReason) => {
         if (reason === 'completed') {
           lastManagementTime = Date.now();
