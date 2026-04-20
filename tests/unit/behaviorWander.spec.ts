@@ -278,16 +278,29 @@ describe('BehaviorWander', () => {
       expect(() => wander.onStateEntered()).not.toThrow();
     });
 
-    it('writes yaw when an angleConstraint is active', () => {
-      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
-      bot.pathfinder.setGoal = jest.fn();
+    it('respects angleConstraint — picked yaws stay outside the avoided arc', () => {
+      const avoidAngle = 0;
+      const avoidArcHalf = Math.PI / 2; // default
 
-      const targets: any = {};
-      const wander = new BehaviorWander(bot, 5, { avoidAngle: 0 }, targets);
-      wander.onStateEntered();
+      // Normalize any angle into (-π, π]
+      const norm = (a: number): number => {
+        let r = a;
+        while (r > Math.PI) r -= 2 * Math.PI;
+        while (r <= -Math.PI) r += 2 * Math.PI;
+        return r;
+      };
 
-      expect(typeof targets.wanderYaw).toBe('number');
-      expect(Number.isFinite(targets.wanderYaw)).toBe(true);
+      for (let i = 0; i < 200; i++) {
+        const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+        bot.pathfinder.setGoal = jest.fn();
+
+        const targets: any = {};
+        const wander = new BehaviorWander(bot, 5, { avoidAngle, avoidArcHalf }, targets);
+        wander.onStateEntered();
+
+        const delta = Math.abs(norm(targets.wanderYaw - avoidAngle));
+        expect(delta).toBeGreaterThanOrEqual(avoidArcHalf - 1e-9);
+      }
     });
   });
 });
