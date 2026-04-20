@@ -2,6 +2,8 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BehaviorGetClosestEnt
 const minecraftData = require('minecraft-data');
 
 import { getItemCountInInventory } from '../utils/inventory';
+import { ensureInventoryRoom } from '../utils/inventoryGate';
+import { getInventoryManagementConfig } from '../bots/collector/reactive_behaviors/inventory_management_behavior';
 import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import logger from '../utils/logger';
@@ -63,6 +65,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     }
 
     try {
+      await ensureInventoryRoom(bot, getInventoryManagementConfig().preGateThreshold);
       const timesToCraft = Math.min(
         Math.ceil((targetCount - startingCount) / recipe.result.count),
         Math.floor(64 / recipe.result.count)

@@ -1,6 +1,8 @@
 const { StateTransition, BehaviorIdle, NestedStateMachine } = require('mineflayer-statemachine');
 
 import { getItemCountInInventory } from '../utils/inventory';
+import { ensureInventoryRoom } from '../utils/inventoryGate';
+import { getInventoryManagementConfig } from '../bots/collector/reactive_behaviors/inventory_management_behavior';
 const minecraftData = require('minecraft-data');
 import logger from '../utils/logger';
 
@@ -156,6 +158,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     }
 
     try {
+      await ensureInventoryRoom(bot, getInventoryManagementConfig().preGateThreshold);
       await clearCraftingSlots(bot);
 
       const remainingNeeded = targetCount - currentCount;
