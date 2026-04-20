@@ -1,12 +1,21 @@
-type Bot = any;
-type Targets = { originPosition?: { x: number; y: number; z: number }; [key: string]: any };
+import logger from '../utils/logger';
+
+interface BotLike {
+  entity?: { position: { x: number; y: number; z: number } };
+  [key: string]: any;
+}
+
+interface Targets {
+  originPosition?: { x: number; y: number; z: number };
+  [key: string]: any;
+}
 
 export class BehaviorCaptureOrigin {
   stateName = 'CaptureOrigin';
   active = false;
   private finished = false;
 
-  constructor(private readonly bot: Bot, private readonly targets: Targets) {}
+  constructor(private readonly bot: BotLike, private readonly targets: Targets) {}
 
   onStateEntered(): void {
     this.active = true;
@@ -14,12 +23,15 @@ export class BehaviorCaptureOrigin {
     const pos = this.bot?.entity?.position;
     if (pos) {
       this.targets.originPosition = { x: pos.x, y: pos.y, z: pos.z };
+    } else {
+      logger.debug('BehaviorCaptureOrigin: bot.entity missing; originPosition not written');
     }
     this.finished = true;
   }
 
   onStateExited(): void {
     this.active = false;
+    this.finished = false;
   }
 
   isFinished(): boolean {
