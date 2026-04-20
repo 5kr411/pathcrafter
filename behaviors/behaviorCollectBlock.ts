@@ -14,6 +14,8 @@ import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 import { BehaviorWander } from './behaviorWander';
 
 import { getItemCountInInventory } from '../utils/inventory';
+import { ensureInventoryRoom } from '../utils/inventoryGate';
+import { getInventoryManagementConfig } from '../bots/collector/reactive_behaviors/inventory_management_behavior';
 import { chooseMinimalToolName, hasEqualOrBetterTool } from '../utils/items';
 import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
@@ -638,6 +640,11 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       mineBlockFinishTime = undefined;
       spawnTracker.prune();
+      // Pre-gate inventory: fire-and-forget so the gate runs in parallel with
+      // the bot walking to the drop. By the time pickup range is reached the
+      // gate has likely resolved; reactive inventory-management behavior
+      // catches anything that slips through.
+      void ensureInventoryRoom(bot, getInventoryManagementConfig().preGateThreshold);
       // Save break position for collecting nearby drops
       lastBreakPosition = targets.blockPosition ? { ...targets.blockPosition } : null;
       dropsCollectedThisCycle = 0;
