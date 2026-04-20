@@ -509,6 +509,24 @@ describe('inventoryManagementBehavior', () => {
         const candidates = calculateItemsToDrop(bot, 2);
         expect(candidates.every(c => c.item.name !== 'cooked_beef')).toBe(true);
       });
+
+      it('does not double-pick a stack already chosen by Phase 0 in Phase 2', () => {
+        // target=64, held=96 (64 + 32), excess=32. Phase 0 picks the 32-stack.
+        // Phase 2's duplicate-stack logic must not also pick it (would double-drop).
+        setInventoryManagementConfig({
+          getTargets: () => [{ item: 'cobblestone', count: 64 }]
+        });
+        const bot = createBot([
+          { name: 'cobblestone', count: 64 },
+          { name: 'cobblestone', count: 32 },
+          ...fillSlots(34, { name: 'dirt', count: 64 })
+        ]);
+        const candidates = calculateItemsToDrop(bot, 2);
+        const cobbleDrops = candidates.filter(c => c.item.name === 'cobblestone');
+        expect(cobbleDrops).toHaveLength(1);
+        expect(cobbleDrops[0].reason).toBe('excess_over_target');
+        expect(cobbleDrops[0].item.count).toBe(32);
+      });
     });
   });
 

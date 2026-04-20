@@ -130,7 +130,7 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
     const sorted = stacks.slice().sort((a: any, b: any) => (a.count || 0) - (b.count || 0));
     for (const stack of sorted) {
       if (excess <= 0) break;
-      if ((stack.count || 0) > excess) continue; // whole-stack only
+      if ((stack.count || 0) > excess) continue; // whole-stack only; remainder falls through to Phase 2 if still needed
       if (addedItems.has(stack)) continue;
       candidates.push({ item: stack, reason: 'excess_over_target' });
       addedItems.add(stack);
@@ -144,7 +144,7 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
   const heldExceedsProtected = (itemName: string): boolean => {
     const protectedQty = getProtectedQuantity(itemName);
     if (protectedQty === Infinity) return false;
-    if (protectedQty <= 0) return true;
+    if (protectedQty <= 0) return true; // no protection floor → phase 1/2 free to drop
     const stacks = byName.get(itemName) || [];
     const held = stacks.reduce((s: number, it: any) => s + (it.count || 0), 0);
     return held > protectedQty;
