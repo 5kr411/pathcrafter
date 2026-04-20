@@ -256,4 +256,38 @@ describe('BehaviorWander', () => {
       expect(wander.isFinished).toBe(false);
     });
   });
+
+  describe('targets integration', () => {
+    it('writes picked yaw to targets.wanderYaw when targets provided', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      const targets: any = {};
+      const wander = new BehaviorWander(bot, 5, undefined, targets);
+      wander.onStateEntered();
+
+      expect(typeof targets.wanderYaw).toBe('number');
+      expect(Number.isFinite(targets.wanderYaw)).toBe(true);
+    });
+
+    it('works unchanged when targets is omitted (regression)', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      const wander = new BehaviorWander(bot, 5);
+      expect(() => wander.onStateEntered()).not.toThrow();
+    });
+
+    it('writes yaw when an angleConstraint is active', () => {
+      const bot = createFakeBot({ position: { x: 0, y: 64, z: 0 } });
+      bot.pathfinder.setGoal = jest.fn();
+
+      const targets: any = {};
+      const wander = new BehaviorWander(bot, 5, { avoidAngle: 0 }, targets);
+      wander.onStateEntered();
+
+      expect(typeof targets.wanderYaw).toBe('number');
+      expect(Number.isFinite(targets.wanderYaw)).toBe(true);
+    });
+  });
 });

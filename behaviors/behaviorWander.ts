@@ -45,11 +45,18 @@ export class BehaviorWander {
   private targetZ: number = 0;
   private lastGoalSetTime: number = 0;
   private angleConstraint: WanderAngleConstraint | null = null;
+  private targets: { wanderYaw?: number; [key: string]: any } | null = null;
 
-  constructor(bot: BotLike, distance: number = DEFAULT_DISTANCE, angleConstraint?: WanderAngleConstraint) {
+  constructor(
+    bot: BotLike,
+    distance: number = DEFAULT_DISTANCE,
+    angleConstraint?: WanderAngleConstraint,
+    targets?: { wanderYaw?: number; [key: string]: any }
+  ) {
     this.bot = bot;
     this.distance = distance;
     this.angleConstraint = angleConstraint ?? null;
+    this.targets = targets ?? null;
   }
 
   setAngleConstraint(constraint: WanderAngleConstraint | null): void {
@@ -125,6 +132,9 @@ export class BehaviorWander {
 
   private pickTarget(pos: { x: number; y: number; z: number }): void {
     const angle = this.pickAngle();
+    if (this.targets) {
+      this.targets.wanderYaw = angle;
+    }
     const target = offsetFromAngle(pos.x, pos.z, angle, this.distance);
     this.targetX = target.x;
     this.targetZ = target.z;
