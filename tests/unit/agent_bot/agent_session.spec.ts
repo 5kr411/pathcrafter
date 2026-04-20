@@ -195,4 +195,86 @@ describe('AgentSession', () => {
     expect(safeChat).toHaveBeenCalledWith('after recovery');
     expect(provider.calls.length).toBe(2);
   });
+
+  it('injectSystemNotification from empty state pushes [system]-prefixed message and runs loop', async () => {
+    const provider = makeFakeProvider([
+      { text: 'understood', toolCalls: [], stopReason: 'end' }
+    ]);
+    const { deps, safeChat } = baseDeps({ provider });
+    const session = new AgentSession(deps);
+
+    await session.injectSystemNotification('you died at (1, 2, 3)');
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+
+    expect(safeChat).toHaveBeenCalledWith('understood');
+    expect(provider.calls.length).toBe(1);
+    const firstUserMsg = provider.calls[0].messages[0];
+    expect(firstUserMsg.role).toBe('user');
+    expect(String(firstUserMsg.content)).toMatch(/^\[system\]\nyou died at/);
+  });
+
+  it('injectSystemNotification from running state queues and drains after tool batch', async () => {
+    const provider = makeFakeProvider([
+      { text: null, toolCalls: [{ id: 't1', name: 'fake_tool', input: {} }], stopReason: 'tool_use' },
+      { text: 'ack death', toolCalls: [], stopReason: 'end' }
+    ]);
+    let toolStarted: (() => void) | null = null;
+    let releaseTool: (() => void) | null = null;
+    const toolStartedP = new Promise<void>((resolve) => { toolStarted = resolve; });
+    const toolReleaseP = new Promise<void>((resolve) => { releaseTool = resolve; });
+    const toolExecutor = makeToolExecutor(async () => {
+      toolStarted?.();
+      await toolReleaseP;
+      return { ok: true, data: 'tool-ran' };
+    });
+    // Silence TS narrowing for resolvers assigned inside Promise constructor.
+    const fireRelease = () => (releaseTool as unknown as () => void)?.();
+    const { deps, safeChat } = baseDeps({ provider, toolExecutor });
+    const session = new AgentSession(deps);
+
+    await session.submitUserMessage('go', { speaker: 'alice' });
+    await toolStartedP;
+    await session.injectSystemNotification('you died');
+    fireRelease();
+    for (let i = 0; i < 10; i++) await Promise.resolve();
+
+    expect(safeChat).toHaveBeenCalledWith('ack death');
+    const secondTurnMessages = provider.calls[1].messages;
+    const lastUser = [...secondTurnMessages].reverse().find((m: any) => m.role === 'user');
+    expect(String(lastUser!.content)).toMatch(/^\[system\]\nyou died/);
+  });
+
+  it('injectSystemNotification from idle state clears idle timer and restarts loop', async () => {
+    const provider = makeFakeProvider([
+      { text: 'first-done', toolCalls: [], stopReason: 'end' },
+      { text: 'second-done', toolCalls: [], stopReason: 'end' }
+    ]);
+    const { deps, safeChat } = baseDeps({ provider, idleMs: 10_000 });
+    const session = new AgentSession(deps);
+
+    await session.submitUserMessage('hi', { speaker: 'alice' });
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+
+    await session.injectSystemNotification('respawned');
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+
+    expect(safeChat).toHaveBeenCalledWith('second-done');
+    expect(provider.calls.length).toBe(2);
+  });
+
+  it('injectSystemNotification from dead state resets and injects', async () => {
+    const provider = makeFakeProvider([
+      { text: 'post-destroy', toolCalls: [], stopReason: 'end' }
+    ]);
+    const { deps, safeChat } = baseDeps({ provider });
+    const session = new AgentSession(deps);
+    session.destroy();
+
+    await session.injectSystemNotification('you died');
+    for (let i = 0; i < 3; i++) await Promise.resolve();
+
+    expect(safeChat).toHaveBeenCalledWith('post-destroy');
+    const firstUserMsg = provider.calls[0].messages[0];
+    expect(String(firstUserMsg.content)).toMatch(/^\[system\]\nyou died/);
+  });
 });

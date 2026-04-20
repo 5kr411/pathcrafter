@@ -92,6 +92,26 @@ export class AgentSession {
     }
   }
 
+  async injectSystemNotification(text: string): Promise<void> {
+    if (this.state === 'dead') this.reset();
+    const wrapped = this.wrapSystemNotification(text);
+    this.clearIdleTimer();
+
+    if (this.state === 'running') {
+      this.pendingUserMessage = wrapped;
+      this.abort.abort();
+      this.abort = new AbortController();
+      return;
+    }
+
+    this.messages.push({ role: 'user', content: wrapped });
+
+    if (this.state === 'idle' || this.state === 'empty') {
+      this.state = 'running';
+      this.run().catch(err => logger.info(`AgentSession: loop crashed: ${err?.message ?? err}`));
+    }
+  }
+
   private async run(): Promise<void> {
     while (this.state === 'running') {
       const tools = this.deps.toolExecutor.schemas();
@@ -205,6 +225,10 @@ export class AgentSession {
       ? `at (${meta.position.x.toFixed(0)}, ${meta.position.y.toFixed(0)}, ${meta.position.z.toFixed(0)})`
       : '';
     return `[from: ${meta.speaker} ${pos}]\n${text}`;
+  }
+
+  private wrapSystemNotification(text: string): string {
+    return `[system]\n${text}`;
   }
 
   private lastMessageIsUser(): boolean {
