@@ -262,6 +262,160 @@ function subStateFinished(s: any): boolean {
   return s.isFinished === true;
 }
 
+// --- Machine factory (used by both reactive createState and ensureInventoryRoom gate) ---
+
+export interface InventoryManagementMachine {
+  stateMachine: any;
+  droppedCount: () => number;
+  run: () => Promise<void>;
+}
+
+/**
+ * Drive a NestedStateMachine to completion. Calls onStateEntered once, then
+ * polls isFinished() every 50ms. Resolves when finished or after a 30s safety
+ * timeout. Errors from poll/onStateEntered are logged and treated as "done".
+ */
+function runMachine(stateMachine: any): Promise<void> {
+  return new Promise<void>((resolve) => {
+    let settled = false;
+    let poll: NodeJS.Timeout | null = null;
+    let safety: NodeJS.Timeout | null = null;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
+      if (poll) clearInterval(poll);
+      if (safety) clearTimeout(safety);
+      resolve();
+    };
+    try {
+      if (typeof stateMachine?.onStateEntered === 'function') {
+        stateMachine.onStateEntered();
+      }
+    } catch (err: any) {
+      logger.warn(`inventoryManagementMachine: onStateEntered threw - ${err?.message || err}`);
+      settle();
+      return;
+    }
+    poll = setInterval(() => {
+      try {
+        if (typeof stateMachine?.isFinished === 'function' && stateMachine.isFinished()) {
+          settle();
+          return;
+        }
+        if (typeof stateMachine?.update === 'function') {
+          stateMachine.update();
+        }
+      } catch (err: any) {
+        logger.warn(`inventoryManagementMachine: poll threw - ${err?.message || err}`);
+        settle();
+      }
+    }, 50);
+    safety = setTimeout(() => {
+      logger.warn('inventoryManagementMachine: 30s safety timeout - forcing resolve');
+      settle();
+    }, 30_000);
+  });
+}
+
+/**
+ * Build the inventory-management NestedStateMachine without any cooldown
+ * gating. Returns null when `calculateItemsToDrop` finds nothing to drop.
+ * Used both by the reactive `createState` wrapper (which adds cooldown
+ * checks) and by `ensureInventoryRoom` (which bypasses cooldown entirely).
+ */
+export function buildInventoryManagementMachine(bot: Bot): InventoryManagementMachine | null {
+  const targetFree = config.reactiveThreshold + FREE_SLOT_BUFFER;
+  const dropCandidates = calculateItemsToDrop(bot, targetFree);
+  if (dropCandidates.length === 0) return null;
+
+  // Shared targets object drives every sub-state. CaptureOrigin writes
+  // originPosition; Wander writes wanderYaw; we populate targets.position
+  // (for LookAt and SmartMoveTo) and targets.placePosition (for ClearArea)
+  // inside transition `onTransition` callbacks once the upstream state has
+  // produced the data we need.
+  const targets: any = { dropCandidates };
+
+  const capture = new BehaviorCaptureOrigin(bot as any, targets);
+  const wander = new BehaviorWander(bot as any, WANDER_DISTANCE, undefined, targets);
+  const lookAt = createLookAtState(bot as any, targets);
+  const clear = createClearAreaState(bot as any, targets);
+  const toss = new BehaviorTossCandidates(bot as any, targets);
+  const back = new BehaviorSmartMoveTo(bot as any, targets);
+  const exit = new BehaviorIdle();
+
+  const transitions = [
+    new StateTransition({
+      parent: capture,
+      child: wander,
+      name: 'inv-mgmt: capture -> wander',
+      shouldTransition: () => capture.isFinished()
+    }),
+    new StateTransition({
+      parent: wander,
+      child: lookAt,
+      name: 'inv-mgmt: wander -> lookAt',
+      shouldTransition: () => subStateFinished(wander),
+      onTransition: () => {
+        const yaw = typeof targets.wanderYaw === 'number'
+          ? targets.wanderYaw
+          : ((bot as any)?.entity?.yaw ?? 0);
+        const point = computeLookAtPoint(bot, yaw);
+        if (point) targets.position = point;
+      }
+    }),
+    new StateTransition({
+      parent: lookAt,
+      child: clear,
+      name: 'inv-mgmt: lookAt -> clearArea',
+      shouldTransition: () => subStateFinished(lookAt),
+      onTransition: () => {
+        const yaw = typeof targets.wanderYaw === 'number' ? targets.wanderYaw : 0;
+        const boxOrigin = computeClearBoxOrigin(bot, yaw);
+        if (boxOrigin) {
+          targets.placePosition = boxOrigin;
+          targets.clearRadiusHorizontal = CLEAR_RADIUS_HORIZONTAL;
+          targets.clearRadiusVertical = CLEAR_RADIUS_VERTICAL;
+        }
+      }
+    }),
+    new StateTransition({
+      parent: clear,
+      child: toss,
+      name: 'inv-mgmt: clearArea -> toss',
+      shouldTransition: () => subStateFinished(clear)
+    }),
+    new StateTransition({
+      parent: toss,
+      child: back as any,
+      name: 'inv-mgmt: toss -> moveBack',
+      shouldTransition: () => toss.isFinished(),
+      onTransition: () => {
+        if (targets.originPosition) {
+          const o = targets.originPosition;
+          // SmartMoveTo snapshots targets.position in onStateEntered, so
+          // overwriting here (after LookAt wrote a forward-looking point
+          // into it) is safe.
+          targets.position = new Vec3(o.x, o.y, o.z);
+        }
+      }
+    }),
+    new StateTransition({
+      parent: back as any,
+      child: exit,
+      name: 'inv-mgmt: moveBack -> exit',
+      shouldTransition: () => subStateFinished(back)
+    })
+  ];
+
+  const stateMachine = new NestedStateMachine(transitions, capture, exit);
+
+  return {
+    stateMachine,
+    droppedCount: () => toss.droppedCount(),
+    run: () => runMachine(stateMachine)
+  };
+}
+
 // --- Behavior export ---
 
 export const inventoryManagementBehavior: ReactiveBehavior = {
@@ -297,112 +451,30 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
       return null;
     }
 
-    const sendChat: ((msg: string) => void) | null =
-      typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
-
     const freeSlots = getEmptySlotCount(bot as any);
-    const targetFree = config.reactiveThreshold + FREE_SLOT_BUFFER;
-    const dropCandidates = calculateItemsToDrop(bot, targetFree);
+    const built = buildInventoryManagementMachine(bot);
 
-    if (dropCandidates.length === 0) {
+    if (!built) {
       logger.info(`InventoryManagement: no safe items to drop (${freeSlots} free slots)`);
       lastManagementTime = Date.now();
       return null;
     }
 
+    const sendChat: ((msg: string) => void) | null =
+      typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
+
     logger.info(
-      `InventoryManagement: starting - ${freeSlots} free slots, ${dropCandidates.length} item(s) to drop`
+      `InventoryManagement: starting - ${freeSlots} free slots`
     );
     if (sendChat) {
-      sendChat(`inventory nearly full (${freeSlots} free slots), dropping ${dropCandidates.length} item(s)`);
+      sendChat(`inventory nearly full (${freeSlots} free slots), dropping items`);
     }
 
-    // Shared targets object drives every sub-state. CaptureOrigin writes
-    // originPosition; Wander writes wanderYaw; we populate targets.position
-    // (for LookAt and SmartMoveTo) and targets.placePosition (for ClearArea)
-    // inside transition `onTransition` callbacks once the upstream state has
-    // produced the data we need.
-    const targets: any = { dropCandidates };
-
-    const capture = new BehaviorCaptureOrigin(bot as any, targets);
-    const wander = new BehaviorWander(bot as any, WANDER_DISTANCE, undefined, targets);
-    const lookAt = createLookAtState(bot as any, targets);
-    const clear = createClearAreaState(bot as any, targets);
-    const toss = new BehaviorTossCandidates(bot as any, targets);
-    const back = new BehaviorSmartMoveTo(bot as any, targets);
-    const exit = new BehaviorIdle();
-
-    const transitions = [
-      new StateTransition({
-        parent: capture,
-        child: wander,
-        name: 'inv-mgmt: capture -> wander',
-        shouldTransition: () => capture.isFinished()
-      }),
-      new StateTransition({
-        parent: wander,
-        child: lookAt,
-        name: 'inv-mgmt: wander -> lookAt',
-        shouldTransition: () => subStateFinished(wander),
-        onTransition: () => {
-          const yaw = typeof targets.wanderYaw === 'number'
-            ? targets.wanderYaw
-            : ((bot as any)?.entity?.yaw ?? 0);
-          const point = computeLookAtPoint(bot, yaw);
-          if (point) targets.position = point;
-        }
-      }),
-      new StateTransition({
-        parent: lookAt,
-        child: clear,
-        name: 'inv-mgmt: lookAt -> clearArea',
-        shouldTransition: () => subStateFinished(lookAt),
-        onTransition: () => {
-          const yaw = typeof targets.wanderYaw === 'number' ? targets.wanderYaw : 0;
-          const boxOrigin = computeClearBoxOrigin(bot, yaw);
-          if (boxOrigin) {
-            targets.placePosition = boxOrigin;
-            targets.clearRadiusHorizontal = CLEAR_RADIUS_HORIZONTAL;
-            targets.clearRadiusVertical = CLEAR_RADIUS_VERTICAL;
-          }
-        }
-      }),
-      new StateTransition({
-        parent: clear,
-        child: toss,
-        name: 'inv-mgmt: clearArea -> toss',
-        shouldTransition: () => subStateFinished(clear)
-      }),
-      new StateTransition({
-        parent: toss,
-        child: back as any,
-        name: 'inv-mgmt: toss -> moveBack',
-        shouldTransition: () => toss.isFinished(),
-        onTransition: () => {
-          if (targets.originPosition) {
-            const o = targets.originPosition;
-            // SmartMoveTo snapshots targets.position in onStateEntered, so
-            // overwriting here (after LookAt wrote a forward-looking point
-            // into it) is safe.
-            targets.position = new Vec3(o.x, o.y, o.z);
-          }
-        }
-      }),
-      new StateTransition({
-        parent: back as any,
-        child: exit,
-        name: 'inv-mgmt: moveBack -> exit',
-        shouldTransition: () => subStateFinished(back)
-      })
-    ];
-
-    const stateMachine = new NestedStateMachine(transitions, capture, exit);
-
     return {
-      stateMachine,
+      stateMachine: built.stateMachine,
       isFinished: () =>
-        typeof stateMachine.isFinished === 'function' ? stateMachine.isFinished() : false,
-      wasSuccessful: () => toss.droppedCount() > 0,
+        typeof built.stateMachine.isFinished === 'function' ? built.stateMachine.isFinished() : false,
+      wasSuccessful: () => built.droppedCount() > 0,
       onStop: (reason: ReactiveBehaviorStopReason) => {
         if (reason === 'completed') {
           lastManagementTime = Date.now();
