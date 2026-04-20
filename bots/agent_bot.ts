@@ -226,23 +226,37 @@ bot.once('spawn', () => {
     }
   });
 
+  let pendingDeathInfo: { pos: string; cause: string } | null = null;
+
   bot.on('death', () => {
     const food = bot.food ?? '?';
     const health = bot.health ?? '?';
     const pos = bot.entity?.position;
     const posStr = pos ? `(${pos.x.toFixed(0)}, ${pos.y.toFixed(0)}, ${pos.z.toFixed(0)})` : '?';
     const cause = lastDeathMessage || 'unknown';
-    logger.info(`AgentBot: bot died at ${posStr}, health=${health}, food=${food}, cause="${cause}" — resetting and retrying all targets`);
+    logger.info(`AgentBot: bot died at ${posStr}, health=${health}, food=${food}, cause="${cause}" — aborting in-flight tools, awaiting respawn`);
+    pendingDeathInfo = { pos: posStr, cause };
     lastDeathMessage = null;
-    // Destroy the in-flight agent session — it's referencing a dead bot state.
-    try { session.destroy(); } catch (_) {}
-    // Reset food cooldown: respawn restores hunger to 20, so any prior "food is scarce" cooldown
-    // is stale. Without this, a bot that died during its cooldown keeps the cooldown post-respawn
-    // and may starve again before it can retry food collection.
+    // Halt any in-flight tool loop so it stops running against a dead bot.
+    try { session.abortInFlight(); } catch (_) {}
+    // Respawn restores hunger to 20 — any prior "food is scarce" cooldown is stale.
     resetFoodCollectionCooldown();
-    if (executor.isRunning() || executor.getTargets().length > 0) {
-      executor.resetAndRestart();
-    }
+  });
+
+  bot.on('respawn', () => {
+    if (!pendingDeathInfo) return;
+    const death = pendingDeathInfo;
+    pendingDeathInfo = null;
+    const rpos = bot.entity?.position;
+    const rposStr = rpos ? `(${rpos.x.toFixed(0)}, ${rpos.y.toFixed(0)}, ${rpos.z.toFixed(0)})` : '?';
+    const msg = [
+      `You died at ${death.pos}. Cause: "${death.cause}".`,
+      `You respawned at ${rposStr}. All inventory was lost.`,
+      `Any in-flight collect_item / hunt_entity tool calls were cancelled.`,
+      `Decide whether to resume prior goals or wait for instructions.`
+    ].join(' ');
+    logger.info(`AgentBot: notifying agent of death → respawn at ${rposStr}`);
+    session.injectSystemNotification(msg).catch(err => logger.info(`AgentBot: injectSystemNotification failed: ${err?.message ?? err}`));
   });
 
   bot.on('end', () => {
