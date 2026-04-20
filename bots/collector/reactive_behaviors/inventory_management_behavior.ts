@@ -8,22 +8,24 @@ import { rank, getSuffixTokenFromName } from '../../../utils/items';
 import logger from '../../../utils/logger';
 
 const INVENTORY_MANAGEMENT_PRIORITY = 30;
-const DEFAULT_TRIGGER_FREE_SLOTS = 2;
-const DEFAULT_COOLDOWN_MS = 60_000;
 const TOSS_DELAY_MS = 300;
 const TOSS_PITCH = -0.3; // ~17 degrees above horizontal so items fly farther
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 const FREE_SLOT_BUFFER = 2;
 
 export interface InventoryManagementConfig {
-  triggerFreeSlots: number;
+  reactiveThreshold: number;
+  preGateThreshold: number;
   cooldownMs: number;
+  /** @deprecated alias for reactiveThreshold; accepted in setInventoryManagementConfig only */
+  triggerFreeSlots?: number;
   getTargets: () => Array<{ item: string; count: number }>;
 }
 
 const DEFAULT_CONFIG: InventoryManagementConfig = {
-  triggerFreeSlots: DEFAULT_TRIGGER_FREE_SLOTS,
-  cooldownMs: DEFAULT_COOLDOWN_MS,
+  reactiveThreshold: 3,
+  preGateThreshold: 2,
+  cooldownMs: 30_000,
   getTargets: () => []
 };
 
@@ -32,7 +34,12 @@ let lastManagementTime = 0;
 let lastShouldActivateLogTime = 0;
 
 export function setInventoryManagementConfig(partial: Partial<InventoryManagementConfig>): void {
-  config = { ...config, ...partial };
+  const { triggerFreeSlots, ...rest } = partial;
+  if (triggerFreeSlots !== undefined) {
+    config = { ...config, reactiveThreshold: triggerFreeSlots, ...rest };
+  } else {
+    config = { ...config, ...rest };
+  }
 }
 
 export function getInventoryManagementConfig(): InventoryManagementConfig {
@@ -301,7 +308,7 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
     const freeSlots = getEmptySlotCount(bot as any);
     const now = Date.now();
 
-    if (freeSlots > config.triggerFreeSlots) return false;
+    if (freeSlots > config.reactiveThreshold) return false;
 
     if (isInCooldown()) {
       if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
@@ -314,7 +321,7 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
 
     if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
       logger.debug(
-        `InventoryManagement: should activate - freeSlots=${freeSlots} <= threshold=${config.triggerFreeSlots}`
+        `InventoryManagement: should activate - freeSlots=${freeSlots} <= threshold=${config.reactiveThreshold}`
       );
       lastShouldActivateLogTime = now;
     }
@@ -330,7 +337,7 @@ export const inventoryManagementBehavior: ReactiveBehavior = {
       typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
 
     const freeSlots = getEmptySlotCount(bot as any);
-    const targetFree = config.triggerFreeSlots + FREE_SLOT_BUFFER;
+    const targetFree = config.reactiveThreshold + FREE_SLOT_BUFFER;
     const candidates = calculateItemsToDrop(bot, targetFree);
 
     if (candidates.length === 0) {

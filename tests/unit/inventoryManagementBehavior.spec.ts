@@ -536,4 +536,20 @@ describe('inventoryManagementBehavior', () => {
       expect(inventoryManagementBehavior.name).toBe('inventory_management');
     });
   });
+
+  describe('config extensions', () => {
+    it('accepts reactiveThreshold and uses it for shouldActivate', () => {
+      setInventoryManagementConfig({ reactiveThreshold: 5 });
+      const bot = createBot(fillSlots(32)); // 4 free slots
+      expect(inventoryManagementBehavior.shouldActivate(bot)).toBe(true);
+      setInventoryManagementConfig({ reactiveThreshold: 3 });
+      expect(inventoryManagementBehavior.shouldActivate(bot)).toBe(false);
+    });
+
+    it('keeps triggerFreeSlots as a back-compat alias for reactiveThreshold', () => {
+      setInventoryManagementConfig({ triggerFreeSlots: 5 });
+      const bot = createBot(fillSlots(32));
+      expect(inventoryManagementBehavior.shouldActivate(bot)).toBe(true);
+    });
+  });
 });
