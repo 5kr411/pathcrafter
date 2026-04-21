@@ -50,22 +50,33 @@ export function buildMineNodes(
   miningPaths.forEach(path => {
     const blockName = path.block;
     let similar: string[];
-    
+
     if (context.combineSimilarNodes) {
       const sameDrop = findBlocksWithSameDrop(mcData, blockName);
       if (sameDrop.length > 1) {
         similar = sameDrop;
       } else {
-        similar = findSimilarItems(mcData, blockName);
+        // findSimilarItems groups items by suffix family (e.g. all *_log variants),
+        // which is semantically correct for RECIPE ingredient equivalence but NOT
+        // for mine-block equivalence: spruce_log blocks drop spruce_log items, not
+        // oak_log. Restrict the similar-block set to blocks that actually drop one
+        // of the accepted target items (variantsToUse). Without this filter, a
+        // request for `oak_log` would pick up every wood log as an interchangeable
+        // mine target and the bot would mine spruce_log while expecting oak_log.
+        const rawSimilar = findSimilarItems(mcData, blockName);
+        similar = filterBlocksDroppingTargetItems(mcData, rawSimilar, variantsToUse);
+        if (similar.length === 0) {
+          similar = [blockName];
+        }
       }
     } else {
       similar = [blockName];
     }
-    
+
     if (!blockVariantsByCanonical.has(blockName)) {
       blockVariantsByCanonical.set(blockName, similar);
     }
-    
+
     similar.forEach(itemName => {
       if (!canonicalBlockByItem.has(itemName)) {
         canonicalBlockByItem.set(itemName, blockName);
@@ -127,6 +138,28 @@ export function buildMineNodes(
   if (mineGroup.children.variants.length > 0) {
     root.children.variants.push({ value: mineGroup });
   }
+}
+
+/**
+ * Filter a list of block names down to those that drop at least one of the
+ * accepted target items. Used to keep `findSimilarItems`-derived "similar
+ * block" sets from pulling in wood-family members that drop a *different*
+ * item than the caller asked for.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
+function filterBlocksDroppingTargetItems(mcData: any, blockNames: string[], targetItems: string[]): string[] {
+  if (targetItems.length === 0) return blockNames;
+  const targetSet = new Set(targetItems);
+  return blockNames.filter(name => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
+    const block = Object.values(mcData.blocks).find((b: any) => b.name === name) as any;
+    const drops: number[] | undefined = block?.drops;
+    if (!drops || drops.length === 0) return false;
+    return drops.some(dropId => {
+      const itemName = mcData.items[dropId]?.name;
+      return !!itemName && targetSet.has(itemName);
+    });
+  });
 }
 
 /**
