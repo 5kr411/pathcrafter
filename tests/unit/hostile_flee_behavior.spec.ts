@@ -27,7 +27,6 @@ jest.mock('../../bots/collector/reactive_behaviors/shield_defense_behavior', () 
 const mockFindClosestHostileMobRaw: jest.Mock = jest.fn().mockReturnValue(null);
 const mockFindClosestHostileMob = jest.fn((...args: any) => {
   const result = mockFindClosestHostileMobRaw(...args);
-  // If a predicate filter was passed (4th arg), apply it
   const predicate = args[3];
   if (result && typeof predicate === 'function' && !predicate(result)) {
     return null;
@@ -51,16 +50,45 @@ function createState(bot: any): any {
   return hostileFleeBehavior.createState(bot);
 }
 
+/**
+ * Drive the outer NSM the way the reactive executor does. Per
+ * mineflayer-statemachine/lib/statemachine.js semantics:
+ *  - onStateEntered() sets activeState = enter and calls its
+ *    onStateEntered, but does NOT check transitions.
+ *  - Each update() call runs activeState.update() first, then scans
+ *    transitions and fires AT MOST ONE. A chain of transitions
+ *    (CaptureThreat -> FleeVisible -> Exit) takes one update() per
+ *    hop. Each transition fires the child's onStateEntered, which is
+ *    where side effects like setGoal happen.
+ *
+ * The helpers below make the tick-count explicit.
+ */
+function enterAndTick(sm: any): void {
+  sm.onStateEntered();
+  sm.update();
+}
+
+function tickUntilFinished(sm: any, maxTicks = 10): boolean {
+  for (let i = 0; i < maxTicks; i++) {
+    sm.update();
+    if (sm.isFinished()) return true;
+  }
+  return sm.isFinished();
+}
+
 function makeBot(overrides: any = {}) {
   return {
     version: '1.20.1',
     entity: {
-      position: { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
-        const dx = 0 - other.x;
-        const dy = 64 - other.y;
-        const dz = 0 - other.z;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-      }},
+      position: {
+        x: 0, y: 64, z: 0,
+        distanceTo: (other: any) => {
+          const dx = 0 - other.x;
+          const dy = 64 - other.y;
+          const dz = 0 - other.z;
+          return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+      },
       yaw: 0,
       pitch: 0
     },
@@ -166,7 +194,7 @@ describe('unit: hostile_flee_behavior', () => {
       expect(result).toBeNull();
     });
 
-    test('returns state with stateMachine when pathfinder exists', () => {
+    test('returns state with stateMachine and preserved stateName', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
       const bot = makeBot();
@@ -176,16 +204,16 @@ describe('unit: hostile_flee_behavior', () => {
       expect(result.stateMachine.stateName).toBe('HostileFlee');
     });
 
-    test('finishes immediately on enter when no threat found', () => {
+    test('finishes immediately when no threat found on entry', () => {
       const bot = makeBot();
       const result = createState(bot);
       expect(result).not.toBeNull();
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       expect(result.stateMachine.isFinished()).toBe(true);
     });
 
-    test('announces fleeing via safeChat on enter', () => {
+    test('announces fleeing via safeChat on entry', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
       const bot = makeBot();
@@ -195,13 +223,13 @@ describe('unit: hostile_flee_behavior', () => {
       expect(bot.safeChat).toHaveBeenCalledWith('fleeing Creeper');
     });
 
-    test('sets pathfinder goal on enter', () => {
+    test('sets pathfinder goal after first tick transitions to FleeVisible', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       expect(bot.pathfinder.setGoal).toHaveBeenCalled();
     });
   });
@@ -213,7 +241,7 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       expect(result.stateMachine.isFinished()).toBe(false);
 
       jest.advanceTimersByTime(800);
@@ -227,12 +255,11 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
 
       creeper.position.x = 35;
       jest.advanceTimersByTime(800);
-      result.stateMachine.update();
-      expect(result.stateMachine.isFinished()).toBe(true);
+      expect(tickUntilFinished(result.stateMachine)).toBe(true);
     });
 
     test('finishes when shield acquired mid-flee', () => {
@@ -241,12 +268,11 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
 
       mockFindShieldItem.mockReturnValue({ name: 'shield', maxDurability: 336, durabilityUsed: 0 });
       mockIsShieldUsable.mockReturnValue(true);
-      result.stateMachine.update();
-      expect(result.stateMachine.isFinished()).toBe(true);
+      expect(tickUntilFinished(result.stateMachine)).toBe(true);
     });
   });
 
@@ -257,13 +283,14 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       expect(result.stateMachine.isFinished()).toBe(false);
 
       mockFindClosestCreeper.mockReturnValue(null);
 
       jest.advanceTimersByTime(1000);
-      result.stateMachine.update();
+      result.stateMachine.update(); // FleeVisible signals lostThreat
+      result.stateMachine.update(); // transition to FleeFromMemory
       expect(result.stateMachine.isFinished()).toBe(false);
     });
 
@@ -273,11 +300,12 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
 
       mockFindClosestCreeper.mockReturnValue(null);
 
       jest.advanceTimersByTime(FLEE_MEMORY_MS - 100);
+      result.stateMachine.update();
       result.stateMachine.update();
       expect(result.stateMachine.isFinished()).toBe(false);
     });
@@ -288,13 +316,12 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot({ health: 8, maxHealth: 20 });
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
 
       mockFindClosestCreeper.mockReturnValue(null);
 
       jest.advanceTimersByTime(FLEE_MEMORY_MS + 100);
-      result.stateMachine.update();
-      expect(result.stateMachine.isFinished()).toBe(true);
+      expect(tickUntilFinished(result.stateMachine)).toBe(true);
     });
 
     test('resets memory timer when threat reappears', () => {
@@ -303,42 +330,52 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
 
+      // Disappear — still within memory window
       mockFindClosestCreeper.mockReturnValue(null);
       jest.advanceTimersByTime(FLEE_MEMORY_MS - 500);
       result.stateMachine.update();
+      result.stateMachine.update();
       expect(result.stateMachine.isFinished()).toBe(false);
 
+      // Reappear — back to FleeVisible, which refreshes lastThreatSeenTime
       mockFindClosestCreeper.mockReturnValue(creeper);
       jest.advanceTimersByTime(100);
-      result.stateMachine.update();
+      result.stateMachine.update(); // FleeFromMemory signals threatReappeared
+      result.stateMachine.update(); // transition to FleeVisible
       expect(result.stateMachine.isFinished()).toBe(false);
 
+      // Disappear again — memory timer resets here because FleeVisible
+      // just recorded a fresh lastThreatSeenTime
       mockFindClosestCreeper.mockReturnValue(null);
       jest.advanceTimersByTime(FLEE_MEMORY_MS - 500);
       result.stateMachine.update();
+      result.stateMachine.update();
       expect(result.stateMachine.isFinished()).toBe(false);
 
+      // Now past the new memory window
       jest.advanceTimersByTime(600);
-      result.stateMachine.update();
-      expect(result.stateMachine.isFinished()).toBe(true);
+      expect(tickUntilFinished(result.stateMachine)).toBe(true);
     });
 
     test('updates goal from last known position during memory window', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
 
-      const botPos = { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
-        const dx = botPos.x - other.x;
-        const dy = botPos.y - other.y;
-        const dz = botPos.z - other.z;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-      }};
+      const botPos = {
+        x: 0, y: 64, z: 0,
+        distanceTo: (other: any) => {
+          const dx = botPos.x - other.x;
+          const dy = botPos.y - other.y;
+          const dz = botPos.z - other.z;
+          return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+      };
       const bot = makeBot({ entity: { position: botPos, yaw: 0, pitch: 0 } });
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       const callsAfterEnter = bot.pathfinder.setGoal.mock.calls.length;
 
       mockFindClosestCreeper.mockReturnValue(null);
@@ -346,7 +383,8 @@ describe('unit: hostile_flee_behavior', () => {
       botPos.z = 3;
 
       jest.advanceTimersByTime(1000);
-      result.stateMachine.update();
+      result.stateMachine.update(); // FleeVisible signals lostThreat
+      result.stateMachine.update(); // transition; FleeFromMemory.onStateEntered refreshes goal
 
       expect(bot.pathfinder.setGoal.mock.calls.length).toBeGreaterThan(callsAfterEnter);
     });
@@ -355,23 +393,25 @@ describe('unit: hostile_flee_behavior', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
 
-      const botPos = { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
-        const dx = botPos.x - other.x;
-        const dy = botPos.y - other.y;
-        const dz = botPos.z - other.z;
-        return Math.sqrt(dx * dx + dy * dy + dz * dz);
-      }};
+      const botPos = {
+        x: 0, y: 64, z: 0,
+        distanceTo: (other: any) => {
+          const dx = botPos.x - other.x;
+          const dy = botPos.y - other.y;
+          const dz = botPos.z - other.z;
+          return Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+      };
       const bot = makeBot({ entity: { position: botPos, yaw: 0, pitch: 0 } });
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
 
       mockFindClosestCreeper.mockReturnValue(null);
       botPos.x = 40;
 
       jest.advanceTimersByTime(1000);
-      result.stateMachine.update();
-      expect(result.stateMachine.isFinished()).toBe(true);
+      expect(tickUntilFinished(result.stateMachine)).toBe(true);
     });
   });
 
@@ -390,11 +430,17 @@ describe('unit: hostile_flee_behavior', () => {
         health: 20,
         maxHealth: 20,
         entity: {
-          position: { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
-            const dx = 0 - other.x; const dy = 64 - other.y; const dz = 0 - other.z;
-            return Math.sqrt(dx * dx + dy * dy + dz * dz);
-          }},
-          yaw: 0, pitch: 0,
+          position: {
+            x: 0, y: 64, z: 0,
+            distanceTo: (other: any) => {
+              const dx = 0 - other.x;
+              const dy = 64 - other.y;
+              const dz = 0 - other.z;
+              return Math.sqrt(dx * dx + dy * dy + dz * dz);
+            }
+          },
+          yaw: 0,
+          pitch: 0,
           attributes: { 'generic.armor': { value: 12 } }
         }
       });
@@ -408,11 +454,17 @@ describe('unit: hostile_flee_behavior', () => {
         health: 8,
         maxHealth: 20,
         entity: {
-          position: { x: 0, y: 64, z: 0, distanceTo: (other: any) => {
-            const dx = 0 - other.x; const dy = 64 - other.y; const dz = 0 - other.z;
-            return Math.sqrt(dx * dx + dy * dy + dz * dz);
-          }},
-          yaw: 0, pitch: 0,
+          position: {
+            x: 0, y: 64, z: 0,
+            distanceTo: (other: any) => {
+              const dx = 0 - other.x;
+              const dy = 64 - other.y;
+              const dz = 0 - other.z;
+              return Math.sqrt(dx * dx + dy * dy + dz * dz);
+            }
+          },
+          yaw: 0,
+          pitch: 0,
           attributes: { 'generic.armor': { value: 12 } }
         }
       });
@@ -437,27 +489,27 @@ describe('unit: hostile_flee_behavior', () => {
     });
   });
 
-  describe('onStateExited', () => {
-    test('stops movement on exit', () => {
+  describe('onStop cleanup', () => {
+    test('forceStopAllMovement is called on any onStop reason', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
-      result.stateMachine.onStateExited();
+      enterAndTick(result.stateMachine);
+      result.onStop('aborted');
       expect(forceStopAllMovement).toHaveBeenCalledWith(bot, 'hostile flee exit');
     });
   });
 
-  describe('onStop', () => {
+  describe('onStop chat', () => {
     test('announces done fleeing on completed', () => {
       const creeper = makeCreeper(5, 0);
       mockFindClosestCreeper.mockReturnValue(creeper);
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       result.onStop('completed');
       expect(bot.safeChat).toHaveBeenCalledWith('done fleeing Creeper');
     });
@@ -468,7 +520,7 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       result.onStop('preempted');
       expect(bot.safeChat).toHaveBeenCalledWith('pausing flee Creeper');
     });
@@ -479,7 +531,7 @@ describe('unit: hostile_flee_behavior', () => {
       const bot = makeBot();
       const result = createState(bot);
 
-      result.stateMachine.onStateEntered();
+      enterAndTick(result.stateMachine);
       result.onStop('aborted');
       expect(bot.safeChat).toHaveBeenCalledWith('stopped fleeing Creeper');
     });

@@ -10,6 +10,11 @@
  * instead of a module singleton.
  */
 
+import {
+  BehaviorIdle,
+  NestedStateMachine,
+  StateTransition
+} from 'mineflayer-statemachine';
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { getInventoryObject } from '../../../utils/inventory';
 import { calculateFoodPointsInInventory, HUNTABLE_LAND_ANIMALS } from '../../../utils/foodConfig';
@@ -18,10 +23,13 @@ import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { findClosestHuntableAnimal } from '../../../behaviors/huntForFoodHelpers';
 import createHuntEntityState from '../../../behaviors/behaviorHuntEntity';
 import logger from '../../../utils/logger';
+import {
+  BehaviorHuntWithTimeout,
+  HUNT_TIMEOUT_MS
+} from './opportunistic_food_hunt_states';
 
 const OPPORTUNISTIC_HUNT_PRIORITY = 57;
 const MAX_HUNT_DISTANCE = 16;
-const HUNT_TIMEOUT_MS = 60_000;
 const FAILURE_COOLDOWN_MS = 60_000;
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 
@@ -91,9 +99,6 @@ export function createOpportunisticFoodHuntBehavior(
       }
 
       const huntAnimalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
-      let huntFinished = false;
-      let huntTimeoutId: NodeJS.Timeout | null = null;
-
       const targets: any = {
         entity: targetAnimal,
         entityFilter: (entity: any) => {
@@ -104,35 +109,41 @@ export function createOpportunisticFoodHuntBehavior(
         attackRange: 3.5
       };
 
-      const stateMachine = createHuntEntityState(bot, targets);
+      const innerNSM = createHuntEntityState(bot, targets);
+      const hunt = new BehaviorHuntWithTimeout(bot, innerNSM);
+      const exit = new BehaviorIdle();
 
-      // Set timeout
-      huntTimeoutId = setTimeout(() => {
-        huntFinished = true;
-        logger.debug('OpportunisticFoodHunt: timeout reached');
-      }, HUNT_TIMEOUT_MS);
+      const transitions = [
+        new StateTransition({
+          parent: hunt,
+          child: exit,
+          name: 'opportunistic-hunt: hunt -> exit (complete)',
+          shouldTransition: () => hunt.innerFinished()
+        }),
+        new StateTransition({
+          parent: hunt,
+          child: exit,
+          name: 'opportunistic-hunt: hunt -> exit (timeout)',
+          shouldTransition: () => hunt.timedOut(),
+          onTransition: () => {
+            hunt.markTimedOut();
+            logger.debug('OpportunisticFoodHunt: timeout reached');
+          }
+        })
+      ];
 
-      const cleanup = () => {
-        if (huntTimeoutId) {
-          clearTimeout(huntTimeoutId);
-          huntTimeoutId = null;
-        }
-      };
+      const stateMachine = new NestedStateMachine(transitions, hunt, exit);
+      stateMachine.stateName = 'OpportunisticFoodHunt';
 
       return {
         stateMachine,
-        isFinished: () => {
-          if (huntFinished) return true;
-          return typeof stateMachine.isFinished === 'function' ? stateMachine.isFinished() : false;
-        },
-        wasSuccessful: () => !huntFinished, // timed out = failure
+        isFinished: () => stateMachine.isFinished(),
+        wasSuccessful: () => !hunt.didTimeout(),
         onStop: (reason: ReactiveBehaviorStopReason) => {
-          cleanup();
           if (reason === 'completed') {
-            if (huntFinished) {
-              // Timed out
+            if (hunt.didTimeout()) {
               lastFailedAttempt = Date.now();
-              if (sendChat) sendChat(`hunt timed out`);
+              if (sendChat) sendChat('hunt timed out');
             } else {
               if (sendChat) sendChat(`done hunting ${animalType}`);
             }
@@ -151,3 +162,5 @@ export function createOpportunisticFoodHuntBehavior(
     isInCooldown
   };
 }
+
+export { HUNT_TIMEOUT_MS };
