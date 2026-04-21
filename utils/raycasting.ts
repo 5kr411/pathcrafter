@@ -4,12 +4,14 @@ export interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   distanceTo?: (other: any) => number;
 }
 
 export interface MinecraftBlock {
   name?: string;
   position?: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   [key: string]: any;
 }
 
@@ -18,10 +20,14 @@ export interface MinecraftBot {
     position: Vec3Like;
   };
   world?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     getBlockType: (pos: any) => number;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   blockAt?: (pos: any, extraInfos?: boolean) => MinecraftBlock | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   canDigBlock?: (block: any) => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   canSeeBlock?: (block: any) => boolean;
 }
 

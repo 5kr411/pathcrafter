@@ -7,6 +7,7 @@ export interface MinecraftDataLike {
   items?: Array<{ name?: string }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function getDroppedItemInfo(entity: any, mcData?: MinecraftDataLike): DroppedItemInfo {
   try {
     if (entity && typeof entity.getDroppedItem === 'function') {

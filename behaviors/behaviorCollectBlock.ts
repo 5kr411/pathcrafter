@@ -40,13 +40,16 @@ interface Vec3Like {
   y: number;
   z: number;
   distanceTo?: (other: Vec3Like) => number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Block {
   type?: number;
   name?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   harvestTools?: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -54,16 +57,19 @@ interface Item {
   name?: string;
   count?: number;
   type?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Entity {
   displayName?: string;
   position: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   metadata?: any[];
   name?: string;
   objectType?: number;
   type?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -80,6 +86,7 @@ interface Bot {
   };
   blockAt?: (pos: Vec3Like, extraInfos?: boolean) => Block | null;
   entities?: Record<string, Entity>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -91,14 +98,17 @@ interface Targets {
   blockPosition?: Vec3Like;
   entity?: Entity | null;
   executionContext?: ExecutionContext;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface MinecraftData {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   blocksByName: Record<string, { id?: number; harvestTools?: Record<string, any>; material?: string }>;
   items: Array<{ id?: number; name?: string; maxDurability?: number }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCollectBlockState(bot: Bot, targets: Targets): any {
   const mcData: MinecraftData = minecraftData(bot.version);
   let initialId = mcData.blocksByName[targets.blockName]?.id;
@@ -155,7 +165,9 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
 
   // Prefer safe find behavior which avoids looping over repeated positions
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let createSafeFind: any | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let findBlock: any;
   try {
     createSafeFind = createSafeFindBlockState;
@@ -651,12 +663,14 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
         const t = targets.blockPosition;
         const type = t ? bot.world?.getBlockType(t) : undefined;
         const nearbyEntities = Object.values(bot.entities || {})
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           .filter((e: any) => {
             const pos = e?.position;
             const botPos = bot.entity?.position;
             if (!pos || !botPos || !pos.distanceTo) return false;
             return pos.distanceTo(botPos) < 10;
           })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           .map((e: any) => `${e.displayName || e.name || e.type} @${e.position?.x?.toFixed(0)},${e.position?.y?.toFixed(0)},${e.position?.z?.toFixed(0)}`);
         logger.debug(`mine block -> find drop (post-mine blockType=${type}). Nearby entities (${nearbyEntities.length}): ${nearbyEntities.slice(0, 5).join(', ')}`);
       } catch (_) {
@@ -868,9 +882,13 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
   };
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).resetBaseline = resetBaseline;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).collectedCount = collectedCount;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).getLastFailureReason = () => lastFailureReason;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).clearBlockExclusions = () => {
     if (findBlock && typeof findBlock.clearExclusions === 'function') {
       findBlock.clearExclusions();
@@ -892,6 +910,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       try {
         goToBlock.onStateExited();
         logger.debug('CollectBlock: cleaned up goToBlock');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up goToBlock: ${err.message}`);
       }
@@ -901,6 +920,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       try {
         clearObstructions.onStateExited();
         logger.debug('CollectBlock: cleaned up clearObstructions');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up clearObstructions: ${err.message}`);
       }
@@ -910,6 +930,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       try {
         mineBlock.onStateExited();
         logger.debug('CollectBlock: cleaned up mineBlock');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up mineBlock: ${err.message}`);
       }
@@ -919,6 +940,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       try {
         microWander.onStateExited();
         logger.debug('CollectBlock: cleaned up microWander');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up microWander: ${err.message}`);
       }
@@ -928,6 +950,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
       try {
         goToDrop.onStateExited();
         logger.debug('CollectBlock: cleaned up goToDrop');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`CollectBlock: error cleaning up goToDrop: ${err.message}`);
       }
@@ -936,6 +959,7 @@ function createCollectBlockState(bot: Bot, targets: Targets): any {
     try {
       bot.clearControlStates();
       logger.debug('CollectBlock: cleared bot control states');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`CollectBlock: error clearing control states: ${err.message}`);
     }

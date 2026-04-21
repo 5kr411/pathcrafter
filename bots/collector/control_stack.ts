@@ -25,6 +25,7 @@ export class CollectorControlStack {
   readonly reactiveLayer: ReactiveBehaviorManager;
   readonly toolLayer: ToolReplacementExecutor;
   readonly targetLayer: TargetExecutor;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   readonly agentActionLayer: any | null;
   readonly rootStateMachine: NestedStateMachine;
 
@@ -36,6 +37,7 @@ export class CollectorControlStack {
     private readonly safeChat: (msg: string) => void,
     private readonly config: ControlStackConfig,
     reactiveRegistry: ReactiveBehaviorRegistry,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     agentActionLayer: any | null = null
   ) {
     this.reactiveLayer = new ReactiveBehaviorManager(this.bot, reactiveRegistry);
@@ -82,7 +84,9 @@ export class CollectorControlStack {
     const tool = this.toolLayer;
     const target = this.targetLayer;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const states: any[] = [idle, reactive, tool, target];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const modeByState = new Map<any, ControlMode>([
       [idle, 'idle'],
       [reactive, 'reactive'],
@@ -118,6 +122,7 @@ export class CollectorControlStack {
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     return new NestedStateMachine(transitions, idle, null as any);
   }
 

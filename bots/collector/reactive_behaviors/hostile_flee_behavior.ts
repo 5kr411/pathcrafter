@@ -31,6 +31,7 @@ export const hostileFleeBehavior: ReactiveBehavior = {
   },
 
   createState: (bot: Bot) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const pathfinder = (bot as any)?.pathfinder;
     if (!pathfinder || typeof pathfinder.setGoal !== 'function') {
       logger.debug('HostileFlee: no pathfinder available');
@@ -38,7 +39,9 @@ export const hostileFleeBehavior: ReactiveBehavior = {
     }
 
     const safeChat: ((msg: string) => void) | null =
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : typeof bot?.chat === 'function'
           ? bot.chat.bind(bot)

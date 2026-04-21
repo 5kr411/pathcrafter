@@ -46,6 +46,7 @@ export class AnthropicProvider implements LLMProvider {
           body: JSON.stringify(body),
           signal
         });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
         if (isTimeoutAbort(signal)) {
@@ -63,6 +64,7 @@ export class AnthropicProvider implements LLMProvider {
         return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const data: any = await resp.json();
       let text: string | null = null;
       const toolCalls: TurnResult['toolCalls'] = [];
@@ -90,6 +92,7 @@ export class AnthropicProvider implements LLMProvider {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   private translateMessage(m: Message): { role: 'user' | 'assistant'; content: any } {
     if (m.role === 'tool') {
       if (typeof m.content === 'string') {
@@ -98,6 +101,7 @@ export class AnthropicProvider implements LLMProvider {
       return {
         role: 'user',
         content: (m.content as ContentBlock[]).map(b => b.type === 'tool_result'
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
           ? { type: 'tool_result', tool_use_id: (b as any).toolCallId, content: (b as any).content, is_error: (b as any).isError }
           : b)
       };

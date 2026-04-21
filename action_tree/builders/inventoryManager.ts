@@ -82,6 +82,7 @@ export function copyInventoryMap(invMap: Map<string, number>): Map<string, numbe
  * @param invMap - Inventory map to convert
  * @returns Object representation of inventory
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function inventoryMapToObject(invMap: Map<string, number>): any {
   return mapToInventoryObject(invMap);
 }

@@ -105,6 +105,7 @@ export function createFoodCollectionBehavior(
   }
 
   function getBotFoodPoints(bot: Bot): number {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const inventory = getInventoryObject(bot as any);
     return calculateFoodPointsInInventory(inventory);
   }
@@ -123,6 +124,7 @@ export function createFoodCollectionBehavior(
         // Emergency override: if actual hunger bar is critically low, bypass cooldown.
         // At bot.food <= 6 the bot can't sprint and health regen is blocked, so waiting out
         // a cooldown means dying to any mob hit or starvation damage.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const botHunger = (bot as any)?.food;
         const inEmergency = typeof botHunger === 'number' && botHunger <= EMERGENCY_HUNGER_THRESHOLD;
 
@@ -160,7 +162,9 @@ export function createFoodCollectionBehavior(
     },
 
     createState: async (bot: Bot) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : null;
 
@@ -178,13 +182,16 @@ export function createFoodCollectionBehavior(
 
       try {
         // Capture world snapshot for planning
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         let worldSnapshot: any = null;
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
           const result = await captureAdaptiveSnapshot(bot as any, {
             radii: [32, 64, 96],
             onProgress: (msg: string) => logger.debug(`FoodCollection: ${msg}`)
           });
           worldSnapshot = result.snapshot;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.debug(`FoodCollection: snapshot capture failed - ${err?.message || err}`);
         }
@@ -195,14 +202,19 @@ export function createFoodCollectionBehavior(
         // Diagnostic: snapshot bot state right before creating the GetFood state machine.
         // This is the point adjacent to where the 9/20 disconnect pattern manifests.
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           const cl: any = (bot as any)?._client;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           const listenerCount = typeof (bot as any)?.listenerCount === 'function'
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
             ? (bot as any).listenerCount('physicsTick')
             : -1;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           const pathfinder: any = (bot as any)?.pathfinder;
           const pfIsMoving = typeof pathfinder?.isMoving === 'function' ? !!pathfinder.isMoving() : false;
           const pfIsMining = typeof pathfinder?.isMining === 'function' ? !!pathfinder.isMining() : false;
           logger.debug(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
             `FoodCollection: pre-createState bot state food=${(bot as any)?.food} health=${(bot as any)?.health} ` +
             `clientState=${cl?.state} ended=${!!cl?.ended} sockWritable=${!!cl?.socket?.writable} ` +
             `serWritable=${!!cl?.serializer?.writable} physListeners=${listenerCount} ` +
@@ -210,13 +222,16 @@ export function createFoodCollectionBehavior(
           );
         } catch (_) {}
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         let stateMachine: any;
         try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
           stateMachine = createGetFoodState(bot as any, {
             targetFoodPoints: config.targetFoodPoints,
             minFoodThreshold: getTriggerThreshold(),
             worldSnapshot
           });
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.info(`FoodCollection: createGetFoodState threw - msg=${err?.message || err} stack=${err?.stack?.split('\n').slice(0, 6).join(' | ')}`);
           throw err;
@@ -229,8 +244,10 @@ export function createFoodCollectionBehavior(
           const endFoodPoints = getBotFoodPoints(bot);
           const gainedFood = endFoodPoints > startFoodPoints;
           let success = gainedFood;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
           if (typeof (stateMachine as any)?.wasSuccessful === 'function') {
             try {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
               success = success || !!(stateMachine as any).wasSuccessful();
             } catch (_) {}
           }
@@ -264,6 +281,7 @@ export function createFoodCollectionBehavior(
 
         return {
           stateMachine,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
           isFinished: () => (typeof (stateMachine as any).isFinished === 'function' ? (stateMachine as any).isFinished() : false),
           wasSuccessful: () => computeOutcome().success,
           onStop: (reason: ReactiveBehaviorStopReason) => {
@@ -275,6 +293,7 @@ export function createFoodCollectionBehavior(
             }
           }
         };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         foodCollectionActive = false;
         logger.info(`FoodCollection: failed to create state machine - ${err?.message || err}`);

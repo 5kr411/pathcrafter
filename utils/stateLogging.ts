@@ -7,6 +7,7 @@ interface StateLoggingOptions {
 }
 
 interface BehaviorToInstrument {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     behavior: any;
     name: string;
     options?: StateLoggingOptions;
@@ -23,6 +24,7 @@ interface TransitionLoggerOptions {
  * @param options - Logging options
  * @returns The instrumented behavior (same object, modified)
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function addStateLogging(behavior: any, name: string, options: StateLoggingOptions = {}): any {
     if (!behavior || typeof behavior !== 'object') return behavior;
     
@@ -38,11 +40,13 @@ export function addStateLogging(behavior: any, name: string, options: StateLoggi
             ? behavior.onStateEntered.bind(behavior) 
             : null;
         
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         behavior.onStateEntered = function(...args: any[]) {
             try {
                 const extra = getExtraInfo ? getExtraInfo() : '';
                 const msg = extra ? `${name}: entered ${extra}` : `${name}: entered`;
                 logger.debug(msg);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
             } catch (err: any) {
                 logger.debug(`${name}: entered (error getting extra info: ${err.message})`);
             }
@@ -59,11 +63,13 @@ export function addStateLogging(behavior: any, name: string, options: StateLoggi
             ? behavior.onStateExited.bind(behavior)
             : null;
         
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         behavior.onStateExited = function(...args: any[]) {
             try {
                 const extra = getExtraInfo ? getExtraInfo() : '';
                 const msg = extra ? `${name}: exited ${extra}` : `${name}: exited`;
                 logger.debug(msg);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
             } catch (err: any) {
                 logger.debug(`${name}: exited (error getting extra info: ${err.message})`);
             }
@@ -82,6 +88,7 @@ export function addStateLogging(behavior: any, name: string, options: StateLoggi
  * @param behaviors - Array of behaviors to instrument
  * @returns The instrumented behaviors
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function addStateLoggingBatch(behaviors: BehaviorToInstrument[]): any[] {
     return behaviors.map(({ behavior, name, options }) => 
         addStateLogging(behavior, name, options)
@@ -97,8 +104,10 @@ export function addStateLoggingBatch(behaviors: BehaviorToInstrument[]): any[] {
  */
 export function createTransitionLogger(
     transitionName: string, 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     originalOnTransition: (() => any) | null = null, 
     options: TransitionLoggerOptions = {}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 ): () => any {
     const { logTime = false } = options;
     let startTime: number | null = null;

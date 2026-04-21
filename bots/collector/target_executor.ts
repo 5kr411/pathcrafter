@@ -13,10 +13,12 @@ import { stepDependenciesSatisfied } from './plan_validation';
 import { BehaviorWander } from '../../behaviors/behaviorWander';
 import { isTimeoutAbort } from '../../utils/abortable';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
 }
@@ -84,6 +86,7 @@ export function createToolIssueHandler(options: {
           logInfo(`Collector: tool acquisition failed for ${toolLabel}`);
           safeChat(`failed to acquire ${toolLabel}`);
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logInfo(`Collector: tool acquisition error - ${err?.message || err}`);
       }
@@ -223,6 +226,7 @@ export class TargetExecutor implements StateBehavior {
   private targetRetryCount = new Map<number, number>();
   private running = false;
   private currentTargetStartInventory: InventoryObject = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private activeStateMachine: any = null;
   private toolsBeingReplaced: Set<string>;
 
@@ -230,6 +234,7 @@ export class TargetExecutor implements StateBehavior {
   private flowStarted = false;
 
   private planningOutcome: 'idle' | 'pending' | 'execute' | 'success' | 'failure' = 'idle';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private planPath: any[] | null = null;
   private planningId: string | null = null;
   private executionDone = false;
@@ -410,6 +415,7 @@ export class TargetExecutor implements StateBehavior {
       })
     ];
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     this.flowMachine = new NestedStateMachine(transitions, idle, null as any);
   }
 
@@ -426,6 +432,7 @@ export class TargetExecutor implements StateBehavior {
     const step = this.planPath[this.currentStepIndex];
     if (!step) return false;
     if (step.action === 'smelt') return true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if (step.action === 'craft' && step.what?.variants?.some((v: any) => v.value === 'table')) return true;
     return false;
   }
@@ -648,6 +655,7 @@ export class TargetExecutor implements StateBehavior {
           }
         );
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       .catch((err: any) => {
         if (controller.signal.aborted) {
           // Timeout handler (if applicable) already ran; external aborts drop silently.
@@ -677,6 +685,7 @@ export class TargetExecutor implements StateBehavior {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private handlePlanningResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
     if (!entry?.id || entry.id !== this.planningId) {
       return;
@@ -730,6 +739,7 @@ export class TargetExecutor implements StateBehavior {
     this.safeChat(`executing plan with ${best.length} steps for ${targetDesc}`);
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const resolved = best.map((s: any) => s);
       logger.info('Collector: selected path (resolved):');
       if (plannerInternals && typeof plannerInternals.logActionPath === 'function') {
@@ -994,6 +1004,7 @@ export class TargetExecutor implements StateBehavior {
       logDebug('Collector: cleared bot control states during suspend');
     } catch (_) {}
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const pathfinder = (this.bot as any)?.pathfinder;
       if (pathfinder && typeof pathfinder.stop === 'function') {
         pathfinder.stop();

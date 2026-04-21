@@ -11,6 +11,7 @@ export interface BlockLike {
 }
 
 export interface BotLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   blockAt?: (pos: any, extraInfos?: boolean) => BlockLike | null;
   entities?: Record<string, { position?: Vec3Like; name?: string; type?: string; kind?: string }>;
 }

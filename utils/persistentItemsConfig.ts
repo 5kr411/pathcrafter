@@ -205,6 +205,7 @@ export function getAllPersistentItems(): string[] {
  * Checks if an item is a persistent workstation
  */
 export function isWorkstation(itemName: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   return PERSISTENT_WORKSTATIONS.includes(itemName as any);
 }
 
@@ -212,6 +213,7 @@ export function isWorkstation(itemName: string): boolean {
  * Checks if an item is a persistent tool
  */
 export function isTool(itemName: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   return PERSISTENT_TOOLS.includes(itemName as any);
 }
 
@@ -219,6 +221,7 @@ export function isTool(itemName: string): boolean {
  * Checks if an item is persistent armor
  */
 export function isArmor(itemName: string): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   return PERSISTENT_ARMOR.includes(itemName as any);
 }
 

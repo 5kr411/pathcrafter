@@ -9,6 +9,7 @@ import { addStateLogging } from '../utils/stateLogging';
 import createRotateState from './behaviorRotate';
 import { Vec3 } from 'vec3';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function getNearestPointOnEntityBoundingBox(botEyePos: any, entity: any): any {
   if (!entity?.position) return entity?.position ?? null;
 
@@ -34,21 +35,26 @@ export function getNearestPointOnEntityBoundingBox(botEyePos: any, entity: any):
 
 interface Bot {
   entity?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     position: any;
     yaw: number;
     pitch: number;
   };
   look?: (yaw: number, pitch: number, force?: boolean) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   position?: any; // Vec3-like object with x, y, z
   targetYaw?: number;
   targetPitch?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3.0, initialEntity: any = null): any {
   const enter = new BehaviorIdle();
   
@@ -88,6 +94,7 @@ function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3
       let lookTarget;
 
       // Update entity from state machine if it was set externally
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const currentEntity = (stateMachine as any).entity;
       
       // If entity is provided, calculate nearest point on bounding box from eye position
@@ -151,6 +158,7 @@ function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3
     logEnter: true,
     logExit: true,
     getExtraInfo: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const currentEntity = (stateMachine as any).entity;
       if (currentEntity) {
         return `at entity (${currentEntity.name || currentEntity.displayName || 'unknown'})`;
@@ -163,6 +171,7 @@ function createLookAtState(bot: Bot, targets: Targets, rotationSpeed: number = 3
   });
   
   // Add entity property so it can be updated from outside
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).entity = entity;
 
   return stateMachine;

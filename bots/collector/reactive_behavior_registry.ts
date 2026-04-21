@@ -19,6 +19,7 @@ export class ReactiveBehaviorRegistry {
         if (shouldActivate) {
           return behavior;
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         console.error(`Error checking behavior ${behavior.name}:`, err);
       }

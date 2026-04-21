@@ -13,21 +13,27 @@ import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 interface Bot {
   version?: string;
   entity?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     position: any;
     health?: number;
     yaw: number;
     pitch: number;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   entities?: Record<string, any>;
   clearControlStates?: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   lookAt?: (position: any, force?: boolean, callback?: () => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Entity {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   position?: any;
   health?: number;
   isAlive?: () => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -36,6 +42,7 @@ interface Targets {
   entityFilter?: (entity: Entity) => boolean;
   detectionRange?: number;
   attackRange?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -68,6 +75,7 @@ function isEntityAlive(bot: Bot, entity: Entity | null | undefined): boolean {
   // Ensure the entity is still being tracked by the bot – once despawned/defeated
   // Mineflayer removes it from bot.entities.
   if (bot?.entities && entity) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const entityId = (entity as any)?.id;
     if (entityId !== undefined && entityId !== null) {
       if (!bot.entities[entityId]) return false;
@@ -84,12 +92,15 @@ function isEntityAlive(bot: Bot, entity: Entity | null | undefined): boolean {
  * 
  * No looping back to follow or find. Simple one-shot behavior.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
   const MAX_STATIONARY_ATTACK_RANGE = 2.8; // Keep some buffer below melee limit
   const DEFAULT_ATTACK_RANGE = Math.min(targets.attackRange ?? MAX_STATIONARY_ATTACK_RANGE, MAX_STATIONARY_ATTACK_RANGE);
 
   // Disable smart-move unsticking while chasing moving entities; it tends to fight follow logic
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (targets as any).disableSmartMoveUnstick = true;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (targets as any).followStuck = false;
 
   const enter = new BehaviorIdle();
@@ -163,6 +174,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorFollowAndAttackEntity: enter -> follow',
     shouldTransition: () => !!targets.entity && isEntityAlive(bot, targets.entity),
     onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (targets as any).followStuck = false;
       logger.info('BehaviorFollowAndAttackEntity: entity provided, starting follow');
     }
@@ -192,6 +204,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
       return targets.entity !== null && isEntityAlive(bot, targets.entity);
     },
     onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (targets as any).followStuck = false;
       logger.info('BehaviorFollowAndAttackEntity: entity found, following');
     }
@@ -254,11 +267,13 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     child: exit,
     name: 'BehaviorFollowAndAttackEntity: follow -> exit (stuck)',
     shouldTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const stuckCount = Number((targets as any).smartMoveStuckCount) || 0;
       return stuckCount > 0;
     },
     onTransition: () => {
       logger.warn('BehaviorFollowAndAttackEntity: aborting follow due to pathfinding failure');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (targets as any).followStuck = true;
       targets.entity = null;
     }
@@ -300,6 +315,7 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     if (followEntity && typeof followEntity.onStateExited === 'function') {
       try {
         followEntity.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`FollowAndAttackEntity: error cleaning up followEntity: ${err.message}`);
       }
@@ -308,21 +324,25 @@ function createFollowAndAttackEntityState(bot: Bot, targets: Targets): any {
     if (attackEntity && typeof attackEntity.onStateExited === 'function') {
       try {
         attackEntity.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`FollowAndAttackEntity: error cleaning up attackEntity: ${err.message}`);
       }
     }
     
     if ('smartMoveStuckCount' in targets) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       delete (targets as any).smartMoveStuckCount;
     }
     if ('lastSmartMoveStuck' in targets) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       delete (targets as any).lastSmartMoveStuck;
     }
 
     try {
       bot.clearControlStates?.();
       logger.debug('FollowAndAttackEntity: cleared bot control states');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`FollowAndAttackEntity: error clearing control states: ${err.message}`);
     }

@@ -7,6 +7,7 @@ const SUPPRESSED_ERROR_PATTERNS = [
   'Chunk size is'
 ];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function installPacketErrorSuppressor(bot: any): void {
   if (!bot || !bot._client) {
     logger.warn('PacketErrorSuppressor: invalid bot or client, cannot install');
@@ -14,6 +15,7 @@ export function installPacketErrorSuppressor(bot: any): void {
   }
   
   const originalConsoleError = console.error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   console.error = function(...args: any[]) {
     const firstArg = args[0];
     if (typeof firstArg === 'string') {

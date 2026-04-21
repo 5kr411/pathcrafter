@@ -8,6 +8,7 @@ export interface Vec3Like {
 }
 
 export interface MinecraftDataWithBlocks extends MinecraftDataLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   blocksByName?: Record<string, { harvestTools?: Record<string, any> }>;
   items?: Array<{ name?: string }>;
 }
@@ -27,6 +28,7 @@ export function inventoryItemsToMap(items?: Array<{ name?: string; count?: numbe
 }
 
 export function getHarvestToolNames(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   block: { harvestTools?: Record<string, any> } | null | undefined,
   mcData: MinecraftDataWithBlocks,
   fallbackName?: string
@@ -45,6 +47,7 @@ export function getHarvestToolNames(
 }
 
 export function isDropEntityCandidate(params: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   entity: any;
   botPos?: Vec3Like | null;
   targetPos?: Vec3Like | null;

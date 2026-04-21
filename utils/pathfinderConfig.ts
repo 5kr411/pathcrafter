@@ -2,8 +2,11 @@ const minecraftData = require('minecraft-data');
 
 interface Bot {
   version: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   pathfinder: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   entity?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
@@ -26,8 +29,11 @@ export interface PathfinderPrecisionConfig {
   placeCost?: number;
   breakCost?: number;
   thinkTimeout?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   exclusionAreasStep?: Array<(block: any) => number>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   exclusionAreasBreak?: Array<(block: any) => number>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   exclusionAreasPlace?: Array<(block: any) => number>;
 }
 
@@ -72,6 +78,7 @@ export function configurePrecisePathfinder(
       dripstoneIds.forEach((id) => blocksCantBreakSet.add(id));
     }
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     bot.canDigBlock = (block: any) => {
       if (!block || block.type === undefined) return false;
       return !blocksCantBreakSet.has(block.type);

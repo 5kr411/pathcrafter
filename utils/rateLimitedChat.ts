@@ -27,6 +27,7 @@ export interface RateLimitedChatOptions {
 }
 
 export function createRateLimitedChat(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   bot: any,
   options: RateLimitedChatOptions = {}
 ): (msg: string) => void {

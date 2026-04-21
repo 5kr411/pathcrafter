@@ -8,21 +8,29 @@ import logger from '../utils/logger';
 interface Bot {
   version?: string;
   inventory: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     slots: any[];
     firstEmptyInventorySlot: () => number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     items?: () => any[];
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   recipesFor: (itemId: number, metadata: any, minResultCount: number, craftingTable: any) => any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   recipesAll: (itemId: number, metadata: any, craftingTable: any) => any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   craft: (recipe: any, count: number, craftingTable: any) => Promise<void>;
   moveSlotItem: (sourceSlot: number, destSlot: number) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   itemName?: string;
   amount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   variantStep?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -31,6 +39,7 @@ interface MinecraftData {
   items: Record<number, { name: string; maxDurability?: number }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCraftNoTableState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const waitForCraft = new BehaviorIdle();
@@ -56,6 +65,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
             completedSlots++;
             if (completedSlots === craftingSlotIndices.length) resolve();
           })
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
           .catch((err: any) => {
             logger.error(`BehaviorCraftNoTable: Error moving item from crafting slot ${index}:`, err);
             completedSlots++;
@@ -65,11 +75,13 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const selectVariantFromInventory = (step: any): string | undefined => {
     if (!step || !step.result || !step.ingredients) return undefined;
     
     const invItems = bot.inventory?.items?.() || [];
     const inventory: Record<string, number> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     invItems.forEach((item: any) => {
       inventory[item.name] = (inventory[item.name] || 0) + item.count;
     });
@@ -83,6 +95,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       if (!resultVariant || !ingredientVariant) continue;
 
       const ingredients = Array.isArray(ingredientVariant.value) ? ingredientVariant.value : [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const hasAllIngredients = ingredients.every((ing: any) => {
         return ing && ing.item && (inventory[ing.item] || 0) >= (ing.perCraftCount || 1);
       });
@@ -109,6 +122,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     // Log current inventory
     const invItems = bot.inventory?.items?.() || [];
     const invSummary = invItems
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       .map((it: any) => `${it.name}:${it.count}`)
       .join(', ');
     logger.info(`BehaviorCraftNoTable: Current inventory: ${invSummary || 'empty'}`);
@@ -119,6 +133,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     const allRecipes = bot.recipesFor(item.id, null, 1, null);
     logger.info(`BehaviorCraftNoTable: Found ${allRecipes.length} craftable recipes for ${itemName}`);
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const recipe = allRecipes.find((r: any) => !r.requiresTable);
     if (!recipe) {
       logger.error(`BehaviorCraftNoTable: No craftable recipe found for ${itemName} that doesn't require a crafting table (had ${allRecipes.length} craftable recipes total)`);
@@ -136,7 +151,9 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     );
 
     const hasIngredients = recipe.delta
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       .filter((item: any) => item.count < 0)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       .every((item: any) => {
         const requiredCount = Math.abs(item.count);
         const availableCount = getItemCountInInventory(bot, mcData.items[item.id].name);
@@ -244,6 +261,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
         actualItemName = selectVariantFromInventory(targets.variantStep);
         if (!actualItemName) {
           const variants = targets.variantStep?.result?.variants || [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           const variantNames = variants.map((v: any) => v.value?.item || v.value).slice(0, 5).join(', ');
           logger.error(`BehaviorCraftNoTable: Could not select variant from inventory. Available variants: ${variantNames}`);
           craftingOk = false;
@@ -323,6 +341,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
     try {
       bot.clearControlStates();
       logger.debug('CraftNoTable: cleared bot control states');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`CraftNoTable: error clearing control states: ${err.message}`);
     }

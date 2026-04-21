@@ -10,6 +10,7 @@ const MAX_LOS_DISTANCE = 48; // Safety cap for ray traversal
 const DEFAULT_EYE_HEIGHT = 1.62;
 
 function getBotEyeHeight(bot: Bot): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const entity: any = bot?.entity;
   if (entity && typeof entity.height === 'number' && entity.height > 0) {
     return entity.height;
@@ -17,6 +18,7 @@ function getBotEyeHeight(bot: Bot): number {
   return DEFAULT_EYE_HEIGHT;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getEntityAimPoint(entity: any): Vec3 {
   const base = entity?.position;
   if (!base) {
@@ -27,6 +29,7 @@ function getEntityAimPoint(entity: any): Vec3 {
   return new Vec3(base.x, base.y + offsetY, base.z);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function isSolidBlock(block: any): boolean {
   if (!block) return false;
   if (block.transparent) return false;
@@ -36,9 +39,11 @@ function isSolidBlock(block: any): boolean {
   return true;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function hasLineOfSight(bot: Bot, entity: any): boolean {
   try {
     if (!entity || !entity.position) return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if (typeof (bot as any).blockAt !== 'function') return true;
 
     const botPos = bot.entity?.position;
@@ -93,6 +98,7 @@ export function hasLineOfSight(bot: Bot, entity: any): boolean {
       visited.add(key);
 
       const blockPos = new Vec3(blockX, blockY, blockZ);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const block = (bot as any).blockAt(blockPos, false);
       if (!block) continue;
 
@@ -107,11 +113,13 @@ export function hasLineOfSight(bot: Bot, entity: any): boolean {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function getHostileMobNames(mcData: any): Set<string> {
   const hostileMobs = new Set<string>();
   
   if (!mcData) return hostileMobs;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let entities: any[] = [];
   if (mcData.entities) {
     if (Array.isArray(mcData.entities)) {
@@ -161,6 +169,7 @@ export function getHostileMobNames(mcData: any): Set<string> {
 let cachedHostileMobNames: Set<string> | null = null;
 let cachedMcDataVersion: string | null = null;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getCachedHostileMobNames(mcData: any, version: string): Set<string> {
   if (cachedHostileMobNames && cachedMcDataVersion === version) {
     return cachedHostileMobNames;
@@ -174,6 +183,7 @@ const SKELETON_VARIANT_NAMES = new Set(['skeleton', 'stray', 'bogged', 'parched'
 
 export const COMBAT_BLACKLIST = new Set<string>(['enderman', 'zombified_piglin', 'creeper']);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function isRangedHostile(entity: any): boolean {
   const name = String(entity?.name || entity?.displayName || '').toLowerCase();
   if (SKELETON_VARIANT_NAMES.has(name)) {
@@ -190,14 +200,17 @@ export function findClosestHostileMob(
   bot: Bot,
   maxDistance: number = 16,
   requireLineOfSight: boolean = true,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   predicate?: (entity: any) => boolean,
   blacklist?: Set<string>
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 ): any | null {
   if (!bot.entities) return null;
 
   const mcData = minecraftData(bot.version);
   const hostileMobNames = getCachedHostileMobNames(mcData, bot.version ?? '');
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let closest: any = null;
   let closestDistance = Infinity;
   const botPos = bot.entity?.position;
@@ -247,7 +260,9 @@ export const hostileMobBehavior: ReactiveBehavior = {
       return null;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const sendChat: (msg: string) => void = typeof (bot as any)?.safeChat === 'function'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       ? (bot as any).safeChat.bind(bot)
       : (msg: string) => {
           try {
@@ -271,8 +286,10 @@ export const hostileMobBehavior: ReactiveBehavior = {
     const mcData = minecraftData(bot.version);
     const hostileNames = getCachedHostileMobNames(mcData, bot.version ?? '');
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const targets: any = {
       entity: hostileMob,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       entityFilter: (entity: any) => {
         if (!entity || !entity.name) return false;
         if (COMBAT_BLACKLIST.has(entity.name)) return false;

@@ -41,6 +41,7 @@ export function computeTargetsForCraftVariant(step: ActionStep, bot?: Bot): Craf
   if (bot && step.ingredients && step.ingredients.variants.length > 0) {
     try {
       const inventory: Record<string, number> = {};
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       (bot.inventory?.items() || []).forEach((item: any) => {
         inventory[item.name] = (inventory[item.name] || 0) + item.count;
       });
@@ -52,6 +53,7 @@ export function computeTargetsForCraftVariant(step: ActionStep, bot?: Bot): Craf
         if (!ingredientVariant) continue;
 
         const ingredients = Array.isArray(ingredientVariant.value) ? ingredientVariant.value : [];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
         const hasAllIngredients = ingredients.every((ing: any) => {
           return ing && ing.item && (inventory[ing.item] || 0) >= (ing.perCraftCount || 1);
         });
@@ -119,8 +121,10 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   logger.info(`BehaviorGenerator(craft-variant): deferring variant selection to runtime (${result.variants.length} variants available)`);
 
   if (step.what.variants.some(v => v.value === 'inventory')) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     return createCraftNoTableState(bot as any, targets);
   } else if (step.what.variants.some(v => v.value === 'table')) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     return createCraftWithTableIfNeeded(bot as any, targets);
   }
 

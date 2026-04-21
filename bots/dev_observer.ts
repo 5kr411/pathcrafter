@@ -37,6 +37,7 @@ bot.on('chat', (username: string, message: string) => {
   appendOut(`${new Date().toISOString()} <${username}> ${message}`);
 });
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 bot.on('message', (json: any) => {
   const raw = json.toString?.() || JSON.stringify(json);
   // Only log system/death messages here (chat already logged above)
@@ -52,6 +53,7 @@ function setupPolling(): void {
     try {
       const r = pollChatIn(chatIn, lastSize, (line) => bot.chat(line));
       lastSize = r.lastSize;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       appendOut(`${new Date().toISOString()} [err] poll: ${err.message}`);
     }

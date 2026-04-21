@@ -7,7 +7,9 @@ import { ActionPath, ActionStep } from '../action_tree/types';
  */
 function makeMiningKey(step: ActionStep): string {
   const what = step && step.what ? JSON.stringify(step.what) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
   const target = step && 'targetItem' in step ? JSON.stringify((step as any).targetItem) : null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
   const tool = step && 'tool' in step ? JSON.stringify((step as any).tool) : null;
   return JSON.stringify({ what, target, tool });
 }

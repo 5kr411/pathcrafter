@@ -3,6 +3,7 @@ import * as path from 'path';
 import { WorkerMessage, PendingEntry, Target, Snapshot } from './config';
 import logger from '../../utils/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
 }
@@ -13,6 +14,7 @@ export class WorkerManager {
   private pending = new Map<string, PendingEntry>();
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private onResult: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string, plannerId?: string) => void,
     private onWorkerError: () => void
   ) {}
@@ -46,8 +48,10 @@ export class WorkerManager {
       logDebug(`Collector: processing result for id ${msg.id}, ok=${msg.ok}`);
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : [];
       logDebug(`Collector: received ${ranked.length} ranked paths`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const generatorFailures = Array.isArray((msg as any).generatorFailures) ? (msg as any).generatorFailures : [];
       if (generatorFailures.length > 0) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const summary = generatorFailures.map((f: any) => `${f.generator}:${f.kind}`).join(', ');
         logger.warn(`Collector: planning worker reported ${generatorFailures.length} generator failure(s) for id ${msg.id}: ${summary}`);
       }
@@ -82,12 +86,15 @@ export class WorkerManager {
     pruneWithWorld: boolean,
     combineSimilarNodes: boolean,
     handlerOrOptions?:
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       | ((entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void)
       | {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           handler?: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void;
           frameId?: string;
         }
   ): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     let handler: ((entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void) | undefined;
     let frameId: string | undefined;
 

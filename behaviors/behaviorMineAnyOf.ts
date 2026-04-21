@@ -14,6 +14,7 @@ interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -22,7 +23,9 @@ interface Bot {
   entity?: {
     position: Vec3Like;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   findBlocks?: (options: { matching: any; maxDistance: number; count: number }) => Vec3Like[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -69,6 +72,7 @@ function dist2(a: Vec3Like, b: Vec3Like): number {
   return dx * dx + dy * dy + dz * dz;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createMineAnyOfState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const prepare = new BehaviorIdle();
@@ -145,8 +149,10 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
         mcData && mcData.blocksByName && mcData.blocksByName[blockName]
           ? mcData.blocksByName[blockName].id
           : null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const matcher = id != null ? id : (b: any) => b && b.name === blockName;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const allPositions = await findBlocksNonBlocking(bot as any, {
         matching: matcher,
         maxDistance: radius,
@@ -172,8 +178,10 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     amount: 0,
     executionContext: targets.executionContext
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let collectBehavior: any = null;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     collectBehavior = createCollectBlockState(bot, dynamicTargets as any);
   } catch (_) {
     collectBehavior = null;
@@ -202,6 +210,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     const list = Array.isArray(targets && targets.candidates) ? targets.candidates : [];
     if (list.length === 0) return null;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     let best: any = null;
     let bestNear = Number.POSITIVE_INFINITY;
 
@@ -343,10 +352,14 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       const total = getTotalCollected();
       const breakdown = getCollectionBreakdown();
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const collectedCount = typeof (collectBehavior as any).collectedCount === 'function' 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (collectBehavior as any).collectedCount() 
         : 0;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const failureReason = typeof (collectBehavior as any).getLastFailureReason === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (collectBehavior as any).getLastFailureReason()
         : null;
       if (failureReason === 'not_found' && selection?.chosen?.blockName && collectedCount === 0) {
@@ -369,7 +382,9 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       }
       
       // Reset SafeFindBlock exclusions so the next cycle gets fresh candidates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       if (typeof (collectBehavior as any).clearBlockExclusions === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (collectBehavior as any).clearBlockExclusions();
       }
 
@@ -408,6 +423,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
       try {
         collectBehavior.onStateExited();
         logger.debug('MineAnyOf: cleaned up collectBehavior');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`MineAnyOf: error cleaning up collectBehavior: ${err.message}`);
       }
@@ -416,6 +432,7 @@ function createMineAnyOfState(bot: Bot, targets: Targets): any {
     try {
       bot.clearControlStates();
       logger.debug('MineAnyOf: cleared bot control states');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`MineAnyOf: error clearing control states: ${err.message}`);
     }

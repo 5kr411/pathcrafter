@@ -6,24 +6,31 @@ import { getItemCountInInventory } from '../utils/inventory';
 
 import logger from '../utils/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
   blockName?: string;
   amount?: number;
   itemName?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   item?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createAcquireCraftingTableState(bot: Bot, targets: Targets = {}): any {
   targets.blockName = 'oak_log';
   targets.amount = 1;
   targets.itemName = 'oak_log';
 
   const enter = new BehaviorIdle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const collectLogsIfNeededState = createCollectBlockIfNeededState(bot, targets as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftPlanksIfNeededState = createCraftNoTableIfNeededState(bot, targets as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftCraftingTableIfNeededState = createCraftNoTableIfNeededState(bot, targets as any);
   const exit = new BehaviorIdle();
 
@@ -33,6 +40,7 @@ function createAcquireCraftingTableState(bot: Bot, targets: Targets = {}): any {
     child: exit,
     shouldTransition: () => getItemCountInInventory(bot, 'crafting_table') >= 1,
     onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       targets.item = bot.inventory.items().find((item: any) => item.name === 'crafting_table');
       logger.info('BehaviorAcquireCraftingTable: enter -> exit: Crafting table in inventory');
     }
@@ -128,6 +136,7 @@ function createAcquireCraftingTableState(bot: Bot, targets: Targets = {}): any {
     child: exit,
     shouldTransition: () => craftCraftingTableIfNeededState.isFinished(),
     onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       targets.item = bot.inventory.items().find((item: any) => item.name === 'crafting_table');
       logger.info('BehaviorAcquireCraftingTable: craft crafting table -> exit: Crafted crafting table');
     }

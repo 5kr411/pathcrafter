@@ -7,6 +7,7 @@ import createCraftWithTableState from '../behaviors/behaviorCraftWithTable';
 import createBreakAtPositionState from '../behaviors/behaviorBreakAtPosition';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
@@ -29,17 +30,21 @@ bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
   
   const enter = new BehaviorIdle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const placeTargets: any = { item: { name: 'crafting_table' } };
   const place = createPlaceNearState(bot, placeTargets);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const craftTargets: any = {};
   const craft = createCraftWithTableState(bot, craftTargets);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const breakTargets: any = {};
   const breakBlock = createBreakAtPositionState(bot, breakTargets);
 
   const exit = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const equipTargets: any = {};
   const equip = new BehaviorEquipItem(bot, equipTargets);
 
@@ -51,6 +56,7 @@ bot.once('spawn', () => {
     onTransition: () => {
       if (!craftTargets.itemName) craftTargets.itemName = 'wooden_pickaxe';
       if (!craftTargets.amount) craftTargets.amount = 1;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       const tableItem = bot.inventory.items().find((it: any) => it.name === 'crafting_table');
       if (tableItem) {
         placeTargets.item = tableItem;

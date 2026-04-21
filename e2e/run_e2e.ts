@@ -85,6 +85,7 @@ async function main(): Promise<void> {
       seed: undefined,  // random each run
       difficulty: config.difficulty
     });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     console.error('Server start failed:', err.message);
     process.exit(5);
@@ -97,6 +98,7 @@ async function main(): Promise<void> {
       port: config.port,
       biome: config.biome
     });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     console.error('Spawn setup failed:', err.message);
     stopServer();

@@ -21,6 +21,7 @@ export class GeminiProvider implements LLMProvider {
   async runTurn(params: TurnParams): Promise<TurnResult> {
     const url = `${this.base}/v1beta/models/${this.config.model}:generateContent?key=${this.config.apiKey}`;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const body: any = {
       contents: params.messages.map(m => this.translateMessage(m))
     };
@@ -50,6 +51,7 @@ export class GeminiProvider implements LLMProvider {
           body: JSON.stringify(body),
           signal
         });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
         if (isTimeoutAbort(signal)) {
@@ -69,8 +71,10 @@ export class GeminiProvider implements LLMProvider {
         return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const data: any = await resp.json();
       const candidate = data.candidates?.[0];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const parts: any[] = candidate?.content?.parts ?? [];
 
       let text: string | null = null;
@@ -107,6 +111,7 @@ export class GeminiProvider implements LLMProvider {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   private translateMessage(m: Message): any {
     if (m.role === 'tool') {
       if (typeof m.content === 'string') {
@@ -116,6 +121,7 @@ export class GeminiProvider implements LLMProvider {
         };
       }
       const blocks = m.content as ContentBlock[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const first = blocks.find(b => b.type === 'tool_result') as any;
       return {
         role: 'user',
@@ -133,6 +139,7 @@ export class GeminiProvider implements LLMProvider {
       return { role, parts: [{ text: m.content }] };
     }
     const blocks = m.content as ContentBlock[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const parts: any[] = [];
     for (const b of blocks) {
       if (b.type === 'text') parts.push({ text: b.text });

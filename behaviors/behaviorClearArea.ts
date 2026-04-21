@@ -10,15 +10,18 @@ interface Vec3Like {
   offset: (x: number, y: number, z: number) => Vec3Like;
   clone: () => Vec3Like;
   distanceTo: (other: Vec3Like) => number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
   placePosition?: Vec3Like;
   clearRadiusHorizontal?: number;
   clearRadiusVertical?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -26,10 +29,12 @@ interface BreakTargets {
   position: Vec3Like | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createClearAreaState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const init = new BehaviorIdle();
   const breakTargets: BreakTargets = { position: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const breaker = createBreakAtPositionState(bot, breakTargets as any);
   const exit = new BehaviorIdle();
 
@@ -134,12 +139,14 @@ function createClearAreaState(bot: Bot, targets: Targets): any {
     if (breaker && typeof breaker.onStateExited === 'function') {
       try {
         breaker.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`ClearArea: error cleaning up breaker: ${err.message}`);
       }
     }
     try {
       bot.clearControlStates();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ClearArea: error clearing control states: ${err.message}`);
     }

@@ -13,6 +13,7 @@ import logger from '../utils/logger';
 /**
  * Prints mining path information
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function printMiningPath(sources: any[], depth: number, targetCount: number): void {
   if (sources.length === 0) return;
   logger.info(`${' '.repeat((depth + 1) * 2)}├─ mine (${targetCount}x)`);
@@ -27,8 +28,10 @@ export function printMiningPath(sources: any[], depth: number, targetCount: numb
  * Prints recipe conversion information
  */
 export function printRecipeConversion(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   ingredientCounts: Map<number, number>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   recipe: any,
   itemName: string,
   depth: number
@@ -43,6 +46,7 @@ export function printRecipeConversion(
 /**
  * Prints hunting path information
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function printHuntingPath(sources: any[], depth: number, targetCount: number): void {
   if (sources.length === 0) return;
   logger.info(`${' '.repeat((depth + 1) * 2)}├─ hunt (${targetCount}x)`);
@@ -76,6 +80,7 @@ export function logActionTree(tree: TreeNode | null | undefined, depth: number =
   logActionNode(tree, depth, true);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function formatVariantValues(values: any[], limit: number = 3): string {
   const seen = new Set<string>();
   const names: string[] = [];
@@ -91,12 +96,15 @@ function formatVariantValues(values: any[], limit: number = 3): string {
   return `${names.slice(0, limit).join(', ')}, +${names.length - limit} more`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function formatVariantList(group: any, limit: number = 3): string {
   if (!group || !group.variants || group.variants.length === 0) return '';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const values = group.variants.map((v: any) => v.value);
   return formatVariantValues(values, limit);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function formatVariantDisplay(value: any): string {
   if (!value) return '';
   if (typeof value === 'string') return value;
@@ -110,14 +118,18 @@ function formatVariantDisplay(value: any): string {
   return JSON.stringify(value);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function collectVariantValues(node: any, key: 'what' | 'targetItem', includeNested: boolean = true): any[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const result: any[] = [];
   const seen = new Set<string>();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   function traverse(current: any) {
     if (!current) return;
     const group = current[key];
     if (group && group.variants) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       group.variants.forEach((variant: any) => {
         const serialized = JSON.stringify(variant.value);
         if (!seen.has(serialized)) {
@@ -127,6 +139,7 @@ function collectVariantValues(node: any, key: 'what' | 'targetItem', includeNest
       });
     }
     if (includeNested && current.children && current.children.variants) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       current.children.variants.forEach((child: any) => traverse(child.value));
     }
   }
@@ -135,6 +148,7 @@ function collectVariantValues(node: any, key: 'what' | 'targetItem', includeNest
   return result;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisLevel: boolean): void {
   const indent = ' '.repeat(depth * 2);
   const branch = isLastAtThisLevel ? '└─' : '├─';
@@ -158,6 +172,7 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
 
   if (node.action === 'craft') {
     const craftNode = node as CraftNode;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const op = (craftNode as any).operator === 'AND' ? 'ALL' : 'ANY';
     const where = formatVariantList(craftNode.what, 3);
     console.log(`${indent}${branch} craft in ${where || 'unknown'} (${craftNode.count}x) [${op}]`);
@@ -168,6 +183,7 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
       console.log(`${' '.repeat((depth + 1) * 2)}├─ ${inputs} → ${outputs}`);
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     (craftNode.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === craftNode.children.variants.length - 1));
     return;
   }
@@ -194,6 +210,7 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
     const variantCount = node.what?.variants?.length || 0;
     const mode = variantCount > 1 && node.variantMode ? ` [${node.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF'}]` : '';
     console.log(`${indent}${branch} mine ${label}${suffix}${toolInfo} (${node.count}x)${mode}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }
@@ -204,6 +221,7 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
     const toolInfo = node.tool && node.tool.variants[0].value !== 'any' ? ` (needs ${formatVariantList(node.tool)})` : '';
     const chance = node.dropChance ? ` (${formatVariantList(node.dropChance)})` : '';
     console.log(`${indent}${branch} hunt ${label}${target ? ` for ${target}` : ''}${chance}${toolInfo} (${node.count}x)`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }
@@ -218,6 +236,7 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
       if (inputStr) console.log(`${' '.repeat((depth + 1) * 2)}├─ ${inputStr}`);
       if (resultStr) console.log(`${' '.repeat((depth + 1) * 2)}└─ ${resultStr}`);
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     (node.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === node.children.variants.length - 1));
     return;
   }
@@ -225,8 +244,10 @@ function logActionNode(node: VariantTreeNode | any, depth: number, isLastAtThisL
   if (node.action === 'root') {
     const rootNode = node as RootNode;
     const label = formatVariantList(rootNode.what);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const op = (rootNode as any).operator === 'AND' ? 'ALL' : 'ANY';
     console.log(`${indent}${branch} ${label || '(no variants)'} (want ${rootNode.count}) [${op}]`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     (rootNode.children.variants || []).forEach((child: any, idx: number) => logActionNode(child.value, depth + 1, idx === (rootNode.children.variants.length - 1)));
     return;
   }

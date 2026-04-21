@@ -17,6 +17,7 @@ function getStepOutputs(step: ActionStep): Map<string, number> {
   if (step.action === 'craft') {
     const variants = step.result?.variants || [];
     for (const variant of variants) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
       const value: any = variant?.value;
       const item = typeof value === 'object' && value ? value.item : (typeof value === 'string' ? value : undefined);
       const perStepCount = typeof value === 'object' && value ? (value.perCraftCount || 1) : 1;
@@ -29,6 +30,7 @@ function getStepOutputs(step: ActionStep): Map<string, number> {
   if (step.action === 'smelt') {
     const variants = step.result?.variants || [];
     for (const variant of variants) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
       const value: any = variant?.value;
       const item = typeof value === 'object' && value ? value.item : (typeof value === 'string' ? value : undefined);
       const perStepCount = typeof value === 'object' && value ? (value.perSmelt || 1) : 1;
@@ -39,8 +41,10 @@ function getStepOutputs(step: ActionStep): Map<string, number> {
   }
 
   if (step.action === 'mine' || step.action === 'hunt') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
     const targetItems = (step as any).targetItem?.variants || [];
     for (const variant of targetItems) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
       const value: any = variant?.value;
       const item = typeof value === 'object' && value ? value.item : (typeof value === 'string' ? value : undefined);
       if (item) {
@@ -51,6 +55,7 @@ function getStepOutputs(step: ActionStep): Map<string, number> {
     if (outputs.size === 0) {
       const whatVariants = step.what?.variants || [];
       for (const variant of whatVariants) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
         const value: any = variant?.value;
         const item = typeof value === 'string' ? value : (typeof value === 'object' && value ? value.item : undefined);
         if (item) {
@@ -99,6 +104,7 @@ function addInputsToDemand(step: ActionStep, demand: Map<string, number>, stepCo
     const inputVariants = step.input?.variants || [];
     const maxPerSmeltByItem = new Map<string, number>();
     for (const variant of inputVariants) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
       const value: any = variant?.value;
       if (value && typeof value === 'object' && 'item' in value) {
         const perSmelt = value.perSmelt || 1;
@@ -124,6 +130,7 @@ function addInputsToDemand(step: ActionStep, demand: Map<string, number>, stepCo
   }
   
   if (step.action === 'mine' || step.action === 'hunt') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
     const tool = (step as any).tool?.variants?.[0]?.value;
     if (tool && typeof tool === 'string') {
       demand.set(tool, Math.max((demand.get(tool) || 0), 1));

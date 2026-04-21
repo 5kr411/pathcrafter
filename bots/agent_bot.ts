@@ -42,8 +42,10 @@ if (!process.env.LOG_LEVEL) {
 }
 
 const cfg = parseAgentBotArgs(process.argv.slice(2));
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 const botOptions: any = { host: cfg.host, port: cfg.port, username: cfg.username };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 const bot: any = mineflayer.createBot(botOptions);
 // mineflayer-pathfinder leaks digging listeners on resetPath — raise limit to avoid noisy warnings
 bot.setMaxListeners(25);
@@ -91,6 +93,7 @@ bot.once('spawn', () => {
   }
 
   const safeChat = createRateLimitedChat(bot);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   (bot as any).safeChat = safeChat;
 
   bot.on('kicked', (reason: string, loggedIn: boolean) => {
@@ -104,6 +107,7 @@ bot.once('spawn', () => {
     const serializerWritable = !!bot._client?.serializer?.writable;
     logger.info(`AgentBot: connection ended reason=${JSON.stringify(endReason)} ended=${ended} state=${state} sockWritable=${socketWritable} serWritable=${serializerWritable}`);
   });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   bot.on('error', (err: any) => {
     const code = err && err.code ? err.code : '';
     const msg = err && err.message ? err.message : String(err);
@@ -114,6 +118,7 @@ bot.once('spawn', () => {
   // Surface low-level client errors separately — these are normally only routed through bot.on('error')
   // which mineflayer-loader installs, but catching at the client level gives us earlier signal.
   if (bot._client && typeof bot._client.on === 'function') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
     bot._client.on('error', (err: any) => {
       const code = err && err.code ? err.code : '';
       const msg = err && err.message ? err.message : String(err);
@@ -126,6 +131,7 @@ bot.once('spawn', () => {
   if (bot._client && typeof bot._client.end === 'function' && !bot._client._endWrapped) {
     const origEnd = bot._client.end.bind(bot._client);
     bot._client._endWrapped = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
     bot._client.end = function(reason?: any, ...rest: any[]) {
       const stack = new Error().stack?.split('\n').slice(1, 6).join(' | ');
       logger.info(`AgentBot: _client.end called reason=${JSON.stringify(reason)} stack=${stack}`);
@@ -135,11 +141,13 @@ bot.once('spawn', () => {
 
   // Node-level uncaught rejection / exception — if anything in our pipeline throws asynchronously
   // and isn't caught, this is where it'll show up.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   process.on('unhandledRejection', (reason: any) => {
     const msg = reason && reason.message ? reason.message : String(reason);
     const stack = reason && reason.stack ? reason.stack.split('\n').slice(0, 6).join(' | ') : '';
     logger.info(`AgentBot: unhandledRejection msg=${msg} stack=${stack}`);
   });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   process.on('uncaughtException', (err: any) => {
     const msg = err && err.message ? err.message : String(err);
     const stack = err && err.stack ? err.stack.split('\n').slice(0, 6).join(' | ') : '';
@@ -176,6 +184,7 @@ bot.once('spawn', () => {
 
   // Attach the inventory-management handle to the bot so utility call
   // sites (e.g. ensureInventoryRoom) can reach it without a module import.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   (bot as any).__reactiveBehaviors = { inventoryManagement };
 
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
@@ -234,6 +243,7 @@ bot.once('spawn', () => {
 
   let lastDeathMessage: string | null = null;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   bot.on('message', (jsonMsg: any) => {
     const text = jsonMsg.toString?.() || '';
     if (text.includes(bot.username)) {

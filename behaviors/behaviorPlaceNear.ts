@@ -21,6 +21,7 @@ interface Vec3Like {
   offset: (x: number, y: number, z: number) => Vec3Like;
   floored: () => Vec3Like;
   distanceTo: (other: Vec3Like) => number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -29,12 +30,15 @@ interface Block {
   type: number;
   boundingBox?: string;
   position: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   item?: any;
   placePosition?: Vec3Like;
   position?: Vec3Like;
@@ -44,9 +48,11 @@ interface Targets {
   referenceBlock?: Block;
   clearRadiusHorizontal?: number;
   clearRadiusVertical?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createInnerPlaceState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const moveToPlaceCoords = new BehaviorSmartMoveTo(bot, targets);
@@ -83,6 +89,7 @@ function createInnerPlaceState(bot: Bot, targets: Targets): any {
       await bot.lookAt(topFace, true);
       logger.info(`BehaviorPlaceNear: placing ${need?.name} on ${block.name} at (${block.position.x},${block.position.y},${block.position.z})`);
       await bot.placeBlock(block, targets.blockFace);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.warn(`BehaviorPlaceNear: placeBlock error: ${err.message || err}`);
     }
@@ -296,6 +303,7 @@ function createInnerPlaceState(bot: Bot, targets: Targets): any {
     if (moveToPlaceCoords && typeof moveToPlaceCoords.onStateExited === 'function') {
       try {
         moveToPlaceCoords.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`PlaceNear: error cleaning up moveToPlaceCoords: ${err.message}`);
       }
@@ -303,6 +311,7 @@ function createInnerPlaceState(bot: Bot, targets: Targets): any {
 
     try {
       bot.clearControlStates();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`PlaceNear: error clearing control states: ${err.message}`);
     }
@@ -315,6 +324,7 @@ const MAX_WANDER_RETRIES = 5;
 const MAX_CLEAR_RETRIES = 5;
 const BASE_WANDER_DISTANCE = 4;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createPlaceNearState(bot: Bot, targets: Targets): any {
   const outerEnter = new BehaviorIdle();
   const outerExit = new BehaviorIdle();
@@ -327,6 +337,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
   const microWander = new BehaviorWander(bot, BASE_WANDER_DISTANCE);
 
   const clearTargets: Targets = { placePosition: undefined, clearRadiusHorizontal: 1, clearRadiusVertical: 2 };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const clearArea = createClearAreaState(bot, clearTargets as any);
 
   addStateLogging(microWander, 'MicroWander', {
@@ -487,6 +498,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     if (innerPlace && typeof innerPlace.onStateExited === 'function') {
       try {
         innerPlace.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`PlaceNear(outer): error cleaning up innerPlace: ${err.message}`);
       }
@@ -495,6 +507,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     if (microWander && typeof microWander.onStateExited === 'function') {
       try {
         microWander.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`PlaceNear(outer): error cleaning up microWander: ${err.message}`);
       }
@@ -503,6 +516,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
     if (clearArea && typeof clearArea.onStateExited === 'function') {
       try {
         clearArea.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`PlaceNear(outer): error cleaning up clearArea: ${err.message}`);
       }
@@ -510,6 +524,7 @@ function createPlaceNearState(bot: Bot, targets: Targets): any {
 
     try {
       bot.clearControlStates();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`PlaceNear(outer): error clearing control states: ${err.message}`);
     }

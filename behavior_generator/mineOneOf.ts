@@ -25,6 +25,7 @@ function canHandle(step: ActionStep | null | undefined): boolean {
   }
   
   // Handle legacy meta-based approach for backward compatibility
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   const meta = (step as any).meta;
   return !!(meta && Array.isArray(meta.oneOfCandidates) && meta.oneOfCandidates.length > 0);
 }
@@ -60,14 +61,17 @@ function computeTargetsForMineOneOf(step: ActionStep): Targets | null {
     const itemName = step.targetItem ? 
       (step.targetItem.variants ? step.targetItem.variants[0].value : step.targetItem) : 
       (step.what.variants ? step.what.variants[0].value : step.what);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     const rawCandidates = (step as any).meta?.oneOfCandidates || [];
     candidates = rawCandidates
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       .map((c: any) => {
         if (!c) return null;
         const blockName = c.blockName || c.what || c.block;
         if (!blockName) return null;
         return { blockName, itemName: itemName || blockName, amount };
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       .filter((c: any): c is Candidate => c !== null);
   }
   

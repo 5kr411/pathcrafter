@@ -44,11 +44,13 @@ export function computeTargetsForHunt(step: ActionStep): HuntTargets | null {
   const entityName = entityVariants[0].value;
   const amount = Number(step.count || 1);
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   const targetItemVariants = (step as any).targetItem?.variants;
   const targetItem = targetItemVariants && targetItemVariants.length > 0 
     ? targetItemVariants[0].value 
     : entityName;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   const dropChanceVariants = (step as any).dropChance?.variants;
   const dropChance = dropChanceVariants && dropChanceVariants.length > 0
     ? dropChanceVariants[0].value
@@ -74,8 +76,10 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   const t = computeTargetsForHunt(step);
   if (!t) return null;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   const targets: any = {
     entity: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     entityFilter: (entity: any) => {
       if (!entity || !entity.name) return false;
       const name = (entity.name || '').toLowerCase();
@@ -90,6 +94,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
 
   try {
     logger.info(`BehaviorGenerator(hunt): targets -> entity=${t.entityName}, targetItem=${t.targetItem}, amount=${t.amount}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     return createHuntEntityState(bot as any, targets);
   } catch (err) {
     logger.error('BehaviorGenerator(hunt): falling back to no-op behavior', err);

@@ -16,6 +16,7 @@ export function canHandle(step: ActionStep | null | undefined): boolean {
   return !!step && 
          step.action === 'mine' && 
          step.what.variants.length === 1 && 
+         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
          (!('operator' in step) || !('children' in step) || !(step as any).children || (step as any).children.length === 0);
 }
 
@@ -62,6 +63,7 @@ export function create(bot: Bot, step: ActionStep, executionContext?: ExecutionC
 
   try {
     logger.info(`BehaviorGenerator(mine): targets -> block=${targets.blockName}, item=${targets.itemName}, amount=${targets.amount}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     return createCollectBlockState(bot as any, targets as any);
   } catch (err) {
     logger.error('BehaviorGenerator(mine): falling back to no-op behavior in test context', err);

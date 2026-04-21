@@ -8,7 +8,9 @@ const HOSTILE_NAMES = new Set([
   'piglin', 'piglin_brute', 'zoglin', 'evoker', 'ravager', 'warden'
 ]);
 
-export const getEntitiesTool: ToolImpl = {
+type GetEntitiesInput = { radius?: number };
+
+export const getEntitiesTool: ToolImpl<GetEntitiesInput> = {
   schema: {
     name: 'get_entities',
     description: 'List entities within a radius of the bot. Returns id, name, type, position, distance, and isHostile/isPlayer flags.',
@@ -21,7 +23,7 @@ export const getEntitiesTool: ToolImpl = {
     }
   },
   async execute(input, ctx) {
-    const radius = typeof (input as any)?.radius === 'number' ? (input as any).radius : 32;
+    const radius = typeof input?.radius === 'number' ? input.radius : 32;
     const self = ctx.bot?.entity?.position;
     if (!self) return { ok: false, error: 'bot position unavailable' };
     const entities = ctx.bot?.entities;
@@ -29,6 +31,7 @@ export const getEntitiesTool: ToolImpl = {
       return { ok: true, data: { entities: [] } };
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     const results: any[] = [];
     for (const key of Object.keys(entities)) {
       const e = entities[key];
@@ -44,6 +47,7 @@ export const getEntitiesTool: ToolImpl = {
       const name: string | undefined = isPlayer ? (e.username ?? e.name) : e.name;
       const isHostile = typeof name === 'string' && HOSTILE_NAMES.has(name);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
       const entry: any = {
         id: e.id,
         name,

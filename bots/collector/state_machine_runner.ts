@@ -9,6 +9,7 @@ export class StateMachineRunner {
 
   constructor(
     private readonly bot: Bot,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly rootStateMachine: any
   ) {
     const tracked = createTrackedBotStateMachine(this.bot, this.rootStateMachine);
@@ -30,6 +31,7 @@ export class StateMachineRunner {
     if (this.entered && this.rootStateMachine && typeof this.rootStateMachine.onStateExited === 'function') {
       try {
         this.rootStateMachine.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`StateMachineRunner: error during root exit - ${err?.message || err}`);
       }
@@ -41,6 +43,7 @@ export class StateMachineRunner {
     if (!this.entered && this.rootStateMachine && typeof this.rootStateMachine.onStateEntered === 'function') {
       try {
         this.rootStateMachine.onStateEntered();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`StateMachineRunner: error during root enter - ${err?.message || err}`);
       }
@@ -48,10 +51,14 @@ export class StateMachineRunner {
     }
 
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       if (typeof (this.bot as any).on === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).on('physicTick', this.listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).on('physicsTick', this.listener);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`StateMachineRunner: error attaching listener - ${err?.message || err}`);
     }
@@ -59,13 +66,20 @@ export class StateMachineRunner {
 
   private detach(): void {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       if (typeof (this.bot as any).off === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).off('physicTick', this.listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).off('physicsTick', this.listener);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       } else if (typeof (this.bot as any).removeListener === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).removeListener('physicTick', this.listener);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).removeListener('physicsTick', this.listener);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`StateMachineRunner: error detaching listener - ${err?.message || err}`);
     }

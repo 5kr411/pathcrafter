@@ -47,6 +47,7 @@ export interface PlanOptions {
   /**
    * Additional configuration options
    */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- planner plugin-data untyped
   config?: any;
 }
 
@@ -57,6 +58,7 @@ export interface PlanOptions {
  * - A minecraft-data instance
  * - An object with a version property
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- planner plugin-data untyped
 export type PlanContext = string | MinecraftData | { version: string } | any;
 
 /**
@@ -237,6 +239,7 @@ const _internals = {
 };
 
 // Attach _internals to the plan function for backward compatibility
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- planner plugin-data untyped
 (plan as any)._internals = _internals;
 
 // Export as both named and default

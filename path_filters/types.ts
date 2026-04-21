@@ -58,6 +58,7 @@ export interface ResourceShortfall {
  * Options for filtering operations
  */
 export interface FilterOptions {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
   [key: string]: any;
 }
 
@@ -71,6 +72,7 @@ export interface GenerateAndFilterOptions {
   log?: boolean;
   pruneWithWorld?: boolean;
   combineSimilarNodes?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
   config?: any;
 }
 

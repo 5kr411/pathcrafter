@@ -18,10 +18,12 @@ const MAX_CONSECUTIVE_UPDATE_ERRORS = 10;
  */
 export interface AgentAction {
   name: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   start(bot: any): void;
   update(): void;
   stop(): void;
   isFinished(): boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   result(): any; // ToolResult-shaped
 }
 
@@ -30,19 +32,20 @@ export class AgentActionExecutor implements StateBehavior {
   public active = false;
 
   private current: AgentAction | null = null;
-  private currentResolve: ((r: any) => void) | null = null;
+  private currentResolve: ((r: unknown) => void) | null = null;
   private currentSignal: AbortSignal | null = null;
   private abortListener: (() => void) | null = null;
   private cancelled = false;
   private consecutiveUpdateErrors = 0;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   constructor(private readonly bot: any) {}
 
   hasWork(): boolean {
     return this.current !== null;
   }
 
-  run(action: AgentAction, signal: AbortSignal): Promise<any> {
+  run(action: AgentAction, signal: AbortSignal): Promise<unknown> {
     if (this.current) throw new Error('AgentActionExecutor already running an action');
     this.current = action;
     this.currentSignal = signal;
@@ -81,6 +84,7 @@ export class AgentActionExecutor implements StateBehavior {
     try {
       this.current.update();
       this.consecutiveUpdateErrors = 0;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       this.consecutiveUpdateErrors++;
       try {
@@ -115,7 +119,7 @@ export class AgentActionExecutor implements StateBehavior {
     }
   }
 
-  private resolveWith(result: any): void {
+  private resolveWith(result: unknown): void {
     const resolve = this.currentResolve;
     if (this.currentSignal && this.abortListener) {
       try { this.currentSignal.removeEventListener('abort', this.abortListener); } catch (_) {}

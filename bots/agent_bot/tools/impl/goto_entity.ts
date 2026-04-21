@@ -1,5 +1,11 @@
-import type { ToolImpl } from '../types';
+import type { ToolImpl, ToolResult } from '../types';
 import type { AgentAction } from '../../action_executor';
+
+type GotoEntityInput = {
+  entityId: number;
+  timeout?: number;
+  followDistance?: number;
+};
 
 /**
  * Follow a specific entity by id using `GoalFollow`. Re-resolves the entity
@@ -7,7 +13,7 @@ import type { AgentAction } from '../../action_executor';
  * single frame — but if the entity disappears and stays gone, we surface
  * `entity lost`.
  */
-export const gotoEntityTool: ToolImpl = {
+export const gotoEntityTool: ToolImpl<GotoEntityInput> = {
   schema: {
     name: 'goto_entity',
     description: 'Walk near a tracked entity by id. Blocks until within followDistance, timeout, entity lost, or cancellation.',
@@ -22,7 +28,7 @@ export const gotoEntityTool: ToolImpl = {
     }
   },
   async execute(input, ctx) {
-    const { entityId, timeout = 120, followDistance = 2 } = input as any;
+    const { entityId, timeout = 120, followDistance = 2 } = input ?? ({} as GotoEntityInput);
     if (typeof entityId !== 'number') {
       return { ok: false, error: 'entityId must be a number' };
     }
@@ -32,6 +38,7 @@ export const gotoEntityTool: ToolImpl = {
     let missingSince = 0;
     const MISSING_GRACE_MS = 1500;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     const resolveEntity = (): any | null => {
       const e = ctx.bot?.entities?.[entityId];
       return e || null;
@@ -94,6 +101,6 @@ export const gotoEntityTool: ToolImpl = {
       }
     };
 
-    return ctx.agentActionExecutor.run(action, ctx.signal);
+    return (await ctx.agentActionExecutor.run(action, ctx.signal)) as ToolResult;
   }
 };

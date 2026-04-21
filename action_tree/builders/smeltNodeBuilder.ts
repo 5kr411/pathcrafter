@@ -27,8 +27,10 @@ export function buildSmeltNodes(
   primaryItem: string,
   smeltInputs: string[],
   targetCount: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   root: any,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {

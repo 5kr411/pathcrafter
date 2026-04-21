@@ -11,8 +11,11 @@ import { createMakeStream } from './streamFactory';
  * Options for creating an enumerator context
  */
 export interface EnumeratorOptions {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   inventory?: Record<string, any> | Map<string, number> | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   worldSnapshot?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   [key: string]: any;
 }
 
@@ -20,6 +23,7 @@ export interface EnumeratorOptions {
  * Enumerator context providing utilities for path generation
  */
 export interface EnumeratorContext {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   invObj: Record<string, any> | null;
   initialSupply: Map<string, number>;
   isPersistentItemName: (name: string) => boolean;
@@ -48,11 +52,13 @@ export function createEnumeratorContext(
   options: EnumeratorOptions = {}
 ): EnumeratorContext {
   const invSource = options?.inventory;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   let invObj: Record<string, any> | null = null;
 
   if (invSource instanceof Map) {
     invObj = Object.fromEntries(invSource.entries());
   } else if (invSource && typeof invSource === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     invObj = invSource as Record<string, any>;
   }
 

@@ -124,6 +124,7 @@ import { SECONDARY_BLOCK_TO_ITEMS } from '../utils/sourceLookup';
  * Determines which target items can be obtained from available blocks
  */
 export function determineTargetItemsFromBlocks(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   blocks: string[],
   possibleTargets: string[]
@@ -142,8 +143,11 @@ export function determineTargetItemsFromBlocks(
     }
     
     // Check standard drops from minecraft-data
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     if (block && (block as any).drops) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       (block as any).drops.forEach((dropId: number) => {
         const itemName = mcData.items[dropId]?.name;
         if (itemName && possibleTargets.includes(itemName)) {
@@ -160,6 +164,7 @@ export function determineTargetItemsFromBlocks(
  * Determines which target items can be obtained from available mobs
  */
 export function determineTargetItemsFromMobs(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   mobs: string[],
   possibleTargets: string[]
@@ -167,8 +172,10 @@ export function determineTargetItemsFromMobs(
   const filteredTargetItems = new Set<string>();
   
   for (const mobName of mobs) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     Object.entries(mcData.entityLoot || {}).forEach(([_entityId, lootTable]: [string, any]) => {
       if (lootTable && lootTable.entity === mobName && lootTable.drops) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         lootTable.drops.forEach((drop: any) => {
           const dropItemName = drop.item?.toLowerCase().replace(' ', '_');
           if (dropItemName && possibleTargets.includes(dropItemName)) {

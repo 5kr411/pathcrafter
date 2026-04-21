@@ -64,7 +64,7 @@ describe('search_items', () => {
 
   it('errors without query', async () => {
     const bot: any = mkMc();
-    const r = await searchItemsTool.execute({}, mkCtx(bot) as any);
+    const r = await searchItemsTool.execute({} as any, mkCtx(bot) as any);
     expect(r.ok).toBe(false);
   });
 });

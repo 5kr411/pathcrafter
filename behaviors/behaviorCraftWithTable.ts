@@ -10,11 +10,13 @@ import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 import { BehaviorSmartMoveTo } from './behaviorSmartMoveTo';
 import { BehaviorWander } from './behaviorWander';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
   itemName?: string;
   amount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -23,15 +25,18 @@ interface MinecraftData {
   items: Record<number, { name: string }>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   const mcData: MinecraftData = minecraftData(bot.version);
 
   function getInventorySummary(): string {
     const items = bot.inventory?.items?.() || [];
     if (items.length === 0) return 'empty';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     return items.map((it: any) => `${it.name}:${it.count}`).join(', ');
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftItemWithTable = async (itemName: string, additionalNeeded: number, craftingTable: any): Promise<boolean> => {
     const item = mcData.itemsByName[itemName];
     if (!item) {
@@ -51,7 +56,9 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     const targetCount = startingCount + additionalNeeded;
 
     const hasIngredients = recipe.delta
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       .filter((item: any) => item.count < 0)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       .every((item: any) => {
         const requiredCount = Math.abs(item.count);
         const availableCount = getItemCountInInventory(bot, mcData.items[item.id].name);
@@ -84,6 +91,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const placeTargets: { item: any; placedPosition?: any; placedConfirmed?: boolean } = {
     item: null,
     placedPosition: undefined,
@@ -93,17 +101,21 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
 
   const waitForCraft = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const breakTargets: { position: any } = { position: null };
   const breakTable = createBreakAtPositionState(bot, breakTargets);
 
   const waitForPickup = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const dropTargets: { entity: any } = { entity: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) =>
     e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'crafting_table'
   );
   const followDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const walkBackTargets: { position: any } = { position: null };
   const walkBack = new BehaviorSmartMoveTo(bot, walkBackTargets);
   walkBack.distance = 1;
@@ -137,6 +149,7 @@ const createCraftWithTableState = (bot: Bot, targets: Targets): any => {
     name: 'CraftWithTable: enter -> place',
     shouldTransition: () => !!targets.itemName && targets.amount != null,
     onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       placeTargets.item = bot.inventory.items().find((i: any) => i?.name === 'crafting_table') || null;
       placeTargets.placedPosition = undefined;
       placeTargets.placedConfirmed = false;

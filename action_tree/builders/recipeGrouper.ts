@@ -66,6 +66,7 @@ export function groupRecipesByCanonicalKey(
  */
 export function groupRecipesBySuffix(
   recipes: RecipeEntry[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any
 ): Map<string, RecipeEntry[]> {
   const recipeBySuffix = new Map<string, RecipeEntry[]>();
@@ -89,6 +90,7 @@ export function groupRecipesBySuffix(
  * to identify alternative recipes. Uses normalized suffixes for wood-related
  * items to enable aggressive grouping across log/wood/stem/hyphae.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function getIngredientSuffixKey(recipe: MinecraftRecipe, mcData: any): string {
   const ingredientCounts = getIngredientCounts(recipe);
   const ingredientNames = Array.from(ingredientCounts.keys())
@@ -111,6 +113,7 @@ export function getIngredientSuffixKey(recipe: MinecraftRecipe, mcData: any): st
  */
 export function collectRecipesForVariants(
   variantsToUse: string[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any
 ): RecipeEntry[] {
   const allRecipes: RecipeEntry[] = [];

@@ -15,7 +15,9 @@ const CREEPER_FLEE_WANDER_DISTANCE = 24;
 const MAX_SHIELD_CYCLES = 5;
 
 export interface ShieldDefenseStateConfig {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   targets: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   reacquireThreat: () => any | null;
   holdDurationMs?: number;
   shouldContinue: () => boolean;
@@ -28,19 +30,24 @@ class ShieldHoldState implements StateBehavior {
   private finished = false;
   private holdTimer: NodeJS.Timeout | null = null;
   private monitorInterval: NodeJS.Timeout | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private pendingThreat: any = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private currentThreat: any = null;
   private offHandSlot: number | null = null;
   private lastShieldDamage: number | null = null;
   private lastShieldItemType: number | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private swingArmListener: ((entity: any) => void) | null = null;
   private shieldStartTime: number = 0;
   private _creeperTimedOut: boolean = false;
   private static readonly MAX_SHIELD_DURATION_MS = 15_000;
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly bot: any,
     private readonly holdDurationMs: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly reacquireThreat: () => any | null,
     private readonly shouldContinue: () => boolean
   ) {}
@@ -57,6 +64,7 @@ class ShieldHoldState implements StateBehavior {
       if (typeof this.bot?.activateItem === 'function') {
         this.bot.activateItem(true);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: failed to raise shield - ${err?.message || err}`);
     }
@@ -71,6 +79,7 @@ class ShieldHoldState implements StateBehavior {
     try {
       const threat = this.reacquireThreat();
       this.updateThreat(threat);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: error while acquiring initial threat - ${err?.message || err}`);
     }
@@ -78,6 +87,7 @@ class ShieldHoldState implements StateBehavior {
     this.startMonitoring();
     this.startHoldTimer();
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     this.swingArmListener = (entity: any) => {
       if (!this.active || this.finished) return;
       if (!this.currentThreat) return;
@@ -105,14 +115,17 @@ class ShieldHoldState implements StateBehavior {
     return this._creeperTimedOut;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   getCurrentThreat(): any | null {
     return this.currentThreat;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   getNextThreat(): any | null {
     return this.pendingThreat;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   consumeNextThreat(): any | null {
     const threat = this.pendingThreat;
     this.pendingThreat = null;
@@ -143,12 +156,14 @@ class ShieldHoldState implements StateBehavior {
       if (typeof this.bot?.deactivateItem === 'function') {
         this.bot.deactivateItem();
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: failed to lower shield - ${err?.message || err}`);
     }
 
     try {
       this.bot.clearControlStates?.();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: error clearing control states - ${err?.message || err}`);
     }
@@ -177,6 +192,7 @@ class ShieldHoldState implements StateBehavior {
       try {
         const threat = this.reacquireThreat();
         this.updateThreat(threat);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error while acquiring threat in timeout - ${err?.message || err}`);
       }
@@ -221,9 +237,11 @@ class ShieldHoldState implements StateBehavior {
 
     this.monitorInterval = setInterval(() => {
       // Threat reacquisition
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       let threat: any = null;
       try {
         threat = this.reacquireThreat();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error while acquiring threat - ${err?.message || err}`);
       }
@@ -276,6 +294,7 @@ class ShieldHoldState implements StateBehavior {
     }, 50);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private updateThreat(threat: any): void {
     this.currentThreat = threat || null;
     if (threat) {
@@ -289,6 +308,7 @@ class ShieldHoldState implements StateBehavior {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private lookAtThreatSmooth(threat: any): void {
     if (!threat?.position || typeof this.bot?.lookAt !== 'function') {
       return;
@@ -302,6 +322,7 @@ class ShieldHoldState implements StateBehavior {
         threat.position.z
       );
       this.bot.lookAt(centerPos, true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: failed to look at threat - ${err?.message || err}`);
     }
@@ -310,12 +331,14 @@ class ShieldHoldState implements StateBehavior {
   private evaluateShouldContinue(): boolean {
     try {
       return this.shouldContinue();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: error evaluating continuation - ${err?.message || err}`);
       return false;
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private finishWithThreat(threat: any): void {
     if (this.finished) {
       return;
@@ -325,6 +348,7 @@ class ShieldHoldState implements StateBehavior {
     this.clearTimers();
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private isCreeper(entity: any): boolean {
     if (!entity) {
       return false;
@@ -333,6 +357,7 @@ class ShieldHoldState implements StateBehavior {
     return name === 'creeper';
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private isShieldItem(item: any): boolean {
     if (!item) {
       return false;
@@ -341,6 +366,7 @@ class ShieldHoldState implements StateBehavior {
     return name === 'shield';
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private getShieldDamage(item: any): number | null {
     if (!this.isShieldItem(item)) {
       return null;
@@ -353,6 +379,7 @@ class ShieldHoldState implements StateBehavior {
     }
     if (item.nbt && typeof item.nbt === 'object') {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const damage = (item.nbt?.value?.Damage as any)?.value;
         if (typeof damage === 'number') {
           return damage;
@@ -363,10 +390,12 @@ class ShieldHoldState implements StateBehavior {
     return null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private getItemInSlot(slot: number | null): any {
     if (slot == null) {
       return null;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const inventory: any = this.bot?.inventory;
     if (!inventory || !Array.isArray(inventory.slots)) {
       return null;
@@ -382,6 +411,7 @@ class ShieldHoldState implements StateBehavior {
           return slot;
         }
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: unable to resolve off-hand slot - ${err?.message || err}`);
     }
@@ -390,6 +420,7 @@ class ShieldHoldState implements StateBehavior {
 
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function createShieldDefenseState(bot: any, config: ShieldDefenseStateConfig): any {
   const holdDuration = Math.max(250, config.holdDurationMs ?? 5000);
   const shieldHold = new ShieldHoldState(bot, holdDuration, config.reacquireThreat, config.shouldContinue);
@@ -417,6 +448,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     if (typeof config.onFinished === 'function') {
       try {
         config.onFinished(success);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error notifying finish - ${err?.message || err}`);
       }
@@ -454,6 +486,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
           shieldHold.consumeNextThreat();
           return false;
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error checking shouldContinue in transition - ${err?.message || err}`);
         shieldHold.consumeNextThreat();
@@ -534,6 +567,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
             logger.info('ShieldDefense: shieldToExit firing - conditions no longer met');
             return true;
           }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.debug(`ShieldDefense: error checking shouldContinue after shield - ${err?.message || err}`);
         }
@@ -568,6 +602,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
           logger.debug('ShieldDefense: attack finished but conditions no longer met, not cycling back to shield');
           return false;
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error checking shouldContinue after attack - ${err?.message || err}`);
         return false;
@@ -601,6 +636,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
           logger.info('ShieldDefense: conditions no longer met after attack, exiting');
           return true;
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error checking shouldContinue during attack - ${err?.message || err}`);
       }
@@ -638,6 +674,7 @@ export function createShieldDefenseState(bot: any, config: ShieldDefenseStateCon
     if (typeof originalOnStateExited === 'function') {
       try {
         return originalOnStateExited.call(this);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ShieldDefense: error in original onStateExited - ${err?.message || err}`);
       }

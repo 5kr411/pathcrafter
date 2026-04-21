@@ -11,6 +11,7 @@ async function run(): Promise<void> {
   let config: AgentConfig;
   try {
     config = parseAgentConfig();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.error('Failed to parse agent config:', err.message);
     process.exit(4);

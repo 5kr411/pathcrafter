@@ -41,7 +41,9 @@ function parseToolName(name: string): ParsedTool | null {
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function remainingRatio(bot: Bot, item: any): number | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const registryItems = (bot as any)?.registry?.items ?? {};
   const registryEntry = registryItems[item.type];
   const maxCandidate = registryEntry?.maxDurability ?? item.maxDurability;
@@ -151,6 +153,7 @@ class DispatchState implements StateBehavior {
     // to stamp a failure cooldown when replacement fails.
     this.executor.executeReplacement(this.toolName).then(
       (ok) => this.onOutcome(!!ok),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (err: any) => {
         logger.debug(`ToolReplacement: dispatch rejected — ${err?.message || err}`);
         this.onOutcome(false);
@@ -235,6 +238,7 @@ export function createToolReplacementBehavior(deps: ToolReplacementBehaviorDeps)
       const tool = pendingTarget;
       pendingTarget = null;
       const safeChat: ((msg: string) => void) | null =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
       const onOutcome = (success: boolean) => {
         if (!success) {

@@ -15,21 +15,15 @@ import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
 import { hasEqualOrBetterTool } from '../utils/items';
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import type { Bot } from '../behavior_generator/types';
 import { plan as planner, _internals as plannerInternals } from '../planner';
 import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
 
 const minecraftData = require('minecraft-data');
 
-interface Bot {
-  version?: string;
-  entity?: { position: any };
-  inventory?: any;
-  clearControlStates?: () => void;
-  [key: string]: any;
-}
-
 interface CollectBerriesTargets {
   targetBerryCount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   worldSnapshot?: any;
   snapshotRadii?: number[];
   requireIronForGlow?: boolean;
@@ -52,9 +46,12 @@ function hasIronPickaxeOrBetter(bot: Bot): boolean {
 /**
  * Creates a state machine for collecting berries
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): any {
   let phase: Phase = 'init';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let currentPath: any[] | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let pathStateMachine: any = null;
   let selectedItem: string | null = null;
   let startCounts: Record<string, number> = {};
@@ -75,6 +72,7 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
     return current - initial;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function tryPlanWithSnapshot(snapshot: any, itemName: string): Promise<any[] | null> {
     try {
       const inventory = getInventoryObject(bot);
@@ -102,6 +100,7 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
       }
 
       return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`CollectBerries: planning error - ${err?.message || err}`);
       return null;
@@ -140,7 +139,8 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
       for (const radius of radii) {
         logger.debug(`CollectBerries: trying snapshot at radius ${radius} for ${itemName}`);
         try {
-          const result = await captureAdaptiveSnapshot(bot, {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+          const result = await captureAdaptiveSnapshot(bot as any, {
             radii: [radius],
             onProgress: (msg: string) => logger.debug(`CollectBerries: ${msg}`)
           });
@@ -153,6 +153,7 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
               return;
             }
           }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.debug(`CollectBerries: snapshot at radius ${radius} failed - ${err?.message || err}`);
         }
@@ -236,8 +237,10 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
   stateMachine.stateName = 'CollectBerries';
 
   // Handle planning state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const planningAsAny = planning as any;
   const originalPlanningEntered = planningAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   planningAsAny.onStateEntered = async function(this: any) {
     if (originalPlanningEntered) originalPlanningEntered.call(this);
 
@@ -262,8 +265,10 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
   };
 
   // Handle executing state - tick the path state machine
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const executingAsAny = executing as any;
   const originalExecutingEntered = executingAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   executingAsAny.onStateEntered = function(this: any) {
     if (originalExecutingEntered) originalExecutingEntered.call(this);
     if (pathStateMachine && typeof pathStateMachine.onStateEntered === 'function') {
@@ -279,12 +284,17 @@ function createCollectBerriesState(bot: Bot, targets: CollectBerriesTargets): an
 
   // Completion tracking
   let reachedExit = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).isFinished = () => reachedExit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).wasSuccessful = () => phase === 'complete';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).getCollected = () => getCollected(selectedItem);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const exitAsAny = exit as any;
   const originalExitEntered = exitAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   exitAsAny.onStateEntered = function(this: any) {
     reachedExit = true;
     if (targets.onComplete) {

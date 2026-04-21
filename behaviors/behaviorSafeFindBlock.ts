@@ -8,6 +8,7 @@ const minecraftData = require('minecraft-data');
 
 interface Block {
   type: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -24,11 +25,13 @@ interface Bot {
     position?: Vec3 & { distanceTo?: (other: Vec3) => number };
   };
   canDigBlock?: (block: Block) => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   position?: Vec3;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -222,7 +225,9 @@ class BehaviorSafeFindBlock {
         return 32;
       })();
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const candidates = await findBlocksNonBlocking(this.bot as any, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         matching: (block: any) => this.matchesBlock(block),
         maxDistance: radius,
         count: 64
@@ -354,6 +359,7 @@ class BehaviorSafeFindBlock {
       if (!botPos) return Number.POSITIVE_INFINITY;
 
       if (typeof botPos.distanceTo === 'function') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const dist = botPos.distanceTo(pos as any);
         return Number.isFinite(dist) ? dist * dist : Number.POSITIVE_INFINITY;
       }
@@ -372,6 +378,7 @@ export default function createSafeFindBlock(bot: Bot, targets: Targets): Behavio
   return new BehaviorSafeFindBlock(bot, targets);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function isPositionNearLiquid(bot: any, pos: { x: number; y: number; z: number }): boolean {
   try {
     const avoidanceRadius = getLiquidAvoidanceDistance();

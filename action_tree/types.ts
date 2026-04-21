@@ -84,12 +84,14 @@ export class VariantConstraintManager {
     return cloned;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   toJSON(): any {
     return {
       constraints: Array.from(this.constraints.entries())
     };
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   static fromJSON(data: any): VariantConstraintManager {
     const manager = new VariantConstraintManager();
     if (data?.constraints) {

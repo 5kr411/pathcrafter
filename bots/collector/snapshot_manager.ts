@@ -5,10 +5,12 @@ import { plan as planner, _internals as plannerInternals } from '../../planner';
 import logger from '../../utils/logger';
 import { Bot, Snapshot, SnapshotOptions, AdaptiveSnapshotResult, Target } from './config';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
 }
@@ -53,6 +55,7 @@ export async function captureSnapshotForTarget(
         log: false,
         pruneWithWorld,
         combineSimilarNodes,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         worldSnapshot: snapshot as any
       });
 
@@ -71,7 +74,9 @@ export async function captureSnapshotForTarget(
       let pathCount = 0;
       for (const _path of iter) {
         pathCount++;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const pathStr = _path.map((step: any) => step.action).join(' -> ');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const hasMining = _path.some((step: any) => step.action === 'mine');
         logDebug(`Collector: validator - path #${pathCount}: ${pathStr} (length=${_path.length}, hasMining=${hasMining})`);
         
@@ -83,6 +88,7 @@ export async function captureSnapshotForTarget(
 
       logDebug(`Collector: validator - no paths generated for radius ${snapshot.radius} (checked ${pathCount} paths)`);
       return false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logDebug(`Collector: validator error - ${err.message}`);
       return false;

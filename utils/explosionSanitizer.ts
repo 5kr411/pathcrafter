@@ -2,6 +2,7 @@ import logger from './logger';
 
 const MAX_REASONABLE_KNOCKBACK = 1000;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function isValidNumber(value: any): boolean {
   if (typeof value !== 'number') return false;
   if (!Number.isFinite(value)) return false;
@@ -16,6 +17,7 @@ function isValidNumber(value: any): boolean {
   return true;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function isExplosionPacketValid(packet: any): boolean {
   if (!packet) {
     return false;
@@ -42,6 +44,7 @@ function isExplosionPacketValid(packet: any): boolean {
   return true;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function installExplosionSanitizer(bot: any): void {
   if (!bot || !bot._client) {
     logger.warn('ExplosionSanitizer: invalid bot or client, cannot install');
@@ -51,6 +54,7 @@ export function installExplosionSanitizer(bot: any): void {
   const client = bot._client;
   const originalEmit = client.emit;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   client.emit = function(event: string, ...args: any[]) {
     if (event === 'explosion') {
       const packet = args[0];
@@ -61,7 +65,9 @@ export function installExplosionSanitizer(bot: any): void {
     }
     
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       return originalEmit.apply(this, [event, ...args] as any);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       if (event === 'explosion') {
         logger.warn(`ExplosionSanitizer: caught and suppressed error during explosion event: ${err?.message || err}`);

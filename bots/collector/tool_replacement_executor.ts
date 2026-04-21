@@ -17,6 +17,7 @@ function countDurableTools(bot: Bot, toolName: string, threshold: number): numbe
     for (const it of items) {
       if (!it || it.name !== toolName) continue;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const rawCount = Number.isFinite((it as any).count) ? (it as any).count : 1;
       if (!rawCount || rawCount <= 0) continue;
       const itemCount = rawCount;
@@ -26,8 +27,10 @@ function countDurableTools(bot: Bot, toolName: string, threshold: number): numbe
         continue;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const registryItems = (bot as any)?.registry?.items ?? {};
       const registryEntry = registryItems[it.type];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const maxDurabilityCandidate = registryEntry?.maxDurability ?? (it as any)?.maxDurability;
       const maxDurability = Number.isFinite(maxDurabilityCandidate) ? maxDurabilityCandidate : null;
 
@@ -36,6 +39,7 @@ function countDurableTools(bot: Bot, toolName: string, threshold: number): numbe
         continue;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const used = Number.isFinite((it as any).durabilityUsed) ? (it as any).durabilityUsed : 0;
       const remaining = Math.max(0, maxDurability - used);
       const ratio = remaining / maxDurability;
@@ -62,12 +66,14 @@ class ToolReplacementTask {
   private readonly stateMachine: NestedStateMachine;
 
   private planOutcome: 'pending' | 'execute' | 'success' | 'failure' = 'pending';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private planPath: any[] | null = null;
   private executionDone = false;
   private validationDone = false;
   private validationSuccess = false;
   private finished = false;
   private success = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private activePathState: any = null;
   private validationAttempt = 0;
   private nextValidationAt = 0;
@@ -160,7 +166,9 @@ class ToolReplacementTask {
     ];
 
     this.stateMachine = new NestedStateMachine(transitions, enter, exit);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     (this.stateMachine as any).isFinished = () => this.finished;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     (this.stateMachine as any).wasSuccessful = () => this.success;
   }
 
@@ -220,12 +228,14 @@ class ToolReplacementTask {
           }
         );
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       .catch((err: any) => {
         logger.info(`ToolReplacement: snapshot capture failed - ${err?.message || err}`);
         this.planOutcome = 'failure';
       });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private handlePlanningResult(_entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {
     if (!ok) {
       const errorMsg = error ? String(error) : 'unknown error';
@@ -290,6 +300,7 @@ class ToolReplacementTask {
           this.activePathState.onStateEntered();
         } catch (_) {}
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`ToolReplacement: failed to start execution - ${err?.message || err}`);
       this.executionDone = true;
@@ -593,6 +604,7 @@ export class ToolReplacementExecutor implements StateBehavior {
       this.bot.clearControlStates?.();
     } catch (_) {}
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const pathfinder = (this.bot as any)?.pathfinder;
       if (pathfinder && typeof pathfinder.stop === 'function') {
         pathfinder.stop();

@@ -14,6 +14,7 @@ interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -22,7 +23,9 @@ interface Bot {
   entity?: {
     position: Vec3Like;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   findBlocks?: (options: { matching: any; maxDistance: number; count: number }) => Vec3Like[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -69,6 +72,7 @@ function dist2(a: Vec3Like, b: Vec3Like): number {
   return dx * dx + dy * dy + dz * dz;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createMineOneOfState(bot: Bot, targets: Targets): any {
   // targets: { candidates: [{ blockName, itemName, amount }], amount? }
   const enter = new BehaviorIdle();
@@ -114,8 +118,10 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
         mcData && mcData.blocksByName && mcData.blocksByName[blockName]
           ? mcData.blocksByName[blockName].id
           : null;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const matcher = id != null ? id : (b: any) => b && b.name === blockName;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const allPositions = await findBlocksNonBlocking(bot as any, {
         matching: matcher,
         maxDistance: radius,
@@ -142,8 +148,10 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     amount: 0,
     executionContext: targets.executionContext
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let collectBehavior: any = null;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     collectBehavior = createCollectBlockState(bot, dynamicTargets as any);
   } catch (_) {
     collectBehavior = null;
@@ -181,6 +189,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     // If we've already collected enough, no need to select
     if (stillNeeded === 0) return null;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     let best: any = null;
     let bestNear = Number.POSITIVE_INFINITY;
     let bestCount = 0;
@@ -330,7 +339,9 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       try {
         logger.info(`BehaviorMineOneOf: progress ${total}/${totalRequiredAmount}, finding next block...`);
       } catch (_) {}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const failureReason = typeof (collectBehavior as any).getLastFailureReason === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (collectBehavior as any).getLastFailureReason()
         : null;
       if (failureReason === 'not_found' && selection?.chosen?.blockName) {
@@ -375,6 +386,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
       try {
         collectBehavior.onStateExited();
         logger.debug('MineOneOf: cleaned up collectBehavior');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`MineOneOf: error cleaning up collectBehavior: ${err.message}`);
       }
@@ -383,6 +395,7 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
     try {
       bot.clearControlStates();
       logger.debug('MineOneOf: cleared bot control states');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`MineOneOf: error clearing control states: ${err.message}`);
     }

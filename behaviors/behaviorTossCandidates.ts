@@ -3,19 +3,24 @@ import logger from '../utils/logger';
 const TOSS_DELAY_MS = 300;
 
 interface BotLike {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   tossStack?: (item: any) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   toss?: (type: number, metadata: any, count: number) => Promise<void>;
   safeChat?: (msg: string) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 export interface DropCandidate {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   item: any;
   reason: string;
 }
 
 interface Targets {
   dropCandidates?: DropCandidate[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -74,6 +79,7 @@ export class BehaviorTossCandidates {
           if (this.active && i < candidates.length - 1) {
             await new Promise((resolve) => setTimeout(resolve, TOSS_DELAY_MS));
           }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.debug(
             `TossCandidates: failed to drop ${candidate.item?.name} - ${err?.message || err}`
@@ -86,6 +92,7 @@ export class BehaviorTossCandidates {
       if (this.success && typeof this.bot.safeChat === 'function') {
         this.bot.safeChat(`dropped ${this.dropped} item(s) to free inventory space`);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`TossCandidates: sequence failed - ${err?.message || err}`);
     } finally {

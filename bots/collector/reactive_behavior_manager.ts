@@ -13,6 +13,7 @@ const EVALUATION_TIMEOUT_MS = 5_000;
 interface ReactiveBehaviorRunState {
   behavior: ReactiveBehavior;
   stateDef: ReactiveBehaviorState;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   stateMachine: any;
   finished: boolean;
   exitCalled: boolean;
@@ -36,6 +37,7 @@ class ReactiveBehaviorRun {
     if (machine && typeof machine.onStateEntered === 'function') {
       try {
         machine.onStateEntered();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.info(
           `ReactiveBehaviorRun: state machine onStateEntered threw for ${this.state.behavior?.name} - ` +
@@ -51,6 +53,7 @@ class ReactiveBehaviorRun {
     if (machine && typeof machine.update === 'function') {
       try {
         machine.update();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.info(
           `ReactiveBehaviorRun: state machine update threw for ${this.state.behavior?.name} - ` +
@@ -74,8 +77,10 @@ class ReactiveBehaviorRun {
   }
 
   abort(reason: ReactiveBehaviorStopReason = 'aborted'): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if ((this.bot as any).pvp && (this.bot as any).pvp.target) {
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (this.bot as any).pvp.stop();
       } catch (_) {}
     }
@@ -283,6 +288,7 @@ export class ReactiveBehaviorManager {
         if (controller.signal.aborted) return;
         this.candidate = behavior ?? null;
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       .catch((err: any) => {
         if (controller.signal.aborted && isTimeoutAbort(controller.signal)) {
           logger.info(`ReactiveBehaviorManager: evaluation timed out after ${EVALUATION_TIMEOUT_MS}ms`);
@@ -305,6 +311,7 @@ export class ReactiveBehaviorManager {
     let result: ReturnType<ReactiveBehavior['createState']>;
     try {
       result = behavior.createState(this.bot);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`ReactiveBehaviorManager: failed to start behavior - ${err?.message || err}`);
       this.candidate = null;
@@ -312,10 +319,13 @@ export class ReactiveBehaviorManager {
       return;
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if (result && typeof (result as any).then === 'function') {
       this.starting = true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (result as Promise<any>)
         .then((state) => this.finishStart(behavior, state))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         .catch((err: any) => {
           logger.info(`ReactiveBehaviorManager: failed to start behavior - ${err?.message || err}`);
           this.candidate = null;

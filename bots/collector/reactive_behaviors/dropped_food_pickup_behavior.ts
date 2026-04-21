@@ -45,6 +45,7 @@ export interface DroppedFoodPickupHandle {
 }
 
 interface DroppedFoodEntity {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   entity: any;
   foodName: string;
   count: number;
@@ -86,6 +87,7 @@ class BehaviorPickupDroppedFood implements StateBehavior {
   private success = false;
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     private readonly bot: any,
     private readonly droppedItems: DroppedFoodEntity[],
     private readonly sendChat: ((msg: string) => void) | null
@@ -142,6 +144,7 @@ class BehaviorPickupDroppedFood implements StateBehavior {
             pickedUp++;
             logger.debug(`DroppedFoodPickup: picked up ${item.foodName} x${item.count}`);
           }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.debug(`DroppedFoodPickup: failed to reach ${item.foodName} - ${err?.message || err}`);
         }
@@ -151,6 +154,7 @@ class BehaviorPickupDroppedFood implements StateBehavior {
       if (pickedUp > 0 && this.sendChat) {
         this.sendChat(`picked up ${pickedUp} dropped food item${pickedUp > 1 ? 's' : ''}`);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`DroppedFoodPickup: error - ${err?.message || err}`);
       this.success = false;
@@ -181,6 +185,7 @@ export function createDroppedFoodPickupBehavior(
       if (foodCollection.isActive()) return false;
       if (isInCooldown()) return false;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const inventory = getInventoryObject(bot as any);
       const foodPoints = calculateFoodPointsInInventory(inventory);
       const { targetFoodPoints } = foodCollection.getConfig();
@@ -201,7 +206,9 @@ export function createDroppedFoodPickupBehavior(
     },
 
     createState: async (bot: Bot) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : null;
 
@@ -233,7 +240,9 @@ export function createDroppedFoodPickupBehavior(
       });
 
       const stateMachine = new NestedStateMachine([enterToPickup, pickupToExit], enter, exit);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       (stateMachine as any).isFinished = () => reachedExit;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       (stateMachine as any).wasSuccessful = () => pickupState.wasSuccessful();
 
       return {

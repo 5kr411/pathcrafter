@@ -4,6 +4,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 import createCollectBlockState from '../behaviors/behaviorCollectBlock';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
@@ -22,6 +23,7 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-tool').plugin);
 
 bot.once('spawn', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const targets: any = {};
 
   const enter = new BehaviorIdle();

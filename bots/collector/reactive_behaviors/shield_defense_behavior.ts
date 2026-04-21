@@ -16,7 +16,9 @@ const MELEE_HOSTILE_SEARCH_RADIUS = 8;
 const SHIELD_MIN_DURABILITY_RATIO = 0.15;
 
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getInventoryItems(bot: Bot): any[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const inventory: any = (bot as any)?.inventory;
   if (!inventory || typeof inventory.items !== 'function') {
     return [];
@@ -27,14 +29,19 @@ function getInventoryItems(bot: Bot): any[] {
     return [];
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   return items.filter((item: any) => !!item);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getOffhandItem(bot: Bot): any | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
     return null;
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const slots = (bot as any)?.inventory?.slots;
   if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
     return null;
@@ -50,6 +57,7 @@ export function hasShieldInOffhand(bot: Bot): boolean {
   return item.name.toLowerCase() === 'shield';
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function findShieldItem(bot: Bot): any | null {
   if (hasShieldInOffhand(bot)) {
     return getOffhandItem(bot);
@@ -66,6 +74,7 @@ export function findShieldItem(bot: Bot): any | null {
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function isShieldUsable(shield: any): boolean {
   if (!shield) return false;
   const maxDur = shield.maxDurability;
@@ -77,11 +86,13 @@ export function isShieldUsable(shield: any): boolean {
   return (remaining / maxDur) >= SHIELD_MIN_DURABILITY_RATIO;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export async function ensureShieldEquipped(bot: Bot, preferredShield?: any): Promise<boolean> {
   if (hasShieldInOffhand(bot)) {
     return true;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const equipFn = (bot as any)?.equip;
   if (typeof equipFn !== 'function') {
     logger.debug('ShieldDefense: bot does not support equip, cannot ready shield');
@@ -95,6 +106,7 @@ export async function ensureShieldEquipped(bot: Bot, preferredShield?: any): Pro
 
   try {
     await equipFn.call(bot, shieldItem, 'off-hand');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.info(`ShieldDefense: failed to equip shield in off-hand - ${err?.message || err}`);
     return false;
@@ -133,6 +145,7 @@ export function shouldContinueShieldDefense(bot: Bot): boolean {
   return !!meleeHostile;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function isEntityAlive(entity: any): boolean {
   if (!entity) return false;
   if (typeof entity.isAlive === 'function') {
@@ -144,6 +157,7 @@ function isEntityAlive(entity: any): boolean {
   return true;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function findClosestCreeper(bot: Bot, maxDistance: number): any | null {
   if (!bot?.entity?.position || typeof bot.entity.position.distanceTo !== 'function') {
     return null;
@@ -152,6 +166,7 @@ export function findClosestCreeper(bot: Bot, maxDistance: number): any | null {
     return null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let closest: any = null;
   let closestDistance = Infinity;
   const botPos = bot.entity.position;
@@ -175,6 +190,7 @@ export function findClosestCreeper(bot: Bot, maxDistance: number): any | null {
         closest = entity;
         closestDistance = distance;
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ShieldDefense: failed computing creeper distance - ${err?.message || err}`);
     }
@@ -189,7 +205,9 @@ interface HealthInfo {
 }
 
 function getBotHealthInfo(bot: Bot): HealthInfo {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const current = (bot as any)?.health ?? 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const max = (bot as any)?.maxHealth ?? 20;
 
   return {
@@ -209,6 +227,7 @@ function createHostileNameSet(bot: Bot): Set<string> {
     }
     set.add('creeper');
     return set;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.debug(`ShieldDefense: failed to build hostile name set - ${err?.message || err}`);
     return new Set<string>(['creeper', 'zombie', 'skeleton', 'spider', 'husk', 'drowned']);
@@ -251,7 +270,9 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
 
   createState: (bot: Bot) => {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : typeof bot?.chat === 'function'
           ? bot.chat.bind(bot)
@@ -263,6 +284,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
       }
 
       if (!hasShieldInOffhand(bot)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         ensureShieldEquipped(bot, shieldItem).catch((err: any) => {
           logger.debug(`ShieldDefense: background equip failed - ${err?.message || err}`);
         });
@@ -274,6 +296,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
 
       const hostileNameSet = createHostileNameSet(bot);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const reacquireThreat = (): any | null => {
         const creeper = findClosestCreeper(bot, CREEPER_REACQUIRE_RADIUS);
         if (creeper) {
@@ -291,8 +314,10 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
         ? String(initialThreat.name || initialThreat.displayName || 'hostile mob')
         : 'hostile mob';
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const targets: any = {
         entity: initialThreat ?? null,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         entityFilter: (entity: any) => {
           const name = String(entity?.name || entity?.displayName || '').toLowerCase();
           if (!name) return false;
@@ -340,6 +365,7 @@ export const shieldDefenseBehavior: ReactiveBehavior = {
           finishBehavior(completed, completed ? 'done shielding' : undefined);
         }
       };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`ShieldDefense: failed to execute - ${err?.message || err}`);
       return null;

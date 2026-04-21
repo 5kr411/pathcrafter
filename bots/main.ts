@@ -33,6 +33,7 @@ function createWorker(i: number): void {
     if (code !== 0) logger.error(`Worker stopped with exit code ${code}`);
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   worker.on('message', (message: any) => {
     // logger.info(`Message from worker ${i}:`, message);
     workers.forEach((w) => {

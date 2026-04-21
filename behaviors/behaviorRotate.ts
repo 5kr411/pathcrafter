@@ -3,17 +3,20 @@ import { addStateLogging } from '../utils/stateLogging';
 
 interface Bot {
   entity?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     position: any;
     yaw: number;
     pitch: number;
   };
   look?: (yaw: number, pitch: number, force?: boolean) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   targetYaw?: number;
   targetPitch?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -64,6 +67,7 @@ class BehaviorRotateState {
   estimatedDuration: number = 0; // milliseconds
   startTime: number = 0;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   tickInterval: any = null;
 
   constructor(bot: Bot, targets: Targets, rotationSpeed: number = 6.0) {
@@ -234,6 +238,7 @@ class BehaviorRotateState {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createRotateState(bot: Bot, targets: Targets, rotationSpeed: number = 6.0): any {
   const rotateState = new BehaviorRotateState(bot, targets, rotationSpeed);
 

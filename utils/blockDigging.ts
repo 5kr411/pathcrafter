@@ -13,6 +13,7 @@ interface DigOptions {
  * Wait for a block position to become air/water (server confirmation).
  * Listens for blockUpdate event with a timeout.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function waitForBlockBreak(bot: any, pos: Vec3, timeoutMs = DEFAULT_VERIFY_TIMEOUT_MS): Promise<boolean> {
   try {
     const block = bot.blockAt(pos);
@@ -24,6 +25,7 @@ export function waitForBlockBreak(bot: any, pos: Vec3, timeoutMs = DEFAULT_VERIF
   return new Promise((resolve) => {
     const eventName = `blockUpdate:(${pos.x}, ${pos.y}, ${pos.z})`;
     let done = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const onUpdate = (_old: any, newBlock: any) => {
       if (done) return;
       if (!newBlock || newBlock.type === 0 || newBlock.name === 'water') {
@@ -51,12 +53,14 @@ export function waitForBlockBreak(bot: any, pos: Vec3, timeoutMs = DEFAULT_VERIF
  * Dig a block with look → equip → dig → verify broken → retry loop.
  * Returns true if the block was successfully broken.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export async function digBlockVerified(bot: any, pos: Vec3, options: DigOptions = {}): Promise<boolean> {
   const maxRetries = options.maxRetries ?? DEFAULT_MAX_RETRIES;
   const verifyTimeoutMs = options.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
 
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     // Re-fetch block — may have changed
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     let block: any;
     try {
       block = bot.blockAt(pos);
@@ -79,6 +83,7 @@ export async function digBlockVerified(bot: any, pos: Vec3, options: DigOptions 
 
       logger.debug(`digBlockVerified: digging ${block.name} at (${pos.x}, ${pos.y}, ${pos.z}) (attempt ${attempt + 1})`);
       await bot.dig(block);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`digBlockVerified: dig error - ${err?.message || err}`);
     }

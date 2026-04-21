@@ -47,7 +47,9 @@ export function buildCraftNodes(
   targetCount: number,
   root: RootNode,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   nextVisited: Set<string>,
   buildRecipeTreeFn: BuildRecipeTreeFn
@@ -145,7 +147,9 @@ function createSingleCraftNode(
   craftingsNeeded: number,
   parentNode: RootNode,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   visited: Set<string>,
   buildRecipeTreeFn: BuildRecipeTreeFn
@@ -228,6 +232,7 @@ function createSingleCraftNode(
  */
 function createResultVariants(
   recipeGroup: RecipeEntry[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   recipe: any,
   context: BuildContext,
   variantMode: 'one_of' | 'any_of'
@@ -263,8 +268,10 @@ function createResultVariants(
  */
 function createIngredientVariants(
   recipeGroup: RecipeEntry[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   _recipe: any,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   variantMode: 'one_of' | 'any_of'
 ): VariantGroup<ItemReference[]> {
@@ -317,7 +324,9 @@ function processIngredientDependencies(
   recipeGroup: RecipeEntry[],
   _resultItemName: string,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   visited: Set<string>,
   buildRecipeTreeFn: BuildRecipeTreeFn

@@ -60,7 +60,9 @@ export function createMakeStream<T extends PathItem = PathItem>(
           variantMode: node.variantMode,
           what: node.what,
           count: node.count,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('result' in node) && { result: (node as any).result }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('ingredients' in node) && { ingredients: (node as any).ingredients })
         };
         return makeLeafStream(step);
@@ -72,14 +74,18 @@ export function createMakeStream<T extends PathItem = PathItem>(
           variantMode: node.variantMode,
           what: node.what,
           count: node.count,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('input' in node) && { input: (node as any).input }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('result' in node) && { result: (node as any).result }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('fuel' in node) && { fuel: (node as any).fuel })
         };
         return makeLeafStream(step);
       }
 
       if (node.action === 'mine') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         const mineNode = node as any;
 
         // Create single step with variant metadata if present
@@ -88,8 +94,11 @@ export function createMakeStream<T extends PathItem = PathItem>(
           what: node.what,
           count: node.count,
           variantMode: node.variantMode,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('tool' in node) && { tool: (node as any).tool }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
           // Include variant metadata for runtime decision-making
           ...(mineNode.whatVariants && mineNode.whatVariants.length > 1 && {
@@ -106,8 +115,11 @@ export function createMakeStream<T extends PathItem = PathItem>(
           variantMode: node.variantMode,
           what: node.what,
           count: node.count,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('tool' in node) && { tool: (node as any).tool }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           ...(('targetItem' in node) && { targetItem: (node as any).targetItem })
         };
         return makeLeafStream(step);
@@ -117,6 +129,7 @@ export function createMakeStream<T extends PathItem = PathItem>(
     }
 
     // Nodes with children
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const children = 'children' in node ? node.children.variants.map((v: any) => v.value) : [];
 
     if (node.action === 'root') {
@@ -130,6 +143,7 @@ export function createMakeStream<T extends PathItem = PathItem>(
     }
 
     if (node.action === 'craft') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const craftNode = node as any;
 
       // Create single step with variant metadata if present
@@ -138,7 +152,9 @@ export function createMakeStream<T extends PathItem = PathItem>(
         what: node.what,
         count: node.count,
         variantMode: node.variantMode,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('result' in node) && { result: (node as any).result }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('ingredients' in node) && { ingredients: (node as any).ingredients }),
         // Include variant metadata for runtime decision-making
         ...(craftNode.resultVariants && craftNode.resultVariants.length > 1 && {
@@ -158,8 +174,11 @@ export function createMakeStream<T extends PathItem = PathItem>(
             variantMode: node.variantMode,
             what: node.what,
             count: node.count,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             ...(('input' in node) && { input: (node as any).input }),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             ...(('result' in node) && { result: (node as any).result }),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             ...(('fuel' in node) && { fuel: (node as any).fuel })
           };
           return makeLeafStream(step);
@@ -172,8 +191,11 @@ export function createMakeStream<T extends PathItem = PathItem>(
         variantMode: node.variantMode,
         what: node.what,
         count: node.count,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('input' in node) && { input: (node as any).input }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('result' in node) && { result: (node as any).result }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('fuel' in node) && { fuel: (node as any).fuel })
       };
       return makeAndStream(children.map(makeStream), step);
@@ -183,14 +205,18 @@ export function createMakeStream<T extends PathItem = PathItem>(
       const operator = 'operator' in node ? node.operator : undefined;
       if (operator === 'OR') {
         if (children.length === 0) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
           const gatherNode = node as any;
           const step: ActionStep = {
             action: node.action,
             what: node.what,
             count: node.count,
             variantMode: node.variantMode,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             ...(('tool' in node) && { tool: (node as any).tool }),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
             ...(gatherNode.whatVariants && gatherNode.whatVariants.length > 1 && {
               whatVariants: gatherNode.whatVariants,
@@ -203,14 +229,18 @@ export function createMakeStream<T extends PathItem = PathItem>(
       }
 
       // For mine/hunt nodes without OR operator, combine dependencies as AND then append the gather step
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const gatherNode = node as any;
       const gatherStep: ActionStep = {
         action: node.action,
         what: node.what,
         count: node.count,
         variantMode: node.variantMode,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('dropChance' in node) && { dropChance: (node as any).dropChance }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('tool' in node) && { tool: (node as any).tool }),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ...(('targetItem' in node) && { targetItem: (node as any).targetItem }),
         // Include variant metadata for runtime decision-making
         ...(gatherNode.whatVariants && gatherNode.whatVariants.length > 1 && {

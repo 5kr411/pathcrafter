@@ -23,11 +23,13 @@ export interface BehaviorFrameContext {
   readonly frameId: string;
   readonly type: string;
   readonly name: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   attachStateMachine(stateMachine: any, listener: (this: Bot) => void): void;
   detachStateMachine(): void;
   attachCleanup(cleanup: () => void): void;
   attachPlannerHandler(
     plannerId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     handler: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void
   ): void;
   detachPlannerHandler(plannerId: string): void;
@@ -35,6 +37,7 @@ export interface BehaviorFrameContext {
 
 interface PlannerHandlerEntry {
   plannerId: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   handler: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void;
 }
 
@@ -45,16 +48,20 @@ interface BehaviorFrame {
   plannerHandlers: Map<string, PlannerHandlerEntry>;
   cleanupListeners: Array<() => void>;
   suspendDepth: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   stateMachine: any;
   stateMachineListener: ((this: Bot) => void) | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   rootStateMachine: any;
   hasStarted: boolean;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
 }
@@ -104,6 +111,7 @@ export class BehaviorScheduler {
       }
       try {
         await this.reactivePollCallback();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logDebug(`BehaviorScheduler: reactive poll error: ${err?.message || err}`);
       }
@@ -120,6 +128,7 @@ export class BehaviorScheduler {
   registerPlannerHandler(
     frameId: string,
     plannerId: string,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     handler: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void
   ): void {
     const frame = this.stack.find((f) => f.frameId === frameId);
@@ -138,6 +147,7 @@ export class BehaviorScheduler {
     this.plannerIndex.delete(plannerId);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   handlePlannerResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string, plannerId?: string): void {
     if (!plannerId) {
       logDebug('BehaviorScheduler: planner result missing id, delivering to top frame if any');
@@ -167,6 +177,7 @@ export class BehaviorScheduler {
   private deliverPlannerResult(
     frame: BehaviorFrame,
     entry: PendingEntry,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     ranked: any[],
     ok: boolean,
     error?: string,
@@ -187,6 +198,7 @@ export class BehaviorScheduler {
     }
     try {
       handlerEntry.handler(entry, ranked, ok, error);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logInfo(
         `BehaviorScheduler: error delivering planner result to frame ${frame.frameId} (${frame.behavior.name}): ${
@@ -234,6 +246,7 @@ export class BehaviorScheduler {
       try {
         await frame.behavior.onResume(context);
         logDebug(`BehaviorScheduler: resumed behavior ${frame.behavior.name} (${frame.frameId})`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logInfo(
           `BehaviorScheduler: error resuming behavior ${frame.behavior.name} (${frame.frameId}): ${err?.message || err}`
@@ -246,6 +259,7 @@ export class BehaviorScheduler {
       frame.status = 'active';
       await frame.behavior.activate(context);
       logDebug(`BehaviorScheduler: activated behavior ${frame.behavior.name} (${frame.frameId})`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       frame.status = 'aborted';
       logInfo(
@@ -312,6 +326,7 @@ export class BehaviorScheduler {
     this.releaseFrame(frame);
     try {
       await frame.behavior.onAbort(this.createContext(frame));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logInfo(
         `BehaviorScheduler: error during abort of ${frame.behavior.name} (${frame.frameId}): ${err?.message || err}`
@@ -354,6 +369,7 @@ export class BehaviorScheduler {
     }
     try {
       await frame.behavior.onComplete(this.createContext(frame), success);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logInfo(
         `BehaviorScheduler: error during completion hook for ${frame.behavior.name} (${frame.frameId}): ${
@@ -363,6 +379,7 @@ export class BehaviorScheduler {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   attachStateMachine(frameId: string, stateMachine: any, listener: (this: Bot) => void): void {
     const frame = this.stack.find((f) => f.frameId === frameId);
     if (!frame) return;

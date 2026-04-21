@@ -2,17 +2,21 @@ const { BotStateMachine } = require('mineflayer-statemachine');
 import logger from '../../utils/logger';
 import { Bot } from './config';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function logDebug(msg: string, ...args: any[]): void {
   logger.debug(msg, ...args);
 }
 
 export function createTrackedBotStateMachine(
   bot: Bot,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   stateMachine: any
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 ): { botStateMachine: any; listener: (this: Bot) => void } {
   const listener = function(this: Bot) {
     try {
       stateMachine.update();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logDebug(`BotStateMachine update error: ${err?.message || err}`);
     }

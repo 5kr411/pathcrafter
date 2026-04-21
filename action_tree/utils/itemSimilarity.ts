@@ -90,6 +90,7 @@ export function findSimilarItems(mcData: MinecraftData, itemName: string): strin
   }
   
   const itemData = mcData.itemsByName[itemName] as MinecraftItem | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const tags = (itemData && (itemData as any).tags) ? new Set((itemData as any).tags) : null;
 
   const restrictToWood = isWoodVariant(itemName);
@@ -100,6 +101,7 @@ export function findSimilarItems(mcData: MinecraftData, itemName: string): strin
     if (restrictToWood && !isWoodVariant(name)) continue;
 
     if (tags && tags.size > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const candidateTags = data && (data as any).tags ? new Set((data as any).tags) : new Set();
       const shared = [...tags].filter(tag => candidateTags.has(tag));
       if (shared.length === 0) continue;

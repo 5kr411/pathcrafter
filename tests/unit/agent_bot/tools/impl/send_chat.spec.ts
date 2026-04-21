@@ -32,7 +32,7 @@ describe('send_chat', () => {
       bot: { chat: () => {} }, signal: new AbortController().signal,
       targetExecutor: {}, agentActionExecutor: {}, safeChat: () => {}
     };
-    const r = await sendChatTool.execute({}, ctx);
+    const r = await sendChatTool.execute({} as any, ctx);
     expect(r.ok).toBe(false);
   });
 });

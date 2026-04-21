@@ -2,14 +2,14 @@
  * Type definitions for path generator system
  */
 
-import { ActionPath, ActionStep } from '../action_tree/types';
+import { ActionPath, ActionStep, VariantTreeNode } from '../action_tree/types';
 
 /**
  * Options for path generation
  */
 export interface GeneratorOptions {
   inventory?: Map<string, number>;
-  [key: string]: any;
+  worldSnapshot?: WorldSnapshot;
 }
 
 /**
@@ -37,7 +37,6 @@ export interface WorldSnapshot {
  */
 export interface PathItem {
   path: ActionPath;
-  [key: string]: any;
 }
 
 /**
@@ -87,11 +86,11 @@ export type MakeAndStreamFn<T = PathItem> = (
  */
 export interface EnumeratorContext {
   initialSupply: Map<string, number>;
-  createMakeStream: (
-    makeLeafStream: MakeLeafStreamFn<any>,
-    makeOrStream: MakeOrStreamFn<any>,
-    makeAndStream: MakeAndStreamFn<any>
-  ) => (tree: any) => StreamFunction<any>;
+  createMakeStream: <T>(
+    makeLeafStream: MakeLeafStreamFn<T>,
+    makeOrStream: MakeOrStreamFn<T>,
+    makeAndStream: MakeAndStreamFn<T>
+  ) => (tree: VariantTreeNode) => StreamFunction<T>;
 }
 
 /**
@@ -108,7 +107,7 @@ export interface PriorityStreamConfig {
  */
 export interface EnumeratorJob {
   generator: 'action' | 'shortest' | 'lowest';
-  tree: any;
+  tree: VariantTreeNode;
   inventory?: Record<string, number>;
   limit: number;
 }
@@ -121,8 +120,7 @@ export interface WorkerMessage {
   ok?: boolean;
   paths?: ActionPath[];
   generator?: string;
-  tree?: any;
+  tree?: VariantTreeNode;
   inventory?: Record<string, number>;
   limit?: number;
 }
-

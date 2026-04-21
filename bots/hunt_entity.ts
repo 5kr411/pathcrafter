@@ -22,6 +22,7 @@ bot.loadPlugin(require('mineflayer-pvp').plugin);
 console.log('Loading tool plugin...');
 bot.loadPlugin(require('mineflayer-tool').plugin);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 function configurePrecisePathfinder(bot: any) {
   const pathfinder = bot.pathfinder;
   if (pathfinder && pathfinder.setMovements) {
@@ -37,6 +38,7 @@ function configurePrecisePathfinder(bot: any) {
 console.log('Setting up spawn handler...');
 bot.once('spawn', () => {
   console.log('Bot spawned successfully!');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const targets: any = {
     entity: null,
     entityFilter: null,
@@ -100,6 +102,7 @@ bot.once('spawn', () => {
       }
       const entityName = parts.slice(1).join('_') || 'zombie';
       
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       targets.entityFilter = (entity: any) => {
         const name = (entity.name || '').toLowerCase();
         const displayName = (entity.displayName || '').toLowerCase();
@@ -113,6 +116,7 @@ bot.once('spawn', () => {
       setTimeout(() => startTransition.trigger(), 0);
     } else if (command === 'list' || command === 'entities') {
       const entities = Object.values(bot.entities || {});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       const entityList = entities.map((e: any) => {
         const name = e.displayName || e.name || e.username || 'unknown';
         const dist = bot.entity?.position?.distanceTo(e.position).toFixed(1) || '?';

@@ -146,6 +146,7 @@ function checkNoExistingContainer(): void {
       `Container "${CONTAINER_NAME}" already exists (status: ${status}). ` +
       `Run "docker rm -f ${CONTAINER_NAME}" to remove it.`
     );
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     // If docker inspect failed, container doesn't exist — that's what we want
     if (err.message?.includes('already exists')) throw err;
@@ -156,6 +157,7 @@ function checkPortFree(port: number): void {
   try {
     execSync(`lsof -i :${port} -sTCP:LISTEN`, { stdio: 'pipe' });
     throw new Error(`Port ${port} is already in use.`);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     // lsof exits non-zero when nothing is listening — that's what we want
     if (err.message?.includes('already in use')) throw err;

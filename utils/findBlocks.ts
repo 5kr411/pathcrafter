@@ -3,12 +3,14 @@ const minecraftData = require('minecraft-data');
 import logger from './logger';
 
 interface FindBlocksBot {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   blockAt: (pos: Vec3, extraInfos?: boolean) => any;
   entity: { position: Vec3 };
   version?: string;
 }
 
 interface FindBlocksOptions {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   matching: number | number[] | ((block: any) => boolean);
   maxDistance: number;
   count: number;
@@ -52,13 +54,16 @@ export async function findBlocksNonBlocking(
   const zMax = cz + R;
 
   // Build matcher function
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   let matchFn: (block: any) => boolean;
   if (typeof matching === 'function') {
     matchFn = matching;
   } else if (Array.isArray(matching)) {
     const ids = new Set(matching);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     matchFn = (block: any) => ids.has(block.type);
   } else {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     matchFn = (block: any) => block.type === matching;
   }
 

@@ -17,6 +17,7 @@ export interface FoodInfo {
 }
 
 export interface FoodItem {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
   item: any;
   foodInfo: FoodInfo;
 }
@@ -30,6 +31,7 @@ export const NEGATIVE_EFFECT_FOODS = new Set<string>([
   'suspicious_stew'
 ]);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function getFoodDataMap(bot: any): Map<string, FoodInfo> {
   const mcData = minecraftData(bot?.version);
   const map = new Map<string, FoodInfo>();
@@ -48,17 +50,20 @@ export function getFoodDataMap(bot: any): Map<string, FoodInfo> {
   return map;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function getInventoryItems(bot: any): any[] {
   const inv = bot?.inventory;
   if (!inv || typeof inv.items !== 'function') return [];
   try {
     const items = inv.items();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     return Array.isArray(items) ? items.filter((i: any) => !!i) : [];
   } catch (_) {
     return [];
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function getFoodItems(bot: any): FoodItem[] {
   const map = getFoodDataMap(bot);
   const out: FoodItem[] = [];
@@ -80,8 +85,10 @@ export function selectBestFood(foods: FoodItem[]): FoodItem | null {
   return sorted[0];
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function findBestSafeFood(bot: any): FoodItem | null {
   const foods = getFoodItems(bot);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
   const health = (bot as any).health ?? 20;
   const eligible = foods.filter(f => !(hasNegativeEffects(f) && health >= 20));
   return selectBestFood(eligible);
@@ -91,6 +98,7 @@ export function findBestSafeFood(bot: any): FoodItem | null {
  * Equip + consume a specific food item. Returns success flag.
  * Leaves error reporting to the caller.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export async function eatFoodItem(bot: any, food: FoodItem): Promise<boolean> {
   try {
     try { bot.deactivateItem?.(); } catch (_) {}

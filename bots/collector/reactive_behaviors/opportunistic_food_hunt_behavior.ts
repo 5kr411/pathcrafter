@@ -65,12 +65,14 @@ export function createOpportunisticFoodHuntBehavior(
       if (foodCollection.isActive()) return false;
       if (isInCooldown()) return false;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const inventory = getInventoryObject(bot as any);
       const foodPoints = calculateFoodPointsInInventory(inventory);
       const { targetFoodPoints } = foodCollection.getConfig();
 
       if (foodPoints >= targetFoodPoints) return false;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const result = findClosestHuntableAnimal(bot as any, undefined, undefined, MAX_HUNT_DISTANCE);
       if (!result) return false;
 
@@ -84,10 +86,13 @@ export function createOpportunisticFoodHuntBehavior(
     },
 
     createState: (bot: Bot) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : null;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const result = findClosestHuntableAnimal(bot as any, undefined, undefined, MAX_HUNT_DISTANCE);
       if (!result) return null;
 
@@ -99,8 +104,10 @@ export function createOpportunisticFoodHuntBehavior(
       }
 
       const huntAnimalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const targets: any = {
         entity: targetAnimal,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         entityFilter: (entity: any) => {
           if (!entity || !entity.name) return false;
           return huntAnimalNames.has(entity.name.toLowerCase());

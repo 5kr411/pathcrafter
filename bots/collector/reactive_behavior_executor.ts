@@ -17,6 +17,7 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
   readonly name: string;
 
   private schedulerContext: BehaviorFrameContext | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private activeStateMachine: any = null;
   private finished = false;
   private completionResolver: ((success: boolean) => void) | null = null;
@@ -24,6 +25,7 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
 
   constructor(
     private readonly bot: Bot,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly behavior: any,
     private readonly manager: ReactiveBehaviorExecutorClass,
     runId: number
@@ -36,6 +38,7 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
     });
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   matchesBehavior(behavior: any): boolean {
     return this.behavior === behavior;
   }
@@ -57,6 +60,7 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
           this.bot.pvp.stop();
         } catch (_) {}
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ReactiveBehaviorRun: error during suspend - ${err?.message || err}`);
     }
@@ -112,6 +116,7 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
 
       this.activeStateMachine = stateMachine;
       this.bindStateMachine();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`ReactiveBehaviorRun: failed to start execution - ${err?.message || err}`);
       await this.finish(false);
@@ -161,6 +166,7 @@ class ReactiveBehaviorRun implements ScheduledBehavior {
     if (this.completionResolver) {
       try {
         this.completionResolver(success);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`ReactiveBehaviorRun: error resolving promise: ${err?.message || err}`);
       }
@@ -192,6 +198,7 @@ export class ReactiveBehaviorExecutorClass {
     void this.currentRun.abort();
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async createScheduledRun(behavior: any): Promise<ReactiveBehaviorRun | null> {
     const newPriority = Number(behavior?.priority ?? 0);
 

@@ -45,6 +45,7 @@ export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   if (!targets) return null;
 
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     return createSmeltState(bot as any, targets as any);
   } catch (_) {
     return { isFinished: () => true };

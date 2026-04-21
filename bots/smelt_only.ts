@@ -5,6 +5,7 @@ const minecraftData = require('minecraft-data');
 import plan from '../planner';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = { host: 'localhost', port: 25565, username: 'smelt_only' };
 if (process.argv.length >= 4) {
   botOptions.host = process.argv[2];
@@ -30,6 +31,7 @@ bot.once('spawn', () => {
     const mc = minecraftData(bot.version || '1.20.1');
     const inventoryRecord: Record<string, number> = {};
     try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       (bot.inventory?.items() || []).forEach((it: any) => {
         inventoryRecord[it.name] = (inventoryRecord[it.name] || 0) + it.count;
       });
@@ -37,9 +39,12 @@ bot.once('spawn', () => {
     const inventory = new Map(Object.entries(inventoryRecord));
     const tree = plan(mc, item, count, { log: false, inventory });
     // choose first action path containing a smelt step to requested item
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
     const { enumerateActionPathsGenerator } = (plan as any)._internals;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
     let chosen: any = null;
     for (const p of enumerateActionPathsGenerator(tree, { inventory })) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       if (p.some((s: any) => s.action === 'smelt' && s.result?.item === item)) {
         chosen = p;
         break;

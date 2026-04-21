@@ -24,6 +24,7 @@ export class OpenAIProvider implements LLMProvider {
   label(): string { return `openai:${this.config.model}`; }
 
   async runTurn(params: TurnParams): Promise<TurnResult> {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const messages: any[] = [];
     if (params.system) messages.push({ role: 'system', content: params.system });
     for (const m of params.messages) messages.push(this.translateMessage(m));
@@ -57,6 +58,7 @@ export class OpenAIProvider implements LLMProvider {
           body: JSON.stringify(body),
           signal
         });
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
         if (isTimeoutAbort(signal)) {
@@ -77,6 +79,7 @@ export class OpenAIProvider implements LLMProvider {
         return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const data: any = await resp.json();
       const choice = data.choices?.[0];
       const msg = choice?.message ?? {};
@@ -111,12 +114,14 @@ export class OpenAIProvider implements LLMProvider {
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   private translateMessage(m: Message): any {
     if (m.role === 'tool') {
       if (typeof m.content === 'string') {
         return { role: 'tool', tool_call_id: '', content: m.content };
       }
       const blocks = m.content as ContentBlock[];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const first = blocks.find(b => b.type === 'tool_result') as any;
       return {
         role: 'tool',
@@ -128,9 +133,12 @@ export class OpenAIProvider implements LLMProvider {
       return { role: m.role, content: m.content };
     }
     const blocks = m.content as ContentBlock[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const textBlocks = blocks.filter(b => b.type === 'text') as any[];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const toolUses = blocks.filter(b => b.type === 'tool_use') as any[];
     const text = textBlocks.map(b => b.text).join('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const base: any = { role: m.role, content: text || null };
     if (toolUses.length > 0) {
       base.tool_calls = toolUses.map(b => ({

@@ -27,8 +27,11 @@ export interface InventoryObject {
 
 export interface Snapshot {
   radius: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   blocks?: { [blockName: string]: any };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   entities?: { [entityName: string]: any };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -49,7 +52,9 @@ export interface WorkerMessage {
   id?: string;
   ok?: boolean;
   error?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   ranked?: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -57,10 +62,12 @@ export interface PendingEntry {
   id: string;
   snapshot: Snapshot;
   target: Target;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   handler?: (entry: PendingEntry, ranked: any[], ok: boolean, error?: string) => void;
   frameId?: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export type Bot = any;
 
 const RUNTIME: RuntimeConfig = {

@@ -3,6 +3,7 @@ const { BotStateMachine } = require('mineflayer-statemachine');
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = { host: 'localhost', port: 25565, username: 'path_runner' };
 if (process.argv.length >= 4) {
   botOptions.host = process.argv[2];
@@ -29,12 +30,14 @@ bot.once('spawn', () => {
     { action: 'craft', what: 'table', count: 1, result: { item: 'wooden_pickaxe', perCraftCount: 1 } }
   ];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   let sm: any = null;
 
   bot.on('chat', (username: string, message: string) => {
     if (username === bot.username) return;
     if (message.trim() === 'go') {
       logger.info('PathRunner: building state machine for hardcoded path...');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       sm = buildStateMachineForPath(bot, hardcodedPath as any);
       logger.info('PathRunner: starting state machine');
       new BotStateMachine(bot, sm);

@@ -1,17 +1,21 @@
 import logger from '../utils/logger';
 
 interface Targets {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   position?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 export class BehaviorMineBlock {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   bot: any;
   targets: Targets;
   stateName: string = 'mineBlock';
   active: boolean = false;
   isFinished: boolean = false;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   constructor(bot: any, targets: Targets) {
     this.bot = bot;
     this.targets = targets;
@@ -39,6 +43,7 @@ export class BehaviorMineBlock {
       .then(() => {
         this.isFinished = true;
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       .catch((err: any) => {
         const errMsg = err?.message || String(err);
         logger.warn(`BehaviorMineBlock: ${errMsg}`);

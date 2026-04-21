@@ -134,6 +134,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
             });
           }, 30000); // 30 second timeout
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- worker_threads message boundary
           const messageHandler = (msg: any) => {
             clearTimeout(timeout);
             logger.debug(`PlanningWorker: ${gen} worker message received, type=${msg?.type}, ok=${msg?.ok}`);
@@ -218,6 +219,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
     if (ranked.length > 0) {
       const firstPath = ranked[0];
       const topWeight = computePathWeight(firstPath);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- worker_threads message boundary
       const topActions = firstPath.map((s: any) => s.action).join('→');
       const planMs = Date.now() - t0;
       let weightSummary = `w=${topWeight}`;
@@ -253,6 +255,7 @@ parentPort.on('message', async (msg: PlanMessage) => {
           _internals.logActionPath(top);
         }
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`PlanningWorker: telemetry path log failed: ${err?.message || err}`);
     }

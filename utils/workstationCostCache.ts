@@ -6,6 +6,7 @@ import logger from './logger';
 // Per-workstation cost cache. A present entry means computation has run:
 // `number` is a valid cost, `null` means no crafting path was found.
 let cache: Map<string, number | null> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 let cachedCtx: any = null;
 const workstationSet = new Set(getPersistentWorkstations());
 
@@ -29,6 +30,7 @@ function isDirectMinePath(path: ActionPath, targetItem: string): boolean {
   return variant === targetItem;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function computeWorkstationCost(ctx: any, workstation: string): number | null {
   // Lazy-require to avoid circular deps at module load time
   const { plan } = require('../planner');
@@ -71,6 +73,7 @@ function computeWorkstationCost(ctx: any, workstation: string): number | null {
  *   computes the listed workstations' costs upfront. Callers can still query
  *   other workstations later; those will fall through to lazy computation.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function initWorkstationCostCache(ctx: any, workstationSubset?: readonly string[]): void {
   cache = new Map<string, number | null>();
   cachedCtx = ctx;

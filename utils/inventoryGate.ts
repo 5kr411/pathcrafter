@@ -24,6 +24,7 @@ const DEFAULT_MIN_FREE_SLOTS = 2;
  * logged and swallowed so the caller can proceed with whatever slots it
  * has.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export async function ensureInventoryRoom(bot: any, minFreeSlots?: number): Promise<void> {
   const handle: InventoryManagementHandle | undefined = bot?.__reactiveBehaviors?.inventoryManagement;
   const effectiveMin = typeof minFreeSlots === 'number'
@@ -48,6 +49,7 @@ export async function ensureInventoryRoom(bot: any, minFreeSlots?: number): Prom
   }
   try {
     await machine.run();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.warn(`ensureInventoryRoom: machine errored, proceeding - ${err?.message || err}`);
   }

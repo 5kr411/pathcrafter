@@ -33,6 +33,7 @@ import {
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 import logger from '../utils/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = { host: 'localhost', port: 25565, username: 'food_bot' };
 if (process.argv.length >= 4) {
   botOptions.host = process.argv[2];
@@ -48,6 +49,7 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-pvp').plugin);
 bot.loadPlugin(require('mineflayer-tool').plugin);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let currentStateMachine: any = null;
 let isExecuting = false;
 
@@ -86,6 +88,7 @@ function showFoodStatus(): void {
   const animalNames = new Set(HUNTABLE_LAND_ANIMALS.map(a => a.entity));
   const nearbyAnimals: string[] = [];
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   for (const entity of Object.values(bot.entities || {}) as any[]) {
     if (!entity || !entity.position) continue;
     const name = (entity.name || '').toLowerCase();
@@ -106,6 +109,7 @@ function showFoodStatus(): void {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 async function captureSnapshot(): Promise<any> {
   try {
     safeChat('Scanning surroundings...');
@@ -114,6 +118,7 @@ async function captureSnapshot(): Promise<any> {
       onProgress: (msg: string) => logger.debug(`FoodE2E: ${msg}`)
     });
     return result.snapshot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.warn(`FoodE2E: snapshot failed - ${err?.message || err}`);
     safeChat('Scan failed, proceeding anyway');

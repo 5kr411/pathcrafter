@@ -151,6 +151,7 @@ export function findBlocksThatDrop(mcData: MinecraftData, itemName: string): Blo
   if (secondaryDrops) {
     for (const drop of secondaryDrops) {
       // Verify block exists in mcData
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const blockExists = Object.values(mcData.blocks).some((b: any) => b.name === drop.block);
       if (blockExists) {
         sources.push({

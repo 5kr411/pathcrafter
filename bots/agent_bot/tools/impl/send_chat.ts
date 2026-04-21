@@ -1,6 +1,8 @@
 import type { ToolImpl } from '../types';
 
-export const sendChatTool: ToolImpl = {
+type SendChatInput = { message: string };
+
+export const sendChatTool: ToolImpl<SendChatInput> = {
   schema: {
     name: 'send_chat',
     description: 'Send an intermediate chat message to the player while work is in progress — e.g. "on it, getting logs", "found 40/64", "crafting the pickaxe now". Use this for goal acknowledgement and mid-task milestone updates on long-running operations so the player knows you heard them and what you\'re doing. Do NOT use this for the final reply at end-of-goal — that is the assistant\'s text message, emitted by returning text without any tool calls.',
@@ -11,7 +13,7 @@ export const sendChatTool: ToolImpl = {
     }
   },
   async execute(input, ctx) {
-    const message = (input as any)?.message;
+    const message = input?.message;
     if (typeof message !== 'string' || message.length === 0) {
       return { ok: false, error: 'message must be a non-empty string' };
     }

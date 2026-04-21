@@ -1,6 +1,7 @@
 import { CollectorControlStack } from '../../../bots/collector/control_stack';
 import { ReactiveBehaviorRegistry } from '../../../bots/collector/reactive_behavior_registry';
 import { AgentActionExecutor, type AgentAction } from '../../../bots/agent_bot/action_executor';
+import type { ToolResult } from '../../../bots/agent_bot/tools/types';
 import { createSimulatedBot, SimulatedClock } from '../../helpers/reactiveTestHarness';
 import { TestWorkerManager } from '../../helpers/schedulerTestUtils';
 
@@ -164,10 +165,10 @@ describe('CollectorControlStack with AgentActionExecutor peer', () => {
     await clock.waitFor(() => agent.active === false, 2000);
     expect(agent.active).toBe(false);
     // The action was preempted — stop was called.
-    const r = await p;
+    const r = (await p) as ToolResult;
     expect(stopSpy).toHaveBeenCalled();
     expect(r.ok).toBe(false);
-    expect(r.preempted).toBe(true);
+    expect((r as { preempted?: boolean }).preempted).toBe(true);
 
     reactiveHasWork.mockReturnValue(false);
     stack.stop();

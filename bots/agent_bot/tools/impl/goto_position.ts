@@ -1,12 +1,19 @@
-import type { ToolImpl } from '../types';
+import type { ToolImpl, ToolResult } from '../types';
 import type { AgentAction } from '../../action_executor';
+
+type GotoPositionInput = {
+  x: number;
+  y: number;
+  z: number;
+  timeout?: number;
+};
 
 /**
  * Walk to (x, y, z) via mineflayer-pathfinder. Runs through the
  * `AgentActionExecutor`, so a higher-priority reactive behavior can
  * preempt it and the tool will surface a `preempted` result.
  */
-export const gotoPositionTool: ToolImpl = {
+export const gotoPositionTool: ToolImpl<GotoPositionInput> = {
   schema: {
     name: 'goto_position',
     description: 'Walk to the given (x,y,z) using the pathfinder. Blocks until arrived, timeout, or cancellation.',
@@ -22,7 +29,7 @@ export const gotoPositionTool: ToolImpl = {
     }
   },
   async execute(input, ctx) {
-    const { x, y, z, timeout = 120 } = input as any;
+    const { x, y, z, timeout = 120 } = input ?? ({} as GotoPositionInput);
     if (typeof x !== 'number' || typeof y !== 'number' || typeof z !== 'number') {
       return { ok: false, error: 'x, y, z must all be numbers' };
     }
@@ -71,6 +78,6 @@ export const gotoPositionTool: ToolImpl = {
       }
     };
 
-    return ctx.agentActionExecutor.run(action, ctx.signal);
+    return (await ctx.agentActionExecutor.run(action, ctx.signal)) as ToolResult;
   }
 };

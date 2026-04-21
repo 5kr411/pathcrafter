@@ -11,6 +11,7 @@
  */
 
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
+import type { Bot as MineflayerBot } from '../../../behavior_generator/types';
 import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getInventoryObject, getItemCountInInventory } from '../../../utils/inventory';
 import { FOOD_SMELT_MAPPINGS, calculateFoodPointsInInventory } from '../../../utils/foodConfig';
@@ -46,6 +47,7 @@ interface RawFoodItem {
 }
 
 function findRawFoodInInventory(bot: Bot): RawFoodItem[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   const inventory = getInventoryObject(bot as any);
   const rawFoodItems: RawFoodItem[] = [];
 
@@ -67,11 +69,15 @@ async function tryPlanForCookedFood(
   bot: Bot,
   cookedItemName: string,
   targetCount: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   snapshot: any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 ): Promise<any[] | null> {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const inventory = getInventoryObject(bot as any);
     const inventoryMap = new Map(Object.entries(inventory));
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const version = (bot as any).version || '1.20.1';
     const mcData = minecraftData(version);
 
@@ -100,6 +106,7 @@ async function tryPlanForCookedFood(
     }
 
     return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.debug(`FoodSmelting: planning error - ${err?.message || err}`);
     return null;
@@ -110,7 +117,9 @@ async function captureSnapshotWithValidation(
   bot: Bot,
   cookedItemName: string,
   targetCount: number
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 ): Promise<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const validator = async (snapshot: any): Promise<boolean> => {
     const path = await tryPlanForCookedFood(bot, cookedItemName, targetCount, snapshot);
     return path !== null && path.length > 0;
@@ -118,6 +127,7 @@ async function captureSnapshotWithValidation(
 
   try {
     logger.info(`FoodSmelting: capturing adaptive snapshot with radii ${JSON.stringify(DEFAULT_RADII)}`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const result = await captureAdaptiveSnapshot(bot as any, {
       radii: DEFAULT_RADII,
       validator,
@@ -125,6 +135,7 @@ async function captureSnapshotWithValidation(
     });
     logger.info(`FoodSmelting: snapshot captured at radius ${result.radiusUsed} after ${result.attemptsCount} attempts`);
     return result.snapshot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.info(`FoodSmelting: snapshot capture failed - ${err?.message || err}`);
     return null;
@@ -154,6 +165,7 @@ export function createFoodSmeltingBehavior(opts: FoodSmeltingOptions): FoodSmelt
       // when food points are below the collection trigger AND collection
       // isn't in cooldown. Above the trigger, food collection won't
       // activate anyway so smelting is free to cook what we have.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const inventory = getInventoryObject(bot as any);
       const foodPoints = calculateFoodPointsInInventory(inventory);
       const { triggerFoodPoints } = foodCollection.getConfig();
@@ -187,7 +199,9 @@ export function createFoodSmeltingBehavior(opts: FoodSmeltingOptions): FoodSmelt
     },
 
     createState: async (bot: Bot) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : null;
 
@@ -227,15 +241,18 @@ export function createFoodSmeltingBehavior(opts: FoodSmeltingOptions): FoodSmelt
 
         logger.info(`FoodSmelting: executing path with ${path.length} steps`);
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         const startCookedCount = getItemCountInInventory(bot as any, cookedName);
         let outcome: { success: boolean; smelted: number } | null = null;
         let stateMachineFinished = false;
 
         const stateMachine = buildStateMachineForPath(
-          bot,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
+          bot as unknown as MineflayerBot,
           path,
           (_success: boolean) => {
             stateMachineFinished = true;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
             const endCookedCount = getItemCountInInventory(bot as any, cookedName);
             const smelted = endCookedCount - startCookedCount;
             outcome = { success: smelted > 0, smelted };
@@ -252,6 +269,7 @@ export function createFoodSmeltingBehavior(opts: FoodSmeltingOptions): FoodSmelt
 
         const computeOutcome = () => {
           if (outcome) return outcome;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
           const endCookedCount = getItemCountInInventory(bot as any, cookedName);
           const smelted = endCookedCount - startCookedCount;
           return { success: smelted > 0, smelted };
@@ -278,6 +296,7 @@ export function createFoodSmeltingBehavior(opts: FoodSmeltingOptions): FoodSmelt
             }
           }
         };
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.info(`FoodSmelting: failed to create state machine - ${err?.message || err}`);
         lastFailedAttempt = Date.now();

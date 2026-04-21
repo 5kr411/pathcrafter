@@ -16,6 +16,7 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import type { Bot } from '../behavior_generator/types';
 import { plan as planner, _internals as plannerInternals } from '../planner';
 import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
 import {
@@ -36,19 +37,6 @@ import {
 } from './huntForFoodHelpers';
 const minecraftData = require('minecraft-data');
 
-interface Bot {
-  version?: string;
-  entity?: { position: any; health?: number; yaw: number; pitch: number };
-  entities?: Record<string, any>;
-  inventory?: any;
-  clearControlStates?: () => void;
-  pvp?: any;
-  on: (event: string, listener: (...args: any[]) => void) => void;
-  off: (event: string, listener: (...args: any[]) => void) => void;
-  removeListener: (event: string, listener: (...args: any[]) => void) => void;
-  [key: string]: any;
-}
-
 interface HuntForFishTargets {
   targetFoodPoints: number;
   animalFilter?: string[];
@@ -67,6 +55,7 @@ const WEAPON_SNAPSHOT_RADII = [32, 64, 96, 128];
 let lastDropLogTime = 0;
 const DROP_LOG_INTERVAL_MS = 2000;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
   let phase: Phase = 'init';
   let startFoodPoints = 0;
@@ -74,20 +63,26 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
   let huntedAnimalType: string | null = null;
   let rawFishItem: string | null = null;
   let cookedFishItem: string | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let killPosition: any = null;
   let dropCollectStartTime = 0;
   let attemptedDropIds = new Set<number>();
   let dropAttemptCount = 0;
   let weaponPhase: WeaponPhase = 'init';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let weaponPath: any[] | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let weaponStateMachine: any = null;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const dropTargets: any = {
     entity: null
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const huntTargets: any = {
     entity: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     entityFilter: (entity: any) => {
       if (!huntedAnimalType) return false;
       const name = (entity.name || '').toLowerCase();
@@ -98,8 +93,10 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
     followRange: 2.0
   };
 
-  const huntStateMachine = createHuntEntityState(bot, huntTargets);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+  const huntStateMachine = createHuntEntityState(bot as any, huntTargets);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let smeltStateMachine: any = null;
 
   const enter = new BehaviorIdle();
@@ -108,8 +105,10 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
   const smelting = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (entity: any) => {
-    const botPos = bot.entity?.position;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+    const botPos = bot.entity?.position as any;
     const result = evaluateHuntDropCandidate({
       entity,
       botPos,
@@ -127,7 +126,8 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
     return true;
   });
 
-  const goToDrop = new BehaviorSafeFollowEntity(bot, dropTargets);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+  const goToDrop = new BehaviorSafeFollowEntity(bot as any, dropTargets);
 
   addStateLogging(enter, 'HuntForFish:Enter', { logEnter: true });
   addStateLogging(findAnimal, 'HuntForFish:FindAnimal', { logEnter: true });
@@ -193,6 +193,7 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
     return Math.max(pointsGained, rawFishGained);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function tryPlanWeaponWithSnapshot(snapshot: any): Promise<any[] | null> {
     try {
       const inventory = getInventoryObject(bot);
@@ -220,18 +221,21 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
       }
 
       return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`HuntForFish: weapon planning error - ${err?.message || err}`);
       return null;
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function captureWeaponSnapshotWithValidation(): Promise<any> {
     const inventory = getInventoryObject(bot);
     const inventoryMap = new Map(Object.entries(inventory));
     const version = bot.version || '1.20.1';
     const mcData = minecraftData(version);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const validator = async (snapshot: any): Promise<boolean> => {
       try {
         const tree = planner(mcData, 'wooden_sword', 1, {
@@ -259,6 +263,7 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
 
         logger.debug(`HuntForFish: weapon validator - no paths at radius ${snapshot.radius}`);
         return false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`HuntForFish: weapon validator error - ${err?.message || err}`);
         return false;
@@ -267,19 +272,22 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
 
     try {
       logger.info(`HuntForFish: capturing weapon snapshot with radii ${JSON.stringify(WEAPON_SNAPSHOT_RADII)}`);
-      const result = await captureAdaptiveSnapshot(bot, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+      const result = await captureAdaptiveSnapshot(bot as any, {
         radii: WEAPON_SNAPSHOT_RADII,
         validator,
         onProgress: (msg: string) => logger.debug(`HuntForFish: ${msg}`)
       });
       logger.info(`HuntForFish: weapon snapshot captured at radius ${result.radiusUsed} after ${result.attemptsCount} attempts`);
       return result.snapshot;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`HuntForFish: weapon snapshot capture failed - ${err?.message || err}`);
       return null;
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function generateWeaponPlan(): Promise<any[] | null> {
     const snapshot = await captureWeaponSnapshotWithValidation();
     if (!snapshot) return null;
@@ -306,7 +314,8 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
     child: prepareWeapon,
     name: 'HuntForFish: find fish -> prepare weapon',
     shouldTransition: () => {
-      const result = findClosestHuntableAnimal(bot, targets.animalFilter, HUNTABLE_WATER_ANIMALS);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+      const result = findClosestHuntableAnimal(bot as any, targets.animalFilter, HUNTABLE_WATER_ANIMALS);
       if (result) {
         huntedAnimalType = result.animalType;
         rawFishItem = getRawMeatDrop(result.animalType, HUNTABLE_WATER_ANIMALS);
@@ -327,7 +336,8 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
     child: exit,
     name: 'HuntForFish: find fish -> exit (no fish)',
     shouldTransition: () => {
-      const result = findClosestHuntableAnimal(bot, targets.animalFilter, HUNTABLE_WATER_ANIMALS);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+      const result = findClosestHuntableAnimal(bot as any, targets.animalFilter, HUNTABLE_WATER_ANIMALS);
       return !result;
     },
     onTransition: () => {
@@ -611,8 +621,10 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
     }
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const smeltingAsAny = smelting as any;
   const originalSmeltingEntered = smeltingAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   smeltingAsAny.onStateEntered = function(this: any) {
     if (originalSmeltingEntered) originalSmeltingEntered.call(this);
 
@@ -640,8 +652,10 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const prepareWeaponAsAny = prepareWeapon as any;
   const originalPrepareWeaponEntered = prepareWeaponAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   prepareWeaponAsAny.onStateEntered = async function(this: any) {
     if (originalPrepareWeaponEntered) originalPrepareWeaponEntered.call(this);
 
@@ -690,12 +704,17 @@ function createHuntForFishState(bot: Bot, targets: HuntForFishTargets): any {
   };
 
   let reachedExit = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).isFinished = () => reachedExit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).wasSuccessful = () => phase === 'complete';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).getFoodGained = getFoodGained;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const exitAsAny = exit as any;
   const originalExitEntered = exitAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   exitAsAny.onStateEntered = function(this: any) {
     reachedExit = true;
     if (targets.onComplete) {

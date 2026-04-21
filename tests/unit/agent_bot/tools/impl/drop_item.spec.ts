@@ -42,7 +42,7 @@ describe('drop_item', () => {
 
   it('errors without item name', async () => {
     const bot: any = { inventory: { items: () => [] }, toss: () => Promise.resolve() };
-    const r = await dropItemTool.execute({}, mkCtx(bot) as any);
+    const r = await dropItemTool.execute({} as any, mkCtx(bot) as any);
     expect(r.ok).toBe(false);
   });
 });

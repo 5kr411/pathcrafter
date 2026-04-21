@@ -2,6 +2,7 @@ interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 

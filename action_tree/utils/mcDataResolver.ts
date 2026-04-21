@@ -35,6 +35,7 @@ export function ensureMinecraftDataFeaturesFiles(): void {
     candidates.push(path.join(modRoot, '..', 'minecraft-data', 'data'));
     candidates.push(path.join(modRoot, 'minecraft-data', 'data'));
     candidates.push(path.join(modRoot, 'data'));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.debug(`mcDataResolver: require.resolve('minecraft-data/lib/supportsFeature.js') failed: ${err?.message || err}`);
   }
@@ -44,6 +45,7 @@ export function ensureMinecraftDataFeaturesFiles(): void {
     const dir = path.dirname(filePath);
     try {
       fs.mkdirSync(dir, { recursive: true });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`mcDataResolver: mkdirSync failed for ${dir}: ${err?.code || err?.message || err}`);
     }
@@ -51,6 +53,7 @@ export function ensureMinecraftDataFeaturesFiles(): void {
       if (!fs.existsSync(filePath)) {
         fs.writeFileSync(filePath, '[]');
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`mcDataResolver: writeFileSync failed for ${filePath}: ${err?.code || err?.message || err}`);
     }
@@ -84,13 +87,16 @@ export function ensureMinecraftDataFeaturesFiles(): void {
  * const mcData = resolveMcData({ version: '1.19.2' });
  * ```
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function resolveMcData(ctx: any): MinecraftData | undefined {
   if (!ctx) return undefined;
   ensureMinecraftDataFeaturesFiles();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   let minecraftData: any;
   try {
     minecraftData = require('minecraft-data');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     const isMissingFeatures = err && err.code === 'MODULE_NOT_FOUND' && /features\.json/.test(String(err.message || ''));
     if (isMissingFeatures) {

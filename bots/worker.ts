@@ -6,6 +6,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 import createCollectItemState from '../behaviors/behaviorCollectBlock';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
@@ -39,12 +40,14 @@ async function main(): Promise<void> {
     configurePrecisePathfinder(bot);
     
     if (!isMainThread && parentPort) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       parentPort.on('message', (_message: any) => {
         // logger.info('received message: ', _message)
         // Handle worker-specific message logic
       });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
     let targets: any = {};
 
     const enter = new BehaviorIdle();

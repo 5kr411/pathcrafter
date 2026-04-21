@@ -91,6 +91,7 @@ export async function setupSpawn(options: SetupOptions = {}): Promise<void> {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e harness untyped dependency
 async function locateBiome(bot: any, biome: string): Promise<{ x: number; y: number | null; z: number }> {
   // Try each biome in the good biomes list, starting with the requested one
   const biomesToTry = [biome, ...GOOD_BIOMES.filter(b => b !== biome)];
@@ -106,6 +107,7 @@ async function locateBiome(bot: any, biome: string): Promise<{ x: number; y: num
   throw new Error('No suitable biome found with this seed');
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e harness untyped dependency
 function tryLocateBiome(bot: any, biome: string): Promise<{ x: number; y: number | null; z: number }> {
   return new Promise((resolve, reject) => {
     const timeout = setTimeout(() => {
@@ -113,6 +115,7 @@ function tryLocateBiome(bot: any, biome: string): Promise<{ x: number; y: number
       reject(new Error(`Timeout waiting for /locate response for ${biome}`));
     }, 10_000);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e harness untyped dependency
     function onMessage(jsonMsg: any): void {
       const text = jsonMsg.toString();
       // Success: "The nearest minecraft:forest is at [X, Y, Z] (N blocks away)"
@@ -138,6 +141,7 @@ function tryLocateBiome(bot: any, biome: string): Promise<{ x: number; y: number
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e harness untyped dependency
 function waitForTeleport(bot: any, targetX: number, targetZ: number): Promise<void> {
   return new Promise((resolve) => {
     const check = setInterval(() => {
@@ -156,6 +160,7 @@ function waitForTeleport(bot: any, targetX: number, targetZ: number): Promise<vo
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e harness untyped dependency
 function waitForChatResponse(bot: any, keyword: string, timeoutMs: number): Promise<string> {
   return new Promise((resolve) => {
     const timer = setTimeout(() => {
@@ -163,6 +168,7 @@ function waitForChatResponse(bot: any, keyword: string, timeoutMs: number): Prom
       resolve('(no response)');
     }, timeoutMs);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- e2e harness untyped dependency
     function onMsg(jsonMsg: any): void {
       const text = jsonMsg.toString();
       if (text.includes(keyword)) {

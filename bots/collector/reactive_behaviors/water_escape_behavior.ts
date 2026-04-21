@@ -37,6 +37,7 @@ const STUCK_THRESHOLD = 1.5; // must move more than this in 5s to count as makin
 // --- Shared helpers ---
 
 function isSubmerged(bot: Bot): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   return ((bot as any).oxygenLevel ?? 20) < 20;
 }
 
@@ -44,6 +45,7 @@ function isHeadInWater(bot: Bot): boolean {
   const pos = bot.entity?.position;
   if (!pos) return false;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const headBlock = (bot as any).blockAt(new Vec3(pos.x, pos.y + 1.62, pos.z));
     if (!headBlock) return false;
     return headBlock.name === 'water';
@@ -56,6 +58,7 @@ function isOnSolidGround(bot: Bot): boolean {
   const pos = bot.entity?.position;
   if (!pos) return false;
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const below = (bot as any).blockAt(new Vec3(pos.x, pos.y - 0.5, pos.z));
     return below?.boundingBox === 'block';
   } catch {
@@ -86,6 +89,7 @@ function scanCardinalDirections(bot: Bot): Vec3[] {
       const checkX = Math.floor(pos.x) + dx * dist;
       const checkZ = Math.floor(pos.z) + dz * dist;
       try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         const block = (bot as any).blockAt(new Vec3(checkX, surfaceY, checkZ));
         if (!block) break;
         if (block.name !== 'water' && block.name !== 'air') {
@@ -107,6 +111,7 @@ function scanCardinalDirections(bot: Bot): Vec3[] {
  * direction of travel. Checks 2 vertical levels (feet + head) and accounts
  * for the bot hitbox spanning up to 2 horizontal block columns.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function findWallBlocks(bot: any, target: Vec3): any[] {
   const pos = bot.entity?.position;
   if (!pos) return [];
@@ -132,6 +137,7 @@ function findWallBlocks(bot: any, target: Vec3): any[] {
   // so pos.y is unreliable. Check 2 blocks of clearance at surface level.
   const surfaceY = Math.floor(target.y);
   const seen = new Set<string>();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const blocks: any[] = [];
 
   for (let bx = minBX; bx <= maxBX; bx++) {
@@ -159,7 +165,9 @@ interface WaterEscapeTargets {
   landDirections: Vec3[];
   chosenTarget: Vec3 | null;
   scanRetries: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   wallBlocks: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   ceilingBlock: any | null;
 }
 
@@ -175,6 +183,7 @@ class BehaviorSwimUp implements StateBehavior {
   private lastStallY = 0;
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly bot: any,
     private readonly targets: WaterEscapeTargets
   ) {}
@@ -193,6 +202,7 @@ class BehaviorSwimUp implements StateBehavior {
   update(): void {
     if (this.finished || !this.active) return;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if ((this.bot as any).oxygenLevel >= 20 || !isHeadInWater(this.bot)) {
       logger.debug('WaterEscape: surfaced');
       this.finished = true;
@@ -250,6 +260,7 @@ class BehaviorTreadWater implements StateBehavior {
   private finished = false;
   private startTime = 0;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   constructor(private readonly bot: any) {}
 
   onStateEntered(): void {
@@ -285,6 +296,7 @@ class BehaviorCenterOnBlock implements StateBehavior {
   private targetX = 0;
   private targetZ = 0;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   constructor(private readonly bot: any) {}
 
   onStateEntered(): void {
@@ -356,10 +368,13 @@ class BehaviorDigBlock implements StateBehavior {
   public stateName = 'DigBlock';
   public active = false;
   private finished = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private blocksToDig: any[] = [];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   constructor(private readonly bot: any) {}
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   setBlocks(blocks: any[]): void {
     this.blocksToDig = blocks.slice();
   }
@@ -403,6 +418,7 @@ class BehaviorScanForLand implements StateBehavior {
   private foundLand = false;
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly bot: any,
     private readonly targets: WaterEscapeTargets
   ) {}
@@ -455,6 +471,7 @@ class BehaviorSwimToward implements StateBehavior {
   private lastProgressTime = 0;
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     private readonly bot: any,
     private readonly targets: WaterEscapeTargets
   ) {}
@@ -549,6 +566,7 @@ class BehaviorSwimRandom implements StateBehavior {
   private finished = false;
   private startTime = 0;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   constructor(private readonly bot: any) {}
 
   onStateEntered(): void {
@@ -600,6 +618,7 @@ class BehaviorSwimRandom implements StateBehavior {
 
 // --- State Machine Assembly ---
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createWaterEscapeState(bot: Bot): any {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
@@ -768,7 +787,9 @@ function createWaterEscapeState(bot: Bot): any {
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).isFinished = () => reachedExit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).wasSuccessful = () => escaped;
 
   const allStates = [swimUp, centerForCeiling, digCeiling, centerForScan, treadWater, scanForLand, swimToward, digWall, swimRandom, treadWaterRetry];
@@ -779,6 +800,7 @@ function createWaterEscapeState(bot: Bot): any {
         try { state.onStateExited(); } catch (_) {}
       }
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     try { (bot as any).clearControlStates?.(); } catch (_) {}
   };
 
@@ -828,7 +850,9 @@ export const waterEscapeBehavior: ReactiveBehavior = {
   },
 
   createState: (bot: Bot) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       ? (bot as any).safeChat.bind(bot)
       : typeof bot?.chat === 'function'
         ? bot.chat.bind(bot)
@@ -847,7 +871,9 @@ export const waterEscapeBehavior: ReactiveBehavior = {
 
     return {
       stateMachine,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       isFinished: () => (typeof (stateMachine as any).isFinished === 'function' ? (stateMachine as any).isFinished() : false),
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       wasSuccessful: () => (typeof (stateMachine as any).wasSuccessful === 'function' ? (stateMachine as any).wasSuccessful() : true),
       onStop: (reason: string) => {
         if (!sendChat) return;

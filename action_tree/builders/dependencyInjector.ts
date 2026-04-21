@@ -13,9 +13,11 @@ import { hasEqualOrBetterTool } from '../../utils/items';
 /**
  * Checks if a workstation dependency is already satisfied in the tree
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function hasWorkstationDependency(node: any, workstationName: string): boolean {
   if (!node || !node.children || !node.children.variants) return false;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   return node.children.variants.some((child: any) => {
     const childNode = child.value;
     if (childNode && childNode.action === 'root' && 
@@ -30,9 +32,11 @@ export function hasWorkstationDependency(node: any, workstationName: string): bo
 /**
  * Checks if a tool dependency is already satisfied in the tree
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function hasToolDependency(node: any, toolName: string): boolean {
   if (!node || !node.children || !node.children.variants) return false;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   return node.children.variants.some((child: any) => {
     const childNode = child.value;
     if (childNode && childNode.action === 'root' && 
@@ -51,6 +55,7 @@ export function hasToolDependency(node: any, toolName: string): boolean {
  * orchestrator. We pass it in as a parameter to avoid circular dependencies.
  */
 export type BuildRecipeTreeFn = (
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
   itemNames: string[],
   targetCount: number,
@@ -61,9 +66,11 @@ export type BuildRecipeTreeFn = (
  * Injects workstation dependency into a node if not already present
  */
 export function injectWorkstationDependency(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   node: any,
   workstationName: string,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
@@ -90,9 +97,11 @@ export function injectWorkstationDependency(
  * diamond_pickaxe, no wooden_pickaxe dependency will be injected.
  */
 export function injectToolDependency(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   node: any,
   toolName: string,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {

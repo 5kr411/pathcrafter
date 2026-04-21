@@ -11,6 +11,7 @@ export interface Vec3Like {
 
 export interface BotLike {
   entity?: { position?: Vec3Like };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   entities?: Record<string, any>;
   version?: string;
 }
@@ -44,6 +45,7 @@ export function findClosestHuntableAnimal(
   filter?: string[],
   animals: HuntableAnimal[] = HUNTABLE_LAND_ANIMALS as HuntableAnimal[],
   maxDistance?: number
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
 ): { entity: any; animalType: string } | null {
   if (!bot.entities || !bot.entity?.position) return null;
 
@@ -53,6 +55,7 @@ export function findClosestHuntableAnimal(
 
   const animalNames = new Set(validAnimals.map((a) => a.entity));
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   let closest: any = null;
   let closestDist = Infinity;
   let closestType = '';
@@ -106,6 +109,7 @@ export function countRawMeatInInventory(
   return rawMeats;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
 export function isActualDroppedItem(entity: any): boolean {
   if (entity.name === 'item') return true;
   if (typeof entity.getDroppedItem === 'function' && entity.getDroppedItem()) return true;
@@ -113,6 +117,7 @@ export function isActualDroppedItem(entity: any): boolean {
 }
 
 export function evaluateHuntDropCandidate(params: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   entity: any;
   botPos?: Vec3Like | null;
   killPosition?: Vec3Like | null;

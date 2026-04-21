@@ -20,6 +20,7 @@ bot.once('spawn', () => {
     setTimeout(async () => {
         try {
             const cr = Number.isFinite(chunkRadius) ? chunkRadius : getDefaultSnapshotChunkRadius();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
             const scan = beginSnapshotScan(bot as any, {
                 chunkRadius: cr,
                 includeAir: false
@@ -31,6 +32,7 @@ bot.once('spawn', () => {
             saveSnapshotToFile(raw, outPath);
             logger.info(`Saved world snapshot to ${outPath}`);
             safeExit(0);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
             logger.error('Error capturing snapshot:', err && err.stack ? err.stack : err);
             safeExit(2);

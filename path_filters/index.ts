@@ -38,6 +38,7 @@ import { plan, _internals as plannerInternals } from '../planner';
  * });
  */
 export async function generateTopNAndFilter(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
   ctx: any,
   itemName: string,
   targetCount: number,
@@ -56,6 +57,7 @@ export async function generateTopNAndFilter(
     inventory: options.inventory,
     log: options.log,
     pruneWithWorld,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- legacy plan-node shape
     worldSnapshot: snapshot as any,
     combineSimilarNodes: options.combineSimilarNodes,
     config: options && options.config ? options.config : undefined

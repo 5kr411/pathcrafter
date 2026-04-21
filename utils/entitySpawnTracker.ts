@@ -6,12 +6,14 @@
 
 interface EntityLike {
   id?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   [key: string]: any;
 }
 
 interface BotLike {
   on?: (event: string, handler: (entity: EntityLike) => void) => void;
   removeListener?: (event: string, handler: (entity: EntityLike) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   [key: string]: any;
 }
 

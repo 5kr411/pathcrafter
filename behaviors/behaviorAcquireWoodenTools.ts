@@ -8,20 +8,26 @@ import createCraftWoodenToolsIfNeededState from './behaviorCraftWoodenToolsIfNee
 import createPlaceUtilityBlockState from './behaviorPlaceNear';
 import logger from '../utils/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
   blockName?: string;
   amount?: number;
   itemName?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createAcquireWoodenToolsState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const acquireCraftingTableState = createAcquireCraftingTableState(bot, targets as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const collectLogsIfNeededState = createCollectBlockIfNeededState(bot, targets as any);
   const placeCraftingTableState = createPlaceUtilityBlockState(bot, targets);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftWoodenToolsIfNeededState = createCraftWoodenToolsIfNeededState(bot, targets as any);
   const exit = new BehaviorIdle();
 

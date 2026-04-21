@@ -10,6 +10,7 @@ interface Vec3Like {
   clone?: () => Vec3Like;
   offset?: (x: number, y: number, z: number) => Vec3Like;
   floored?: () => Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -17,6 +18,7 @@ interface Bot {
   entity?: {
     position: Vec3Like;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -27,7 +29,9 @@ interface PositionRecord {
 
 export class BehaviorSmartMoveTo {
   bot: Bot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   targets: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private moveTo: any;
   private originalTarget: Vec3Like | null = null;
   private positionHistory: PositionRecord[] = [];
@@ -41,10 +45,12 @@ export class BehaviorSmartMoveTo {
   private _gaveUp: boolean = false;
   private _pathfindingSettled: boolean = false;
   private _enteredAt: number = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private _pathUpdateHandler: ((r: any) => void) | null = null;
   private _goalReachedHandler: (() => void) | null = null;
   private readonly MIN_SETTLE_MS = 600;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
     this.targets = targets;

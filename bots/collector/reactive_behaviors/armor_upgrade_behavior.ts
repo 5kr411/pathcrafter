@@ -28,11 +28,15 @@ export function resetArmorUpgradeCooldowns(): void {
   lastEquipTime = 0;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getOffhandItem(bot: Bot): any | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   if (typeof (bot as any)?.getEquipmentDestSlot !== 'function') {
     return null;
   }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const offHandIndex = (bot as any).getEquipmentDestSlot('off-hand');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const slots = (bot as any)?.inventory?.slots;
   if (!Array.isArray(slots) || !Number.isInteger(offHandIndex) || offHandIndex < 0 || offHandIndex >= slots.length) {
     return null;
@@ -40,6 +44,7 @@ function getOffhandItem(bot: Bot): any | null {
   return slots[offHandIndex] ?? null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function isShieldItem(item: any): boolean {
   if (!item || typeof item.name !== 'string') {
     return false;
@@ -51,7 +56,9 @@ function hasShieldInOffhand(bot: Bot): boolean {
   return isShieldItem(getOffhandItem(bot));
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function findShieldInInventory(bot: Bot): any | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const inventoryItems = (bot as any)?.inventory?.items?.();
   if (!Array.isArray(inventoryItems)) {
     return null;
@@ -65,6 +72,7 @@ function findShieldInInventory(bot: Bot): any | null {
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function shouldEquipShield(bot: Bot): any | null {
   if (hasShieldInOffhand(bot)) {
     return null;
@@ -74,6 +82,7 @@ function shouldEquipShield(bot: Bot): any | null {
 
 interface EquipAttempt {
   slot: EquipSlot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   item: any;
   label: string;
 }
@@ -146,13 +155,16 @@ class BehaviorEquipSlot implements StateBehavior {
     try {
       if (this.attempt.slot !== 'off-hand') {
         const oldArmor = getEquippedItem(this.bot, this.attempt.slot as ArmorSlot);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         if (oldArmor && typeof (this.bot as any)?.unequip === 'function') {
           logger.debug(`ArmorUpgrade: unequipping old armor ${oldArmor.name}`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           await (this.bot as any).unequip(this.attempt.slot);
         }
       }
 
       logger.debug(`ArmorUpgrade: equipping ${this.attempt.item.name} to ${this.attempt.slot}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       await (this.bot as any).equip(this.attempt.item, this.attempt.slot);
 
       this.verifyTimer = setTimeout(() => {
@@ -160,6 +172,7 @@ class BehaviorEquipSlot implements StateBehavior {
         logger.debug(`ArmorUpgrade: equip verification slot=${this.attempt.slot} success=${success}`);
         this.finish(success);
       }, 100);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug('ArmorUpgrade: equip error', { error: String(err) });
       this.finish(false);
@@ -173,6 +186,7 @@ function createEquipState(
   sendChat: ((msg: string) => void) | null,
   verify: () => boolean
 ): {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   stateMachine: any;
   wasSuccessful: () => boolean;
   onStop: (reason: ReactiveBehaviorStopReason) => void;
@@ -230,8 +244,11 @@ export const armorUpgradeBehavior: ReactiveBehavior = {
     return false;
   },
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   createState: async (bot: Bot): Promise<any> => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       ? (bot as any).safeChat.bind(bot)
       : null;
 

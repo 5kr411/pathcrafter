@@ -3,32 +3,45 @@ import logger from '../utils/logger';
 
 interface Bot {
   entity?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     position: any;
   };
   pvp?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     attack: (entity: any) => void;
     stop: () => void;
     forceStop: () => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     target: any;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     movements: any;
     followRange: number;
     viewDistance: number;
     attackRange: number;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     meleeAttackRate: any;
   };
   inventory?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     items?: () => any[];
   };
   registry?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     items?: Record<string, any>;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   equip?: (item: any, destination: string) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   on: (event: string, listener: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   off: (event: string, listener: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   removeListener: (event: string, listener: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function pickBestWeapon(bot: Bot): any | null {
   const items = bot.inventory?.items?.() || [];
   const registry = bot.registry?.items ?? {};
@@ -64,6 +77,7 @@ function pickBestWeapon(bot: Bot): any | null {
     return materialPriority.get(prefix) ?? 0;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let bestWeapon: any = null;
   let bestScore = -Infinity;
 
@@ -88,11 +102,13 @@ function pickBestWeapon(bot: Bot): any | null {
 }
 
 interface Entity {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   position?: any;
   health?: number;
   name?: string;
   displayName?: string;
   id?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -101,6 +117,7 @@ interface Targets {
   attackRange?: number;
   followRange?: number;
   viewDistance?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -156,6 +173,7 @@ export class BehaviorPvpAttack implements StateBehavior {
     const entityName = entity.name || entity.displayName || 'entity';
     logger.info(`BehaviorPvpAttack: starting attack on ${entityName}${this.config.singleAttack ? ' (single attack mode)' : ''}`);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     this.equipAndAttack(entity).catch((err: any) => {
       logger.warn(`BehaviorPvpAttack: failed to start attack - ${err?.message || err}`);
       this.cleanup();
@@ -170,6 +188,7 @@ export class BehaviorPvpAttack implements StateBehavior {
       try {
         logger.info(`BehaviorPvpAttack: equipping ${weapon.name}`);
         await this.bot.equip(weapon, 'hand');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`BehaviorPvpAttack: failed to equip weapon - ${err?.message || err}`);
       }
@@ -181,6 +200,7 @@ export class BehaviorPvpAttack implements StateBehavior {
 
     try {
       this.bot.pvp!.attack(entity);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       throw err;
     }
@@ -265,6 +285,7 @@ export class BehaviorPvpAttack implements StateBehavior {
 
     try {
       this.bot.pvp.stop();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`BehaviorPvpAttack: error stopping pvp - ${err?.message || err}`);
     }
@@ -281,6 +302,7 @@ export class BehaviorPvpAttack implements StateBehavior {
 
     try {
       this.bot.pvp.forceStop();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`BehaviorPvpAttack: error force stopping pvp - ${err?.message || err}`);
     }

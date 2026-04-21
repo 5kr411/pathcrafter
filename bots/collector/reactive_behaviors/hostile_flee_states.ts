@@ -20,6 +20,7 @@ export interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   distanceTo?: (other: any) => number;
 }
 
@@ -30,6 +31,7 @@ export function hasUsableShield(bot: Bot): boolean {
 }
 
 export function getArmorValue(bot: Bot): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const attr = (bot as any)?.entity?.attributes?.['generic.armor'];
   if (attr && typeof attr.value === 'number') return attr.value;
   return 0;
@@ -40,7 +42,9 @@ export function isLowArmor(bot: Bot): boolean {
 }
 
 export function isLowHealth(bot: Bot): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const current = (bot as any).health ?? 20;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const max = (bot as any).maxHealth ?? 20;
   return current > 0 && current < max * LOW_HEALTH_RATIO;
 }
@@ -76,6 +80,7 @@ export function computeFleeTarget(botPos: Vec3Like, threatPos: Vec3Like, distanc
  * parameterized so `shouldActivate` uses TRIGGER_RADIUS (16) while the
  * fleeing states use FLEE_RADIUS (32) for continued observation.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export function getThreat(bot: Bot, radius: number): any | null {
   const creeper = findClosestCreeper(bot, radius);
   if (creeper) return creeper;
@@ -258,12 +263,14 @@ export class BehaviorFleeVisible implements StateBehavior {
     if (!force && this.lastGoal && getDistance(this.lastGoal, target) < GOAL_CHANGE_THRESHOLD) {
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const pathfinder = (this.bot as any)?.pathfinder;
     if (!pathfinder || typeof pathfinder.setGoal !== 'function') return;
     try {
       pathfinder.setGoal(new goals.GoalXZ(target.x, target.z));
       this.lastGoal = target;
       this.lastGoalTime = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`FleeVisible: failed to set goal - ${err?.message || err}`);
     }
@@ -367,12 +374,14 @@ export class BehaviorFleeFromMemory implements StateBehavior {
     if (!force && this.lastGoal && getDistance(this.lastGoal, target) < GOAL_CHANGE_THRESHOLD) {
       return;
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const pathfinder = (this.bot as any)?.pathfinder;
     if (!pathfinder || typeof pathfinder.setGoal !== 'function') return;
     try {
       pathfinder.setGoal(new goals.GoalXZ(target.x, target.z));
       this.lastGoal = target;
       this.lastGoalTime = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`FleeFromMemory: failed to set goal - ${err?.message || err}`);
     }

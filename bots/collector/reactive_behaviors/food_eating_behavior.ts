@@ -38,10 +38,12 @@ export interface FoodEatingHandle {
 }
 
 function getBotHealth(bot: Bot): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   return (bot as any).health ?? 20;
 }
 
 function getBotFood(bot: Bot): number {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   return (bot as any).food ?? 20;
 }
 
@@ -94,14 +96,19 @@ function findBestEatableFood(bot: Bot): FoodItem | null {
 
 function stopBotActions(bot: Bot): void {
   try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if (typeof (bot as any)?.clearControlStates === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (bot as any).clearControlStates();
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const pathfinder = (bot as any)?.pathfinder;
     if (pathfinder && typeof pathfinder.stop === 'function') {
       pathfinder.stop();
     }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     if (typeof (bot as any)?.stopDigging === 'function') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       (bot as any).stopDigging();
     }
   } catch (_) {}
@@ -119,6 +126,7 @@ class BehaviorEatFood implements StateBehavior {
   private success = false;
 
   constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     private readonly bot: any,
     private readonly targets: EatFoodTargets
   ) {}
@@ -178,6 +186,7 @@ class BehaviorEatFood implements StateBehavior {
 
       this.finished = true;
       this.success = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`FoodEating: error eating food - ${err?.message || err}`);
       this.finished = true;
@@ -242,6 +251,7 @@ export function createFoodEatingBehavior(opts: FoodEatingOptions = {}): FoodEati
     return findBestEatableFood(bot) !== null;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   function createFoodEatingState(bot: Bot, targets: EatFoodTargets): any {
     const enter = new BehaviorIdle();
     const exit = new BehaviorIdle();
@@ -277,7 +287,9 @@ export function createFoodEatingBehavior(opts: FoodEatingOptions = {}): FoodEati
 
     const stateMachine = new NestedStateMachine([enterToEat, eatToExit], enter, exit);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     (stateMachine as any).isFinished = () => reachedExit;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     (stateMachine as any).wasSuccessful = () => eatFood.wasSuccessful();
 
     stateMachine.onStateExited = function() {
@@ -307,7 +319,9 @@ export function createFoodEatingBehavior(opts: FoodEatingOptions = {}): FoodEati
     },
 
     createState: async (bot: Bot) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         ? (bot as any).safeChat.bind(bot)
         : null;
 
@@ -332,7 +346,9 @@ export function createFoodEatingBehavior(opts: FoodEatingOptions = {}): FoodEati
 
       return {
         stateMachine,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         isFinished: () => (typeof (stateMachine as any).isFinished === 'function' ? (stateMachine as any).isFinished() : false),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         wasSuccessful: () => (typeof (stateMachine as any).wasSuccessful === 'function' ? (stateMachine as any).wasSuccessful() : true)
       };
     }

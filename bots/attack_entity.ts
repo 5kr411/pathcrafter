@@ -4,6 +4,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 import createAttackEntityState from '../behaviors/behaviorAttackEntity';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
@@ -22,6 +23,7 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-tool').plugin);
 
 bot.once('spawn', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const targets: any = {
     entity: null
   };
@@ -77,10 +79,12 @@ bot.once('spawn', () => {
       const entityName = parts.slice(1).join('_') || 'zombie';
       
       const entities = Object.values(bot.entities || {});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       const targetEntity = entities.find((e: any) => {
         const name = (e.name || e.displayName || '').toLowerCase();
         const entityNameLower = entityName.toLowerCase().replace(/ /g, '_');
         return name === entityNameLower || name.includes(entityNameLower) || entityNameLower.includes(name.split('_')[0]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       }) as any;
 
       if (targetEntity) {
@@ -89,11 +93,13 @@ bot.once('spawn', () => {
         bot.chat(`Targeting ${foundName}`);
         setTimeout(() => startTransition.trigger(), 0);
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
         const nearby = entities.map((e: any) => (e.name || e.displayName || 'unknown')).slice(0, 5);
         bot.chat(`No ${entityName} found nearby. Nearby entities: ${nearby.join(', ')}`);
       }
     } else if (command === 'list' || command === 'entities') {
       const entities = Object.values(bot.entities || {});
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
       const entityList = entities.map((e: any) => {
         const name = e.name || e.displayName || 'unknown';
         const dist = bot.entity?.position?.distanceTo?.(e.position)?.toFixed(1) || '?';

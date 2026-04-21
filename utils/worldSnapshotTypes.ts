@@ -65,6 +65,7 @@ export interface SnapshotOptions {
   /** Minecraft version override */
   version?: string;
   /** Minecraft data override */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   mcData?: any;
   /** Inner radius to skip (for ring scanning). Blocks at distance <= innerRadius are skipped. */
   innerRadius?: number;
@@ -129,6 +130,7 @@ export interface Bot {
  */
 export interface ScanState {
   bot: Bot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   mc: any;
   includeAir: boolean;
   center: {

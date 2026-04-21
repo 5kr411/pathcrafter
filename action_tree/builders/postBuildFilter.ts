@@ -19,6 +19,7 @@ interface AvailableItems {
   families: Set<string>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function getVariantItemName(variant: any): string | null {
   if (!variant) return null;
   const value = variant.value;
@@ -43,6 +44,7 @@ function addAvailableItem(
 }
 
 function isIngredientAvailable(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ingredient: any,
   available: AvailableItems,
   inventory?: Map<string, number>,
@@ -72,11 +74,13 @@ function isIngredientAvailable(
 }
 
 function isIngredientVariantAvailable(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ingredientVariant: any,
   available: AvailableItems,
   options?: { inventory?: Map<string, number>; requiredCountMultiplier?: number }
 ): boolean {
   const ingredients = ingredientVariant?.value || [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   return ingredients.every((ingredient: any) => {
     const requiredCount =
       options?.requiredCountMultiplier != null
@@ -95,8 +99,10 @@ function isIngredientVariantAvailable(
  * @param mcData - Minecraft data
  */
 export function applyPostBuildFiltering(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   tree: any,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any
 ): void {
   if (!context.pruneWithWorld || !context.combineSimilarNodes) {
@@ -126,8 +132,10 @@ export function applyPostBuildFiltering(
  * Returns true if any changes were made
  */
 function filterCraftVariantsInTree(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   node: any,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any
 ): boolean {
   if (!node) return false;
@@ -144,6 +152,7 @@ function filterCraftVariantsInTree(
     
     // Prune dead branches: remove children that have no viable variants
     const originalChildCount = node.children.variants.length;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     node.children.variants = node.children.variants.filter((child: any) => 
       isNodeViable(child.value)
     );
@@ -170,6 +179,7 @@ function filterCraftVariantsInTree(
  * - It's a root node with at least one child (means there's a way to get it)
  * - It's a craft node with at least one result variant
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function isNodeViable(node: any): boolean {
   if (!node) return false;
   
@@ -203,8 +213,10 @@ function isNodeViable(node: any): boolean {
  * Returns true if variants were changed
  */
 function filterSingleCraftNode(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   craftNode: any,
   _context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   _mcData: any
 ): boolean {
   if (!craftNode.result || !craftNode.ingredients) return false;
@@ -232,6 +244,7 @@ function filterSingleCraftNode(
         }
       }
     }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.warn(`postBuildFilter: inventory inspection failed: ${err?.message || err}`);
   }
@@ -254,6 +267,7 @@ function filterSingleCraftNode(
   const sameLength = resultCount === ingCount;
 
   // Helper to check if an ingredient variant is fully available
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const isIngredientVariantAvailableLocal = (ingredientVariant: any): boolean => {
     return isIngredientVariantAvailable(ingredientVariant, available);
   };
@@ -261,6 +275,7 @@ function filterSingleCraftNode(
   if (sameLength) {
     // Preserve original 1:1 mapping semantics when counts match
     const filteredResultVariants = craftNode.result.variants.filter(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       (_resultVariant: any, index: number) => {
         const ingredientVariant = craftNode.ingredients.variants[index];
         if (!ingredientVariant) return true;
@@ -269,6 +284,7 @@ function filterSingleCraftNode(
     );
 
     const filteredIngredientVariants = craftNode.ingredients.variants.filter(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       (_variant: any, index: number) => {
         const resultVariant = craftNode.result.variants[index];
         return filteredResultVariants.includes(resultVariant);
@@ -313,6 +329,7 @@ function filterSingleCraftNode(
  * This converges over multiple passes as craft nodes get filtered.
  */
 function collectAvailableItems(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   node: any,
   available: AvailableItems
 ): void {
@@ -416,6 +433,7 @@ function collectAvailableItems(
     const ingCount = node.ingredients.variants.length;
     const sameLength = resultCount === ingCount;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const isIngredientVariantAvailableLocal = (ingredientVariant: any): boolean => {
       return isIngredientVariantAvailable(ingredientVariant, available);
     };
@@ -475,6 +493,7 @@ function collectAvailableItems(
  * Final pruning pass that removes craft nodes missing required ingredients
  * Uses inventory KEYS (not counts) to detect if ingredient was ever available
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext): void {
   if (!node) return;
 
@@ -540,6 +559,7 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
   const ingCount = (node.ingredients.variants || []).length;
   const sameLength = resultCount === ingCount;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const isIngredientVariantAvailableLocal = (ingredientVariant: any): boolean => {
     const requiredCountMultiplier = node.count || 1;
     return isIngredientVariantAvailable(ingredientVariant, available, {
@@ -558,9 +578,11 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
     }
 
     if (validVariantIndices.size < node.result.variants.length) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       node.result.variants = node.result.variants.filter((_: any, i: number) => 
         validVariantIndices.has(i)
       );
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       node.ingredients.variants = node.ingredients.variants.filter((_: any, i: number) => 
         validVariantIndices.has(i)
       );
@@ -582,10 +604,12 @@ function pruneCraftNodesWithMissingIngredients(node: any, context: BuildContext)
 /**
  * Recursively prunes non-viable child nodes
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 function pruneDeadBranches(node: any): void {
   if (!node || !node.children || !node.children.variants) return;
 
   // Prune non-viable children
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   node.children.variants = node.children.variants.filter((child: any) => 
     isNodeViable(child.value)
   );

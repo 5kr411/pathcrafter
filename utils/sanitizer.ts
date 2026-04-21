@@ -16,16 +16,19 @@ function produced(step: ActionStep | null | undefined): string | null {
   if (!step) return null;
 
   if (step.action === 'craft' && 'result' in step) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const result = (step as any).result;
     if (result && result.item) return result.item;
   }
 
   if (step.action === 'smelt' && 'result' in step) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const result = (step as any).result;
     if (result && result.item) return result.item;
   }
 
   if (step.action === 'mine' || step.action === 'hunt') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const targetItem = 'targetItem' in step ? (step as any).targetItem : null;
     return targetItem || step.what;
   }
@@ -110,6 +113,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
       if (!st) continue;
 
       if (st.action === 'craft') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         const result = 'result' in st ? (st as any).result : null;
         const out = result && result.item;
         const outCount = (result && result.perCraftCount ? result.perCraftCount : 1) * (st.count || 1);
@@ -120,6 +124,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
       }
 
       if (st.action === 'smelt') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         const result = 'result' in st ? (st as any).result : null;
         const out = result && result.item;
         const outCount = (result && result.perSmelt ? result.perSmelt : 1) * (st.count || 1);
@@ -130,6 +135,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
       }
 
       if (st.action === 'mine' || st.action === 'hunt') {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         const targetItem = 'targetItem' in st ? (st as any).targetItem : null;
         const out = targetItem || st.what;
         const outCount = st.count || 1;
@@ -168,10 +174,12 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
       keep[i] = true;
       // Smelting requires a furnace to be present
       incNeed('furnace', 1);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const input = 'input' in st ? (st as any).input : null;
       const inCount = (input && input.perSmelt ? input.perSmelt : 1) * (st.count || 1);
       incNeed(input && input.item, inCount);
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const fuel = 'fuel' in st ? (st as any).fuel : null;
       if (fuel) {
         if (getSmeltsPerUnitForFuel) {
@@ -195,6 +203,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
         incNeed('crafting_table', 1);
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const result = 'result' in st ? (st as any).result : null;
       const out = result && result.item;
       const outCount = (result && result.perCraftCount ? result.perCraftCount : 1) * (st.count || 1);
@@ -207,7 +216,9 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
 
       keep[i] = true;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const ingredients = 'ingredients' in st && Array.isArray((st as any).ingredients) 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         ? (st as any).ingredients 
         : [];
 
@@ -220,6 +231,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
     }
 
     if (st.action === 'mine' || st.action === 'hunt') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const targetItem = 'targetItem' in st ? (st as any).targetItem : null;
       const out = targetItem || st.what;
       const demand = need.get(out) || 0;
@@ -227,6 +239,7 @@ export function sanitizePath(path: ActionPath, opts: SanitizeOptions): ActionPat
       if (demand > 0) {
         keep[i] = true;
         decNeed(out, st.count || 1);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         const tool = 'tool' in st ? (st as any).tool : null;
         if (tool) incNeed(tool, 1);
       } else {

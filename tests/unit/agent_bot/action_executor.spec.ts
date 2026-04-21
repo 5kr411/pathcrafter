@@ -1,4 +1,5 @@
 import { AgentActionExecutor, type AgentAction } from '../../../bots/agent_bot/action_executor';
+import type { ToolResult } from '../../../bots/agent_bot/tools/types';
 
 describe('AgentActionExecutor', () => {
   it('starts with no work and idle state', () => {
@@ -51,10 +52,10 @@ describe('AgentActionExecutor', () => {
     exec.onStateEntered();
     ctrl.abort();
     exec.update();
-    const r = await p;
+    const r = (await p) as ToolResult;
     expect(stopSpy).toHaveBeenCalled();
     expect(r.ok).toBe(false);
-    expect(r.cancelled).toBe(true);
+    expect((r as { cancelled?: boolean }).cancelled).toBe(true);
     expect(exec.hasWork()).toBe(false);
   });
 
@@ -72,10 +73,10 @@ describe('AgentActionExecutor', () => {
     const p = exec.run(action, new AbortController().signal);
     exec.onStateEntered();
     exec.onStateExited();
-    const r = await p;
+    const r = (await p) as ToolResult;
     expect(stopSpy).toHaveBeenCalled();
     expect(r.ok).toBe(false);
-    expect(r.preempted).toBe(true);
+    expect((r as { preempted?: boolean }).preempted).toBe(true);
     expect(exec.active).toBe(false);
     expect(exec.hasWork()).toBe(false);
   });
@@ -94,10 +95,10 @@ describe('AgentActionExecutor', () => {
     const p = exec.run(action, new AbortController().signal);
     exec.onStateEntered();
     exec.stop();
-    const r = await p;
+    const r = (await p) as ToolResult;
     expect(stopSpy).toHaveBeenCalled();
     expect(r.ok).toBe(false);
-    expect(r.cancelled).toBe(true);
+    expect((r as { cancelled?: boolean }).cancelled).toBe(true);
   });
 
   it('throws if a second action is started while one is in flight', () => {
@@ -127,9 +128,9 @@ describe('AgentActionExecutor', () => {
     const p = exec.run(action, new AbortController().signal);
     exec.onStateEntered();
     for (let i = 0; i < 11; i++) exec.update();
-    const r = await p;
+    const r = (await p) as ToolResult;
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/update failed/i);
+    expect((r as { error?: string }).error).toMatch(/update failed/i);
     expect(exec.hasWork()).toBe(false);
   });
 
@@ -145,9 +146,9 @@ describe('AgentActionExecutor', () => {
       isFinished: () => false,
       result: () => ({ ok: true })
     };
-    const r = await exec.run(action, ctrl.signal);
+    const r = (await exec.run(action, ctrl.signal)) as ToolResult;
     expect(r.ok).toBe(false);
-    expect(r.cancelled).toBe(true);
+    expect((r as { cancelled?: boolean }).cancelled).toBe(true);
     expect(exec.hasWork()).toBe(false);
   });
 });

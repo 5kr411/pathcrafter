@@ -8,11 +8,13 @@ interface Vec3Like {
   z: number;
   distanceTo?: (other: Vec3Like) => number;
   clone?: () => Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
 interface Entity {
   position?: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
@@ -20,6 +22,7 @@ interface Bot {
   entity?: {
     position: Vec3Like;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
@@ -30,8 +33,11 @@ interface PositionRecord {
 
 export class BehaviorSafeFollowEntity {
   bot: Bot;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   targets: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   private followEntity: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   private moveTo: any = null;
   private positionHistory: PositionRecord[] = [];
   private isStuck: boolean = false;
@@ -44,6 +50,7 @@ export class BehaviorSafeFollowEntity {
   private readonly MAX_UNSTICK_ATTEMPTS = 3;
   private _gaveUp: boolean = false;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   constructor(bot: Bot, targets: any) {
     this.bot = bot;
     this.targets = targets;
@@ -61,10 +68,12 @@ export class BehaviorSafeFollowEntity {
     this.followEntity.followDistance = value;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   get movements(): any {
     return this.followEntity.movements;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   set movements(value: any) {
     this.followEntity.movements = value;
   }

@@ -7,7 +7,12 @@ interface SearchResult {
   type: 'item' | 'block';
 }
 
-export const searchItemsTool: ToolImpl = {
+type SearchItemsInput = {
+  query: string;
+  limit?: number;
+};
+
+export const searchItemsTool: ToolImpl<SearchItemsInput> = {
   schema: {
     name: 'search_items',
     description: 'Substring-search Minecraft items and blocks by name or display name. Returns up to `limit` (default 20) results.',
@@ -21,10 +26,11 @@ export const searchItemsTool: ToolImpl = {
     }
   },
   async execute(input, ctx) {
-    const query = typeof (input as any)?.query === 'string' ? (input as any).query : '';
+    const query = typeof input?.query === 'string' ? input.query : '';
     if (!query) return { ok: false, error: 'query is required' };
-    const limit = typeof (input as any)?.limit === 'number' ? (input as any).limit : 20;
+    const limit = typeof input?.limit === 'number' ? input.limit : 20;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     const mcData: any = resolveMcData(ctx.bot);
     if (!mcData) return { ok: false, error: 'mcData unavailable' };
 
@@ -32,6 +38,7 @@ export const searchItemsTool: ToolImpl = {
     const seen = new Set<string>();
     const results: SearchResult[] = [];
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     const matches = (entry: any): boolean => {
       if (!entry || typeof entry.name !== 'string') return false;
       if (entry.name.toLowerCase().includes(needle)) return true;
@@ -39,6 +46,7 @@ export const searchItemsTool: ToolImpl = {
       return false;
     };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     const items: any[] = Array.isArray(mcData.itemsArray) ? mcData.itemsArray : [];
     for (const it of items) {
       if (results.length >= limit) break;
@@ -49,6 +57,7 @@ export const searchItemsTool: ToolImpl = {
       }
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     const blocks: any[] = Array.isArray(mcData.blocksArray) ? mcData.blocksArray : [];
     for (const b of blocks) {
       if (results.length >= limit) break;

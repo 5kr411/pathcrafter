@@ -92,6 +92,7 @@ async function run(): Promise<void> {
   try {
     cli = parseRunnerCli();
     specs = resolveBotSpecs(cli.rosterArgs);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
   } catch (err: any) {
     logger.error('Failed to resolve runner config:', err.message);
     process.exit(4);

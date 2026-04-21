@@ -23,7 +23,7 @@ describe('wait', () => {
   });
 
   it('errors on invalid seconds', async () => {
-    const r = await waitTool.execute({}, mkCtx(new AbortController().signal) as any);
+    const r = await waitTool.execute({} as any, mkCtx(new AbortController().signal) as any);
     expect(r.ok).toBe(false);
   });
 });

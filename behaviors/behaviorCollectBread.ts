@@ -15,21 +15,15 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import type { Bot } from '../behavior_generator/types';
 import { plan as planner, _internals as plannerInternals } from '../planner';
 import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
 
 const minecraftData = require('minecraft-data');
 
-interface Bot {
-  version?: string;
-  entity?: { position: any };
-  inventory?: any;
-  clearControlStates?: () => void;
-  [key: string]: any;
-}
-
 interface CollectBreadTargets {
   targetBreadCount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   worldSnapshot?: any;
   snapshotRadii?: number[];
   onComplete?: (success: boolean, breadCollected: number) => void;
@@ -43,10 +37,13 @@ const DEFAULT_RADII = [32, 64, 96, 128];
 /**
  * Creates a state machine for collecting bread from hay bales
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
   let phase: Phase = 'init';
   let startBreadCount = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let currentPath: any[] | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let pathStateMachine: any = null;
   
   const enter = new BehaviorIdle();
@@ -66,6 +63,7 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
     return getBreadCount() - startBreadCount;
   }
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function tryPlanWithSnapshot(snapshot: any): Promise<any[] | null> {
     try {
       const inventory = getInventoryObject(bot);
@@ -93,12 +91,14 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
       }
       
       return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`CollectBread: planning error - ${err?.message || err}`);
       return null;
     }
   }
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function captureSnapshotWithValidation(): Promise<any> {
     const inventory = getInventoryObject(bot);
     const inventoryMap = new Map(Object.entries(inventory));
@@ -106,6 +106,7 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
     const mcData = minecraftData(version);
     const radii = targets.snapshotRadii || DEFAULT_RADII;
     
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const validator = async (snapshot: any): Promise<boolean> => {
       try {
         const tree = planner(mcData, 'bread', targets.targetBreadCount, {
@@ -133,6 +134,7 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
         
         logger.debug(`CollectBread: validator - no paths at radius ${snapshot.radius}`);
         return false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`CollectBread: validator error - ${err?.message || err}`);
         return false;
@@ -141,19 +143,22 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
     
     try {
       logger.info(`CollectBread: capturing adaptive snapshot with radii ${JSON.stringify(radii)}`);
-      const result = await captureAdaptiveSnapshot(bot, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+      const result = await captureAdaptiveSnapshot(bot as any, {
         radii,
         validator,
         onProgress: (msg: string) => logger.debug(`CollectBread: ${msg}`)
       });
       logger.info(`CollectBread: snapshot captured at radius ${result.radiusUsed} after ${result.attemptsCount} attempts`);
       return result.snapshot;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`CollectBread: snapshot capture failed - ${err?.message || err}`);
       return null;
     }
   }
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function generateBreadPlan(): Promise<any[] | null> {
     // First try with provided snapshot
     if (targets.worldSnapshot) {
@@ -235,8 +240,10 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
   });
   
   // Hook into executing state to start and tick the path state machine
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const executingAsAny = executing as any;
   const originalExecutingEntered = executingAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   executingAsAny.onStateEntered = function(this: any) {
     if (originalExecutingEntered) originalExecutingEntered.call(this);
     if (pathStateMachine && typeof pathStateMachine.onStateEntered === 'function') {
@@ -262,8 +269,10 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
   
   // Start planning when entering the planning state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const planningAsAny = planning as any;
   const originalPlanningEntered = planningAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   planningAsAny.onStateEntered = async function(this: any) {
     if (originalPlanningEntered) originalPlanningEntered.call(this);
     
@@ -279,12 +288,17 @@ function createCollectBreadState(bot: Bot, targets: CollectBreadTargets): any {
   };
   
   let reachedExit = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).isFinished = () => reachedExit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).wasSuccessful = () => phase === 'complete';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).getBreadCollected = getBreadCollected;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const exitAsAny = exit as any;
   const originalExitEntered = exitAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   exitAsAny.onStateEntered = function(this: any) {
     reachedExit = true;
     if (targets.onComplete) {

@@ -12,26 +12,35 @@ import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 
 interface Bot {
   entity?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     position: any;
     health?: number;
     yaw: number;
     pitch: number;
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   entities?: Record<string, any>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   pvp?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   on: (event: string, listener: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   off: (event: string, listener: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   removeListener: (event: string, listener: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
 interface Entity {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   position?: any;
   health?: number;
   name?: string;
   displayName?: string;
   id?: number;
   isAlive?: () => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
@@ -42,6 +51,7 @@ interface Targets {
   attackRange?: number;
   followRange?: number;
   pvpApproachRange?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   [key: string]: any;
 }
 
@@ -49,6 +59,7 @@ interface Targets {
  * Hunt entity behavior - uses mineflayer-pvp for combat
  * Attacks continuously until entity is dead, despawned, or timeout
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
 function createHuntEntityState(bot: Bot, targets: Targets): any {
   const HUNT_TIMEOUT = 60000; // 1 minute
   const PVP_APPROACH_RANGE = targets.pvpApproachRange ?? 6;
@@ -56,6 +67,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   let huntTimeoutId: NodeJS.Timeout | null = null;
   let huntTimedOut = false;
   let targetEntity: Entity | null | undefined = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   let handleEntityGone: ((entity: any) => void) | null = null;
   let pvpAttackState: BehaviorPvpAttack | null = null;
 
@@ -94,7 +106,9 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
       logger.info(`BehaviorHuntEntity: captured entity reference: ${targetEntity.name || targetEntity.displayName || 'unknown'}`);
       
       if (!handleEntityGone) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         handleEntityGone = (gone: any) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
           if (targetEntity && gone?.id === (targetEntity as any).id) {
             logger.info(`BehaviorHuntEntity: entity ${targetEntity.name || 'target'} despawned/defeated`);
             targetEntity = null;
@@ -256,6 +270,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     name: 'BehaviorHuntEntity: approach -> exit (target lost)',
     shouldTransition: () => {
       if (!targets.entity) return true;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const entityId = (targets.entity as any)?.id;
       if (entityId === undefined) return false;
       return !bot.entities || !bot.entities[entityId];
@@ -330,6 +345,7 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
   });
 
   const originalStateExit = stateMachine.onStateExited;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   stateMachine.onStateExited = function(...args: any[]) {
     clearHuntTimeout();
     cleanupEntityTracking();

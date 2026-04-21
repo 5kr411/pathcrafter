@@ -19,9 +19,13 @@ const IDLE_REPICK_COOLDOWN_MS = 8000;
 
 interface BotLike {
   entity?: { position: { x: number; y: number; z: number } };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   pathfinder?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   on?: (event: string, handler: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   removeListener?: (event: string, handler: (...args: any[]) => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -45,12 +49,14 @@ export class BehaviorWander {
   private targetZ: number = 0;
   private lastGoalSetTime: number = 0;
   private angleConstraint: WanderAngleConstraint | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private targets: { wanderYaw?: number; [key: string]: any } | null = null;
 
   constructor(
     bot: BotLike,
     distance: number = DEFAULT_DISTANCE,
     angleConstraint?: WanderAngleConstraint,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     targets?: { wanderYaw?: number; [key: string]: any }
   ) {
     this.bot = bot;
@@ -163,6 +169,7 @@ export class BehaviorWander {
       const goal = new goals.GoalNear(this.targetX, y, this.targetZ, range);
       this.bot.pathfinder.setGoal(goal);
       this.lastGoalSetTime = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.warn(`BehaviorWander: failed to set goal - ${err?.message || err}`);
       this.finish();

@@ -51,5 +51,6 @@ export function computeTargetsForCraftInTable(step: ActionStep): CraftTargets | 
 export function create(bot: Bot, step: ActionStep): BehaviorState | null {
   const targets = computeTargetsForCraftInTable(step);
   if (!targets) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   return createCraftWithTableState(bot as any, targets);
 }

@@ -27,8 +27,10 @@ export function buildHuntNodes(
   variantsToUse: string[],
   huntingPaths: MobSource[],
   targetCount: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   root: any,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any
 ): void {
   const huntContext = cloneInventoryForBranch(context);
@@ -62,8 +64,10 @@ export function buildHuntNodes(
     }
     
     const mobTargetItems = new Set<string>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     Object.entries(mcData.entityLoot || {}).forEach(([_entityId, lootTable]: [string, any]) => {
       if (lootTable && lootTable.entity === huntingPath.mob && lootTable.drops) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         lootTable.drops.forEach((drop: any) => {
           const dropItemName = drop.item?.toLowerCase().replace(' ', '_');
           if (dropItemName && availableHuntTargets.includes(dropItemName)) {

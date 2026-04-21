@@ -15,6 +15,7 @@ export type InventoryObject = Record<string, number>;
  * @param inv - Inventory object with item counts
  * @returns Map of item name to count
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function makeSupplyFromInventory(inv: Record<string, any> | null | undefined): Map<string, number> {
   const m = new Map<string, number>();
   if (!inv) return m;
@@ -62,16 +63,19 @@ export function produced(step: ActionStep | null | undefined): string | null {
   if (!step) return null;
 
   if (step.action === 'craft' && 'result' in step) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const result = (step as any).result;
     if (result && result.item) return result.item;
   }
 
   if (step.action === 'smelt' && 'result' in step) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const result = (step as any).result;
     if (result && result.item) return result.item;
   }
 
   if ((step.action === 'mine' || step.action === 'hunt')) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const targetItem = 'targetItem' in step ? (step as any).targetItem : null;
     return targetItem || step.what;
   }
@@ -86,6 +90,7 @@ export function produced(step: ActionStep | null | undefined): string | null {
  * @param bot - Mineflayer bot instance
  * @returns Object mapping item names to total counts
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function getInventoryObject(bot: any): InventoryObject {
   const out: InventoryObject = {};
   try {
@@ -115,6 +120,7 @@ const MAIN_INVENTORY_END = 44;
 /**
  * Counts empty slots in the bot's main inventory (slots 9-44, excludes equipment).
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function getEmptySlotCount(bot: any): number {
   try {
     const slots = bot?.inventory?.slots;
@@ -144,11 +150,14 @@ export function getEmptySlotCount(bot: any): number {
  * getItemCountInInventory(bot, 'diamond_chestplate') // includes equipped armor
  * getItemCountInInventory(bot, 'shield') // includes shield in offhand
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function getItemCountInInventory(bot: any, itemName: string): number {
   try {
     const items = bot.inventory?.items?.() || [];
     let total = items
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       .filter((item: any) => item && item.name === itemName)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       .reduce((sum: number, item: any) => sum + (item.count || 0), 0);
     
     const slots = bot.inventory?.slots;

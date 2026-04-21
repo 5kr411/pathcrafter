@@ -9,6 +9,7 @@ import {
   VariantTreeNode,
   RootNode
 } from './types';
+import type { VariantGroup } from './types';
 
 /**
  * Enumerates all possible action paths from a recipe tree with variant-first approach
@@ -41,6 +42,7 @@ function enumerateRoot(node: RootNode): ActionPath[] {
   const children = node.children.variants || [];
   if (children.length === 0) return [[]];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
   if ((node as any).operator === 'AND') {
     return combineChildrenAsAnd(children).map(simplifyPath);
   }
@@ -73,6 +75,7 @@ function enumerateCraftNode(node: CraftNode): ActionPath[] {
 }
 
 function enumerateSmeltNode(node: SmeltNode): ActionPath[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
   if ((node as any).operator === 'OR') {
     const children = node.children.variants || [];
     const paths: ActionPath[] = [];
@@ -101,6 +104,7 @@ function enumerateSmeltNode(node: SmeltNode): ActionPath[] {
 }
 
 function enumerateGatherNode(node: MineLeafNode | HuntLeafNode): ActionPath[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
   if ((node as any).operator === 'OR') {
     const children = node.children?.variants || [];
     const paths: ActionPath[] = [];
@@ -188,9 +192,9 @@ function gatherStepsEquivalent(a: ActionStep, b: ActionStep): boolean {
   );
 }
 
-function serialiseVariantGroup(group: any): string {
+function serialiseVariantGroup<T>(group: VariantGroup<T> | undefined): string {
   if (!group) return '';
-  const variants = (group.variants || []).map((v: any) => JSON.stringify(v.value)).sort();
+  const variants = (group.variants || []).map((v) => JSON.stringify(v.value)).sort();
   return `${group.mode}|${variants.join('|')}`;
 }
 
@@ -217,31 +221,33 @@ function cloneStep(step: ActionStep): ActionStep {
   };
 }
 
-function cloneVariantGroup(group: any): any {
+function cloneVariantGroup<T>(group: VariantGroup<T>): VariantGroup<T>;
+function cloneVariantGroup<T>(group: VariantGroup<T> | undefined): VariantGroup<T> | undefined;
+function cloneVariantGroup<T>(group: VariantGroup<T> | undefined): VariantGroup<T> | undefined {
   if (!group) return undefined;
   return {
     mode: group.mode,
-    variants: (group.variants || []).map((v: any) => ({
+    variants: (group.variants || []).map((v) => ({
       value: cloneVariantValue(v.value),
       metadata: v.metadata ? { ...v.metadata } : undefined
     }))
   };
 }
 
-function cloneVariantValue(value: any): any {
+function cloneVariantValue<T>(value: T): T {
   if (Array.isArray(value)) {
-    return value.map(cloneVariantValue);
+    return value.map((v) => cloneVariantValue(v)) as unknown as T;
   }
   if (value && typeof value === 'object') {
-    return { ...value };
+    return { ...(value as object) } as T;
   }
   return value;
 }
 
-function mergeVariantGroup(target: any, source: any): void {
+function mergeVariantGroup<T>(target: VariantGroup<T> | undefined, source: VariantGroup<T> | undefined): void {
   if (!target || !source) return;
-  const existing = new Set((target.variants || []).map((v: any) => JSON.stringify(v.value)));
-  (source.variants || []).forEach((variant: any) => {
+  const existing = new Set((target.variants || []).map((v) => JSON.stringify(v.value)));
+  (source.variants || []).forEach((variant) => {
     const key = JSON.stringify(variant.value);
     if (!existing.has(key)) {
       target.variants.push({
@@ -317,12 +323,15 @@ function serialiseStepForMerging(step: ActionStep): string {
 }
 
 function serialiseVariantGroupForKey(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
   group: any,
   ignoreValues?: boolean,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
   valueNormaliser?: (value: any) => any
 ): string {
   if (!group) return '';
   const serialisedVariants = (group.variants || [])
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
     .map((variant: any) => {
       if (ignoreValues) {
         return variant.metadata?.family || '';
@@ -334,19 +343,23 @@ function serialiseVariantGroupForKey(
   return `${group.mode}|${serialisedVariants.join(',')}`;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
 function normaliseResultVariant(result: any): any {
   if (!result) return result;
   const { item: _ignoredItem, perCraftCount: _ignoredPerCraft, ...rest } = result;
   return rest;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
 function normaliseIngredientsVariant(ingredients: any): any {
   if (!Array.isArray(ingredients)) return ingredients;
   return ingredients
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
     .map((ing: any) => {
       const { item: _ignoredItem, ...rest } = ing || {};
       return rest;
     })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- variant-tree heterogeneous shape
     .sort((a: any, b: any) => {
       const countA = a?.perCraftCount ?? 0;
       const countB = b?.perCraftCount ?? 0;

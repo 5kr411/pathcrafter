@@ -21,7 +21,7 @@ import { sendChatTool } from './impl/send_chat';
  * Full set of tools exposed to the LLM agent. The registry is the single
  * source of truth — everything the agent can do is listed here.
  */
-export function allTools(): ToolImpl[] {
+export function allTools(): ToolImpl<unknown>[] {
   return [
     // Read-only observation
     getPositionTool,

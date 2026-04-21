@@ -13,31 +13,41 @@ import { Vec3 } from 'vec3';
 interface Bot {
   version?: string;
   entity?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     position: any;
     yaw: number;
     pitch: number;
   };
   inventory?: {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     items?: () => any[];
   };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   attack?: (entity: any) => Promise<void>;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   heldItem?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   lookAt?: (position: any, force?: boolean, callback?: () => void) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Entity {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   position?: any;
   health?: number;
   isAlive?: () => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   entity?: Entity | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function pickBestWeapon(bot: Bot): any | null {
   const items = bot.inventory?.items?.() || [];
   const registry = bot.registry?.items ?? {};
@@ -73,6 +83,7 @@ function pickBestWeapon(bot: Bot): any | null {
     return materialPriority.get(prefix) ?? 0;
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let bestWeapon: any = null;
   let bestScore = -Infinity;
 
@@ -103,12 +114,14 @@ function getDistanceToEntity(bot: Bot, entity: Entity): number {
   }
   return bot.entity.position.distanceTo(entity.position);
 }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getEntityAimPoint(bot: Bot, entity: Entity): any {
   if (!bot?.entity?.position || !entity) {
     return entity?.position || null;
   }
 
   const botPos = bot.entity.position;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const eyeHeightCandidate = (bot.entity as any)?.height;
   const eyeHeight = typeof eyeHeightCandidate === 'number' && eyeHeightCandidate > 0 ? eyeHeightCandidate : 1.62;
   const botEyePos = botPos.clone ? botPos.clone() : new Vec3(botPos.x, botPos.y, botPos.z);
@@ -148,6 +161,7 @@ class BehaviorAttackEntityState {
     const ATTACK_RANGE = 3.0;
     
     // Check if entity is still valid (exists in bot.entities)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const isValid = this.bot.entities && Object.values(this.bot.entities).some((e: any) => e.id === entity.id);
 
     if (distance > ATTACK_RANGE) {
@@ -172,6 +186,7 @@ class BehaviorAttackEntityState {
     if (aimPoint && typeof this.bot.lookAt === 'function') {
       try {
         this.bot.lookAt(aimPoint, true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`BehaviorAttackEntity: failed to pre-align look - ${err?.message || err}`);
       }
@@ -186,6 +201,7 @@ class BehaviorAttackEntityState {
         result.then(() => {
           logger.info('BehaviorAttackEntity: attack completed');
           this.isFinished = true;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         }).catch((err: any) => {
           logger.info(`BehaviorAttackEntity: attack failed - ${err?.message || err}`);
           this.isFinished = true;
@@ -195,6 +211,7 @@ class BehaviorAttackEntityState {
         logger.info('BehaviorAttackEntity: attack completed');
         this.isFinished = true;
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.info(`BehaviorAttackEntity: error calling attack - ${err?.message || err}`);
       this.isFinished = true;
@@ -206,9 +223,11 @@ class BehaviorAttackEntityState {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createAttackEntityState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const equipTargets: { item: any } = { item: null };
   const equipWeapon = new BehaviorEquipItem(bot, equipTargets);
 
@@ -218,11 +237,13 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
   });
 
   // Create look-at state that will use entity's bounding box
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const lookTargets: any = {};
   
   const lookAtEntity = createLookAtState(bot, lookTargets, 3.0, null);
 
   const attackState = new BehaviorAttackEntityState(bot, targets);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const fastAttack = Boolean((targets as any).fastAttack);
 
   addStateLogging(attackState, 'AttackEntity', {
@@ -261,6 +282,7 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
       // Pass the entity to lookAtEntity for bounding box calculation
       if (targets.entity) {
         // Update the lookAtEntity's entity reference
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (lookAtEntity as any).entity = targets.entity;
       }
       logger.info('BehaviorAttackEntity: no weapon available, proceeding to look at target');
@@ -284,6 +306,7 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
       // Pass the entity to lookAtEntity for bounding box calculation
       if (targets.entity) {
         // Update the lookAtEntity's entity reference
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         (lookAtEntity as any).entity = targets.entity;
       }
       logger.info('BehaviorAttackEntity: weapon equipped, proceeding to look at target');
@@ -392,6 +415,7 @@ function createAttackEntityState(bot: Bot, targets: Targets): any {
     logger.debug('AttackEntity: cleaning up on state exit');
     try {
       bot.clearControlStates?.();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`AttackEntity: error clearing control states: ${err.message}`);
     }

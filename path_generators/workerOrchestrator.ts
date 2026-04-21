@@ -46,6 +46,7 @@ export async function executeGeneratorsInWorkersWithDiagnostics(
             if (!w) return;
             try {
               w.terminate();
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
             } catch (err: any) {
               logger.debug(`workerOrchestrator: worker.terminate() failed: ${err?.message || err}`);
             }
@@ -64,6 +65,7 @@ export async function executeGeneratorsInWorkersWithDiagnostics(
               terminate();
               const dt = Date.now() - started;
               if (!msg || msg.type !== 'result' || msg.ok !== true) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
                 const detail = (msg as any)?.error ? String((msg as any).error) : 'worker returned non-ok result';
                 logger.warn(`workerOrchestrator: ${job.generator} non-ok message after ${dt}ms: ${detail}`);
                 settle({
@@ -90,6 +92,7 @@ export async function executeGeneratorsInWorkersWithDiagnostics(
             });
 
             w.postMessage({ type: 'enumerate', ...job });
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
           } catch (err: any) {
             const dt = Date.now() - started;
             const detail = err?.message || String(err);

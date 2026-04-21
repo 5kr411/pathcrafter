@@ -11,8 +11,8 @@ export const equipBestArmorTool: ToolImpl = {
     try {
       const equipped = await equipBestArmor(ctx.bot);
       return { ok: true, data: { equipped } };
-    } catch (err: any) {
-      return { ok: false, error: err?.message ?? String(err) };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 };

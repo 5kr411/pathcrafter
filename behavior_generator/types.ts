@@ -2,25 +2,20 @@
  * Type definitions for behavior generator system
  */
 
+import type { Bot as MineflayerBot } from 'mineflayer';
 import { ActionStep } from '../action_tree/types';
 
 /**
- * Bot interface (simplified mineflayer bot)
+ * Bot type aliased to the real mineflayer Bot, augmented for plugins
+ * in behavior_generator/mineflayer.d.ts.
  */
-export interface Bot {
-  inventory?: any;
-  pathfinder?: any;
-  version?: string;
-  entity?: any;
-  [key: string]: any;
-}
+export type Bot = MineflayerBot;
 
 /**
  * Generic behavior state interface
  */
 export interface BehaviorState {
   isFinished: () => boolean;
-  [key: string]: any;
 }
 
 /**
@@ -29,7 +24,6 @@ export interface BehaviorState {
 export interface ActionHandler {
   canHandle: (step: ActionStep) => boolean;
   create: (bot: Bot, step: ActionStep) => BehaviorState | null;
-  [key: string]: any;
 }
 
 /**
@@ -47,6 +41,7 @@ export interface MineTargets {
 export interface CraftTargets {
   itemName: string;
   amount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   placedPosition?: any;
 }
 
@@ -68,6 +63,6 @@ export interface SmeltTargets {
  * Shared state between behavior steps
  */
 export interface SharedState {
-  [key: string]: any;
+  failed?: boolean;
 }
 

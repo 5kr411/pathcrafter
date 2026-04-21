@@ -33,9 +33,12 @@ export function buildMineNodes(
   variantsToUse: string[],
   miningPaths: BlockSource[],
   targetCount: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   root: any,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
@@ -176,7 +179,9 @@ function buildMineLeafNodes(
   blockVariantsByCanonical: Map<string, string[]>,
   mineLeafByCanon: Map<string, MineLeafNode>,
   context: BuildContext,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   mcData: any,
   buildRecipeTreeFn: BuildRecipeTreeFn
 ): void {
@@ -205,8 +210,11 @@ function buildMineLeafNodes(
 
   const allPossibleTargetItems = new Set<string>();
   for (const blockName of allVariantsForThisGroup) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     if (block && (block as any).drops) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       (block as any).drops.forEach((dropId: number) => {
         const itemName = mcData.items[dropId]?.name;
         if (itemName) {
@@ -280,8 +288,11 @@ function buildMineLeafNodes(
 
           const allPossibleVariantTargetItems = new Set<string>();
           for (const blockName of blockVariants) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             const block = Object.values(mcData.blocks).find((b: any) => b.name === blockName);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             if (block && (block as any).drops) {
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
               (block as any).drops.forEach((dropId: number) => {
                 const itemName = mcData.items[dropId]?.name;
                 if (itemName) {

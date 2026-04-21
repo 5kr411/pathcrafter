@@ -3,6 +3,7 @@ import { Vec3 } from 'vec3';
 export type SurfaceType = 'land' | 'water' | 'unknown';
 
 export interface BlockAtFn {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   (pos: Vec3, extraInfos?: boolean): any | null;
 }
 
@@ -11,6 +12,7 @@ const WATER_NAMES = ['water', 'flowing_water'];
 const DEFAULT_MAX_Y = 319;
 const DEFAULT_MIN_Y = -64;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function isWaterBlock(block: any): boolean {
   if (!block || block.type === 0) return false;
   const name = String(block.name || '').toLowerCase();
@@ -23,6 +25,7 @@ export function findSurfaceBlock(
   z: number,
   maxY: number = DEFAULT_MAX_Y,
   minY: number = DEFAULT_MIN_Y
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 ): any | null {
   const floorX = Math.floor(x);
   const floorZ = Math.floor(z);

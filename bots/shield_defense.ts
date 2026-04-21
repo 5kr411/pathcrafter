@@ -8,6 +8,7 @@ import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
 const minecraftData = require('minecraft-data');
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
@@ -26,6 +27,7 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-pvp').plugin);
 bot.loadPlugin(require('mineflayer-tool').plugin);
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 bot.on('error', (err: any) => {
   console.error('ShieldDefense bot error:', err);
 });
@@ -56,8 +58,10 @@ bot.once('spawn', () => {
 
   const hostileNameSet = buildHostileSet();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const targets: any = {
     entity: null,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
     entityFilter: (entity: any) => {
       const name = String(entity?.name || entity?.displayName || '').toLowerCase();
       if (!name) return false;
@@ -68,6 +72,7 @@ bot.once('spawn', () => {
     fastAttack: true
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const reacquireThreat = (): any | null => {
     const creeper = findClosestCreeper(bot, 7);
     if (creeper) {

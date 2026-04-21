@@ -4,6 +4,7 @@ import { ActionPath, ActionStep } from '../action_tree/types';
  * Options for path simulation
  */
 export interface SimulatePathOptions {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   initialSupply?: Map<string, number> | any;
   getSmeltsPerUnitForFuel?: (fuelName: string) => number;
   requireStations?: boolean;
@@ -54,6 +55,7 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
   function produced(step: ActionStep): string | null {
     if (!step) return null;
     if ('targetItem' in step) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       return (step as any).targetItem || step.what;
     }
     return step.what.variants[0].value;
@@ -74,7 +76,9 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
         if (!haveTable) return false;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       if ('ingredients' in st && Array.isArray((st as any).ingredients)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
         const ingredients = (st as any).ingredients;
         for (const ing of ingredients) {
           const need = (ing?.perCraftCount || 0) * (st.count || 1);
@@ -82,6 +86,7 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
         }
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const result = 'result' in st ? (st as any).result : null;
       const resItem = result?.item;
       const resCount = (result?.perCraftCount || 1) * (st.count || 1);
@@ -95,10 +100,12 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
         if (!haveFurnace) return false;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const input = 'input' in st ? (st as any).input : null;
       const inCount = (input?.perSmelt || 1) * (st.count || 1);
       if (!take(input?.item, inCount)) return false;
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const fuel = 'fuel' in st ? (st as any).fuel : null;
       if (fuel) {
         try {
@@ -110,6 +117,7 @@ export function simulatePath(path: ActionPath, options?: SimulatePathOptions): b
         }
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
       const result = 'result' in st ? (st as any).result : null;
       const outCount = (result?.perSmelt || 1) * (st.count || 1);
       add(result?.item, outCount);

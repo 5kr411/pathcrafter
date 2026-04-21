@@ -15,21 +15,15 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
 import { buildStateMachineForPath } from '../behavior_generator/buildMachine';
+import type { Bot } from '../behavior_generator/types';
 import { plan as planner, _internals as plannerInternals } from '../planner';
 import { captureAdaptiveSnapshot } from '../utils/adaptiveSnapshot';
 
 const minecraftData = require('minecraft-data');
 
-interface Bot {
-  version?: string;
-  entity?: { position: any };
-  inventory?: any;
-  clearControlStates?: () => void;
-  [key: string]: any;
-}
-
 interface CollectMelonTargets {
   targetMelonCount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   worldSnapshot?: any;
   snapshotRadii?: number[];
   onComplete?: (success: boolean, melonCollected: number) => void;
@@ -43,10 +37,13 @@ const DEFAULT_RADII = [32, 64, 96, 128];
 /**
  * Creates a state machine for collecting melon slices
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
   let phase: Phase = 'init';
   let startMelonCount = 0;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let currentPath: any[] | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let pathStateMachine: any = null;
   
   const enter = new BehaviorIdle();
@@ -66,6 +63,7 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
     return getMelonCount() - startMelonCount;
   }
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   async function tryPlanWithSnapshot(snapshot: any): Promise<any[] | null> {
     try {
       const inventory = getInventoryObject(bot);
@@ -93,6 +91,7 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
       }
       
       return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`CollectMelon: planning error - ${err?.message || err}`);
       return null;
@@ -118,7 +117,8 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
       logger.debug(`CollectMelon: trying snapshot at radius ${radius}`);
       
       try {
-        const result = await captureAdaptiveSnapshot(bot, {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+        const result = await captureAdaptiveSnapshot(bot as any, {
           radii: [radius],
           onProgress: (msg: string) => logger.debug(`CollectMelon: ${msg}`)
         });
@@ -130,6 +130,7 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
             return;
           }
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.debug(`CollectMelon: snapshot at radius ${radius} failed - ${err?.message || err}`);
       }
@@ -206,8 +207,10 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
   stateMachine.stateName = 'CollectMelon';
   
   // Handle planning state
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const planningAsAny = planning as any;
   const originalPlanningEntered = planningAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   planningAsAny.onStateEntered = async function(this: any) {
     if (originalPlanningEntered) originalPlanningEntered.call(this);
     
@@ -232,8 +235,10 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
   };
   
   // Handle executing state - tick the path state machine
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const executingAsAny = executing as any;
   const originalExecutingEntered = executingAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   executingAsAny.onStateEntered = function(this: any) {
     if (originalExecutingEntered) originalExecutingEntered.call(this);
     if (pathStateMachine && typeof pathStateMachine.onStateEntered === 'function') {
@@ -249,12 +254,17 @@ function createCollectMelonState(bot: Bot, targets: CollectMelonTargets): any {
   
   // Completion tracking
   let reachedExit = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).isFinished = () => reachedExit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).wasSuccessful = () => phase === 'complete';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).getMelonCollected = getMelonCollected;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const exitAsAny = exit as any;
   const originalExitEntered = exitAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   exitAsAny.onStateEntered = function(this: any) {
     reachedExit = true;
     if (targets.onComplete) {

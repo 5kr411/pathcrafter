@@ -6,6 +6,7 @@ interface Vec3Like {
   y: number;
   z: number;
   distanceTo?: (other: Vec3Like) => number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -13,21 +14,25 @@ interface Block {
   boundingBox?: string;
   type?: number;
   position?: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Bot {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   blockAt?: (pos: any) => Block | null;
   entity?: {
     position: Vec3Like;
   };
   version?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   position?: Vec3Like;
   blockPosition?: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
   [key: string]: any;
 }
 
@@ -82,6 +87,7 @@ export class BehaviorBiasInteractPosition {
 
       logger.info(`BehaviorBiasInteractPosition: ${solidFaces} solid faces, biasing to closest position`);
       this.reselectPosition(blockPos);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.error(`BehaviorBiasInteractPosition: error in onStateEntered: ${err.message}`);
     }
@@ -93,6 +99,7 @@ export class BehaviorBiasInteractPosition {
     this._finished = false;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   private vec3(x: number, y: number, z: number): any {
     return new Vec3(Math.floor(x), Math.floor(y), Math.floor(z));
   }

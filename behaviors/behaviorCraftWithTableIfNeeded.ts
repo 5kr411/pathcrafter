@@ -5,16 +5,21 @@ import { getItemCountInInventory } from '../utils/inventory';
 
 import logger from '../utils/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
   itemName?: string;
   amount: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   variantStep?: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const selectVariantFromInventory = (step: any): string | null => {
     if (!step || !step.result || !step.ingredients) {
       logger.warn('BehaviorCraftWithTableIfNeeded: no step/result/ingredients for variant selection');
@@ -23,6 +28,7 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
     
     const invItems = bot.inventory?.items?.() || [];
     const inventory: Record<string, number> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     invItems.forEach((item: any) => {
       inventory[item.name] = (inventory[item.name] || 0) + item.count;
     });
@@ -36,6 +42,7 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
       if (!resultVariant || !ingredientVariant) continue;
 
       const ingredients = Array.isArray(ingredientVariant.value) ? ingredientVariant.value : [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       const hasAllIngredients = ingredients.every((ing: any) => {
         return ing && ing.item && (inventory[ing.item] || 0) >= (ing.perCraftCount || 1);
       });

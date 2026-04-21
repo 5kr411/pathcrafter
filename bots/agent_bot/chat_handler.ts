@@ -1,6 +1,7 @@
 import type { AgentSession } from './agent_session';
 
 export class AgentChatHandler {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   constructor(private readonly bot: any, private readonly session: AgentSession) {}
 
   handle(username: string, message: string): void {

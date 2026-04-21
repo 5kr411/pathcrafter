@@ -55,11 +55,13 @@ const DEFAULT_CONFIG: InventoryManagementConfig = {
 };
 
 export interface DropCandidate {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   item: any;
   reason: 'lower_tier_tool' | 'duplicate_stack' | 'excess_over_target';
 }
 
 export interface InventoryManagementMachine {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   stateMachine: any;
   droppedCount: () => number;
   run: () => Promise<void>;
@@ -91,10 +93,13 @@ function isProtectedItem(_bot: Bot, itemName: string): boolean {
   return false;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function getMainInventoryItems(bot: Bot): any[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const slots = (bot as any)?.inventory?.slots;
   if (!Array.isArray(slots)) return [];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const items: any[] = [];
   for (let i = 9; i <= 44; i++) {
     const item = slots[i];
@@ -114,15 +119,18 @@ export function calculateItemsToDrop(
   targetFreeSlots: number,
   getTargets: () => Array<{ item: string; count: number }> = () => []
 ): DropCandidate[] {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
   const currentFree = getEmptySlotCount(bot as any);
   const slotsToFree = targetFreeSlots - currentFree;
   if (slotsToFree <= 0) return [];
 
   const items = getMainInventoryItems(bot);
   const candidates: DropCandidate[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const addedItems = new Set<any>();
 
   // Group items by name once; used by Phase 0 and for held-vs-protected checks.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const byName = new Map<string, any[]>();
   for (const item of items) {
     const arr = byName.get(item.name) || [];
@@ -150,10 +158,12 @@ export function calculateItemsToDrop(
     const protectedQty = getProtectedQuantity(name);
     if (protectedQty === Infinity) continue;
     if (protectedQty <= 0) continue; // no target → Phase 0 does not apply
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const held = stacks.reduce((s: number, it: any) => s + (it.count || 0), 0);
     let excess = held - protectedQty;
     if (excess <= 0) continue;
     // Smallest stacks first so we preserve large near-target stacks.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const sorted = stacks.slice().sort((a: any, b: any) => (a.count || 0) - (b.count || 0));
     for (const stack of sorted) {
       if (excess <= 0) break;
@@ -173,11 +183,13 @@ export function calculateItemsToDrop(
     if (protectedQty === Infinity) return false;
     if (protectedQty <= 0) return true; // no protection floor → phase 1/2 free to drop
     const stacks = byName.get(itemName) || [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const held = stacks.reduce((s: number, it: any) => s + (it.count || 0), 0);
     return held > protectedQty;
   };
 
   // Phase 1: lower-tier duplicate tools
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const toolGroups = new Map<string, any[]>();
   for (const item of items) {
     if (!isTool(item.name)) continue;
@@ -192,9 +204,11 @@ export function calculateItemsToDrop(
   for (const [, tools] of toolGroups) {
     if (tools.length < 2) continue;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const tiers = new Set(tools.map((t: any) => rank(t.name)));
     if (tiers.size < 2) continue;
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     tools.sort((a: any, b: any) => rank(b.name) - rank(a.name));
     const bestRank = rank(tools[0].name);
 
@@ -208,6 +222,7 @@ export function calculateItemsToDrop(
   }
 
   // Phase 2: duplicate stacks (smallest first)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const stackGroups = new Map<string, any[]>();
   for (const item of items) {
     if (isProtectedItem(bot, item.name)) continue;
@@ -218,15 +233,18 @@ export function calculateItemsToDrop(
     stackGroups.set(item.name, group);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const dupeStacks: any[] = [];
   for (const [, stacks] of stackGroups) {
     if (stacks.length < 2) continue;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     stacks.sort((a: any, b: any) => (a.count || 0) - (b.count || 0));
     for (let i = 0; i < stacks.length - 1; i++) {
       dupeStacks.push(stacks[i]);
     }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   dupeStacks.sort((a: any, b: any) => (a.count || 0) - (b.count || 0));
 
   for (const item of dupeStacks) {
@@ -247,6 +265,7 @@ export function calculateItemsToDrop(
  * that represents the direction we want the bot to face.
  */
 function computeLookAtPoint(bot: Bot, yaw: number): Vec3 | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const pos = (bot as any)?.entity?.position;
   if (!pos) return null;
   const dx = -Math.sin(yaw) * LOOK_AT_DISTANCE;
@@ -260,6 +279,7 @@ function computeLookAtPoint(bot: Bot, yaw: number): Vec3 | null {
  * land in open space without over-digging.
  */
 function computeClearBoxOrigin(bot: Bot, yaw: number): Vec3 | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const pos = (bot as any)?.entity?.position;
   if (!pos) return null;
   const dx = -Math.sin(yaw) * CLEAR_AREA_AHEAD_BLOCKS;
@@ -267,6 +287,7 @@ function computeClearBoxOrigin(bot: Bot, yaw: number): Vec3 | null {
   return new Vec3(Math.floor(pos.x + dx), Math.floor(pos.y), Math.floor(pos.z + dz));
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
 function subStateFinished(s: any): boolean {
   if (!s) return true;
   if (typeof s.isFinished === 'function') {
@@ -284,6 +305,7 @@ function subStateFinished(s: any): boolean {
  * polls isFinished() every 50ms. Resolves when finished or after a 30s safety
  * timeout. Errors from poll/onStateEntered are logged and treated as "done".
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
 function runMachine(stateMachine: any): Promise<void> {
   return new Promise<void>((resolve) => {
     let settled = false;
@@ -300,6 +322,7 @@ function runMachine(stateMachine: any): Promise<void> {
       if (typeof stateMachine?.onStateEntered === 'function') {
         stateMachine.onStateEntered();
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.warn(`inventoryManagementMachine: onStateEntered threw - ${err?.message || err}`);
       settle();
@@ -314,6 +337,7 @@ function runMachine(stateMachine: any): Promise<void> {
         if (typeof stateMachine?.update === 'function') {
           stateMachine.update();
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`inventoryManagementMachine: poll threw - ${err?.message || err}`);
         settle();
@@ -371,13 +395,20 @@ export function createInventoryManagementBehavior(
     // (for LookAt and SmartMoveTo) and targets.placePosition (for ClearArea)
     // inside transition `onTransition` callbacks once the upstream state has
     // produced the data we need.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const targets: any = { dropCandidates };
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const capture = new BehaviorCaptureOrigin(bot as any, targets);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const wander = new BehaviorWander(bot as any, WANDER_DISTANCE, undefined, targets);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const lookAt = createLookAtState(bot as any, targets);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const clear = createClearAreaState(bot as any, targets);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const toss = new BehaviorTossCandidates(bot as any, targets);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
     const back = new BehaviorSmartMoveTo(bot as any, targets);
     const exit = new BehaviorIdle();
 
@@ -396,6 +427,7 @@ export function createInventoryManagementBehavior(
         onTransition: () => {
           const yaw = typeof targets.wanderYaw === 'number'
             ? targets.wanderYaw
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
             : ((bot as any)?.entity?.yaw ?? 0);
           const point = computeLookAtPoint(bot, yaw);
           if (point) targets.position = point;
@@ -424,6 +456,7 @@ export function createInventoryManagementBehavior(
       }),
       new StateTransition({
         parent: toss,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         child: back as any,
         name: 'inv-mgmt: toss -> moveBack',
         shouldTransition: () => toss.isFinished(),
@@ -438,6 +471,7 @@ export function createInventoryManagementBehavior(
         }
       }),
       new StateTransition({
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
         parent: back as any,
         child: exit,
         name: 'inv-mgmt: moveBack -> exit',
@@ -459,6 +493,7 @@ export function createInventoryManagementBehavior(
     name: 'inventory_management',
 
     shouldActivate: (bot: Bot): boolean => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const freeSlots = getEmptySlotCount(bot as any);
       const now = Date.now();
 
@@ -487,6 +522,7 @@ export function createInventoryManagementBehavior(
         return null;
       }
 
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- project-local shim boundary
       const freeSlots = getEmptySlotCount(bot as any);
       const built = buildMachine(bot);
 
@@ -497,6 +533,7 @@ export function createInventoryManagementBehavior(
       }
 
       const sendChat: ((msg: string) => void) | null =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
         typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
 
       logger.info(

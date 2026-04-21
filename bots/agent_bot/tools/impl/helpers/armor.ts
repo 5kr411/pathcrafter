@@ -52,6 +52,7 @@ export function getArmorMaterial(name: string): string | null {
   return null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function getItemMaxDurability(bot: any, item: any): number {
   if (!item) return 0;
   if (Number.isFinite(item.maxDurability)) return item.maxDurability;
@@ -62,6 +63,7 @@ export function getItemMaxDurability(bot: any, item: any): number {
 
 export interface ArmorEvaluation { slot: ArmorSlot; score: number; }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function evaluateArmor(bot: any, item: any): ArmorEvaluation | null {
   if (!item || !item.name) return null;
   const slot = getArmorSlot(item.name);
@@ -81,6 +83,7 @@ export function evaluateArmor(bot: any, item: any): ArmorEvaluation | null {
 
   let enchantBonus = 0;
   if (Array.isArray(item.enchants)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
     enchantBonus = item.enchants.reduce((total: number, enchant: any) => {
       const level = Number.isFinite(enchant?.lvl) ? enchant.lvl : 0;
       return total + level;
@@ -91,6 +94,7 @@ export function evaluateArmor(bot: any, item: any): ArmorEvaluation | null {
   return { slot, score };
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function getEquippedArmor(bot: any, slot: ArmorSlot): any | null {
   if (typeof bot?.getEquipmentDestSlot !== 'function') return null;
   const index = bot.getEquipmentDestSlot(slot);
@@ -101,10 +105,12 @@ export function getEquippedArmor(bot: any, slot: ArmorSlot): any | null {
 }
 
 export interface ArmorUpgradeCandidate extends ArmorEvaluation {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
   item: any;
   improvement: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function selectArmorUpgrade(bot: any, slotFilter?: (slot: ArmorSlot) => boolean): ArmorUpgradeCandidate | null {
   const inventoryItems = bot?.inventory?.items?.();
   if (!Array.isArray(inventoryItems) || inventoryItems.length === 0) return null;
@@ -139,7 +145,9 @@ export function selectArmorUpgrade(bot: any, slotFilter?: (slot: ArmorSlot) => b
  * single tool call — the reactive behavior uses `selectArmorUpgrade` instead,
  * which only replaces strictly better items.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export function pickBestArmorPerSlot(bot: any): Record<ArmorSlot, any | null> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
   const out: Record<ArmorSlot, any | null> = { head: null, torso: null, legs: null, feet: null };
   const bestScore: Record<ArmorSlot, number> = { head: -Infinity, torso: -Infinity, legs: -Infinity, feet: -Infinity };
   const items = bot?.inventory?.items?.();
@@ -159,6 +167,7 @@ export function pickBestArmorPerSlot(bot: any): Record<ArmorSlot, any | null> {
  * Equip the best armor per slot, returning the list of item names that were
  * equipped. Skips slots where the currently-equipped item is already the best.
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- mineflayer plugin lacks types
 export async function equipBestArmor(bot: any): Promise<string[]> {
   const equipped: string[] = [];
   const picks = pickBestArmorPerSlot(bot);

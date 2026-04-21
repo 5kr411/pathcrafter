@@ -32,24 +32,13 @@ import createHuntForFishState from './behaviorHuntForFish';
 import createCollectBreadState, { BREAD_HUNGER_POINTS } from './behaviorCollectBread';
 import createCollectMelonState, { MELON_SLICE_HUNGER_POINTS } from './behaviorCollectMelon';
 import createCollectBerriesState, { BERRY_HUNGER_POINTS } from './behaviorCollectBerries';
-
-interface Bot {
-  version?: string;
-  entity?: { position: any; health?: number; yaw: number; pitch: number };
-  entities?: Record<string, any>;
-  inventory?: any;
-  clearControlStates?: () => void;
-  pvp?: any;
-  on: (event: string, listener: (...args: any[]) => void) => void;
-  off: (event: string, listener: (...args: any[]) => void) => void;
-  removeListener: (event: string, listener: (...args: any[]) => void) => void;
-  [key: string]: any;
-}
+import type { Bot } from '../behavior_generator/types';
 
 interface GetFoodTargets {
   targetFoodPoints: number;
   minFoodThreshold?: number;
   onComplete?: (success: boolean) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   worldSnapshot?: any;
 }
 
@@ -150,6 +139,7 @@ class FoodSourceTracker {
 /**
  * Creates a state machine for acquiring food with fallback strategy
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const config: FoodCollectionConfig = {
     triggerFoodPoints: targets.minFoodThreshold ?? DEFAULT_FOOD_CONFIG.triggerFoodPoints,
@@ -158,6 +148,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   };
   
   let phase: Phase = 'init';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let currentSubMachine: any = null;
   const tracker = new FoodSourceTracker();
   
@@ -307,7 +298,8 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
       const count = calculateNeededCount('hunt');
       logger.info(`GetFood: trying hunting (attempt ${attempts}/${maxAttempts}), need ~${count} animals`);
       
-      currentSubMachine = createHuntForFoodState(bot, {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
+      currentSubMachine = createHuntForFoodState(bot as any, {
         targetFoodPoints: config.targetFoodPoints,
         onComplete: (success: boolean, foodGained: number) => {
           logger.info(`GetFood: hunting ${success ? 'succeeded' : 'failed'}, gained ${foodGained} points`);
@@ -456,6 +448,7 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
     }
   });
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   function makeSourceTransitions(parent: any, label: string): [any, any] {
     const toSelect = new StateTransition({
       parent,
@@ -493,9 +486,12 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const [fishToSelect, fishToExit] = makeSourceTransitions(huntingFish, 'fish');
   
   // Hook into sub-machine states to start and tick them
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   function hookupSubMachine(state: any, label: string): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     const stateAsAny = state as any;
     const originalEntered = stateAsAny.onStateEntered;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     stateAsAny.onStateEntered = function(this: any) {
       if (originalEntered) originalEntered.call(this);
       if (currentSubMachine && typeof currentSubMachine.onStateEntered === 'function') {
@@ -539,8 +535,10 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
   
   // Handle source selection
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const selectAsAny = selectSource as any;
   const originalSelectEntered = selectAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   selectAsAny.onStateEntered = function(this: any) {
     if (originalSelectEntered) originalSelectEntered.call(this);
 
@@ -567,12 +565,17 @@ function createGetFoodState(bot: Bot, targets: GetFoodTargets): any {
   };
   
   let reachedExit = false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).isFinished = () => reachedExit;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).wasSuccessful = () => phase === 'complete';
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).getCurrentFoodPoints = getCurrentFoodPoints;
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const exitAsAny = exit as any;
   const originalExitEntered = exitAsAny.onStateEntered;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   exitAsAny.onStateEntered = function(this: any) {
     reachedExit = true;
     if (targets.onComplete) {

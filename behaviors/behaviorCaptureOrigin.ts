@@ -2,11 +2,13 @@ import logger from '../utils/logger';
 
 interface BotLike {
   entity?: { position: { x: number; y: number; z: number } };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   originPosition?: { x: number; y: number; z: number };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 

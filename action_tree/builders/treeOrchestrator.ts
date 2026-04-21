@@ -32,6 +32,7 @@ import { applyPostBuildFiltering } from './postBuildFilter';
  * @returns Root node of the recipe tree
  */
 export function buildRecipeTree(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
   itemName: string,
   targetCount: number = 1,
@@ -77,6 +78,7 @@ export function buildRecipeTree(
  * Internal function that builds a recipe tree for a group of similar items
  */
 function buildRecipeTreeInternal(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   ctx: any,
   itemGroup: string[],
   targetCount: number,
@@ -170,6 +172,7 @@ function buildRecipeTreeInternal(
     );
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   const allMiningPaths: any[] = [];
   const seenBlocks = new Set<string>();
   for (const variant of variantsToUse) {

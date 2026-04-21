@@ -8,6 +8,7 @@ import createPlaceNearState from './behaviorPlaceNear';
 import createBreakAtPositionState from './behaviorBreakAtPosition';
 import { BehaviorSafeFollowEntity } from './behaviorSafeFollowEntity';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
@@ -15,10 +16,13 @@ interface Targets {
   amount?: number;
   inputName: string;
   fuelName?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createSmeltState(bot: Bot, targets: Targets): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   function getMc(): any {
     try {
       return minecraftData(bot.version);
@@ -41,6 +45,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const placeTargets: { item: any; placedPosition?: any; placedConfirmed?: boolean } = {
     item: null,
     placedPosition: undefined,
@@ -50,12 +55,15 @@ function createSmeltState(bot: Bot, targets: Targets): any {
 
   const smeltRun = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const breakTargets: { position: any } = { position: null };
   const breakFurnace = createBreakAtPositionState(bot, breakTargets);
 
   const waitForPickup = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const dropTargets: { entity: any } = { entity: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const findDrop = new BehaviorGetClosestEntity(bot, dropTargets, (e: any) =>
     e.name === 'item' && e.getDroppedItem && e.getDroppedItem()?.name === 'furnace'
   );
@@ -91,6 +99,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       wantCount = Number(targets.amount || 1);
       inputItem = targets.inputName;
       fuelItem = targets.fuelName || 'coal';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
       placeTargets.item = bot.inventory.items().find((i: any) => i?.name === 'furnace') || null;
       placeTargets.placedPosition = undefined;
       placeTargets.placedConfirmed = false;
@@ -207,6 +216,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
           const available = getWindowItemCount(fuelItem);
           const topUp = Math.max(0, Math.min(available, desiredUnits - currentUnits));
           const now = Date.now();
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
           const fuelProgress = (furnace as any).fuel ?? 0;
           const isBurning = fuelProgress > 0;
           

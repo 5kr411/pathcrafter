@@ -12,19 +12,25 @@ interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Bot {
   entity?: { position: Vec3Like };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   world?: { getBlockType: (pos: any) => number };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   blockAt?: (pos: any, extraInfos?: boolean) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   canDigBlock?: (block: any) => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   blockPosition?: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -32,6 +38,7 @@ interface MineTargets {
   position: Vec3Like | null;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createClearObstructionsState(bot: Bot, targets: Targets): any {
   const MAX_CONSECUTIVE_FAILURES = 3;
   const MAX_TOTAL_CLEARS = 10;
@@ -41,17 +48,21 @@ function createClearObstructionsState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const check = new BehaviorIdle();
   const mineTargets: MineTargets = { position: null };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const mineObstruction = new BehaviorMineBlock(bot, mineTargets as any);
   const exit = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let obstruction: any = null;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   function findObstruction(): any {
     if (!targets.blockPosition) return null;
     try {
       const targetType = bot.world?.getBlockType(targets.blockPosition);
       if (targetType === 0) return null;
     } catch (_) {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     return findObstructingBlock(bot as any, { blockPosition: targets.blockPosition });
   }
 
@@ -136,6 +147,7 @@ function createClearObstructionsState(bot: Bot, targets: Targets): any {
   ];
 
   const stateMachine = new NestedStateMachine(transitions, enter, exit);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   (stateMachine as any).exitReason = 'clear';
 
   stateMachine.onStateExited = function () {
@@ -143,12 +155,14 @@ function createClearObstructionsState(bot: Bot, targets: Targets): any {
     if (mineObstruction && typeof mineObstruction.onStateExited === 'function') {
       try {
         mineObstruction.onStateExited();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`ClearObstructions: error cleaning up mineObstruction: ${err.message}`);
       }
     }
     try {
       bot.clearControlStates();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`ClearObstructions: error clearing control states: ${err.message}`);
     }

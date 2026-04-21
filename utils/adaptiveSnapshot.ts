@@ -356,7 +356,9 @@ export function createPathValidator(
   item: string,
   count: number,
   inventory: Record<string, number>,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   plannerFn: any,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
   pathGeneratorFn: any
 ): (snapshot: WorldSnapshot) => Promise<boolean> {
   return async (_snapshot: WorldSnapshot): Promise<boolean> => {

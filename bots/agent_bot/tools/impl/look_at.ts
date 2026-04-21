@@ -1,7 +1,14 @@
 import type { ToolImpl } from '../types';
 import { Vec3 } from 'vec3';
 
-export const lookAtTool: ToolImpl = {
+type LookAtInput = {
+  entityId?: number;
+  x?: number;
+  y?: number;
+  z?: number;
+};
+
+export const lookAtTool: ToolImpl<LookAtInput> = {
   schema: {
     name: 'look_at',
     description: 'Make the bot look at a target. Provide either an entityId or explicit {x, y, z} coordinates.',
@@ -17,8 +24,8 @@ export const lookAtTool: ToolImpl = {
     }
   },
   async execute(input, ctx) {
-    const i: any = input || {};
-    let target: any = null;
+    const i = input ?? {};
+    let target: Vec3 | null = null;
 
     if (typeof i.entityId === 'number') {
       const ent = ctx.bot?.entities?.[i.entityId];

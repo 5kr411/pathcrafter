@@ -4,6 +4,7 @@ const { StateTransition, BehaviorIdle, NestedStateMachine, BotStateMachine } = r
 import createCraftNoTableState from '../behaviors/behaviorCraftNoTable';
 import { configurePrecisePathfinder } from '../utils/pathfinderConfig';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
 let botOptions: any = {
   host: 'localhost',
   port: 25565,
@@ -24,6 +25,7 @@ bot.loadPlugin(require('mineflayer-tool').plugin);
 bot.once('spawn', () => {
   configurePrecisePathfinder(bot);
   
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const targets: any = {};
 
   const enter = new BehaviorIdle();

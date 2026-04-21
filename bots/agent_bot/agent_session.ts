@@ -7,6 +7,7 @@ import { SYSTEM_PROMPT } from './system_prompt';
 export type { TargetExecutorLike, AgentActionExecutorLike };
 
 export interface SessionDeps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
   bot: any;
   provider: LLMProvider;
   toolExecutor: ToolExecutor;
@@ -141,6 +142,7 @@ export class AgentSession {
       }
 
       // Append assistant turn.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
       const content: any[] = [];
       if (result.text) content.push({ type: 'text', text: result.text });
       for (const tc of result.toolCalls) {
@@ -187,7 +189,9 @@ export class AgentSession {
         logger.info(`AgentSession: tool call ${call.name} input=${JSON.stringify(call.input).slice(0, 200)}`);
         const toolResult = await this.deps.toolExecutor.run(call, ctx);
         const resSummary = toolResult.ok
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
           ? `ok data=${JSON.stringify((toolResult as any).data ?? null).slice(0, 200)}`
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
           : `err=${(toolResult as any).error}${(toolResult as any).cancelled ? ' (cancelled)' : ''}${(toolResult as any).preempted ? ' (preempted)' : ''}`;
         logger.info(`AgentSession: tool ${call.name} -> ${resSummary}`);
         if ((this.state as string) === 'dead') return;

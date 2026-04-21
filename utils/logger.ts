@@ -74,6 +74,7 @@ export class Logger {
         try {
             const err = new Error();
             Error.prepareStackTrace = (_, stack) => stack;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
             const stack = err.stack as any;
             
             // Find the first stack frame that's not this logger file
@@ -143,6 +144,7 @@ export class Logger {
     /**
      * Write a JSON-lines entry to the file stream
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     private _writeFileEntry(levelName: string, source: string, args: any[]): void {
         if (!this.fileStream) return;
         const msg = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
@@ -159,6 +161,7 @@ export class Logger {
     /**
      * Log a milestone event — always writes to both console AND file
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     milestone(...args: any[]): void {
         const callerFile = this._getCallerFile();
         this._writeFileEntry('MILESTONE', callerFile, args);
@@ -174,6 +177,7 @@ export class Logger {
     /**
      * Core logging method
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     _log(level: number, levelName: string, color: string, args: any[]): void {
         if (this.level > level) return; // Skip if below current log level
 
@@ -200,6 +204,7 @@ export class Logger {
     /**
      * Log at DEBUG level
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     debug(...args: any[]): void {
         this._log(LogLevel.DEBUG, 'DEBUG', colors.gray, args);
     }
@@ -207,6 +212,7 @@ export class Logger {
     /**
      * Log at INFO level
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     info(...args: any[]): void {
         this._log(LogLevel.INFO, 'INFO ', colors.green, args);
     }
@@ -214,6 +220,7 @@ export class Logger {
     /**
      * Log at WARN level
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     warn(...args: any[]): void {
         this._log(LogLevel.WARN, 'WARN ', colors.yellow, args);
     }
@@ -221,6 +228,7 @@ export class Logger {
     /**
      * Log at ERROR level
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     error(...args: any[]): void {
         this._log(LogLevel.ERROR, 'ERROR', colors.red, args);
     }
@@ -228,6 +236,7 @@ export class Logger {
     /**
      * Always log regardless of log level (except SILENT)
      */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
     always(...args: any[]): void {
         if (this.level === LogLevel.SILENT) return;
         

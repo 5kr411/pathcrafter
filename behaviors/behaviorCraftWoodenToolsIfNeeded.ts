@@ -5,19 +5,26 @@ import createCraftWithTableIfNeeded from './behaviorCraftWithTableIfNeeded';
 
 import logger from '../utils/logger';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 type Bot = any;
 
 interface Targets {
   itemName?: string;
   amount?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createCraftWoodenToolsIfNeededState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftPlanksIfNeededState = createCraftNoTableIfNeeded(bot, targets as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftSticksIfNeededState = createCraftNoTableIfNeeded(bot, targets as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftWoodenPickaxeIfNeededState = createCraftWithTableIfNeeded(bot, targets as any);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   const craftWoodenAxeIfNeededState = createCraftWithTableIfNeeded(bot, targets as any);
   const exit = new BehaviorIdle();
 

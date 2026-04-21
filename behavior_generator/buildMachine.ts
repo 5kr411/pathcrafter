@@ -27,12 +27,18 @@ function formatStepDescription(step: ActionStep, stepIndex: number): string {
   // Format the "what" target
   let whatStr: string = String(step.what);
   if (typeof step.what === 'object' && step.what !== null) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     const variants = (step.what as any).variants;
     if (Array.isArray(variants) && variants.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       whatStr = variants.map((v: any) => v.value).filter(Boolean).join(', ');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     } else if ((step.what as any).item) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       whatStr = (step.what as any).item;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     } else if ((step.what as any).name) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       whatStr = (step.what as any).name;
     }
   }
@@ -43,6 +49,7 @@ function formatStepDescription(step: ActionStep, stepIndex: number): string {
   // Add result item names for craft steps (what's being crafted)
   if (step.result?.variants?.length) {
     const resultItems = step.result.variants
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       .map((v: any) => v.value?.item)
       .filter(Boolean);
     const unique = [...new Set(resultItems)];
@@ -53,8 +60,10 @@ function formatStepDescription(step: ActionStep, stepIndex: number): string {
 
   // Add variant mode + ingredient summary for multi-variant steps
   if (step.ingredients?.variants && step.ingredients.variants.length > 1) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     const variantItems = step.ingredients.variants.map((v: any) => {
       const ings = v.value || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
       return ings.map((i: any) => `${i.item}x${i.perCraftCount}`).join('+');
     });
     desc += ` (${step.variantMode}: ${variantItems.slice(0, 3).join(' | ')}`;
@@ -78,6 +87,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
   if (!step || !step.action) return { isFinished: () => true };
 
   // Handler registry. Order matters — first match wins.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   const handlers: Array<{ name: string; mod: any; needsCtx: boolean }> = [
     { name: 'mineAnyOf',      mod: genMineAnyOf,      needsCtx: true  },
     { name: 'mineOneOf',      mod: genMineOneOf,      needsCtx: true  },
@@ -99,6 +109,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
           : h.mod.create(bot, step);
         if (s) return s;
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       const msg = err?.message || String(err);
       logger.warn(`PathBuilder: handler ${h.name} threw for step action=${step.action}: ${msg}`);
@@ -107,6 +118,7 @@ export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedSt
   }
 
   const whatStr = typeof step.what === 'object'
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     ? JSON.stringify((step.what as any).variants || step.what)
     : String(step.what);
   if (failures.length > 0) {
@@ -141,17 +153,21 @@ export function buildStateMachineForPath(
   onFinished?: (success: boolean) => void,
   executionContext?: ExecutionContext,
   onStepEntered?: (stepIndex: number) => void
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
 ): any {
   const enter = new BehaviorIdle();
   const exit = new BehaviorIdle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   const transitions: any[] = [];
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
   let prev: any = enter;
   const shared: SharedState = { failed: false };
   let isFirst = true;
   let index = 0;
 
   for (const step of pathSteps) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
     let st: any;
     try {
       st = createStateForStep(bot, step, shared, executionContext);
@@ -160,6 +176,7 @@ export function buildStateMachineForPath(
         shared.failed = true;
         continue;
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.error(`PathBuilder: Error creating state for step ${index}: ${err.message || err}`);
       shared.failed = true;
@@ -172,6 +189,7 @@ export function buildStateMachineForPath(
       : () => {
           const finished = parent && typeof parent.isFinished === 'function' ? parent.isFinished() : true;
           if (!finished) return false;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
           if ((parent as any).stepSucceeded === false) return false;
           return true;
         };
@@ -203,11 +221,14 @@ export function buildStateMachineForPath(
         shouldTransition: () => {
           const finished = st && typeof st.isFinished === 'function' ? st.isFinished() : true;
           if (!finished) return false;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
           return (st as any).stepSucceeded === false || (ctx && ctx.toolIssueDetected);
         },
         onTransition: () => {
           shared.failed = true;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
           const reason = (st as any).stepSucceeded === false ? 'step failure' : 'tool issue';
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
           const failDetail = (st as any).stepFailureReason || '';
           logger.warn(
             `PathBuilder: aborting plan at step ${stepIndex}/${pathSteps.length - 1} due to ${reason}` +
@@ -236,6 +257,7 @@ export function buildStateMachineForPath(
       const success = !shared.failed;
       try {
         if (typeof onFinished === 'function') onFinished(success);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.error(`PathBuilder: Error in completion callback: ${err.message || err}`);
       }

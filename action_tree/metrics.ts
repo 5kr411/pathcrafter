@@ -5,6 +5,7 @@ import { TreeNode } from './types';
  * @param node - The tree node to analyze
  * @returns The maximum depth of the tree
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function computeTreeMaxDepth(node: TreeNode | any | null | undefined): number {
   if (!node) return 0;
   if (!node.children || node.children.variants.length === 0) return 1;
@@ -22,6 +23,7 @@ export function computeTreeMaxDepth(node: TreeNode | any | null | undefined): nu
  * @param node - The tree node to analyze
  * @returns The number of possible paths through the tree
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function countActionPaths(node: TreeNode | any | null | undefined): number {
   if (!node) return 0;
   if (!node.children || node.children.variants.length === 0) {

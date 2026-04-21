@@ -16,12 +16,14 @@ interface Vec3Like {
   z: number;
   clone?: () => Vec3Like;
   distanceTo?: (other: Vec3Like) => number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Block {
   type: number;
   name?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -32,19 +34,23 @@ interface Bot {
   world?: {
     getBlockType: (pos: Vec3Like) => number;
     on: (event: string, handler: (oldBlock: Block, newBlock: Block) => void) => void;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
     removeListener: (event: string, handler: (...args: any[]) => void) => void;
   };
   blockAt: (pos: Vec3Like, extraInfos?: boolean) => Block | null;
   canDigBlock?: (block: Block) => boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Targets {
   position?: Vec3Like;
   blockPosition?: Vec3Like;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 function createBreakAtPositionState(bot: Bot, targets: Targets): any {
   const enter = new BehaviorIdle();
   const findInteract = new BehaviorFindInteractPosition(bot, targets);
@@ -310,6 +316,7 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
       try {
         moveTo.onStateExited();
         logger.debug('BreakAtPosition: cleaned up moveTo');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`BreakAtPosition: error cleaning up moveTo: ${err.message}`);
       }
@@ -319,6 +326,7 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
       try {
         mine.onStateExited();
         logger.debug('BreakAtPosition: cleaned up mine');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
       } catch (err: any) {
         logger.warn(`BreakAtPosition: error cleaning up mine: ${err.message}`);
       }
@@ -327,6 +335,7 @@ function createBreakAtPositionState(bot: Bot, targets: Targets): any {
     try {
       bot.clearControlStates();
       logger.debug('BreakAtPosition: cleared bot control states');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`BreakAtPosition: error clearing control states: ${err.message}`);
     }

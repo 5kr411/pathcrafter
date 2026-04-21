@@ -1,3 +1,4 @@
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- plugin-data untyped
 export function getToolRemainingUses(bot: any, item: any): number {
   if (!item || typeof item.type !== 'number') {
     return 0;

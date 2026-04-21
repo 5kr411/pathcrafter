@@ -12,13 +12,17 @@ interface Vec3Like {
   x: number;
   y: number;
   z: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
 interface Bot {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   blockAt?: (pos: Vec3Like, extraInfos?: boolean) => any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   canDigBlock?: (block: any) => boolean;
   clearControlStates?: () => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
@@ -26,9 +30,11 @@ export interface BreakBlockTargets {
   position?: Vec3Like | null;
   blockPosition?: Vec3Like | null;
   blockName?: string | null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   [key: string]: any;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
 export default function createBreakBlockOnlyState(bot: Bot, targets: BreakBlockTargets): any {
   const enter = new BehaviorIdle();
   const validateTarget = new BehaviorIdle();
@@ -47,6 +53,7 @@ export default function createBreakBlockOnlyState(bot: Bot, targets: BreakBlockT
 
   const exit = new BehaviorIdle();
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
   let cachedBlock: any = null;
   let canDigCachedBlock = false;
 
@@ -76,6 +83,7 @@ export default function createBreakBlockOnlyState(bot: Bot, targets: BreakBlockT
           `BreakBlockOnly: bot cannot dig ${block.name || 'unknown'} at (${pos.x}, ${pos.y}, ${pos.z})`
         );
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       logger.debug(`BreakBlockOnly: error inspecting target block: ${err?.message || err}`);
       cachedBlock = null;
@@ -160,6 +168,7 @@ export default function createBreakBlockOnlyState(bot: Bot, targets: BreakBlockT
       if (typeof bot.clearControlStates === 'function') {
         try {
           bot.clearControlStates();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
         } catch (err: any) {
           logger.debug(
             `BreakBlockOnly: error clearing control states: ${err?.message || err}`

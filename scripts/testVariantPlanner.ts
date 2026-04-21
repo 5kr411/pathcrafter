@@ -95,6 +95,7 @@ function printSeparator(title: string) {
   console.log('='.repeat(60));
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
 function printTreeStats(tree: any) {
   console.log('\nTree Statistics:');
   console.log(`  Action: ${tree.action}`);
@@ -105,6 +106,7 @@ function printTreeStats(tree: any) {
   if (tree.what.variants.length > 0) {
     console.log(`  Primary Item: ${tree.what.variants[0].value}`);
     if (tree.what.variants.length > 1) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
       console.log(`  Variant Items: ${tree.what.variants.slice(1).map((v: any) => v.value).join(', ')}`);
     }
   }
@@ -112,11 +114,13 @@ function printTreeStats(tree: any) {
   console.log(`  Children Count: ${tree.children.variants.length}`);
 
   const actionCounts: Record<string, number> = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
   function countActions(node: any) {
     if (node.action) {
       actionCounts[node.action] = (actionCounts[node.action] || 0) + 1;
     }
     if (node.children && node.children.variants) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
       node.children.variants.forEach((child: any) => countActions(child.value));
     }
   }
@@ -128,6 +132,7 @@ function printTreeStats(tree: any) {
   });
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
 function printPathSummary(paths: any[], maxPaths: number) {
   console.log(`\nFound ${paths.length} action paths`);
 
@@ -143,22 +148,27 @@ function printPathSummary(paths: any[], maxPaths: number) {
     const pathItem = paths[i];
     const path = pathItem.path || pathItem;
     console.log(`\n  Path ${i + 1} (${path.length} steps):`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
     path.forEach((step: any, stepIndex: number) => {
       const count = step.count || 1;
 
       if ((step.action === 'mine' || step.action === 'hunt') && step.targetItem?.variants) {
         if (step.what?.variants && step.what.variants.length > 1) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
           const whatVariants = formatVariantStrings(step.what.variants.map((v: any) => v.value));
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
           const targetVariants = formatVariantStrings(step.targetItem.variants.map((v: any) => v.value));
           const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
           console.log(`    ${stepIndex + 1}. ${step.action} [${modeLabel}] ${whatVariants} for [${modeLabel}] ${targetVariants} (${count}x)`);
         } else {
           const what = step.what?.variants?.[0]?.value || 'unknown';
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
           const targetVariants = formatVariantStrings(step.targetItem.variants.map((v: any) => v.value));
           const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
           console.log(`    ${stepIndex + 1}. ${step.action} ${what} for [${modeLabel}] ${targetVariants} (${count}x)`);
         }
       } else if (step.what?.variants && step.what.variants.length > 1) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
         const variantNames = formatVariantStrings(step.what.variants.map((v: any) => v.value));
         const modeLabel = step.variantMode === 'one_of' ? 'ONE OF' : 'ANY OF';
         console.log(`    ${stepIndex + 1}. ${step.action} [${modeLabel}] ${variantNames} (${count}x)`);
@@ -169,6 +179,7 @@ function printPathSummary(paths: any[], maxPaths: number) {
 
       if (step.result) {
         if (step.result.variants && step.result.variants.length > 1) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
           const resultVariants = formatVariantStrings(step.result.variants.map((v: any) => {
             const value = v.value;
             const quantity = value.perCraftCount || value.perSmelt || value.count || 1;
@@ -187,6 +198,7 @@ function printPathSummary(paths: any[], maxPaths: number) {
       // For smelting, also display input alongside output
       if (step.action === 'smelt' && step.input) {
         if (step.input.variants && step.input.variants.length > 1) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
           const inputVariants = formatVariantStrings(step.input.variants.map((v: any) => {
             const value = v.value;
             const quantity = value.perCraftCount || value.perSmelt || value.count || 1;
@@ -204,7 +216,9 @@ function printPathSummary(paths: any[], maxPaths: number) {
 
       if (step.ingredients) {
         if (step.ingredients.variants && step.ingredients.variants.length > 1) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
           const ingredientVariants = formatVariantStrings(step.ingredients.variants.map((v: any) => {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
             const ingList = v.value.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
             return ingList;
           }));
@@ -213,6 +227,7 @@ function printPathSummary(paths: any[], maxPaths: number) {
         } else {
           const ingredients = step.ingredients.variants[0].value;
           if (ingredients.length > 0) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
             const ingList = ingredients.map((ing: any) => `${ing.perCraftCount} ${ing.item}`).join(' + ');
             console.log(`       ← ${ingList}`);
           }
@@ -226,6 +241,7 @@ function printPathSummary(paths: any[], maxPaths: number) {
   }
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
 function formatVariantStrings(values: any[], limit: number = 3): string {
   const unique: string[] = [];
   const seen = new Set<string>();
@@ -373,6 +389,7 @@ async function runAllTests(runOptions: PlannerRunOptions) {
   console.log('Starting Variant-First System Tests');
   console.log('This will test the system with real Minecraft data to validate functionality.\n');
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- script-level heterogeneous shape
   const results = [] as Array<{ config: TestConfig; result: any }>;
 
   for (let i = 0; i < testConfigs.length; i++) {

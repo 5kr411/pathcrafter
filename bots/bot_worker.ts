@@ -25,6 +25,7 @@ bot.loadPlugin(require('mineflayer-pathfinder').pathfinder);
 bot.loadPlugin(require('mineflayer-tool').plugin);
 
 bot.once('spawn', () => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const targets: any = {};
 
   const idleState = new BehaviorIdle();
@@ -33,6 +34,7 @@ bot.once('spawn', () => {
   followPlayer.movements.allowFreeMotion = true;
   bot.pathfinder.searchRadius = 32;
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- third-party untyped
   const getClosestPlayer = new BehaviorGetClosestEntity(bot, targets, (entity: any) => {
     if (entity.username === 'astolfo') {
       return true;

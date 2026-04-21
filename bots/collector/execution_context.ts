@@ -43,6 +43,7 @@ export function signalToolIssue(context: ExecutionContext, issue: ToolIssue): vo
   if (context.onToolIssue) {
     try {
       context.onToolIssue(issue);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
     } catch (err: any) {
       console.error('Error in tool issue callback:', err);
     }
