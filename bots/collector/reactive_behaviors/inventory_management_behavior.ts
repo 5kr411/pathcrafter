@@ -1,3 +1,17 @@
+/**
+ * Inventory management reactive behavior (factory form).
+ *
+ * Drops low-value / duplicate / excess items when the bot's free slot
+ * count drops below a threshold. Runs a nested state machine that
+ * wanders a few blocks, clears a box, tosses candidates, and moves back.
+ *
+ * All state (config, cooldowns, log-throttle timer) lives in the factory
+ * closure — no module singletons. The factory handle is attached to the
+ * bot at wiring time (`bot.__reactiveBehaviors.inventoryManagement`)
+ * so `ensureInventoryRoom` in `utils/inventoryGate.ts` can reach it
+ * without a new parameter on its call sites.
+ */
+
 import { BehaviorIdle, NestedStateMachine, StateTransition } from 'mineflayer-statemachine';
 import { Vec3 } from 'vec3';
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
@@ -28,7 +42,7 @@ export interface InventoryManagementConfig {
   reactiveThreshold: number;
   preGateThreshold: number;
   cooldownMs: number;
-  /** @deprecated alias for reactiveThreshold; accepted in setInventoryManagementConfig only */
+  /** @deprecated alias for reactiveThreshold; accepted in setConfig only */
   triggerFreeSlots?: number;
   getTargets: () => Array<{ item: string; count: number }>;
 }
@@ -40,64 +54,41 @@ const DEFAULT_CONFIG: InventoryManagementConfig = {
   getTargets: () => []
 };
 
-let config: InventoryManagementConfig = { ...DEFAULT_CONFIG };
-let lastManagementTime = 0;
-let lastShouldActivateLogTime = 0;
-
-export function setInventoryManagementConfig(partial: Partial<InventoryManagementConfig>): void {
-  const { triggerFreeSlots, ...rest } = partial;
-  if (triggerFreeSlots !== undefined) {
-    config = { ...config, reactiveThreshold: triggerFreeSlots, ...rest };
-  } else {
-    config = { ...config, ...rest };
-  }
+export interface DropCandidate {
+  item: any;
+  reason: 'lower_tier_tool' | 'duplicate_stack' | 'excess_over_target';
 }
 
-export function getInventoryManagementConfig(): InventoryManagementConfig {
-  return { ...config };
+export interface InventoryManagementMachine {
+  stateMachine: any;
+  droppedCount: () => number;
+  run: () => Promise<void>;
 }
 
-export function resetInventoryManagementCooldown(): void {
-  lastManagementTime = 0;
+export interface InventoryManagementOptions {
+  config?: Partial<InventoryManagementConfig>;
 }
 
-export function triggerInventoryManagementCooldown(): void {
-  lastManagementTime = Date.now() || 1;
+export interface InventoryManagementHandle {
+  behavior: ReactiveBehavior;
+  setConfig(partial: Partial<InventoryManagementConfig>): void;
+  getConfig(): InventoryManagementConfig;
+  resetCooldown(): void;
+  triggerCooldown(): void;
+  /**
+   * Build (but do not run) the inventory-management nested state machine.
+   * Used by `ensureInventoryRoom` to bypass cooldown and force a drop pass.
+   * Returns `null` when no safe items would be dropped.
+   */
+  buildMachine(bot: Bot): InventoryManagementMachine | null;
 }
 
-function isInCooldown(): boolean {
-  if (lastManagementTime === 0) return false;
-  return Date.now() - lastManagementTime < config.cooldownMs;
-}
-
-// --- Item protection ---
+// --- Pure helpers (no state) ---
 
 function isProtectedItem(_bot: Bot, itemName: string): boolean {
   if (isFood(itemName)) return true;
   if (isWorkstation(itemName)) return true;
   return false;
-}
-
-function getProtectedQuantity(itemName: string): number {
-  if (isFood(itemName)) return Infinity;
-  if (isWorkstation(itemName)) return Infinity;
-  try {
-    const targets = config.getTargets?.() ?? [];
-    let total = 0;
-    for (const t of targets) {
-      if (t?.item === itemName) total += t.count || 0;
-    }
-    return total;
-  } catch (_) {
-    return 0;
-  }
-}
-
-// --- Drop candidate logic ---
-
-export interface DropCandidate {
-  item: any;
-  reason: 'lower_tier_tool' | 'duplicate_stack' | 'excess_over_target';
 }
 
 function getMainInventoryItems(bot: Bot): any[] {
@@ -112,7 +103,17 @@ function getMainInventoryItems(bot: Bot): any[] {
   return items;
 }
 
-export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCandidate[] {
+/**
+ * Pure function: given a bot, a target free-slot count, and a
+ * getTargets() accessor (for protected quantities), returns the list
+ * of items to drop. Factored out of the factory so tests can call it
+ * directly without instantiating the factory.
+ */
+export function calculateItemsToDrop(
+  bot: Bot,
+  targetFreeSlots: number,
+  getTargets: () => Array<{ item: string; count: number }> = () => []
+): DropCandidate[] {
   const currentFree = getEmptySlotCount(bot as any);
   const slotsToFree = targetFreeSlots - currentFree;
   if (slotsToFree <= 0) return [];
@@ -128,6 +129,21 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
     arr.push(item);
     byName.set(item.name, arr);
   }
+
+  const getProtectedQuantity = (itemName: string): number => {
+    if (isFood(itemName)) return Infinity;
+    if (isWorkstation(itemName)) return Infinity;
+    try {
+      const targets = getTargets() ?? [];
+      let total = 0;
+      for (const t of targets) {
+        if (t?.item === itemName) total += t.count || 0;
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  };
 
   // Phase 0: excess over target
   for (const [name, stacks] of byName) {
@@ -223,7 +239,7 @@ export function calculateItemsToDrop(bot: Bot, targetFreeSlots: number): DropCan
   return candidates;
 }
 
-// --- State machine helpers ---
+// --- State machine helpers (no closure state) ---
 
 /**
  * Synthesize a look-at point `LOOK_AT_DISTANCE` blocks ahead of the bot along
@@ -261,14 +277,6 @@ function subStateFinished(s: any): boolean {
     }
   }
   return s.isFinished === true;
-}
-
-// --- Machine factory (used by both reactive createState and ensureInventoryRoom gate) ---
-
-export interface InventoryManagementMachine {
-  stateMachine: any;
-  droppedCount: () => number;
-  run: () => Promise<void>;
 }
 
 /**
@@ -318,174 +326,211 @@ function runMachine(stateMachine: any): Promise<void> {
   });
 }
 
-/**
- * Build the inventory-management NestedStateMachine without any cooldown
- * gating. Returns null when `calculateItemsToDrop` finds nothing to drop.
- * Used both by the reactive `createState` wrapper (which adds cooldown
- * checks) and by `ensureInventoryRoom` (which bypasses cooldown entirely).
- */
-export function buildInventoryManagementMachine(bot: Bot): InventoryManagementMachine | null {
-  const targetFree = config.reactiveThreshold + FREE_SLOT_BUFFER;
-  const dropCandidates = calculateItemsToDrop(bot, targetFree);
-  if (dropCandidates.length === 0) return null;
+// --- Factory ---
 
-  // Shared targets object drives every sub-state. CaptureOrigin writes
-  // originPosition; Wander writes wanderYaw; we populate targets.position
-  // (for LookAt and SmartMoveTo) and targets.placePosition (for ClearArea)
-  // inside transition `onTransition` callbacks once the upstream state has
-  // produced the data we need.
-  const targets: any = { dropCandidates };
+export function createInventoryManagementBehavior(
+  opts: InventoryManagementOptions = {}
+): InventoryManagementHandle {
+  let config: InventoryManagementConfig = { ...DEFAULT_CONFIG, ...(opts.config ?? {}) };
+  let lastManagementTime = 0;
+  let lastShouldActivateLogTime = 0;
 
-  const capture = new BehaviorCaptureOrigin(bot as any, targets);
-  const wander = new BehaviorWander(bot as any, WANDER_DISTANCE, undefined, targets);
-  const lookAt = createLookAtState(bot as any, targets);
-  const clear = createClearAreaState(bot as any, targets);
-  const toss = new BehaviorTossCandidates(bot as any, targets);
-  const back = new BehaviorSmartMoveTo(bot as any, targets);
-  const exit = new BehaviorIdle();
+  function setConfig(partial: Partial<InventoryManagementConfig>): void {
+    const { triggerFreeSlots, ...rest } = partial;
+    if (triggerFreeSlots !== undefined) {
+      config = { ...config, reactiveThreshold: triggerFreeSlots, ...rest };
+    } else {
+      config = { ...config, ...rest };
+    }
+  }
 
-  const transitions = [
-    new StateTransition({
-      parent: capture,
-      child: wander,
-      name: 'inv-mgmt: capture -> wander',
-      shouldTransition: () => capture.isFinished()
-    }),
-    new StateTransition({
-      parent: wander,
-      child: lookAt,
-      name: 'inv-mgmt: wander -> lookAt',
-      shouldTransition: () => subStateFinished(wander),
-      onTransition: () => {
-        const yaw = typeof targets.wanderYaw === 'number'
-          ? targets.wanderYaw
-          : ((bot as any)?.entity?.yaw ?? 0);
-        const point = computeLookAtPoint(bot, yaw);
-        if (point) targets.position = point;
-      }
-    }),
-    new StateTransition({
-      parent: lookAt,
-      child: clear,
-      name: 'inv-mgmt: lookAt -> clearArea',
-      shouldTransition: () => subStateFinished(lookAt),
-      onTransition: () => {
-        const yaw = typeof targets.wanderYaw === 'number' ? targets.wanderYaw : 0;
-        const boxOrigin = computeClearBoxOrigin(bot, yaw);
-        if (boxOrigin) {
-          targets.placePosition = boxOrigin;
-          targets.clearRadiusHorizontal = CLEAR_RADIUS_HORIZONTAL;
-          targets.clearRadiusVertical = CLEAR_RADIUS_VERTICAL;
+  function getConfig(): InventoryManagementConfig {
+    return { ...config };
+  }
+
+  function resetCooldown(): void {
+    lastManagementTime = 0;
+  }
+
+  function triggerCooldown(): void {
+    lastManagementTime = Date.now() || 1;
+  }
+
+  function isInCooldown(): boolean {
+    if (lastManagementTime === 0) return false;
+    return Date.now() - lastManagementTime < config.cooldownMs;
+  }
+
+  function buildMachine(bot: Bot): InventoryManagementMachine | null {
+    const targetFree = config.reactiveThreshold + FREE_SLOT_BUFFER;
+    const dropCandidates = calculateItemsToDrop(bot, targetFree, config.getTargets);
+    if (dropCandidates.length === 0) return null;
+
+    // Shared targets object drives every sub-state. CaptureOrigin writes
+    // originPosition; Wander writes wanderYaw; we populate targets.position
+    // (for LookAt and SmartMoveTo) and targets.placePosition (for ClearArea)
+    // inside transition `onTransition` callbacks once the upstream state has
+    // produced the data we need.
+    const targets: any = { dropCandidates };
+
+    const capture = new BehaviorCaptureOrigin(bot as any, targets);
+    const wander = new BehaviorWander(bot as any, WANDER_DISTANCE, undefined, targets);
+    const lookAt = createLookAtState(bot as any, targets);
+    const clear = createClearAreaState(bot as any, targets);
+    const toss = new BehaviorTossCandidates(bot as any, targets);
+    const back = new BehaviorSmartMoveTo(bot as any, targets);
+    const exit = new BehaviorIdle();
+
+    const transitions = [
+      new StateTransition({
+        parent: capture,
+        child: wander,
+        name: 'inv-mgmt: capture -> wander',
+        shouldTransition: () => capture.isFinished()
+      }),
+      new StateTransition({
+        parent: wander,
+        child: lookAt,
+        name: 'inv-mgmt: wander -> lookAt',
+        shouldTransition: () => subStateFinished(wander),
+        onTransition: () => {
+          const yaw = typeof targets.wanderYaw === 'number'
+            ? targets.wanderYaw
+            : ((bot as any)?.entity?.yaw ?? 0);
+          const point = computeLookAtPoint(bot, yaw);
+          if (point) targets.position = point;
         }
-      }
-    }),
-    new StateTransition({
-      parent: clear,
-      child: toss,
-      name: 'inv-mgmt: clearArea -> toss',
-      shouldTransition: () => subStateFinished(clear)
-    }),
-    new StateTransition({
-      parent: toss,
-      child: back as any,
-      name: 'inv-mgmt: toss -> moveBack',
-      shouldTransition: () => toss.isFinished(),
-      onTransition: () => {
-        if (targets.originPosition) {
-          const o = targets.originPosition;
-          // SmartMoveTo snapshots targets.position in onStateEntered, so
-          // overwriting here (after LookAt wrote a forward-looking point
-          // into it) is safe.
-          targets.position = new Vec3(o.x, o.y, o.z);
+      }),
+      new StateTransition({
+        parent: lookAt,
+        child: clear,
+        name: 'inv-mgmt: lookAt -> clearArea',
+        shouldTransition: () => subStateFinished(lookAt),
+        onTransition: () => {
+          const yaw = typeof targets.wanderYaw === 'number' ? targets.wanderYaw : 0;
+          const boxOrigin = computeClearBoxOrigin(bot, yaw);
+          if (boxOrigin) {
+            targets.placePosition = boxOrigin;
+            targets.clearRadiusHorizontal = CLEAR_RADIUS_HORIZONTAL;
+            targets.clearRadiusVertical = CLEAR_RADIUS_VERTICAL;
+          }
         }
-      }
-    }),
-    new StateTransition({
-      parent: back as any,
-      child: exit,
-      name: 'inv-mgmt: moveBack -> exit',
-      shouldTransition: () => subStateFinished(back)
-    })
-  ];
+      }),
+      new StateTransition({
+        parent: clear,
+        child: toss,
+        name: 'inv-mgmt: clearArea -> toss',
+        shouldTransition: () => subStateFinished(clear)
+      }),
+      new StateTransition({
+        parent: toss,
+        child: back as any,
+        name: 'inv-mgmt: toss -> moveBack',
+        shouldTransition: () => toss.isFinished(),
+        onTransition: () => {
+          if (targets.originPosition) {
+            const o = targets.originPosition;
+            // SmartMoveTo snapshots targets.position in onStateEntered, so
+            // overwriting here (after LookAt wrote a forward-looking point
+            // into it) is safe.
+            targets.position = new Vec3(o.x, o.y, o.z);
+          }
+        }
+      }),
+      new StateTransition({
+        parent: back as any,
+        child: exit,
+        name: 'inv-mgmt: moveBack -> exit',
+        shouldTransition: () => subStateFinished(back)
+      })
+    ];
 
-  const stateMachine = new NestedStateMachine(transitions, capture, exit);
-
-  return {
-    stateMachine,
-    droppedCount: () => toss.droppedCount(),
-    run: () => runMachine(stateMachine)
-  };
-}
-
-// --- Behavior export ---
-
-export const inventoryManagementBehavior: ReactiveBehavior = {
-  priority: INVENTORY_MANAGEMENT_PRIORITY,
-  name: 'inventory_management',
-
-  shouldActivate: (bot: Bot): boolean => {
-    const freeSlots = getEmptySlotCount(bot as any);
-    const now = Date.now();
-
-    if (freeSlots > config.reactiveThreshold) return false;
-
-    if (isInCooldown()) {
-      if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-        const remaining = Math.ceil((config.cooldownMs - (now - lastManagementTime)) / 1000);
-        logger.debug(`InventoryManagement: in cooldown (${remaining}s remaining)`);
-        lastShouldActivateLogTime = now;
-      }
-      return false;
-    }
-
-    if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-      logger.debug(
-        `InventoryManagement: should activate - freeSlots=${freeSlots} <= threshold=${config.reactiveThreshold}`
-      );
-      lastShouldActivateLogTime = now;
-    }
-    return true;
-  },
-
-  createState: async (bot: Bot) => {
-    if (isInCooldown()) {
-      return null;
-    }
-
-    const freeSlots = getEmptySlotCount(bot as any);
-    const built = buildInventoryManagementMachine(bot);
-
-    if (!built) {
-      logger.info(`InventoryManagement: no safe items to drop (${freeSlots} free slots)`);
-      lastManagementTime = Date.now();
-      return null;
-    }
-
-    const sendChat: ((msg: string) => void) | null =
-      typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
-
-    logger.info(
-      `InventoryManagement: starting - ${freeSlots} free slots`
-    );
-    if (sendChat) {
-      sendChat(`inventory nearly full (${freeSlots} free slots), dropping items`);
-    }
+    const stateMachine = new NestedStateMachine(transitions, capture, exit);
 
     return {
-      stateMachine: built.stateMachine,
-      isFinished: () =>
-        typeof built.stateMachine.isFinished === 'function' ? built.stateMachine.isFinished() : false,
-      wasSuccessful: () => built.droppedCount() > 0,
-      onStop: (reason: ReactiveBehaviorStopReason) => {
-        if (reason === 'completed') {
-          lastManagementTime = Date.now();
-          logger.debug(
-            `InventoryManagement: completed, starting ${config.cooldownMs / 1000}s cooldown`
-          );
-        } else {
-          logger.debug(`InventoryManagement: stopped (${reason})`);
-        }
-      }
+      stateMachine,
+      droppedCount: () => toss.droppedCount(),
+      run: () => runMachine(stateMachine)
     };
   }
-};
+
+  const behavior: ReactiveBehavior = {
+    priority: INVENTORY_MANAGEMENT_PRIORITY,
+    name: 'inventory_management',
+
+    shouldActivate: (bot: Bot): boolean => {
+      const freeSlots = getEmptySlotCount(bot as any);
+      const now = Date.now();
+
+      if (freeSlots > config.reactiveThreshold) return false;
+
+      if (isInCooldown()) {
+        if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+          const remaining = Math.ceil((config.cooldownMs - (now - lastManagementTime)) / 1000);
+          logger.debug(`InventoryManagement: in cooldown (${remaining}s remaining)`);
+          lastShouldActivateLogTime = now;
+        }
+        return false;
+      }
+
+      if (now - lastShouldActivateLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+        logger.debug(
+          `InventoryManagement: should activate - freeSlots=${freeSlots} <= threshold=${config.reactiveThreshold}`
+        );
+        lastShouldActivateLogTime = now;
+      }
+      return true;
+    },
+
+    createState: async (bot: Bot) => {
+      if (isInCooldown()) {
+        return null;
+      }
+
+      const freeSlots = getEmptySlotCount(bot as any);
+      const built = buildMachine(bot);
+
+      if (!built) {
+        logger.info(`InventoryManagement: no safe items to drop (${freeSlots} free slots)`);
+        lastManagementTime = Date.now();
+        return null;
+      }
+
+      const sendChat: ((msg: string) => void) | null =
+        typeof (bot as any)?.safeChat === 'function' ? (bot as any).safeChat.bind(bot) : null;
+
+      logger.info(
+        `InventoryManagement: starting - ${freeSlots} free slots`
+      );
+      if (sendChat) {
+        sendChat(`inventory nearly full (${freeSlots} free slots), dropping items`);
+      }
+
+      return {
+        stateMachine: built.stateMachine,
+        isFinished: () =>
+          typeof built.stateMachine.isFinished === 'function' ? built.stateMachine.isFinished() : false,
+        wasSuccessful: () => built.droppedCount() > 0,
+        onStop: (reason: ReactiveBehaviorStopReason) => {
+          if (reason === 'completed') {
+            lastManagementTime = Date.now();
+            logger.debug(
+              `InventoryManagement: completed, starting ${config.cooldownMs / 1000}s cooldown`
+            );
+          } else {
+            logger.debug(`InventoryManagement: stopped (${reason})`);
+          }
+        }
+      };
+    }
+  };
+
+  return {
+    behavior,
+    setConfig,
+    getConfig,
+    resetCooldown,
+    triggerCooldown,
+    buildMachine
+  };
+}

@@ -16,7 +16,6 @@ import logger from '../utils/logger';
 import { addStateLogging } from '../utils/stateLogging';
 import { getInventoryObject, getItemCountInInventory } from '../utils/inventory';
 import { ensureInventoryRoom } from '../utils/inventoryGate';
-import { getInventoryManagementConfig } from '../bots/collector/reactive_behaviors/inventory_management_behavior';
 import {
   HUNTABLE_LAND_ANIMALS,
   getCookedVariant,
@@ -304,7 +303,7 @@ function createHuntForFoodState(bot: Bot, targets: HuntForFoodTargets): any {
       // Pre-gate inventory: fire-and-forget so the gate runs in parallel with
       // walking to the drop. Reactive inventory-management behavior catches
       // anything that slips past this fire-and-forget.
-      void ensureInventoryRoom(bot, getInventoryManagementConfig().preGateThreshold);
+      void ensureInventoryRoom(bot);
       logger.info(`HuntForFood: hunt complete but no food gained yet, searching for drops`);
     }
   });

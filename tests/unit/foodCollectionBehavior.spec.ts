@@ -1,7 +1,6 @@
 import {
-  foodCollectionBehavior,
-  resetFoodCollectionCooldown,
-  triggerFoodCollectionCooldown
+  createFoodCollectionBehavior,
+  FoodCollectionHandle
 } from '../../bots/collector/reactive_behaviors/food_collection_behavior';
 import { createSimulatedBot } from '../helpers/reactiveTestHarness';
 
@@ -36,10 +35,13 @@ function createBotWithFood(food: Record<string, number> = {}): any {
 }
 
 describe('foodCollectionBehavior', () => {
+  let handle: FoodCollectionHandle;
+
   beforeEach(() => {
     jest.clearAllMocks();
     jest.setSystemTime(1000);
-    resetFoodCollectionCooldown();
+    handle = createFoodCollectionBehavior();
+    handle.resetCooldown();
   });
 
   afterEach(() => {
@@ -49,24 +51,23 @@ describe('foodCollectionBehavior', () => {
   describe('shouldActivate', () => {
     it('returns true when food points are below trigger', () => {
       const bot = createBotWithFood({ apple: 2 });  // 8 points < trigger (10)
-      expect(foodCollectionBehavior.shouldActivate(bot)).toBe(true);
+      expect(handle.behavior.shouldActivate(bot)).toBe(true);
     });
 
     it('returns false when food points are at trigger', () => {
       const bot = createBotWithFood({ bread: 2 });  // 10 points >= trigger (10)
-      expect(foodCollectionBehavior.shouldActivate(bot)).toBe(false);
+      expect(handle.behavior.shouldActivate(bot)).toBe(false);
     });
 
     it('returns false when food points are above trigger', () => {
       const bot = createBotWithFood({ cooked_beef: 4 });
-      expect(foodCollectionBehavior.shouldActivate(bot)).toBe(false);
+      expect(handle.behavior.shouldActivate(bot)).toBe(false);
     });
 
     it('returns false when in cooldown', () => {
       const bot = createBotWithFood({ bread: 1 });
-      triggerFoodCollectionCooldown();
-      expect(foodCollectionBehavior.shouldActivate(bot)).toBe(false);
+      handle.triggerCooldown();
+      expect(handle.behavior.shouldActivate(bot)).toBe(false);
     });
   });
-
 });

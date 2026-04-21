@@ -198,17 +198,59 @@ jest.mock('../../behaviors/behaviorClearArea', () => {
 });
 
 import {
-  inventoryManagementBehavior,
-  setInventoryManagementConfig,
-  getInventoryManagementConfig,
-  resetInventoryManagementCooldown,
-  triggerInventoryManagementCooldown,
-  calculateItemsToDrop,
-  DropCandidate
+  createInventoryManagementBehavior,
+  calculateItemsToDrop as calculateItemsToDropRaw,
+  DropCandidate,
+  InventoryManagementConfig,
+  InventoryManagementHandle
 } from '../../bots/collector/reactive_behaviors/inventory_management_behavior';
 import { getEmptySlotCount } from '../../utils/inventory';
 
 jest.useFakeTimers();
+
+// Per-test factory instance (rebuilt in beforeEach so each test gets its own
+// cooldown/config state — no module singletons). The shim variables below
+// delegate to the current handle so the pre-existing call sites keep working.
+let _handle: InventoryManagementHandle;
+
+// Track the getTargets supplied via setInventoryManagementConfig so
+// calculateItemsToDrop (which used to read module state) uses the same
+// accessor in tests.
+let _currentGetTargets: () => Array<{ item: string; count: number }> = () => [];
+
+const inventoryManagementBehavior = new Proxy({} as any, {
+  get(_target, prop: string) {
+    return (_handle as any).behavior[prop];
+  }
+});
+
+function setInventoryManagementConfig(partial: Partial<InventoryManagementConfig>): void {
+  _handle.setConfig(partial);
+  if (typeof partial.getTargets === 'function') {
+    _currentGetTargets = partial.getTargets;
+  }
+}
+
+function getInventoryManagementConfig(): InventoryManagementConfig {
+  return _handle.getConfig();
+}
+
+function resetInventoryManagementCooldown(): void {
+  _handle.resetCooldown();
+}
+
+function triggerInventoryManagementCooldown(): void {
+  _handle.triggerCooldown();
+}
+
+// calculateItemsToDrop is a pure function on the module, but it used to
+// read module-level `config.getTargets`. Now it takes getTargets as a
+// parameter. Tests that called `calculateItemsToDrop(bot, n)` continue
+// to work via this shim, which threads through the currently-set
+// getTargets accessor.
+function calculateItemsToDrop(bot: any, targetFreeSlots: number): DropCandidate[] {
+  return calculateItemsToDropRaw(bot, targetFreeSlots, _currentGetTargets);
+}
 
 // places items into main inventory slots (9-44)
 function createBot(mainItems: Array<{ name: string; count: number; type?: number }> = []): any {
@@ -245,6 +287,8 @@ describe('inventoryManagementBehavior', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.setSystemTime(1000);
+    _handle = createInventoryManagementBehavior();
+    _currentGetTargets = () => [];
     resetInventoryManagementCooldown();
     setInventoryManagementConfig({
       triggerFreeSlots: 2,

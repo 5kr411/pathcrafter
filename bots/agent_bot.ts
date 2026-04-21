@@ -11,12 +11,12 @@ import { shieldDefenseBehavior } from './collector/reactive_behaviors/shield_def
 import { hostileFleeBehavior } from './collector/reactive_behaviors/hostile_flee_behavior';
 import { waterEscapeBehavior } from './collector/reactive_behaviors/water_escape_behavior';
 import { armorUpgradeBehavior } from './collector/reactive_behaviors/armor_upgrade_behavior';
-import { foodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
-import { droppedFoodPickupBehavior } from './collector/reactive_behaviors/dropped_food_pickup_behavior';
-import { opportunisticFoodHuntBehavior } from './collector/reactive_behaviors/opportunistic_food_hunt_behavior';
-import { foodCollectionBehavior, setFoodCollectionConfig, resetFoodCollectionCooldown } from './collector/reactive_behaviors/food_collection_behavior';
-import { foodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
-import { inventoryManagementBehavior, setInventoryManagementConfig } from './collector/reactive_behaviors/inventory_management_behavior';
+import { createFoodEatingBehavior } from './collector/reactive_behaviors/food_eating_behavior';
+import { createDroppedFoodPickupBehavior } from './collector/reactive_behaviors/dropped_food_pickup_behavior';
+import { createOpportunisticFoodHuntBehavior } from './collector/reactive_behaviors/opportunistic_food_hunt_behavior';
+import { createFoodCollectionBehavior } from './collector/reactive_behaviors/food_collection_behavior';
+import { createFoodSmeltingBehavior } from './collector/reactive_behaviors/food_smelting_behavior';
+import { createInventoryManagementBehavior } from './collector/reactive_behaviors/inventory_management_behavior';
 import { createToolReplacementBehavior } from './collector/reactive_behaviors/tool_replacement_behavior';
 import { CollectorControlStack } from './collector/control_stack';
 import { setSafeFindRepeatThreshold, setLiquidAvoidanceDistance } from '../utils/config';
@@ -162,18 +162,33 @@ bot.once('spawn', () => {
   );
 
   const reactiveBehaviorRegistry = new ReactiveBehaviorRegistry();
-  setFoodCollectionConfig({ triggerFoodPoints: 10, targetFoodPoints: 20 });
+
+  // Build per-bot reactive-behavior instances. Each factory owns its own
+  // state (cooldowns, config, log-throttle timers) — no module singletons.
+  const foodCollection = createFoodCollectionBehavior({
+    config: { triggerFoodPoints: 10, targetFoodPoints: 20 }
+  });
+  const foodEating = createFoodEatingBehavior();
+  const droppedFoodPickup = createDroppedFoodPickupBehavior({ foodCollection });
+  const opportunisticFoodHunt = createOpportunisticFoodHuntBehavior({ foodCollection });
+  const foodSmelting = createFoodSmeltingBehavior({ foodCollection });
+  const inventoryManagement = createInventoryManagementBehavior();
+
+  // Attach the inventory-management handle to the bot so utility call
+  // sites (e.g. ensureInventoryRoom) can reach it without a module import.
+  (bot as any).__reactiveBehaviors = { inventoryManagement };
+
   reactiveBehaviorRegistry.register(shieldDefenseBehavior);
   reactiveBehaviorRegistry.register(hostileFleeBehavior);
   reactiveBehaviorRegistry.register(waterEscapeBehavior);
   reactiveBehaviorRegistry.register(hostileMobBehavior);
   reactiveBehaviorRegistry.register(armorUpgradeBehavior);
-  reactiveBehaviorRegistry.register(foodCollectionBehavior);
-  reactiveBehaviorRegistry.register(foodEatingBehavior);
-  reactiveBehaviorRegistry.register(droppedFoodPickupBehavior);
-  reactiveBehaviorRegistry.register(opportunisticFoodHuntBehavior);
-  reactiveBehaviorRegistry.register(foodSmeltingBehavior);
-  reactiveBehaviorRegistry.register(inventoryManagementBehavior);
+  reactiveBehaviorRegistry.register(foodCollection.behavior);
+  reactiveBehaviorRegistry.register(foodEating.behavior);
+  reactiveBehaviorRegistry.register(droppedFoodPickup.behavior);
+  reactiveBehaviorRegistry.register(opportunisticFoodHunt.behavior);
+  reactiveBehaviorRegistry.register(foodSmelting.behavior);
+  reactiveBehaviorRegistry.register(inventoryManagement.behavior);
 
   const agentActionLayer = new AgentActionExecutor(bot);
 
@@ -201,7 +216,7 @@ bot.once('spawn', () => {
     durabilityThreshold: config.toolDurabilityThreshold
   }));
 
-  setInventoryManagementConfig({
+  inventoryManagement.setConfig({
     getTargets: () => executor.getTargets()
   });
 
@@ -240,7 +255,7 @@ bot.once('spawn', () => {
     // Halt any in-flight tool loop so it stops running against a dead bot.
     try { session.abortInFlight(); } catch (_) {}
     // Respawn restores hunger to 20 — any prior "food is scarce" cooldown is stale.
-    resetFoodCollectionCooldown();
+    foodCollection.resetCooldown();
   });
 
   bot.on('respawn', () => {

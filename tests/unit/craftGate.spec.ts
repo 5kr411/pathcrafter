@@ -30,21 +30,19 @@ describe('craft gate', () => {
     expect(gateIdx).toBeLessThan(craftIdx);
   });
 
-  it('behaviorCraftWithTable imports ensureInventoryRoom and getInventoryManagementConfig', () => {
+  it('behaviorCraftWithTable imports ensureInventoryRoom', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, '../../behaviors/behaviorCraftWithTable.ts'),
       'utf8'
     );
     expect(src).toMatch(/ensureInventoryRoom/);
-    expect(src).toMatch(/getInventoryManagementConfig/);
   });
 
-  it('behaviorCraftNoTable imports ensureInventoryRoom and getInventoryManagementConfig', () => {
+  it('behaviorCraftNoTable imports ensureInventoryRoom', () => {
     const src = fs.readFileSync(
       path.resolve(__dirname, '../../behaviors/behaviorCraftNoTable.ts'),
       'utf8'
     );
     expect(src).toMatch(/ensureInventoryRoom/);
-    expect(src).toMatch(/getInventoryManagementConfig/);
   });
 });

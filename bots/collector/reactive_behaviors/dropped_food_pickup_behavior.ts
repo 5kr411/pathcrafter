@@ -1,9 +1,13 @@
 /**
- * Dropped food pickup reactive behavior
+ * Dropped food pickup reactive behavior (factory form).
  *
  * Scans for dropped food item entities within 16 blocks and pathfinds
  * to collect them. Lightweight opportunistic behavior — no planning,
  * no world snapshots.
+ *
+ * Takes the food-collection handle as a dependency so cross-behavior reads
+ * (target threshold, "active" flag) go through an explicit reference
+ * instead of a module singleton.
  */
 
 import {
@@ -16,7 +20,7 @@ import {
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { getInventoryObject } from '../../../utils/inventory';
 import { calculateFoodPointsInInventory, isFood } from '../../../utils/foodConfig';
-import { getFoodCollectionConfig, isFoodCollectionActive } from './food_collection_behavior';
+import type { FoodCollectionHandle } from './food_collection_behavior';
 import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getDroppedItemInfo } from '../../../utils/droppedItems';
 import logger from '../../../utils/logger';
@@ -29,12 +33,15 @@ const PICKUP_TIMEOUT_MS = 15_000;
 const FAILURE_COOLDOWN_MS = 30_000;
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 
-let lastFailedAttempt = 0;
-let lastThrottledLogTime = 0;
+export interface DroppedFoodPickupOptions {
+  foodCollection: FoodCollectionHandle;
+}
 
-function isInCooldown(): boolean {
-  if (lastFailedAttempt === 0) return false;
-  return Date.now() - lastFailedAttempt < FAILURE_COOLDOWN_MS;
+export interface DroppedFoodPickupHandle {
+  behavior: ReactiveBehavior;
+  resetCooldown(): void;
+  triggerCooldown(): void;
+  isInCooldown(): boolean;
 }
 
 interface DroppedFoodEntity {
@@ -153,82 +160,102 @@ class BehaviorPickupDroppedFood implements StateBehavior {
   }
 }
 
-export const droppedFoodPickupBehavior: ReactiveBehavior = {
-  priority: DROPPED_FOOD_PICKUP_PRIORITY,
-  name: 'dropped_food_pickup',
+export function createDroppedFoodPickupBehavior(
+  opts: DroppedFoodPickupOptions
+): DroppedFoodPickupHandle {
+  const { foodCollection } = opts;
+  let lastFailedAttempt = 0;
+  let lastThrottledLogTime = 0;
 
-  shouldActivate: (bot: Bot): boolean => {
-    if (isWorkstationLocked()) return false;
-    if (isFoodCollectionActive()) return false;
-    if (isInCooldown()) return false;
-
-    const inventory = getInventoryObject(bot as any);
-    const foodPoints = calculateFoodPointsInInventory(inventory);
-    const { targetFoodPoints } = getFoodCollectionConfig();
-
-    if (foodPoints >= targetFoodPoints) return false;
-
-    const droppedFood = findDroppedFoodItems(bot);
-    if (droppedFood.length === 0) return false;
-
-    const now = Date.now();
-    if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-      const items = droppedFood.map(d => `${d.count}x ${d.foodName}`).join(', ');
-      logger.debug(`DroppedFoodPickup: should activate - found ${items}`);
-      lastThrottledLogTime = now;
-    }
-
-    return true;
-  },
-
-  createState: async (bot: Bot) => {
-    const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
-      ? (bot as any).safeChat.bind(bot)
-      : null;
-
-    const droppedFood = findDroppedFoodItems(bot);
-    if (droppedFood.length === 0) {
-      return null;
-    }
-
-    logger.info(`DroppedFoodPickup: starting - ${droppedFood.length} food item(s) nearby`);
-
-    const enter = new BehaviorIdle();
-    const exit = new BehaviorIdle();
-    const pickupState = new BehaviorPickupDroppedFood(bot, droppedFood, sendChat);
-    let reachedExit = false;
-
-    const enterToPickup = new StateTransition({
-      parent: enter,
-      child: pickupState,
-      name: 'dropped-food-pickup: enter -> pickup',
-      shouldTransition: () => true
-    });
-
-    const pickupToExit = new StateTransition({
-      parent: pickupState,
-      child: exit,
-      name: 'dropped-food-pickup: pickup -> exit',
-      shouldTransition: () => pickupState.isFinished(),
-      onTransition: () => { reachedExit = true; }
-    });
-
-    const stateMachine = new NestedStateMachine([enterToPickup, pickupToExit], enter, exit);
-    (stateMachine as any).isFinished = () => reachedExit;
-    (stateMachine as any).wasSuccessful = () => pickupState.wasSuccessful();
-
-    return {
-      stateMachine,
-      isFinished: () => reachedExit,
-      wasSuccessful: () => pickupState.wasSuccessful(),
-      onStop: (reason: ReactiveBehaviorStopReason) => {
-        if (reason === 'completed' && !pickupState.wasSuccessful()) {
-          lastFailedAttempt = Date.now();
-        }
-        if (reason !== 'completed') {
-          logger.debug(`DroppedFoodPickup: stopped (${reason})`);
-        }
-      }
-    };
+  function isInCooldown(): boolean {
+    if (lastFailedAttempt === 0) return false;
+    return Date.now() - lastFailedAttempt < FAILURE_COOLDOWN_MS;
   }
-};
+
+  const behavior: ReactiveBehavior = {
+    priority: DROPPED_FOOD_PICKUP_PRIORITY,
+    name: 'dropped_food_pickup',
+
+    shouldActivate: (bot: Bot): boolean => {
+      if (isWorkstationLocked()) return false;
+      if (foodCollection.isActive()) return false;
+      if (isInCooldown()) return false;
+
+      const inventory = getInventoryObject(bot as any);
+      const foodPoints = calculateFoodPointsInInventory(inventory);
+      const { targetFoodPoints } = foodCollection.getConfig();
+
+      if (foodPoints >= targetFoodPoints) return false;
+
+      const droppedFood = findDroppedFoodItems(bot);
+      if (droppedFood.length === 0) return false;
+
+      const now = Date.now();
+      if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+        const items = droppedFood.map(d => `${d.count}x ${d.foodName}`).join(', ');
+        logger.debug(`DroppedFoodPickup: should activate - found ${items}`);
+        lastThrottledLogTime = now;
+      }
+
+      return true;
+    },
+
+    createState: async (bot: Bot) => {
+      const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        ? (bot as any).safeChat.bind(bot)
+        : null;
+
+      const droppedFood = findDroppedFoodItems(bot);
+      if (droppedFood.length === 0) {
+        return null;
+      }
+
+      logger.info(`DroppedFoodPickup: starting - ${droppedFood.length} food item(s) nearby`);
+
+      const enter = new BehaviorIdle();
+      const exit = new BehaviorIdle();
+      const pickupState = new BehaviorPickupDroppedFood(bot, droppedFood, sendChat);
+      let reachedExit = false;
+
+      const enterToPickup = new StateTransition({
+        parent: enter,
+        child: pickupState,
+        name: 'dropped-food-pickup: enter -> pickup',
+        shouldTransition: () => true
+      });
+
+      const pickupToExit = new StateTransition({
+        parent: pickupState,
+        child: exit,
+        name: 'dropped-food-pickup: pickup -> exit',
+        shouldTransition: () => pickupState.isFinished(),
+        onTransition: () => { reachedExit = true; }
+      });
+
+      const stateMachine = new NestedStateMachine([enterToPickup, pickupToExit], enter, exit);
+      (stateMachine as any).isFinished = () => reachedExit;
+      (stateMachine as any).wasSuccessful = () => pickupState.wasSuccessful();
+
+      return {
+        stateMachine,
+        isFinished: () => reachedExit,
+        wasSuccessful: () => pickupState.wasSuccessful(),
+        onStop: (reason: ReactiveBehaviorStopReason) => {
+          if (reason === 'completed' && !pickupState.wasSuccessful()) {
+            lastFailedAttempt = Date.now();
+          }
+          if (reason !== 'completed') {
+            logger.debug(`DroppedFoodPickup: stopped (${reason})`);
+          }
+        }
+      };
+    }
+  };
+
+  return {
+    behavior,
+    resetCooldown: () => { lastFailedAttempt = 0; },
+    triggerCooldown: () => { lastFailedAttempt = Date.now(); },
+    isInCooldown
+  };
+}

@@ -3,13 +3,33 @@ import { hostileMobBehavior } from '../../bots/collector/reactive_behaviors/host
 import { shieldDefenseBehavior } from '../../bots/collector/reactive_behaviors/shield_defense_behavior';
 import { armorUpgradeBehavior, resetArmorUpgradeCooldowns } from '../../bots/collector/reactive_behaviors/armor_upgrade_behavior';
 import {
-  foodCollectionBehavior,
-  resetFoodCollectionConfig,
-  resetFoodCollectionCooldown,
-  setFoodCollectionConfig,
-  setFoodCollectionCooldown
+  createFoodCollectionBehavior,
+  FoodCollectionHandle
 } from '../../bots/collector/reactive_behaviors/food_collection_behavior';
-import { foodEatingBehavior, resetFoodEatingCooldown } from '../../bots/collector/reactive_behaviors/food_eating_behavior';
+import {
+  createFoodEatingBehavior,
+  FoodEatingHandle
+} from '../../bots/collector/reactive_behaviors/food_eating_behavior';
+import { FoodCollectionConfig } from '../../utils/foodConfig';
+
+// Per-test factory handles (rebuilt in beforeEach) plus shim accessors so
+// the pre-existing call sites continue to work without per-line edits.
+let _collectHandle: FoodCollectionHandle;
+let _eatHandle: FoodEatingHandle;
+
+const foodCollectionBehavior = new Proxy({} as any, {
+  get(_t, prop: string) { return (_collectHandle as any).behavior[prop]; }
+});
+const foodEatingBehavior = new Proxy({} as any, {
+  get(_t, prop: string) { return (_eatHandle as any).behavior[prop]; }
+});
+function resetFoodCollectionConfig(): void { _collectHandle.resetConfig(); }
+function resetFoodCollectionCooldown(): void { _collectHandle.resetCooldown(); }
+function setFoodCollectionConfig(partial: Partial<FoodCollectionConfig>): void {
+  _collectHandle.setConfig(partial);
+}
+function setFoodCollectionCooldown(ms: number): void { _collectHandle.setCooldown(ms); }
+function resetFoodEatingCooldown(): void { _eatHandle.resetCooldown(); }
 
 jest.mock('../../behaviors/behaviorHuntEntity', () => ({
   __esModule: true,
@@ -94,6 +114,8 @@ describe('integration: full reactive behavior simulation', () => {
     jest.useFakeTimers();
     jest.setSystemTime(0);
     jest.clearAllMocks();
+    _collectHandle = createFoodCollectionBehavior();
+    _eatHandle = createFoodEatingBehavior();
     resetArmorUpgradeCooldowns();
     resetFoodCollectionConfig();
     resetFoodCollectionCooldown();

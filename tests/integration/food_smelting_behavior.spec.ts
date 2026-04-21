@@ -1,10 +1,28 @@
 import { ReactiveTestHarness, createSimulatedBot } from '../helpers/reactiveTestHarness';
 import {
-  foodSmeltingBehavior,
-  resetFoodSmeltingCooldown,
-  setFoodSmeltingCooldown
+  createFoodSmeltingBehavior,
+  FoodSmeltingHandle
 } from '../../bots/collector/reactive_behaviors/food_smelting_behavior';
-import { foodCollectionBehavior, resetFoodCollectionCooldown, triggerFoodCollectionCooldown } from '../../bots/collector/reactive_behaviors/food_collection_behavior';
+import {
+  createFoodCollectionBehavior,
+  FoodCollectionHandle
+} from '../../bots/collector/reactive_behaviors/food_collection_behavior';
+
+// Per-test factory handles (rebuilt in beforeEach) plus shim accessors so
+// the existing call sites continue to work without per-line edits.
+let _smeltHandle: FoodSmeltingHandle;
+let _collectHandle: FoodCollectionHandle;
+
+const foodSmeltingBehavior = new Proxy({} as any, {
+  get(_t, prop: string) { return (_smeltHandle as any).behavior[prop]; }
+});
+const foodCollectionBehavior = new Proxy({} as any, {
+  get(_t, prop: string) { return (_collectHandle as any).behavior[prop]; }
+});
+function resetFoodSmeltingCooldown(): void { _smeltHandle.resetCooldown(); }
+function setFoodSmeltingCooldown(ms: number): void { _smeltHandle.setCooldown(ms); }
+function resetFoodCollectionCooldown(): void { _collectHandle.resetCooldown(); }
+function triggerFoodCollectionCooldown(): void { _collectHandle.triggerCooldown(); }
 
 jest.mock('../../planner', () => ({
   plan: jest.fn(),
@@ -70,6 +88,8 @@ describe('integration: food smelting behavior', () => {
     jest.useFakeTimers();
     jest.setSystemTime(0);
     jest.clearAllMocks();
+    _collectHandle = createFoodCollectionBehavior();
+    _smeltHandle = createFoodSmeltingBehavior({ foodCollection: _collectHandle });
     resetFoodSmeltingCooldown();
     resetFoodCollectionCooldown();
     captureSnapshotForTarget.mockResolvedValue({ snapshot: { radius: 16 } });

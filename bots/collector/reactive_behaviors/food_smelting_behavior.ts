@@ -1,16 +1,20 @@
 /**
- * Food smelting reactive behavior
- * 
+ * Food smelting reactive behavior (factory form).
+ *
  * Monitors the bot's inventory for raw food items and uses the planner
  * to smelt them into cooked food. The planner handles all dependencies
  * (furnace, fuel, tools) automatically.
+ *
+ * Takes the food-collection handle as a dependency so cross-behavior reads
+ * (trigger threshold, in-cooldown) go through an explicit reference
+ * instead of a module singleton.
  */
 
 import { ReactiveBehavior, Bot, ReactiveBehaviorStopReason } from './types';
 import { isWorkstationLocked } from '../../../utils/workstationLock';
 import { getInventoryObject, getItemCountInInventory } from '../../../utils/inventory';
 import { FOOD_SMELT_MAPPINGS, calculateFoodPointsInInventory } from '../../../utils/foodConfig';
-import { getFoodCollectionConfig, isFoodCollectionInCooldown } from './food_collection_behavior';
+import type { FoodCollectionHandle } from './food_collection_behavior';
 import { captureAdaptiveSnapshot } from '../../../utils/adaptiveSnapshot';
 import { buildStateMachineForPath } from '../../../behavior_generator/buildMachine';
 import { plan as planner, _internals as plannerInternals } from '../../../planner';
@@ -22,30 +26,17 @@ const FOOD_SMELTING_PRIORITY = 40;
 const DEFAULT_COOLDOWN_MS = 60_000;
 const SHOULD_ACTIVATE_LOG_INTERVAL_MS = 10_000;
 const DEFAULT_RADII = [32, 64, 96, 128];
-let lastFailedAttempt = 0;
-let cooldownMs = DEFAULT_COOLDOWN_MS;
-let lastThrottledLogTime = 0;
 
-/**
- * Sets the cooldown duration after failed smelting attempts
- */
-export function setFoodSmeltingCooldown(ms: number): void {
-  cooldownMs = ms;
+export interface FoodSmeltingOptions {
+  foodCollection: FoodCollectionHandle;
+  cooldownMs?: number;
 }
 
-/**
- * Resets the cooldown timer
- */
-export function resetFoodSmeltingCooldown(): void {
-  lastFailedAttempt = 0;
-}
-
-/**
- * Checks if currently in cooldown period
- */
-function isInCooldown(): boolean {
-  if (lastFailedAttempt === 0) return false;
-  return Date.now() - lastFailedAttempt < cooldownMs;
+export interface FoodSmeltingHandle {
+  behavior: ReactiveBehavior;
+  setCooldown(ms: number): void;
+  resetCooldown(): void;
+  isInCooldown(): boolean;
 }
 
 interface RawFoodItem {
@@ -54,13 +45,10 @@ interface RawFoodItem {
   count: number;
 }
 
-/**
- * Finds raw food items in inventory that can be smelted
- */
 function findRawFoodInInventory(bot: Bot): RawFoodItem[] {
   const inventory = getInventoryObject(bot as any);
   const rawFoodItems: RawFoodItem[] = [];
-  
+
   for (const mapping of FOOD_SMELT_MAPPINGS) {
     const count = inventory[mapping.input] || 0;
     if (count > 0) {
@@ -71,13 +59,10 @@ function findRawFoodInInventory(bot: Bot): RawFoodItem[] {
       });
     }
   }
-  
+
   return rawFoodItems;
 }
 
-/**
- * Plans for smelting raw food into cooked food
- */
 async function tryPlanForCookedFood(
   bot: Bot,
   cookedItemName: string,
@@ -102,18 +87,18 @@ async function tryPlanForCookedFood(
       combineSimilarNodes: true,
       worldSnapshot: snapshot
     });
-    
+
     if (!tree) return null;
-    
+
     const { enumerateActionPathsGenerator } = plannerInternals;
     const iter = enumerateActionPathsGenerator(tree, { inventory });
-    
+
     for (const path of iter) {
       if (path && path.length > 0) {
         return path;
       }
     }
-    
+
     return null;
   } catch (err: any) {
     logger.debug(`FoodSmelting: planning error - ${err?.message || err}`);
@@ -121,9 +106,6 @@ async function tryPlanForCookedFood(
   }
 }
 
-/**
- * Captures a world snapshot with validation for smelting paths
- */
 async function captureSnapshotWithValidation(
   bot: Bot,
   cookedItemName: string,
@@ -149,146 +131,165 @@ async function captureSnapshotWithValidation(
   }
 }
 
-export const foodSmeltingBehavior: ReactiveBehavior = {
-  priority: FOOD_SMELTING_PRIORITY,
-  name: 'food_smelting',
-  
-  shouldActivate: (bot: Bot): boolean => {
-    if (isWorkstationLocked()) return false;
-    const now = Date.now();
-    
-    // Don't smelt when food collection would actually run -- that is,
-    // when food points are below the collection trigger AND collection
-    // isn't in cooldown. Above the trigger, food collection won't
-    // activate anyway so smelting is free to cook what we have.
-    const inventory = getInventoryObject(bot as any);
-    const foodPoints = calculateFoodPointsInInventory(inventory);
-    const { triggerFoodPoints } = getFoodCollectionConfig();
-    if (foodPoints < triggerFoodPoints && !isFoodCollectionInCooldown()) {
-      return false;
-    }
-    
-    // Check for raw food in inventory
-    const rawFoodItems = findRawFoodInInventory(bot);
-    
-    if (rawFoodItems.length === 0) {
-      return false;
-    }
-    
-    // Check cooldown
-    if (isInCooldown()) {
+export function createFoodSmeltingBehavior(opts: FoodSmeltingOptions): FoodSmeltingHandle {
+  const { foodCollection } = opts;
+  let cooldownMs = opts.cooldownMs ?? DEFAULT_COOLDOWN_MS;
+  let lastFailedAttempt = 0;
+  let lastThrottledLogTime = 0;
+
+  function isInCooldown(): boolean {
+    if (lastFailedAttempt === 0) return false;
+    return Date.now() - lastFailedAttempt < cooldownMs;
+  }
+
+  const behavior: ReactiveBehavior = {
+    priority: FOOD_SMELTING_PRIORITY,
+    name: 'food_smelting',
+
+    shouldActivate: (bot: Bot): boolean => {
+      if (isWorkstationLocked()) return false;
+      const now = Date.now();
+
+      // Don't smelt when food collection would actually run -- that is,
+      // when food points are below the collection trigger AND collection
+      // isn't in cooldown. Above the trigger, food collection won't
+      // activate anyway so smelting is free to cook what we have.
+      const inventory = getInventoryObject(bot as any);
+      const foodPoints = calculateFoodPointsInInventory(inventory);
+      const { triggerFoodPoints } = foodCollection.getConfig();
+      if (foodPoints < triggerFoodPoints && !foodCollection.isInCooldown()) {
+        return false;
+      }
+
+      // Check for raw food in inventory
+      const rawFoodItems = findRawFoodInInventory(bot);
+
+      if (rawFoodItems.length === 0) {
+        return false;
+      }
+
+      // Check cooldown
+      if (isInCooldown()) {
+        if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
+          logger.debug(`FoodSmelting: in cooldown`);
+          lastThrottledLogTime = now;
+        }
+        return false;
+      }
+
       if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-        logger.debug(`FoodSmelting: in cooldown`);
+        const items = rawFoodItems.map(f => `${f.count}x ${f.rawName}`).join(', ');
+        logger.debug(`FoodSmelting: should activate - raw food: ${items}`);
         lastThrottledLogTime = now;
       }
-      return false;
-    }
 
-    if (now - lastThrottledLogTime >= SHOULD_ACTIVATE_LOG_INTERVAL_MS) {
-      const items = rawFoodItems.map(f => `${f.count}x ${f.rawName}`).join(', ');
-      logger.debug(`FoodSmelting: should activate - raw food: ${items}`);
-      lastThrottledLogTime = now;
-    }
-    
-    return true;
-  },
-  
-  createState: async (bot: Bot) => {
-    const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
-      ? (bot as any).safeChat.bind(bot)
-      : null;
-    
-    // Find raw food to smelt
-    const rawFoodItems = findRawFoodInInventory(bot);
-    
-    if (rawFoodItems.length === 0) {
-      logger.info('FoodSmelting: no raw food found');
-      return null;
-    }
-    
-    // Pick the first raw food item to smelt
-    const targetFood = rawFoodItems[0];
-    const { rawName, cookedName, count } = targetFood;
-    
-    logger.info(`FoodSmelting: starting - smelting ${count}x ${rawName} -> ${cookedName}`);
-    
-    if (sendChat) {
-      sendChat(`smelting ${count}x ${rawName} into ${cookedName}`);
-    }
-    
-    try {
-      // Capture world snapshot for planning
-      const snapshot = await captureSnapshotWithValidation(bot, cookedName, count);
-      
-      // Plan for cooked food
-      const path = await tryPlanForCookedFood(bot, cookedName, count, snapshot);
-      
-      if (!path || path.length === 0) {
-        logger.info('FoodSmelting: no viable path found');
-        lastFailedAttempt = Date.now();
-        if (sendChat) {
-          sendChat(`cannot smelt ${rawName} - no viable path (missing resources?)`);
-        }
+      return true;
+    },
+
+    createState: async (bot: Bot) => {
+      const sendChat: ((msg: string) => void) | null = typeof (bot as any)?.safeChat === 'function'
+        ? (bot as any).safeChat.bind(bot)
+        : null;
+
+      // Find raw food to smelt
+      const rawFoodItems = findRawFoodInInventory(bot);
+
+      if (rawFoodItems.length === 0) {
+        logger.info('FoodSmelting: no raw food found');
         return null;
       }
-      
-      logger.info(`FoodSmelting: executing path with ${path.length} steps`);
 
-      const startCookedCount = getItemCountInInventory(bot as any, cookedName);
-      let outcome: { success: boolean; smelted: number } | null = null;
-      let stateMachineFinished = false;
-      
-      const stateMachine = buildStateMachineForPath(
-        bot,
-        path,
-        (_success: boolean) => {
-          stateMachineFinished = true;
+      // Pick the first raw food item to smelt
+      const targetFood = rawFoodItems[0];
+      const { rawName, cookedName, count } = targetFood;
+
+      logger.info(`FoodSmelting: starting - smelting ${count}x ${rawName} -> ${cookedName}`);
+
+      if (sendChat) {
+        sendChat(`smelting ${count}x ${rawName} into ${cookedName}`);
+      }
+
+      try {
+        // Capture world snapshot for planning
+        const snapshot = await captureSnapshotWithValidation(bot, cookedName, count);
+
+        // Plan for cooked food
+        const path = await tryPlanForCookedFood(bot, cookedName, count, snapshot);
+
+        if (!path || path.length === 0) {
+          logger.info('FoodSmelting: no viable path found');
+          lastFailedAttempt = Date.now();
+          if (sendChat) {
+            sendChat(`cannot smelt ${rawName} - no viable path (missing resources?)`);
+          }
+          return null;
+        }
+
+        logger.info(`FoodSmelting: executing path with ${path.length} steps`);
+
+        const startCookedCount = getItemCountInInventory(bot as any, cookedName);
+        let outcome: { success: boolean; smelted: number } | null = null;
+        let stateMachineFinished = false;
+
+        const stateMachine = buildStateMachineForPath(
+          bot,
+          path,
+          (_success: boolean) => {
+            stateMachineFinished = true;
+            const endCookedCount = getItemCountInInventory(bot as any, cookedName);
+            const smelted = endCookedCount - startCookedCount;
+            outcome = { success: smelted > 0, smelted };
+
+            if (smelted > 0) {
+              logger.info(`FoodSmelting: complete, smelted ${smelted}x ${cookedName}`);
+              lastFailedAttempt = 0;
+            } else {
+              logger.info(`FoodSmelting: failed to smelt ${cookedName} (execution failed)`);
+              lastFailedAttempt = Date.now();
+            }
+          }
+        );
+
+        const computeOutcome = () => {
+          if (outcome) return outcome;
           const endCookedCount = getItemCountInInventory(bot as any, cookedName);
           const smelted = endCookedCount - startCookedCount;
-          outcome = { success: smelted > 0, smelted };
-          
-          if (smelted > 0) {
-            logger.info(`FoodSmelting: complete, smelted ${smelted}x ${cookedName}`);
-            lastFailedAttempt = 0;
-          } else {
-            logger.info(`FoodSmelting: failed to smelt ${cookedName} (execution failed)`);
-            lastFailedAttempt = Date.now();
-          }
-        }
-      );
-      
-      const computeOutcome = () => {
-        if (outcome) return outcome;
-        const endCookedCount = getItemCountInInventory(bot as any, cookedName);
-        const smelted = endCookedCount - startCookedCount;
-        return { success: smelted > 0, smelted };
-      };
-      
-      return {
-        stateMachine,
-        isFinished: () => stateMachineFinished || (typeof stateMachine.isFinished === 'function' && stateMachine.isFinished()),
-        wasSuccessful: () => computeOutcome().success,
-        onStop: (reason: ReactiveBehaviorStopReason) => {
-          const { success, smelted } = computeOutcome();
-          if (reason === 'completed') {
-            if (success) {
-              if (sendChat) {
-                sendChat(`smelted ${smelted}x ${cookedName}`);
+          return { success: smelted > 0, smelted };
+        };
+
+        return {
+          stateMachine,
+          isFinished: () => stateMachineFinished || (typeof stateMachine.isFinished === 'function' && stateMachine.isFinished()),
+          wasSuccessful: () => computeOutcome().success,
+          onStop: (reason: ReactiveBehaviorStopReason) => {
+            const { success, smelted } = computeOutcome();
+            if (reason === 'completed') {
+              if (success) {
+                if (sendChat) {
+                  sendChat(`smelted ${smelted}x ${cookedName}`);
+                }
+              } else {
+                if (sendChat) {
+                  sendChat(`smelting failed`);
+                }
               }
             } else {
-              if (sendChat) {
-                sendChat(`smelting failed`);
-              }
+              logger.debug(`FoodSmelting: stopped (${reason})`);
             }
-          } else {
-            logger.debug(`FoodSmelting: stopped (${reason})`);
           }
-        }
-      };
-    } catch (err: any) {
-      logger.info(`FoodSmelting: failed to create state machine - ${err?.message || err}`);
-      lastFailedAttempt = Date.now();
-      return null;
+        };
+      } catch (err: any) {
+        logger.info(`FoodSmelting: failed to create state machine - ${err?.message || err}`);
+        lastFailedAttempt = Date.now();
+        return null;
+      }
     }
-  }
-};
+  };
+
+  return {
+    behavior,
+    setCooldown: (ms: number) => { cooldownMs = ms; },
+    resetCooldown: () => { lastFailedAttempt = 0; },
+    isInCooldown
+  };
+}

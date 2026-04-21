@@ -18,20 +18,10 @@ describe('collect-drop gate', () => {
     expect(src).toMatch(/ensureInventoryRoom\(/);
   });
 
-  it('behaviorCollectBlock imports getInventoryManagementConfig', () => {
-    const src = fs.readFileSync(collectBlockPath, 'utf8');
-    expect(src).toMatch(/getInventoryManagementConfig/);
-  });
-
   it('behaviorHuntForFood imports ensureInventoryRoom', () => {
     const src = fs.readFileSync(huntForFoodPath, 'utf8');
     expect(src).toMatch(/import\s+\{\s*ensureInventoryRoom\s*\}\s+from\s+['"]\.\.\/utils\/inventoryGate['"]/);
     expect(src).toMatch(/ensureInventoryRoom\(/);
-  });
-
-  it('behaviorHuntForFood imports getInventoryManagementConfig', () => {
-    const src = fs.readFileSync(huntForFoodPath, 'utf8');
-    expect(src).toMatch(/getInventoryManagementConfig/);
   });
 
   it('behaviorCollectBlock gates the mineBlock -> findDrop transition (initial pickup)', () => {
