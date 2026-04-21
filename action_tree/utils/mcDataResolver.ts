@@ -8,6 +8,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { MinecraftData } from '../types';
+import logger from '../../utils/logger';
 
 let featuresFilesEnsured = false;
 
@@ -34,8 +35,8 @@ export function ensureMinecraftDataFeaturesFiles(): void {
     candidates.push(path.join(modRoot, '..', 'minecraft-data', 'data'));
     candidates.push(path.join(modRoot, 'minecraft-data', 'data'));
     candidates.push(path.join(modRoot, 'data'));
-  } catch (_) {
-    // Ignore error
+  } catch (err: any) {
+    logger.debug(`mcDataResolver: require.resolve('minecraft-data/lib/supportsFeature.js') failed: ${err?.message || err}`);
   }
 
   const ensureAt = (baseDir: string, relPath: string): void => {
@@ -43,15 +44,15 @@ export function ensureMinecraftDataFeaturesFiles(): void {
     const dir = path.dirname(filePath);
     try {
       fs.mkdirSync(dir, { recursive: true });
-    } catch (_) {
-      // Ignore error
+    } catch (err: any) {
+      logger.debug(`mcDataResolver: mkdirSync failed for ${dir}: ${err?.code || err?.message || err}`);
     }
     try {
       if (!fs.existsSync(filePath)) {
         fs.writeFileSync(filePath, '[]');
       }
-    } catch (_) {
-      // Ignore error
+    } catch (err: any) {
+      logger.debug(`mcDataResolver: writeFileSync failed for ${filePath}: ${err?.code || err?.message || err}`);
     }
   };
 

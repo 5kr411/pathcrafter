@@ -73,5 +73,57 @@ describe('unit: buildStateMachineForPath', () => {
         expect(spy).toHaveBeenCalledTimes(3);
         expect(stepIndices).toEqual([0, 1, 2]);
     });
+
+    test('handler create() that throws logs warn and next handler is tried', () => {
+        const logger = require('../../utils/logger').default;
+        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+        const errorSpy = jest.spyOn(logger, 'error').mockImplementation(() => {});
+        try {
+            const bot = {
+                version: '1.20.1',
+                inventory: { items: () => [], slots: [] },
+                world: {},
+                entity: { position: { clone: () => ({}) } }
+            } as any;
+
+            // Force the mine handler's canHandle to throw for our synthetic step.
+            const mineMod = require('../../behavior_generator/mine');
+            const origCanHandle = mineMod.canHandle;
+            mineMod.canHandle = () => { throw new Error('synthetic canHandle boom'); };
+
+            try {
+                const weirdStep = {
+                    action: 'totally-unknown-action',
+                    what: { variants: [{ value: 'nothing' }] }
+                } as any;
+                const result = _internals.createStateForStep(bot, weirdStep, { failed: false } as any);
+                // Should fall through all handlers and return the default "finished" state.
+                expect(result).toBeTruthy();
+                expect(typeof result.isFinished).toBe('function');
+            } finally {
+                mineMod.canHandle = origCanHandle;
+            }
+
+            const warnedMine = warnSpy.mock.calls.some((args: unknown[]) =>
+                typeof args[0] === 'string' &&
+                (args[0] as string).includes('PathBuilder: handler ') &&
+                (args[0] as string).includes('synthetic canHandle boom')
+            );
+            expect(warnedMine).toBe(true);
+
+            const errored = errorSpy.mock.calls.some((args: unknown[]) =>
+                typeof args[0] === 'string' && (args[0] as string).startsWith('PathBuilder: No generator could handle step')
+            );
+            expect(errored).toBe(true);
+
+            const erroredWithDetails = errorSpy.mock.calls.some((args: unknown[]) =>
+                typeof args[0] === 'string' && (args[0] as string).includes('handler failures:')
+            );
+            expect(erroredWithDetails).toBe(true);
+        } finally {
+            warnSpy.mockRestore();
+            errorSpy.mockRestore();
+        }
+    });
 });
 

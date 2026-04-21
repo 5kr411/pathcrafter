@@ -13,6 +13,7 @@ import plan, { _internals } from '../planner';
 import { initWorkstationCostCache, isWorkstationCacheReady } from '../utils/workstationCostCache';
 import logger from '../utils/logger';
 import { serializeTree } from '../action_tree/serialize';
+import { EnumResult, collectGeneratorFailures } from './planning_diagnostics';
 
 /**
  * Worker thread for planning item acquisition
@@ -108,15 +109,29 @@ parentPort.on('message', async (msg: PlanMessage) => {
     /**
      * Runs path enumeration using a worker from the pool
      */
-    function runEnum(gen: 'action' | 'shortest' | 'lowest'): Promise<ActionPath[]> {
-      return enumeratorPool.execute<ActionPath[]>((w: Worker) => {
+    function runEnum(gen: 'action' | 'shortest' | 'lowest'): Promise<EnumResult> {
+      return enumeratorPool.execute<EnumResult>((w: Worker) => {
         return new Promise((resolve) => {
           const started = Date.now();
           logger.debug(`PlanningWorker: acquired worker for ${gen} enumeration`);
 
+          let settled = false;
+          const settle = (r: EnumResult) => {
+            if (settled) return;
+            settled = true;
+            w.removeListener('message', messageHandler);
+            w.removeListener('error', errorHandler);
+            resolve(r);
+          };
+
           const timeout = setTimeout(() => {
-            logger.error(`PlanningWorker: ${gen} enumeration timeout after 30s`);
-            resolve([]);
+            const dt = Date.now() - started;
+            logger.warn(`PlanningWorker: ${gen} enumeration timeout after ${dt}ms`);
+            settle({
+              generator: gen,
+              paths: [],
+              failure: { kind: 'timeout', message: `${gen} enumeration exceeded 30s`, durationMs: dt }
+            });
           }, 30000); // 30 second timeout
 
           const messageHandler = (msg: any) => {
@@ -131,17 +146,30 @@ parentPort.on('message', async (msg: PlanMessage) => {
               logger.debug(`PlanningWorker: enum[${gen}] finished in ${dt} ms (${paths.length} paths)`);
             }
 
-            w.removeListener('message', messageHandler);
-            w.removeListener('error', errorHandler);
-            resolve(paths);
+            if (!ok) {
+              const detail = msg?.error ? String(msg.error) : 'worker returned non-ok result';
+              logger.warn(`PlanningWorker: ${gen} worker returned failure after ${dt}ms: ${detail}`);
+              settle({
+                generator: gen,
+                paths: [],
+                failure: { kind: 'error', message: detail, durationMs: dt }
+              });
+              return;
+            }
+
+            settle({ generator: gen, paths });
           };
 
           const errorHandler = (err: Error) => {
             clearTimeout(timeout);
-            logger.error(`PlanningWorker: ${gen} worker error - ${err && err.message ? err.message : err}`);
-            w.removeListener('message', messageHandler);
-            w.removeListener('error', errorHandler);
-            resolve([]);
+            const dt = Date.now() - started;
+            const detail = err && err.message ? err.message : String(err);
+            logger.warn(`PlanningWorker: ${gen} worker error after ${dt}ms: ${detail}`);
+            settle({
+              generator: gen,
+              paths: [],
+              failure: { kind: 'error', message: detail, durationMs: dt }
+            });
           };
 
           w.once('message', messageHandler);
@@ -157,16 +185,25 @@ parentPort.on('message', async (msg: PlanMessage) => {
     // Run all three enumeration strategies in parallel
     const tEnumStart = Date.now();
     logger.debug(`PlanningWorker: starting parallel enumeration`);
-    const [a, s, l] = await Promise.all([
+    const [aResult, sResult, lResult] = await Promise.all([
       runEnum('action'),
       runEnum('shortest'),
       runEnum('lowest')
     ]);
     const tEnumMs = Date.now() - tEnumStart;
 
+    const a = aResult.paths;
+    const s = sResult.paths;
+    const l = lResult.paths;
+    const generatorFailures = collectGeneratorFailures([aResult, sResult, lResult]);
+
     logger.debug(
       `PlanningWorker: enumerated paths in ${tEnumMs} ms (action=${a.length}, shortest=${s.length}, lowest=${l.length})`
     );
+    if (generatorFailures.length > 0) {
+      const failSummary = generatorFailures.map(f => `${f.generator}:${f.kind}`).join(', ');
+      logger.warn(`PlanningWorker: ${generatorFailures.length}/3 enumerators failed | ${failSummary}`);
+    }
 
     const tFilterStart = Date.now();
     const merged = dedupePaths(([] as ActionPath[]).concat(a, s, l));
@@ -192,7 +229,15 @@ parentPort.on('message', async (msg: PlanMessage) => {
       );
     } else {
       const planMs = Date.now() - t0;
-      logger.info(`PlanningWorker: no viable paths for ${item} x${count} | ${merged.length} pre-filter | ${planMs}ms`);
+      if (generatorFailures.length > 0) {
+        const failSummary = generatorFailures.map(f => `${f.generator}:${f.kind}`).join(', ');
+        logger.warn(
+          `PlanningWorker: no viable paths for ${item} x${count} | ${merged.length} pre-filter | ` +
+          `${generatorFailures.length}/3 enumerators failed (${failSummary}) | ${planMs}ms`
+        );
+      } else {
+        logger.info(`PlanningWorker: no viable paths for ${item} x${count} | ${merged.length} pre-filter | ${planMs}ms`);
+      }
     }
 
     if (getPlanningTelemetryEnabled()) {
@@ -208,16 +253,16 @@ parentPort.on('message', async (msg: PlanMessage) => {
           _internals.logActionPath(top);
         }
       }
-    } catch (_) {
-      // Ignore logging errors
+    } catch (err: any) {
+      logger.debug(`PlanningWorker: telemetry path log failed: ${err?.message || err}`);
     }
 
     if (getPlanningTelemetryEnabled()) {
       logger.debug(`PlanningWorker: end-to-end planning took ${Date.now() - t0} ms`);
     }
 
-    logger.debug(`PlanningWorker: sending result to parent (${ranked.length} paths)`);
-    parentPort!.postMessage({ type: 'result', id, ok: true, ranked });
+    logger.debug(`PlanningWorker: sending result to parent (${ranked.length} paths, ${generatorFailures.length} generator failures)`);
+    parentPort!.postMessage({ type: 'result', id, ok: true, ranked, generatorFailures });
   } catch (err) {
     const errorMsg = (err && (err as Error).stack) ? (err as Error).stack : String(err);
     logger.error(`PlanningWorker: ERROR - ${errorMsg}`);

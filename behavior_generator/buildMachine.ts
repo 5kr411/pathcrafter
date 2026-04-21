@@ -77,79 +77,44 @@ function formatStepDescription(step: ActionStep, stepIndex: number): string {
 export function createStateForStep(bot: Bot, step: ActionStep, _shared: SharedState, executionContext?: ExecutionContext): BehaviorState {
   if (!step || !step.action) return { isFinished: () => true };
 
-  try {
-    if (genMineAnyOf && typeof genMineAnyOf.canHandle === 'function' && genMineAnyOf.canHandle(step)) {
-      const s = genMineAnyOf.create(bot, step, executionContext);
-      if (s) return s;
+  // Handler registry. Order matters — first match wins.
+  const handlers: Array<{ name: string; mod: any; needsCtx: boolean }> = [
+    { name: 'mineAnyOf',      mod: genMineAnyOf,      needsCtx: true  },
+    { name: 'mineOneOf',      mod: genMineOneOf,      needsCtx: true  },
+    { name: 'mine',           mod: genMine,           needsCtx: true  },
+    { name: 'smelt',          mod: genSmelt,          needsCtx: false },
+    { name: 'hunt',           mod: genHunt,           needsCtx: false },
+    { name: 'craftVariant',   mod: genCraftVariant,   needsCtx: false },
+    { name: 'craftInventory', mod: genCraftInventory, needsCtx: false },
+    { name: 'craftTable',     mod: genCraftTable,     needsCtx: false }
+  ];
+
+  const failures: Array<{ handler: string; error: string }> = [];
+
+  for (const h of handlers) {
+    try {
+      if (h.mod && typeof h.mod.canHandle === 'function' && h.mod.canHandle(step)) {
+        const s = h.needsCtx
+          ? h.mod.create(bot, step, executionContext)
+          : h.mod.create(bot, step);
+        if (s) return s;
+      }
+    } catch (err: any) {
+      const msg = err?.message || String(err);
+      logger.warn(`PathBuilder: handler ${h.name} threw for step action=${step.action}: ${msg}`);
+      failures.push({ handler: h.name, error: msg });
     }
-  } catch (_) {
-    // Ignore errors and try next handler
   }
 
-  try {
-    if (genMineOneOf && typeof genMineOneOf.canHandle === 'function' && genMineOneOf.canHandle(step)) {
-      const s = genMineOneOf.create(bot, step, executionContext);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
+  const whatStr = typeof step.what === 'object'
+    ? JSON.stringify((step.what as any).variants || step.what)
+    : String(step.what);
+  if (failures.length > 0) {
+    const details = failures.map(f => `${f.handler}: ${f.error}`).join('; ');
+    logger.error(`PathBuilder: No generator could handle step action=${step.action} what=${whatStr} | handler failures: ${details}`);
+  } else {
+    logger.error(`PathBuilder: No generator could handle step action=${step.action} what=${whatStr}`);
   }
-
-  try {
-    if (genMine && typeof genMine.canHandle === 'function' && genMine.canHandle(step)) {
-      const s = genMine.create(bot, step, executionContext);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
-  }
-
-  try {
-    if (genSmelt && typeof genSmelt.canHandle === 'function' && genSmelt.canHandle(step)) {
-      const s = genSmelt.create(bot, step);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
-  }
-
-  try {
-    if (genHunt && typeof genHunt.canHandle === 'function' && genHunt.canHandle(step)) {
-      const s = genHunt.create(bot, step);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
-  }
-
-  try {
-    if (genCraftVariant && typeof genCraftVariant.canHandle === 'function' && genCraftVariant.canHandle(step)) {
-      const s = genCraftVariant.create(bot, step);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
-  }
-
-  try {
-    if (genCraftInventory && typeof genCraftInventory.canHandle === 'function' && genCraftInventory.canHandle(step)) {
-      const s = genCraftInventory.create(bot, step);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
-  }
-
-  try {
-    if (genCraftTable && typeof genCraftTable.canHandle === 'function' && genCraftTable.canHandle(step)) {
-      const s = genCraftTable.create(bot, step);
-      if (s) return s;
-    }
-  } catch (_) {
-    // Ignore errors and try next handler
-  }
-
-  logger.error('PathBuilder: No generator could handle step', step);
   return { isFinished: () => true };
 }
 

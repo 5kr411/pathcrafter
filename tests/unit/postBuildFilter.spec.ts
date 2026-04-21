@@ -1025,5 +1025,37 @@ describe('unit: postBuildFilter', () => {
       expect(planksCraft.ingredients.variants[0].value[0].item).toBe('spruce_log');
     });
   });
+
+  describe('inventory inspection error handling', () => {
+    const logger = require('../../utils/logger').default;
+    const mod = require('../../action_tree/builders/postBuildFilter');
+
+    test('throwing inventory.get() triggers warn log and pipeline continues', () => {
+      if (!mod._internals || typeof mod._internals.filterSingleCraftNode !== 'function') {
+        throw new Error('postBuildFilter._internals.filterSingleCraftNode must be exported');
+      }
+      const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+      try {
+        const throwingInventory = {
+          get: () => { throw new Error('synthetic inventory failure'); }
+        };
+        const craftNode = {
+          action: 'craft',
+          context: { inventory: throwingInventory },
+          result: { variants: [{ value: { item: 'oak_planks', perCraftCount: 4 } }] },
+          ingredients: { variants: [{ value: [{ item: 'oak_log', perCraftCount: 1 }] }] },
+          children: { variants: [] }
+        };
+        // Should not throw despite the inventory throwing.
+        expect(() => mod._internals.filterSingleCraftNode(craftNode, {}, {})).not.toThrow();
+        const warned = warnSpy.mock.calls.some((args: unknown[]) =>
+          typeof args[0] === 'string' && (args[0] as string).includes('postBuildFilter: inventory inspection')
+        );
+        expect(warned).toBe(true);
+      } finally {
+        warnSpy.mockRestore();
+      }
+    });
+  });
 });
 

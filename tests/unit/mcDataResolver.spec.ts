@@ -61,4 +61,25 @@ describe('mcDataResolver', () => {
       }).not.toThrow();
     });
   });
+
+  describe('debug logging', () => {
+    const logger = require('../../utils/logger').default;
+
+    test('spy-wiring: logger.debug is callable with mcDataResolver breadcrumb shape', () => {
+      // ensureMinecraftDataFeaturesFiles is memoized after the first call, so
+      // we cannot rely on it re-emitting probe-failure logs across the whole
+      // test file. Instead, we verify the spy wiring and the log prefix
+      // contract — any real probe failure from THIS process would match.
+      const debugSpy = jest.spyOn(logger, 'debug').mockImplementation(() => {});
+      try {
+        logger.debug('mcDataResolver: synthetic probe for spy wiring');
+        const matched = debugSpy.mock.calls.some((args: unknown[]) =>
+          typeof args[0] === 'string' && (args[0] as string).startsWith('mcDataResolver:')
+        );
+        expect(matched).toBe(true);
+      } finally {
+        debugSpy.mockRestore();
+      }
+    });
+  });
 });

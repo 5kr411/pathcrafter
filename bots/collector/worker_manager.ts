@@ -46,6 +46,11 @@ export class WorkerManager {
       logDebug(`Collector: processing result for id ${msg.id}, ok=${msg.ok}`);
       const ranked = Array.isArray(msg.ranked) ? msg.ranked : [];
       logDebug(`Collector: received ${ranked.length} ranked paths`);
+      const generatorFailures = Array.isArray((msg as any).generatorFailures) ? (msg as any).generatorFailures : [];
+      if (generatorFailures.length > 0) {
+        const summary = generatorFailures.map((f: any) => `${f.generator}:${f.kind}`).join(', ');
+        logger.warn(`Collector: planning worker reported ${generatorFailures.length} generator failure(s) for id ${msg.id}: ${summary}`);
+      }
       const callback = entry.handler || this.onResult;
       callback(entry, ranked, msg.ok || false, msg.error, msg.id);
     });

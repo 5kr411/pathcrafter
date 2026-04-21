@@ -8,6 +8,7 @@
 
 import { BuildContext } from '../types';
 import { getFamilyFromName, isCombinableFamily } from './nodeBuilderHelpers';
+import logger from '../../utils/logger';
 
 /**
  * Tracks available items from descendants
@@ -231,7 +232,9 @@ function filterSingleCraftNode(
         }
       }
     }
-  } catch { /* ignore inventory inspection errors */ }
+  } catch (err: any) {
+    logger.warn(`postBuildFilter: inventory inspection failed: ${err?.message || err}`);
+  }
 
   // Collect available items from descendants
   for (const child of craftNode.children.variants || []) {
@@ -592,3 +595,8 @@ function pruneDeadBranches(node: any): void {
     pruneDeadBranches(child.value);
   }
 }
+
+// Re-export internal functions for testing
+export const _internals = {
+  filterSingleCraftNode
+};
