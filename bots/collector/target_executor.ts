@@ -11,6 +11,7 @@ import { ToolReplacementExecutor } from './tool_replacement_executor';
 import { isDelayReady, resolveTargetFailure } from './targetExecutorHelpers';
 import { stepDependenciesSatisfied } from './plan_validation';
 import { BehaviorWander } from '../../behaviors/behaviorWander';
+import { isTimeoutAbort } from '../../utils/abortable';
 
 function logInfo(msg: string, ...args: any[]): void {
   logger.info(msg, ...args);
@@ -25,6 +26,7 @@ const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
 const SKIP_DELAY_MS = 1000;
 const RESTART_DELAY_MS = 3000;
+const PLANNING_TIMEOUT_MS = 90_000;
 
 export function createToolIssueHandler(options: {
   toolReplacementExecutor?: ToolReplacementExecutor | null;
@@ -246,6 +248,7 @@ export class TargetExecutor implements StateBehavior {
   private wanderDone = false;
   private wanderBehavior: BehaviorWander | null = null;
   private targetStartTime = 0;
+  private inFlightPlanning: Map<string, { controller: AbortController; timer: ReturnType<typeof setTimeout> }> = new Map();
 
   constructor(
     private bot: Bot,
@@ -473,6 +476,7 @@ export class TargetExecutor implements StateBehavior {
       this.flowStarted = false;
       this.planningOutcome = 'idle';
       this.planningId = null;
+      this.abortAllPlanning('invalidated');
     } else {
       logInfo('Collector: plan deps satisfied, resuming without re-plan');
     }
@@ -503,6 +507,7 @@ export class TargetExecutor implements StateBehavior {
     this.restartReady = false;
     this.restartDelayUntil = Date.now() + RESTART_DELAY_MS;
     this.clearActiveState();
+    this.abortAllPlanning('death');
     this.safeChat('death detected, restarting all targets');
   }
 
@@ -519,6 +524,7 @@ export class TargetExecutor implements StateBehavior {
     this.planningOutcome = 'idle';
     this.planPath = null;
     this.stopRequested = true;
+    this.abortAllPlanning('stopped');
     this.safeChat('stopped');
   }
 
@@ -573,6 +579,39 @@ export class TargetExecutor implements StateBehavior {
     const planningId = `target_${Date.now()}_${Math.random()}`;
     this.planningId = planningId;
 
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      if (controller.signal.aborted) return;
+      const reason = typeof DOMException !== 'undefined'
+        ? new DOMException(`planning timeout after ${PLANNING_TIMEOUT_MS}ms`, 'TimeoutError')
+        : Object.assign(new Error(`planning timeout after ${PLANNING_TIMEOUT_MS}ms`), { name: 'TimeoutError' });
+      controller.abort(reason);
+    }, PLANNING_TIMEOUT_MS);
+    if (typeof (timer as { unref?: () => void }).unref === 'function') {
+      (timer as { unref: () => void }).unref();
+    }
+    this.inFlightPlanning.set(planningId, { controller, timer });
+
+    // Synthesize a failure if the wall-clock timeout fires before the worker
+    // callback runs. External aborts (stop/death/invalidate) do NOT synthesize
+    // — we just drop the work quietly.
+    controller.signal.addEventListener('abort', () => {
+      if (!isTimeoutAbort(controller.signal)) return;
+      if (!this.inFlightPlanning.has(planningId)) return;
+      this.finalizePlanning(planningId);
+      logInfo(`Collector: planning timed out after ${PLANNING_TIMEOUT_MS}ms (id=${planningId})`);
+      this.handlePlanningResult(
+        { id: planningId, target } as PendingEntry,
+        [],
+        false,
+        'planning timeout'
+      );
+      // Invalidate the id AFTER the synthesized call so handlePlanningResult's
+      // own entry.id === this.planningId guard lets us through; then a late
+      // worker callback for this same id fails that guard and gets discarded.
+      if (this.planningId === planningId) this.planningId = null;
+    }, { once: true });
+
     Promise.resolve()
       .then(async () => {
         const result = await captureSnapshotForTarget(
@@ -584,6 +623,7 @@ export class TargetExecutor implements StateBehavior {
           this.config.pruneWithWorld,
           this.config.combineSimilarNodes
         );
+        if (controller.signal.aborted) return;
 
         const snapshot = result.snapshot;
         const version = this.bot.version || '1.20.1';
@@ -603,15 +643,38 @@ export class TargetExecutor implements StateBehavior {
           this.config.pruneWithWorld,
           this.config.combineSimilarNodes,
           (entry, ranked, ok, error) => {
+            this.finalizePlanning(planningId);
             this.handlePlanningResult(entry, ranked, ok, error);
           }
         );
       })
       .catch((err: any) => {
+        if (controller.signal.aborted) {
+          // Timeout handler (if applicable) already ran; external aborts drop silently.
+          return;
+        }
+        this.finalizePlanning(planningId);
         logInfo(`Collector: snapshot capture failed - ${err?.message || err}`);
         this.safeChat('snapshot capture failed');
         this.planningOutcome = 'failure';
       });
+  }
+
+  private finalizePlanning(id: string): void {
+    const entry = this.inFlightPlanning.get(id);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    this.inFlightPlanning.delete(id);
+  }
+
+  private abortAllPlanning(reason: string): void {
+    if (this.inFlightPlanning.size === 0) return;
+    logDebug(`Collector: aborting ${this.inFlightPlanning.size} in-flight planning job(s) (${reason})`);
+    for (const [id, entry] of this.inFlightPlanning) {
+      clearTimeout(entry.timer);
+      try { entry.controller.abort(new Error(reason)); } catch (_) {}
+      this.inFlightPlanning.delete(id);
+    }
   }
 
   private handlePlanningResult(entry: PendingEntry, ranked: any[], ok: boolean, error?: string): void {

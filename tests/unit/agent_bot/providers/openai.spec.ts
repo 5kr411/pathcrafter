@@ -111,4 +111,31 @@ describe('OpenAIProvider', () => {
     const r = await p;
     expect(r.stopReason).toBe('cancelled');
   });
+
+  it('returns error with timeout detail when fetch wedges past 60s', async () => {
+    jest.useFakeTimers();
+    const hangingFetch = jest.fn(
+      (_url: string, init?: RequestInit) =>
+        new Promise<Response>((_, reject) => {
+          init?.signal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'));
+          });
+        })
+    );
+    const provider = new OpenAIProvider(
+      { provider: 'openai', model: 'm', apiKey: 'k' },
+      hangingFetch as any
+    );
+    const parent = new AbortController();
+    const promise = provider.runTurn({
+      system: '', messages: [{ role: 'user', content: 'x' }],
+      tools: [], signal: parent.signal
+    });
+    jest.advanceTimersByTime(60_001);
+    const r = await promise;
+    expect(r.stopReason).toBe('error');
+    expect(r.errorDetail).toMatch(/timeout/i);
+    expect(parent.signal.aborted).toBe(false);
+    jest.useRealTimers();
+  });
 });

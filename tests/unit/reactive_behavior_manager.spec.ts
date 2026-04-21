@@ -142,4 +142,67 @@ describe('unit: ReactiveBehaviorManager sync startBehavior', () => {
     expect(() => manager.update()).not.toThrow();
     expect(manager.isActive()).toBe(false);
   });
+
+  test('stop() aborts in-flight evaluation and prevents candidate write', async () => {
+    let resolveActivate: ((v: boolean) => void) | null = null;
+    const behavior: ReactiveBehavior = {
+      name: 'slow-eval',
+      priority: 100,
+      shouldActivate: () => new Promise<boolean>((resolve) => {
+        resolveActivate = resolve;
+      }),
+      createState: () => ({
+        stateMachine: {
+          onStateEntered: jest.fn(),
+          onStateExited: jest.fn(),
+          update: jest.fn(),
+          isFinished: () => false,
+          wasSuccessful: () => true
+        }
+      })
+    };
+    registry.register(behavior);
+
+    // Kick off evaluation; let the microtask chain reach shouldActivate().
+    manager.update();
+    await flush();
+    expect(resolveActivate).not.toBeNull();
+
+    // Stop the manager while evaluation is in flight.
+    manager.stop();
+
+    // Now resolve the predicate — candidate should NOT be written.
+    resolveActivate!(true);
+    await flush();
+    await flush();
+
+    expect((manager as any).candidate).toBeNull();
+    expect(manager.isActive()).toBe(false);
+  });
+
+  test('evaluation timeout clears evaluationPromise without writing candidate', async () => {
+    jest.useFakeTimers();
+    const behavior: ReactiveBehavior = {
+      name: 'hanging-eval',
+      priority: 100,
+      // Never resolves.
+      shouldActivate: () => new Promise<boolean>(() => { /* intentionally unresolved */ }),
+      createState: () => null
+    };
+    registry.register(behavior);
+
+    manager.update();
+    // Fire the 5s timeout. advanceTimersByTime also drains queued microtasks.
+    jest.advanceTimersByTime(5_001);
+
+    // Drop back to real timers and flush the promise chain (abort → catch → finally).
+    jest.useRealTimers();
+    await flush();
+    await flush();
+
+    expect((manager as any).evaluationPromise).toBeNull();
+    expect((manager as any).candidate).toBeNull();
+    // Controller should be cleared too.
+    expect((manager as any).evaluationAbort).toBeNull();
+  });
 });

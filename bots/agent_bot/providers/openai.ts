@@ -1,6 +1,9 @@
 import type { LLMProvider, ProviderConfig, TurnParams, TurnResult, Message, ContentBlock } from './types';
+import { withTimeout, isTimeoutAbort } from '../../../utils/abortable';
 
 export type FetchFn = typeof fetch;
+
+const PROVIDER_FETCH_TIMEOUT_MS = 60_000;
 
 export class OpenAIProvider implements LLMProvider {
   protected readonly url: string;
@@ -44,57 +47,68 @@ export class OpenAIProvider implements LLMProvider {
       headers['Authorization'] = `Bearer ${this.config.apiKey}`;
     }
 
-    let resp: Response;
+    const { signal, cleanup } = withTimeout(params.signal, PROVIDER_FETCH_TIMEOUT_MS);
     try {
-      resp = await this.fetchImpl(this.url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body),
-        signal: params.signal
-      });
-    } catch (err: any) {
-      if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
-      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
+      let resp: Response;
+      try {
+        resp = await this.fetchImpl(this.url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+          signal
+        });
+      } catch (err: any) {
+        if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
+        if (isTimeoutAbort(signal)) {
+          return {
+            text: null, toolCalls: [], stopReason: 'error',
+            errorDetail: `provider timeout after ${PROVIDER_FETCH_TIMEOUT_MS}ms`
+          };
+        }
+        return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
+      }
+
+      if (!resp.ok) {
+        const raw = await resp.text().catch(() => '');
+        let parsed: string | null = null;
+        try { parsed = JSON.parse(raw)?.error?.message ?? null; } catch { /* not JSON */ }
+        const bodyPart = parsed ?? (raw ? raw.slice(0, 500) : '');
+        const detail = `HTTP ${resp.status} ${resp.statusText}${bodyPart ? ` | ${bodyPart}` : ''} | url=${this.url} model=${this.config.model} msgs=${messages.length} tools=${params.tools.length}`;
+        return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
+      }
+
+      const data: any = await resp.json();
+      const choice = data.choices?.[0];
+      const msg = choice?.message ?? {};
+      const text: string | null = typeof msg.content === 'string' && msg.content.length > 0 ? msg.content : null;
+
+      const toolCalls: TurnResult['toolCalls'] = [];
+      for (const tc of msg.tool_calls ?? []) {
+        const name = tc?.function?.name ?? '';
+        const argsStr = tc?.function?.arguments ?? '{}';
+        let input: unknown = {};
+        try { input = argsStr ? JSON.parse(argsStr) : {}; } catch { input = argsStr; }
+        toolCalls.push({ id: tc.id, name, input });
+      }
+
+      const finish = choice?.finish_reason;
+      const stopReason: TurnResult['stopReason'] =
+        finish === 'tool_calls' ? 'tool_use' :
+        finish === 'stop' || finish === 'length' ? 'end' :
+        toolCalls.length > 0 ? 'tool_use' :
+        'end';
+
+      return {
+        text,
+        toolCalls,
+        stopReason,
+        usage: data.usage
+          ? { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens }
+          : undefined
+      };
+    } finally {
+      cleanup();
     }
-
-    if (!resp.ok) {
-      const raw = await resp.text().catch(() => '');
-      let parsed: string | null = null;
-      try { parsed = JSON.parse(raw)?.error?.message ?? null; } catch { /* not JSON */ }
-      const bodyPart = parsed ?? (raw ? raw.slice(0, 500) : '');
-      const detail = `HTTP ${resp.status} ${resp.statusText}${bodyPart ? ` | ${bodyPart}` : ''} | url=${this.url} model=${this.config.model} msgs=${messages.length} tools=${params.tools.length}`;
-      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
-    }
-
-    const data: any = await resp.json();
-    const choice = data.choices?.[0];
-    const msg = choice?.message ?? {};
-    const text: string | null = typeof msg.content === 'string' && msg.content.length > 0 ? msg.content : null;
-
-    const toolCalls: TurnResult['toolCalls'] = [];
-    for (const tc of msg.tool_calls ?? []) {
-      const name = tc?.function?.name ?? '';
-      const argsStr = tc?.function?.arguments ?? '{}';
-      let input: unknown = {};
-      try { input = argsStr ? JSON.parse(argsStr) : {}; } catch { input = argsStr; }
-      toolCalls.push({ id: tc.id, name, input });
-    }
-
-    const finish = choice?.finish_reason;
-    const stopReason: TurnResult['stopReason'] =
-      finish === 'tool_calls' ? 'tool_use' :
-      finish === 'stop' || finish === 'length' ? 'end' :
-      toolCalls.length > 0 ? 'tool_use' :
-      'end';
-
-    return {
-      text,
-      toolCalls,
-      stopReason,
-      usage: data.usage
-        ? { inputTokens: data.usage.prompt_tokens, outputTokens: data.usage.completion_tokens }
-        : undefined
-    };
   }
 
   private translateMessage(m: Message): any {

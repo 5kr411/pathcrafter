@@ -1,6 +1,9 @@
 import type { LLMProvider, ProviderConfig, TurnParams, TurnResult, Message, ContentBlock } from './types';
+import { withTimeout, isTimeoutAbort } from '../../../utils/abortable';
 
 type FetchFn = typeof fetch;
+
+const PROVIDER_FETCH_TIMEOUT_MS = 60_000;
 
 export class AnthropicProvider implements LLMProvider {
   private readonly url: string;
@@ -29,51 +32,62 @@ export class AnthropicProvider implements LLMProvider {
       }))
     };
 
-    let resp: Response;
+    const { signal, cleanup } = withTimeout(params.signal, PROVIDER_FETCH_TIMEOUT_MS);
     try {
-      resp = await this.fetchImpl(this.url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          'x-api-key': this.config.apiKey!,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify(body),
-        signal: params.signal
-      });
-    } catch (err: any) {
-      if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
-      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
+      let resp: Response;
+      try {
+        resp = await this.fetchImpl(this.url, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'x-api-key': this.config.apiKey!,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify(body),
+          signal
+        });
+      } catch (err: any) {
+        if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
+        if (isTimeoutAbort(signal)) {
+          return {
+            text: null, toolCalls: [], stopReason: 'error',
+            errorDetail: `provider timeout after ${PROVIDER_FETCH_TIMEOUT_MS}ms`
+          };
+        }
+        return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
+      }
+
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => '');
+        const detail = extractErrorMessage(body) ?? `HTTP ${resp.status}`;
+        return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
+      }
+
+      const data: any = await resp.json();
+      let text: string | null = null;
+      const toolCalls: TurnResult['toolCalls'] = [];
+
+      for (const block of data.content ?? []) {
+        if (block.type === 'text') text = (text ?? '') + block.text;
+        else if (block.type === 'tool_use') toolCalls.push({ id: block.id, name: block.name, input: block.input });
+      }
+
+      const stopReason: TurnResult['stopReason'] =
+        data.stop_reason === 'tool_use' ? 'tool_use' :
+        data.stop_reason === 'end_turn' || data.stop_reason === 'stop_sequence' ? 'end' :
+        'error';
+
+      return {
+        text: text ?? null,
+        toolCalls,
+        stopReason,
+        usage: data.usage
+          ? { inputTokens: data.usage.input_tokens, outputTokens: data.usage.output_tokens }
+          : undefined
+      };
+    } finally {
+      cleanup();
     }
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      const detail = extractErrorMessage(body) ?? `HTTP ${resp.status}`;
-      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
-    }
-
-    const data: any = await resp.json();
-    let text: string | null = null;
-    const toolCalls: TurnResult['toolCalls'] = [];
-
-    for (const block of data.content ?? []) {
-      if (block.type === 'text') text = (text ?? '') + block.text;
-      else if (block.type === 'tool_use') toolCalls.push({ id: block.id, name: block.name, input: block.input });
-    }
-
-    const stopReason: TurnResult['stopReason'] =
-      data.stop_reason === 'tool_use' ? 'tool_use' :
-      data.stop_reason === 'end_turn' || data.stop_reason === 'stop_sequence' ? 'end' :
-      'error';
-
-    return {
-      text: text ?? null,
-      toolCalls,
-      stopReason,
-      usage: data.usage
-        ? { inputTokens: data.usage.input_tokens, outputTokens: data.usage.output_tokens }
-        : undefined
-    };
   }
 
   private translateMessage(m: Message): { role: 'user' | 'assistant'; content: any } {

@@ -1,6 +1,9 @@
 import type { LLMProvider, ProviderConfig, TurnParams, TurnResult, Message, ContentBlock } from './types';
+import { withTimeout, isTimeoutAbort } from '../../../utils/abortable';
 
 type FetchFn = typeof fetch;
+
+const PROVIDER_FETCH_TIMEOUT_MS = 60_000;
 
 export class GeminiProvider implements LLMProvider {
   private readonly base: string;
@@ -37,60 +40,71 @@ export class GeminiProvider implements LLMProvider {
       body.generationConfig = { maxOutputTokens: this.config.maxTokens };
     }
 
-    let resp: Response;
+    const { signal, cleanup } = withTimeout(params.signal, PROVIDER_FETCH_TIMEOUT_MS);
     try {
-      resp = await this.fetchImpl(url, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(body),
-        signal: params.signal
-      });
-    } catch (err: any) {
-      if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
-      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
-    }
-
-    if (!resp.ok) {
-      const raw = await resp.text().catch(() => '');
-      let detail: string;
-      try { detail = JSON.parse(raw)?.error?.message ?? `HTTP ${resp.status}`; }
-      catch { detail = raw ? raw.slice(0, 200) : `HTTP ${resp.status}`; }
-      return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
-    }
-
-    const data: any = await resp.json();
-    const candidate = data.candidates?.[0];
-    const parts: any[] = candidate?.content?.parts ?? [];
-
-    let text: string | null = null;
-    const toolCalls: TurnResult['toolCalls'] = [];
-    let callIndex = 0;
-    for (const part of parts) {
-      if (typeof part.text === 'string') {
-        text = (text ?? '') + part.text;
-      } else if (part.functionCall) {
-        toolCalls.push({
-          id: `call_${callIndex}`,
-          name: part.functionCall.name,
-          input: part.functionCall.args ?? {}
+      let resp: Response;
+      try {
+        resp = await this.fetchImpl(url, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+          signal
         });
-        callIndex++;
-      }
-    }
-
-    const stopReason: TurnResult['stopReason'] =
-      toolCalls.length > 0 ? 'tool_use' :
-      candidate?.finishReason === 'STOP' ? 'end' :
-      'error';
-
-    const usage = data.usageMetadata
-      ? {
-          inputTokens: data.usageMetadata.promptTokenCount ?? 0,
-          outputTokens: data.usageMetadata.candidatesTokenCount ?? 0
+      } catch (err: any) {
+        if (params.signal.aborted) return { text: null, toolCalls: [], stopReason: 'cancelled' };
+        if (isTimeoutAbort(signal)) {
+          return {
+            text: null, toolCalls: [], stopReason: 'error',
+            errorDetail: `provider timeout after ${PROVIDER_FETCH_TIMEOUT_MS}ms`
+          };
         }
-      : undefined;
+        return { text: null, toolCalls: [], stopReason: 'error', errorDetail: err?.message ?? String(err) };
+      }
 
-    return { text, toolCalls, stopReason, usage };
+      if (!resp.ok) {
+        const raw = await resp.text().catch(() => '');
+        let detail: string;
+        try { detail = JSON.parse(raw)?.error?.message ?? `HTTP ${resp.status}`; }
+        catch { detail = raw ? raw.slice(0, 200) : `HTTP ${resp.status}`; }
+        return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
+      }
+
+      const data: any = await resp.json();
+      const candidate = data.candidates?.[0];
+      const parts: any[] = candidate?.content?.parts ?? [];
+
+      let text: string | null = null;
+      const toolCalls: TurnResult['toolCalls'] = [];
+      let callIndex = 0;
+      for (const part of parts) {
+        if (typeof part.text === 'string') {
+          text = (text ?? '') + part.text;
+        } else if (part.functionCall) {
+          toolCalls.push({
+            id: `call_${callIndex}`,
+            name: part.functionCall.name,
+            input: part.functionCall.args ?? {}
+          });
+          callIndex++;
+        }
+      }
+
+      const stopReason: TurnResult['stopReason'] =
+        toolCalls.length > 0 ? 'tool_use' :
+        candidate?.finishReason === 'STOP' ? 'end' :
+        'error';
+
+      const usage = data.usageMetadata
+        ? {
+            inputTokens: data.usageMetadata.promptTokenCount ?? 0,
+            outputTokens: data.usageMetadata.candidatesTokenCount ?? 0
+          }
+        : undefined;
+
+      return { text, toolCalls, stopReason, usage };
+    } finally {
+      cleanup();
+    }
   }
 
   private translateMessage(m: Message): any {

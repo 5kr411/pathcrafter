@@ -6,6 +6,9 @@ import {
   ReactiveBehaviorStopReason
 } from './reactive_behaviors/types';
 import { ReactiveBehaviorRegistry } from './reactive_behavior_registry';
+import { isTimeoutAbort } from '../../utils/abortable';
+
+const EVALUATION_TIMEOUT_MS = 5_000;
 
 interface ReactiveBehaviorRunState {
   behavior: ReactiveBehavior;
@@ -145,6 +148,7 @@ export class ReactiveBehaviorManager {
   private pendingBehavior: ReactiveBehavior | null = null;
   private starting = false;
   private evaluationPromise: Promise<void> | null = null;
+  private evaluationAbort: AbortController | null = null;
   private candidate: ReactiveBehavior | null = null;
   private enabled = true;
 
@@ -174,6 +178,10 @@ export class ReactiveBehaviorManager {
   }
 
   stop(): void {
+    if (this.evaluationAbort) {
+      try { this.evaluationAbort.abort(new Error('stopped')); } catch (_) {}
+      this.evaluationAbort = null;
+    }
     if (this.currentRun && !this.currentRun.isFinished()) {
       this.currentRun.abort('aborted');
     }
@@ -240,16 +248,56 @@ export class ReactiveBehaviorManager {
   private kickoffEvaluation(): void {
     if (!this.enabled) return;
     if (this.evaluationPromise) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      if (controller.signal.aborted) return;
+      const reason = typeof DOMException !== 'undefined'
+        ? new DOMException(`evaluation timeout after ${EVALUATION_TIMEOUT_MS}ms`, 'TimeoutError')
+        : Object.assign(new Error(`evaluation timeout after ${EVALUATION_TIMEOUT_MS}ms`), { name: 'TimeoutError' });
+      controller.abort(reason);
+    }, EVALUATION_TIMEOUT_MS);
+    if (typeof (timer as { unref?: () => void }).unref === 'function') {
+      (timer as { unref: () => void }).unref();
+    }
+    this.evaluationAbort = controller;
+
+    // Race the evaluation against the abort signal so a wedged shouldActivate
+    // predicate doesn't block the promise chain from ever resolving.
+    const abortRace = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener('abort', () => {
+        reject(controller.signal.reason ?? new Error('aborted'));
+      }, { once: true });
+    });
+
+    // Match the exact microtask shape of the pre-timeout implementation:
+    // Promise.resolve().then(...) -> .then((behavior) => candidate = behavior).
+    // A tighter shape (e.g. awaiting Promise.race directly) shifts when
+    // candidate becomes observable and breaks tick-sensitive preemption tests.
     this.evaluationPromise = Promise.resolve()
-      .then(async () => this.registry.findActiveBehavior(this.bot))
+      .then(async () => Promise.race([
+        this.registry.findActiveBehavior(this.bot),
+        abortRace
+      ]))
       .then((behavior) => {
+        if (controller.signal.aborted) return;
         this.candidate = behavior ?? null;
       })
       .catch((err: any) => {
+        if (controller.signal.aborted && isTimeoutAbort(controller.signal)) {
+          logger.info(`ReactiveBehaviorManager: evaluation timed out after ${EVALUATION_TIMEOUT_MS}ms`);
+          return;
+        }
+        if (controller.signal.aborted) {
+          // External stop; drop silently.
+          return;
+        }
         logger.debug(`ReactiveBehaviorManager: evaluation error - ${err?.message || err}`);
       })
       .finally(() => {
+        clearTimeout(timer);
         this.evaluationPromise = null;
+        if (this.evaluationAbort === controller) this.evaluationAbort = null;
       });
   }
 
