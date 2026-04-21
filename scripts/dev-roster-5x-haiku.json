@@ -1,0 +1,7 @@
+[
+  { "name": "haiku-4-5_01", "provider": "anthropic", "model": "claude-haiku-4-5" },
+  { "name": "haiku-4-5_02", "provider": "anthropic", "model": "claude-haiku-4-5" },
+  { "name": "haiku-4-5_03", "provider": "anthropic", "model": "claude-haiku-4-5" },
+  { "name": "haiku-4-5_04", "provider": "anthropic", "model": "claude-haiku-4-5" },
+  { "name": "haiku-4-5_05", "provider": "anthropic", "model": "claude-haiku-4-5" }
+]

@@ -59,9 +59,10 @@ export class OpenAIProvider implements LLMProvider {
 
     if (!resp.ok) {
       const raw = await resp.text().catch(() => '');
-      let detail: string;
-      try { detail = JSON.parse(raw)?.error?.message ?? `HTTP ${resp.status}`; }
-      catch { detail = raw ? raw.slice(0, 200) : `HTTP ${resp.status}`; }
+      let parsed: string | null = null;
+      try { parsed = JSON.parse(raw)?.error?.message ?? null; } catch { /* not JSON */ }
+      const bodyPart = parsed ?? (raw ? raw.slice(0, 500) : '');
+      const detail = `HTTP ${resp.status} ${resp.statusText}${bodyPart ? ` | ${bodyPart}` : ''} | url=${this.url} model=${this.config.model} msgs=${messages.length} tools=${params.tools.length}`;
       return { text: null, toolCalls: [], stopReason: 'error', errorDetail: detail };
     }
 

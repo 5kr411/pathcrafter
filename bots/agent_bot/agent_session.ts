@@ -133,6 +133,7 @@ export class AgentSession {
       }
       if (result.stopReason === 'error') {
         const detail = result.errorDetail ? `: ${result.errorDetail}` : '';
+        logger.error(`AgentSession: provider error${detail} (msgs=${this.messages.length}, toolsThisSession=${this.toolsUsedThisSession})`);
         this.deps.safeChat(`(agent error${detail})`);
         this.state = 'idle';
         this.armIdleTimer();

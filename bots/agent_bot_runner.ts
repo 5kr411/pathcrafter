@@ -200,10 +200,18 @@ async function run(): Promise<void> {
       }
     });
 
-    let stderrBuf = '';
     if (proc.stderr) {
+      let lineBuf = '';
       proc.stderr.on('data', (chunk: Buffer) => {
-        stderrBuf += chunk.toString();
+        lineBuf += chunk.toString();
+        const lines = lineBuf.split('\n');
+        lineBuf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (line.trim()) logger.warn(`[${botName} stderr] ${line}`);
+        }
+      });
+      proc.stderr.on('end', () => {
+        if (lineBuf.trim()) logger.warn(`[${botName} stderr] ${lineBuf}`);
       });
     }
 
@@ -231,9 +239,6 @@ async function run(): Promise<void> {
     proc.on('exit', (code) => {
       exited++;
       if (code !== 0) {
-        if (stderrBuf.trim()) {
-          logger.error(`Bot ${botName} stderr: ${stderrBuf.trim().slice(0, 500)}`);
-        }
         logger.warn(`Bot ${botName} exited with code ${code}`);
         monitor.markFailed();
       }
