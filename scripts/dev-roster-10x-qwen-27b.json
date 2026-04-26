@@ -1,0 +1,12 @@
+[
+  { "name": "qwen27b_01", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_02", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_03", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_04", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_05", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_06", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_07", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_08", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_09", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" },
+  { "name": "qwen27b_10", "provider": "openai-compat", "model": "qwen/qwen3.6-27b", "baseUrl": "http://localhost:1234" }
+]

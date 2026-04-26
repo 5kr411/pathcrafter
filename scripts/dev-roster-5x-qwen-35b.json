@@ -1,7 +1,0 @@
-[
-  { "name": "qwen35b-a3b_01", "provider": "openai-compat", "model": "qwen/qwen3.6-35b-a3b", "baseUrl": "http://localhost:1234" },
-  { "name": "qwen35b-a3b_02", "provider": "openai-compat", "model": "qwen/qwen3.6-35b-a3b", "baseUrl": "http://localhost:1234" },
-  { "name": "qwen35b-a3b_03", "provider": "openai-compat", "model": "qwen/qwen3.6-35b-a3b", "baseUrl": "http://localhost:1234" },
-  { "name": "qwen35b-a3b_04", "provider": "openai-compat", "model": "qwen/qwen3.6-35b-a3b", "baseUrl": "http://localhost:1234" },
-  { "name": "qwen35b-a3b_05", "provider": "openai-compat", "model": "qwen/qwen3.6-35b-a3b", "baseUrl": "http://localhost:1234" }
-]
