@@ -41,8 +41,10 @@ describe('GeminiProvider', () => {
     expect(result.usage).toEqual({ inputTokens: 42, outputTokens: 7 });
 
     const [url, init] = fakeFetch.mock.calls[0];
-    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=sk-test');
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent');
+    expect(url).not.toMatch(/[?&]key=/);
     expect(init.method).toBe('POST');
+    expect(init.headers['x-goog-api-key']).toBe('sk-test');
     const body = JSON.parse(init.body);
     expect(body.systemInstruction).toEqual({ parts: [{ text: 'you are a bot' }] });
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'where are you?' }] }]);

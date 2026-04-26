@@ -19,7 +19,7 @@ export class GeminiProvider implements LLMProvider {
   label(): string { return `gemini:${this.config.model}`; }
 
   async runTurn(params: TurnParams): Promise<TurnResult> {
-    const url = `${this.base}/v1beta/models/${this.config.model}:generateContent?key=${this.config.apiKey}`;
+    const url = `${this.base}/v1beta/models/${this.config.model}:generateContent`;
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
     const body: any = {
@@ -47,7 +47,10 @@ export class GeminiProvider implements LLMProvider {
       try {
         resp = await this.fetchImpl(url, {
           method: 'POST',
-          headers: { 'content-type': 'application/json' },
+          headers: {
+            'content-type': 'application/json',
+            'x-goog-api-key': this.config.apiKey!
+          },
           body: JSON.stringify(body),
           signal
         });
