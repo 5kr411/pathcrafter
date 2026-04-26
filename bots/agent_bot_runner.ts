@@ -6,6 +6,7 @@ import * as path from 'path';
 import * as crypto from 'crypto';
 import { LogMonitor } from './collector_runner/log_monitor';
 import { BotStatus, RunSummary, computeExitCode, computeOverallResult, writeSummary } from './collector_runner/summary';
+import { Lifecycle } from './collector_runner/lifecycle';
 import { createRunDir } from '../utils/runDir';
 import logger from '../utils/logger';
 import { resolveBotSpecs, BotSpec, RunnerArgs } from './agent_bot/runner/roster';
@@ -114,11 +115,18 @@ async function run(): Promise<void> {
 
   const processes: ChildProcess[] = [];
   const monitors: LogMonitor[] = [];
-  let finished = false;
 
-  function finish(): void {
-    if (finished) return;
-    finished = true;
+  // Overall timeout (declared before lifecycle so the cleanup callback can clear it)
+  const timeoutHandle = setTimeout(() => {
+    logger.warn(`Agent bot runner timeout after ${cli.timeoutMs}ms`);
+    for (const m of monitors) {
+      m.markTimeout();
+    }
+    lifecycle.finish('timeout');
+  }, cli.timeoutMs);
+
+  const lifecycle = new Lifecycle((_reason) => {
+    clearTimeout(timeoutHandle);
 
     for (const m of monitors) {
       m.stop();
@@ -150,15 +158,7 @@ async function run(): Promise<void> {
     logger.info(`Summary written to ${path.join(runDir, 'summary.json')}`);
 
     process.exit(exitCode);
-  }
-
-  const timeoutHandle = setTimeout(() => {
-    logger.warn(`Agent bot runner timeout after ${cli.timeoutMs}ms`);
-    for (const m of monitors) {
-      m.markTimeout();
-    }
-    finish();
-  }, cli.timeoutMs);
+  });
 
   let exited = 0;
 
@@ -244,8 +244,7 @@ async function run(): Promise<void> {
         monitor.markFailed();
       }
       if (exited >= specs.length) {
-        clearTimeout(timeoutHandle);
-        setTimeout(() => finish(), 500);
+        lifecycle.scheduleFinish('all-exited');
       }
     });
   }
@@ -256,8 +255,7 @@ async function run(): Promise<void> {
       return s.state === 'complete' || s.state === 'failed';
     });
     if (allDone) {
-      clearTimeout(timeoutHandle);
-      setTimeout(() => finish(), 500);
+      lifecycle.scheduleFinish('all-complete');
     }
   }
 
@@ -266,8 +264,7 @@ async function run(): Promise<void> {
     for (const m of monitors) {
       m.markFailed();
     }
-    clearTimeout(timeoutHandle);
-    finish();
+    lifecycle.finish('sigint');
   });
 
   process.on('SIGTERM', () => {
@@ -275,8 +272,7 @@ async function run(): Promise<void> {
     for (const m of monitors) {
       m.markFailed();
     }
-    clearTimeout(timeoutHandle);
-    finish();
+    lifecycle.finish('sigterm');
   });
 }
 
