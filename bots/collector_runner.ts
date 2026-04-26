@@ -42,7 +42,7 @@ async function run(): Promise<void> {
     lifecycle.finish('timeout');
   }, config.timeoutMs);
 
-  const lifecycle = new Lifecycle((_reason) => {
+  const lifecycle = new Lifecycle((reason) => {
     clearTimeout(timeoutHandle);
 
     // Stop all monitors
@@ -73,7 +73,7 @@ async function run(): Promise<void> {
     };
 
     writeSummary(runDir, summary);
-    logger.info(`Agent runner complete — result=${summary.overallResult}, exitCode=${exitCode}`);
+    logger.info(`Agent runner complete — result=${summary.overallResult}, exitCode=${exitCode}, reason=${reason}`);
     logger.info(`Summary written to ${path.join(runDir, 'summary.json')}`);
 
     process.exit(exitCode);

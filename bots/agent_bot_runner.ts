@@ -7,6 +7,7 @@ import * as crypto from 'crypto';
 import { LogMonitor } from './collector_runner/log_monitor';
 import { BotStatus, RunSummary, computeExitCode, computeOverallResult, writeSummary } from './collector_runner/summary';
 import { Lifecycle } from './collector_runner/lifecycle';
+import { appendBoundedStderr } from './collector_runner/stderr_buffer';
 import { createRunDir } from '../utils/runDir';
 import logger from '../utils/logger';
 import { resolveBotSpecs, BotSpec, RunnerArgs } from './agent_bot/runner/roster';
@@ -125,7 +126,7 @@ async function run(): Promise<void> {
     lifecycle.finish('timeout');
   }, cli.timeoutMs);
 
-  const lifecycle = new Lifecycle((_reason) => {
+  const lifecycle = new Lifecycle((reason) => {
     clearTimeout(timeoutHandle);
 
     for (const m of monitors) {
@@ -154,7 +155,7 @@ async function run(): Promise<void> {
     };
 
     writeSummary(runDir, summary);
-    logger.info(`Agent bot runner complete — result=${summary.overallResult}, exitCode=${exitCode}`);
+    logger.info(`Agent bot runner complete — result=${summary.overallResult}, exitCode=${exitCode}, reason=${reason}`);
     logger.info(`Summary written to ${path.join(runDir, 'summary.json')}`);
 
     process.exit(exitCode);
@@ -204,7 +205,7 @@ async function run(): Promise<void> {
     if (proc.stderr) {
       let lineBuf = '';
       proc.stderr.on('data', (chunk: Buffer) => {
-        lineBuf += chunk.toString();
+        lineBuf = appendBoundedStderr(lineBuf, chunk.toString());
         const lines = lineBuf.split('\n');
         lineBuf = lines.pop() ?? '';
         for (const line of lines) {
