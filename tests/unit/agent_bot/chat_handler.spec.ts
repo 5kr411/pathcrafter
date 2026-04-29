@@ -48,6 +48,24 @@ describe('AgentChatHandler', () => {
     expect(session.submitUserMessage).not.toHaveBeenCalled();
   });
 
+  it('fires onAddressed only when chat is actually addressed to this bot', () => {
+    const session = makeSession();
+    const bot = makeBot({
+      players: { alice: { entity: { position: { x: 0, y: 0, z: 0 } } } }
+    });
+    const onAddressed = jest.fn();
+    const handler = new AgentChatHandler(bot, session, onAddressed);
+
+    handler.handle('alice', '@other_bot hi');             // not us
+    handler.handle('alice', 'just chatting in the world'); // no mention
+    handler.handle('agent_bot', '@all self-broadcast');    // self
+    expect(onAddressed).not.toHaveBeenCalled();
+
+    handler.handle('alice', '@all do the thing');
+    handler.handle('alice', '@agent_bot hello');
+    expect(onAddressed).toHaveBeenCalledTimes(2);
+  });
+
   it('ignores self-messages', () => {
     const session = makeSession();
     const bot = makeBot();

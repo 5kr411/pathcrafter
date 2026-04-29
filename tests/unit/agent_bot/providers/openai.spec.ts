@@ -112,7 +112,7 @@ describe('OpenAIProvider', () => {
     expect(r.stopReason).toBe('cancelled');
   });
 
-  it('returns error with timeout detail when fetch wedges past 60s', async () => {
+  it('returns error with timeout detail when fetch wedges past the configured timeout', async () => {
     jest.useFakeTimers();
     const hangingFetch = jest.fn(
       (_url: string, init?: RequestInit) =>
@@ -131,7 +131,8 @@ describe('OpenAIProvider', () => {
       system: '', messages: [{ role: 'user', content: 'x' }],
       tools: [], signal: parent.signal
     });
-    jest.advanceTimersByTime(60_001);
+    // Default is 5min when AGENT_PROVIDER_TIMEOUT_MS is unset; advance past it.
+    jest.advanceTimersByTime(5 * 60_000 + 1);
     const r = await promise;
     expect(r.stopReason).toBe('error');
     expect(r.errorDetail).toMatch(/timeout/i);

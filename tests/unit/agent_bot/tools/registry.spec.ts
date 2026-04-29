@@ -4,8 +4,8 @@ describe('tool registry', () => {
   const tools = allTools();
   const names = tools.map(t => t.schema.name);
 
-  it('contains exactly 16 tools', () => {
-    expect(tools.length).toBe(16);
+  it('contains exactly 17 tools', () => {
+    expect(tools.length).toBe(17);
   });
 
   it('includes all expected tool names', () => {
@@ -14,7 +14,8 @@ describe('tool registry', () => {
       'get_time_of_day', 'search_items',
       'goto_position', 'goto_entity', 'hunt_entity', 'eat_food',
       'collect_item',
-      'equip_best_armor', 'drop_item', 'look_at', 'wait', 'send_chat'
+      'equip_best_armor', 'drop_item', 'look_at', 'wait', 'send_chat',
+      'finish_session'
     ];
     for (const name of expected) {
       expect(names).toContain(name);

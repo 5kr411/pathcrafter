@@ -34,6 +34,7 @@ import { allTools } from './agent_bot/tools/registry';
 import { AgentActionExecutor } from './agent_bot/action_executor';
 import { AgentSession } from './agent_bot/agent_session';
 import { AgentChatHandler } from './agent_bot/chat_handler';
+import { IdleNudger } from './agent_bot/idle_nudger';
 
 const config = getConfig();
 
@@ -231,15 +232,25 @@ bot.once('spawn', () => {
 
   const provider = createProvider(cfg.provider);
   const toolExecutor = new ToolExecutor(allTools());
+  let nudger: IdleNudger | null = null;
   const session = new AgentSession({
     bot,
     provider,
     toolExecutor,
     targetExecutor: executor,
     agentActionExecutor: agentActionLayer,
-    safeChat
+    safeChat,
+    onFinishSession: (_reason: string) => { nudger?.noteFinish(); },
+    // The IdleNudger is now responsible for re-engaging idle bots; we no
+    // longer want AgentSession to wipe its message history after 30s of idle.
+    // Without this, the original goal vanishes from context before the first
+    // nudge fires (60s), and the model is then nudged with no memory of the
+    // task — it concludes "no active goal" and prematurely calls finish_session.
+    idleMs: 24 * 60 * 60 * 1000
   });
-  const chatHandler = new AgentChatHandler(bot, session);
+  nudger = new IdleNudger({ bot, session, controlStack });
+  nudger.start();
+  const chatHandler = new AgentChatHandler(bot, session, () => nudger?.noteUserChat());
 
   let lastDeathMessage: string | null = null;
 
@@ -282,9 +293,11 @@ bot.once('spawn', () => {
     ].join(' ');
     logger.info(`AgentBot: notifying agent of death → respawn at ${rposStr}`);
     session.injectSystemNotification(msg).catch(err => logger.info(`AgentBot: injectSystemNotification failed: ${err?.message ?? err}`));
+    nudger?.noteDeathRespawn();
   });
 
   bot.on('end', () => {
+    try { nudger?.stop(); } catch (_) {}
     try { session.destroy(); } catch (_) {}
     workerManager.terminate();
     controlStack.stop();

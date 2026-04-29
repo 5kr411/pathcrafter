@@ -3,7 +3,16 @@ import { withTimeout, isTimeoutAbort } from '../../../utils/abortable';
 
 export type FetchFn = typeof fetch;
 
-const PROVIDER_FETCH_TIMEOUT_MS = 60_000;
+// Default 5 minutes — high enough for self-hosted models under load with growing
+// conversation history. Override via AGENT_PROVIDER_TIMEOUT_MS for slow setups.
+function resolveTimeoutMs(): number {
+  const raw = process.env.AGENT_PROVIDER_TIMEOUT_MS;
+  if (!raw) return 5 * 60_000;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 5 * 60_000;
+  return parsed;
+}
+const PROVIDER_FETCH_TIMEOUT_MS = resolveTimeoutMs();
 
 export class OpenAIProvider implements LLMProvider {
   protected readonly url: string;

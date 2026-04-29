@@ -41,6 +41,7 @@ function baseDeps(overrides: Partial<ConstructorParameters<typeof AgentSession>[
       targetExecutor,
       agentActionExecutor,
       safeChat,
+      onFinishSession: () => {},
       idleMs: 50,
       maxToolsPerSession: 30,
       ...overrides

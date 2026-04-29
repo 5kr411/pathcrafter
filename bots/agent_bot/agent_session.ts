@@ -14,6 +14,7 @@ export interface SessionDeps {
   targetExecutor: TargetExecutorLike;
   agentActionExecutor: AgentActionExecutorLike;
   safeChat: (msg: string) => void;
+  onFinishSession: (reason: string) => void;
   idleMs?: number;
   maxToolsPerSession?: number;
 }
@@ -22,7 +23,8 @@ export class AgentSession {
   private messages: Message[] = [];
   private abort: AbortController = new AbortController();
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
-  private state: 'empty' | 'running' | 'idle' | 'dead' = 'empty';
+  /** Readable by external collaborators (e.g. IdleNudger). Mutated only by this class. */
+  state: 'empty' | 'running' | 'idle' | 'dead' = 'empty';
   private toolsUsedThisSession = 0;
   /** User message arrived while a tool loop was running. Drained by run()
    *  after the current tool batch has pushed all tool_result blocks, so
@@ -184,7 +186,8 @@ export class AgentSession {
           signal: this.abort.signal,
           targetExecutor: this.deps.targetExecutor,
           agentActionExecutor: this.deps.agentActionExecutor,
-          safeChat: this.deps.safeChat
+          safeChat: this.deps.safeChat,
+          onFinishSession: this.deps.onFinishSession
         };
         logger.info(`AgentSession: tool call ${call.name} input=${JSON.stringify(call.input).slice(0, 200)}`);
         const toolResult = await this.deps.toolExecutor.run(call, ctx);

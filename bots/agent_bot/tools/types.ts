@@ -31,6 +31,8 @@ export interface ToolContext {
   targetExecutor: TargetExecutorLike;
   agentActionExecutor: AgentActionExecutorLike;
   safeChat: (msg: string) => void;
+  /** Called by the finish_session tool. Suppresses idle nudges until external wake. */
+  onFinishSession: (reason: string) => void;
 }
 
 export type ToolResult =

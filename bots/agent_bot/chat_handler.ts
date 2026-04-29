@@ -1,8 +1,16 @@
 import type { AgentSession } from './agent_session';
 
 export class AgentChatHandler {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
-  constructor(private readonly bot: any, private readonly session: AgentSession) {}
+  constructor(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- LLM trust boundary
+    private readonly bot: any,
+    private readonly session: AgentSession,
+    /** Fired only when chat is actually addressed to this bot — i.e. after the
+     *  mention parse passes. Wired to IdleNudger.noteUserChat in agent_bot.ts;
+     *  ignoring world chatter avoids resetting the nudge streak on every
+     *  message from other bots. */
+    private readonly onAddressed?: () => void
+  ) {}
 
   handle(username: string, message: string): void {
     if (username === this.bot.username) return;
@@ -12,6 +20,7 @@ export class AgentChatHandler {
     const position = speakerEntity?.position
       ? { x: speakerEntity.position.x, y: speakerEntity.position.y, z: speakerEntity.position.z }
       : undefined;
+    this.onAddressed?.();
     this.session.submitUserMessage(parsed, { speaker: username, position });
   }
 

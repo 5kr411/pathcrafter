@@ -16,6 +16,7 @@ import { dropItemTool } from './impl/drop_item';
 import { lookAtTool } from './impl/look_at';
 import { waitTool } from './impl/wait';
 import { sendChatTool } from './impl/send_chat';
+import { finishSessionTool } from './impl/finish_session';
 
 /**
  * Full set of tools exposed to the LLM agent. The registry is the single
@@ -42,6 +43,7 @@ export function allTools(): ToolImpl<unknown>[] {
     dropItemTool,
     lookAtTool,
     waitTool,
-    sendChatTool
+    sendChatTool,
+    finishSessionTool
   ];
 }

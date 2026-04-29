@@ -126,7 +126,7 @@ export class CollectorControlStack {
     return new NestedStateMachine(transitions, idle, null as any);
   }
 
-  private getDesiredMode(): ControlMode {
+  getDesiredMode(): ControlMode {
     if (this.reactiveLayer.hasWork()) return 'reactive';
     if (this.toolLayer.hasWork()) return 'tool';
     if (this.targetLayer.hasWork()) return 'target';
