@@ -77,7 +77,25 @@ export const SECONDARY_BLOCK_DROPS: Record<string, SecondaryBlockDrop[]> = {
     dropChance: 0.125, // 12.5% chance
     avgDropsPerBlock: 0.125,
     reason: 'Grass has 12.5% chance to drop seeds'
-  }]
+  }],
+
+  // Apples from oak/dark oak leaves - probabilistic
+  apple: [
+    {
+      block: 'oak_leaves',
+      tool: 'any',
+      dropChance: 0.005, // 0.5% chance
+      avgDropsPerBlock: 0.005,
+      reason: 'Oak leaves have 0.5% chance to drop an apple when broken/decayed (shears and silk touch suppress)'
+    },
+    {
+      block: 'dark_oak_leaves',
+      tool: 'any',
+      dropChance: 0.005, // 0.5% chance
+      avgDropsPerBlock: 0.005,
+      reason: 'Dark oak leaves have 0.5% chance to drop an apple when broken/decayed (shears and silk touch suppress)'
+    }
+  ]
 };
 
 /**

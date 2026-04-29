@@ -60,5 +60,13 @@ function setupPolling(): void {
   }, 500);
 }
 
-process.on('SIGINT', () => bot.quit());
-process.on('SIGTERM', () => bot.quit());
+let shuttingDown = false;
+function shutdown(): void {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  try { bot.quit(); } catch (_) {}
+  bot.once('end', () => process.exit(0));
+  setTimeout(() => process.exit(0), 2000).unref();
+}
+process.on('SIGINT', shutdown);
+process.on('SIGTERM', shutdown);
