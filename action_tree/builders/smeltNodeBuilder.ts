@@ -80,6 +80,20 @@ export function buildSmeltNodes(
     if (targetCount > 0) {
       const inputDepContext = createDependencyContext(inputItemName, smeltContext);
       const inputTree = buildRecipeTreeFn(ctx, [inputItemName], targetCount, inputDepContext);
+
+      // Skip this smelt variant when the input cannot be sourced. After the
+      // recursive build, inputTree.count is the residual need after inventory
+      // deduction. count > 0 with no children means there is no craft, smelt,
+      // mine, or hunt subtree that produces the input — emitting the smelt
+      // anyway would create a path the executor can't satisfy (it would smelt
+      // 0 input → 0 output, then loop retrying).
+      const inputUnsourceable =
+        inputTree.count > 0 &&
+        (!inputTree.children?.variants || inputTree.children.variants.length === 0);
+      if (inputUnsourceable) {
+        continue;
+      }
+
       smeltNode.children.variants.push({ value: inputTree });
     }
 
@@ -96,6 +110,10 @@ export function buildSmeltNodes(
     }
 
     smeltGroup.children.variants.push({ value: smeltNode });
+  }
+
+  if (smeltGroup.children.variants.length === 0) {
+    return;
   }
 
   root.children.variants.push({ value: smeltGroup });
