@@ -76,6 +76,8 @@ function createSmeltState(bot: Bot, targets: Targets): any {
   let smeltDone = false;
   let furnaceCountBeforeBreak = 0;
   let waitStartTime = 0;
+  let have0: number = 0;
+  let smeltAbortReason: string | null = null;
 
   const hasPickedUpFurnace = () => getItemCountInInventory(bot, 'furnace') > furnaceCountBeforeBreak;
 
@@ -85,7 +87,13 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     child: exit,
     name: 'Smelt: enter -> exit (invalid)',
     shouldTransition: () => !targets.itemName || !targets.inputName,
-    onTransition: () => logger.error('Smelt: Missing itemName or inputName')
+    onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = 'missing_item_or_input';
+      logger.error('Smelt: Missing itemName or inputName');
+    }
   });
 
   // enter -> place
@@ -116,7 +124,13 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       if (typeof placeFurnace.isFinished !== 'function') return false;
       return placeFurnace.isFinished() && !placeTargets.placedConfirmed;
     },
-    onTransition: () => logger.error('Smelt: Failed to place furnace')
+    onTransition: () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = `place_furnace_failed:${targets.itemName}`;
+      logger.error('Smelt: Failed to place furnace');
+    }
   });
 
   // place -> smelt
@@ -141,11 +155,12 @@ function createSmeltState(bot: Bot, targets: Targets): any {
       const furnaceBlock = placeTargets.placedPosition ? bot.blockAt(placeTargets.placedPosition, false) : null;
       if (!furnaceBlock) {
         logger.error('Smelt: Could not find placed furnace');
+        smeltAbortReason = 'smelt_no_furnace';
         smeltDone = true;
         return;
       }
 
-      const have0 = getItemCountInInventory(bot, wantItem);
+      have0 = getItemCountInInventory(bot, wantItem);
       const outTarget = have0 + Math.max(1, wantCount);
 
       const haveInput = getItemCount(inputItem);
@@ -154,12 +169,14 @@ function createSmeltState(bot: Bot, targets: Targets): any {
 
       if (haveInput === 0) {
         logger.error(`Smelt: No input material (${inputItem}) in inventory`);
+        smeltAbortReason = `smelt_no_input:${inputItem}`;
         smeltDone = true;
         return;
       }
 
       if (haveFuel === 0) {
         logger.error(`Smelt: No fuel (${fuelItem}) in inventory`);
+        smeltAbortReason = `smelt_no_fuel:${fuelItem}`;
         smeltDone = true;
         return;
       }
@@ -264,6 +281,21 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     }
   };
 
+  function checkShortfallAndFlag(): void {
+    // Skip if a more specific abort reason already wrote the flag
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    if ((stateMachine as any).stepSucceeded === false) return;
+    if (!wantItem || !wantCount) return;
+    const have = getItemCountInInventory(bot, wantItem);
+    const delivered = Math.max(0, have - have0);
+    if (delivered < wantCount) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = `smelt_shortfall:${wantItem}:${delivered}/${wantCount}`;
+    }
+  }
+
   // smelt -> break
   const smeltToBreak = new StateTransition({
     parent: smeltRun,
@@ -271,6 +303,12 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: smelt -> break',
     shouldTransition: () => smeltDone,
     onTransition: () => {
+      if (smeltAbortReason) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+        (stateMachine as any).stepSucceeded = false;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+        (stateMachine as any).stepFailureReason = smeltAbortReason;
+      }
       furnaceCountBeforeBreak = getItemCountInInventory(bot, 'furnace');
       const have = getItemCountInInventory(bot, wantItem);
       logger.info(`Smelt: Smelting done (${have} ${wantItem}), breaking furnace (had ${furnaceCountBeforeBreak})`);
@@ -296,6 +334,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: wait -> exit (picked up)',
     shouldTransition: () => hasPickedUpFurnace() && Date.now() - waitStartTime > 1000,
     onTransition: () => {
+      checkShortfallAndFlag();
       const have = getItemCountInInventory(bot, wantItem);
       logger.info(`Smelt: Auto-picked up furnace, complete (${have} ${wantItem})`);
     }
@@ -320,6 +359,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: find drop -> exit (picked up)',
     shouldTransition: () => hasPickedUpFurnace(),
     onTransition: () => {
+      checkShortfallAndFlag();
       const have = getItemCountInInventory(bot, wantItem);
       logger.info(`Smelt: Picked up furnace, complete (${have} ${wantItem})`);
     }
@@ -350,6 +390,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: find drop -> exit (timeout)',
     shouldTransition: () => !dropTargets.entity && Date.now() - findDropStartTime > 3000,
     onTransition: () => {
+      checkShortfallAndFlag();
       const have = getItemCountInInventory(bot, wantItem);
       logger.warn(`Smelt: Could not find dropped furnace, exiting (${have} ${wantItem})`);
     }
@@ -362,6 +403,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: follow drop -> exit (picked up)',
     shouldTransition: () => hasPickedUpFurnace(),
     onTransition: () => {
+      checkShortfallAndFlag();
       const have = getItemCountInInventory(bot, wantItem);
       logger.info(`Smelt: Collected furnace, complete (${have} ${wantItem})`);
     }
@@ -380,6 +422,7 @@ function createSmeltState(bot: Bot, targets: Targets): any {
     name: 'Smelt: follow drop -> exit (timeout)',
     shouldTransition: () => Date.now() - followStartTime > 5000,
     onTransition: () => {
+      checkShortfallAndFlag();
       const have = getItemCountInInventory(bot, wantItem);
       logger.warn(`Smelt: Follow timeout, exiting (${have} ${wantItem})`);
     }

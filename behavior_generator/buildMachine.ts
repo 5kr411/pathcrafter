@@ -17,6 +17,7 @@ import * as genCraftVariant from './craftVariant';
 import * as genSmelt from './smelt';
 import * as genHunt from './hunt';
 
+import { getItemCountInInventory } from '../utils/inventory';
 import logger from '../utils/logger';
 
 /**
@@ -72,6 +73,71 @@ function formatStepDescription(step: ActionStep, stepIndex: number): string {
   }
 
   return desc;
+}
+
+interface OutputDescriptor {
+  watchedItems: string[];   // any-of matcher when length > 1
+  requiredCount: number;
+}
+
+/**
+ * Compute the expected inventory delta for a step. Returns null when the step's
+ * output is not an inventory delta we can verify (e.g., hunt with probabilistic
+ * drops, or unrecognized action shape).
+ */
+function computeOutputDescriptor(step: ActionStep): OutputDescriptor | null {
+  if (!step || !step.action) return null;
+
+  if (step.action === 'mine') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const targetItemVariants = (step.targetItem as any)?.variants;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const whatVariants = (step.what as any)?.variants;
+    const source = Array.isArray(targetItemVariants) && targetItemVariants.length > 0
+      ? targetItemVariants
+      : whatVariants;
+    if (!Array.isArray(source) || source.length === 0) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const items: string[] = source.map((v: any) => v?.value).filter((s: any) => typeof s === 'string');
+    if (items.length === 0) return null;
+    return { watchedItems: Array.from(new Set(items)), requiredCount: Number(step.count || 1) };
+  }
+
+  if (step.action === 'craft') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const variants = (step.result as any)?.variants;
+    if (!Array.isArray(variants) || variants.length === 0) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const items: string[] = variants.map((v: any) => v?.value?.item).filter((s: any) => typeof s === 'string');
+    if (items.length === 0) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const perCraft = Number(variants[0]?.value?.perCraftCount || 1);
+    return { watchedItems: Array.from(new Set(items)), requiredCount: Number(step.count || 1) * perCraft };
+  }
+
+  if (step.action === 'smelt') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const variants = (step.result as any)?.variants;
+    if (!Array.isArray(variants) || variants.length === 0) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+    const items: string[] = variants.map((v: any) => v?.value?.item).filter((s: any) => typeof s === 'string');
+    if (items.length === 0) return null;
+    return { watchedItems: Array.from(new Set(items)), requiredCount: Number(step.count || 1) };
+  }
+
+  // hunt: probabilistic; rely on per-behavior flag, not delta. Skip.
+  return null;
+}
+
+function getInventorySum(bot: Bot, items: string[]): number {
+  let total = 0;
+  for (const name of items) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      total += getItemCountInInventory(bot as any, name);
+    } catch (_) {}
+  }
+  return total;
 }
 
 /**
@@ -191,11 +257,19 @@ export function buildStateMachineForPath(
           if (!finished) return false;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
           if ((parent as any).stepSucceeded === false) return false;
+          // Defer forward progress while the prior step's safety-net grace
+          // window is still pending — gives the inventory-delta check a chance
+          // to flip stepSucceeded=false before we move on.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+          if ((parent as any).__safetyNetPending === true) return false;
           return true;
         };
 
     const stepIndex = index;
     const stepDesc = formatStepDescription(step, stepIndex);
+    const descriptor = computeOutputDescriptor(step);
+    let baselineDelivered = 0;
+    let firstFinishedAt: number | null = null;
 
     transitions.push(new StateTransition({
       parent,
@@ -203,6 +277,12 @@ export function buildStateMachineForPath(
       name: `step:${stepIndex}:${step.action}:${step.what}`,
       shouldTransition: should,
       onTransition: () => {
+        if (descriptor) {
+          baselineDelivered = getInventorySum(bot, descriptor.watchedItems);
+        }
+        firstFinishedAt = null;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+        (st as any).__safetyNetPending = !!descriptor;
         logger.info(`PathBuilder: ${stepDesc}`);
         if (typeof onStepEntered === 'function') {
           onStepEntered(stepIndex);
@@ -210,8 +290,10 @@ export function buildStateMachineForPath(
       }
     }));
 
-    // Abort plan early if a step failed or a tool issue was detected
-    // This prevents cascading failures where subsequent steps consume shared ingredients
+    // Abort plan early if a step failed, a tool issue was detected, or the
+    // step finished without delivering its declared output. The inventory-delta
+    // safety net is a backstop for behaviors that forget to set
+    // stepSucceeded=false on their own failure paths.
     {
       const ctx = executionContext;
       transitions.push(new StateTransition({
@@ -221,8 +303,29 @@ export function buildStateMachineForPath(
         shouldTransition: () => {
           const finished = st && typeof st.isFinished === 'function' ? st.isFinished() : true;
           if (!finished) return false;
+
           // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
-          return (st as any).stepSucceeded === false || (ctx && ctx.toolIssueDetected);
+          if ((st as any).stepSucceeded === false) return true;
+          if (ctx && ctx.toolIssueDetected) return true;
+
+          // Safety net: descriptor present, no explicit failure flag, wait for sync grace
+          if (!descriptor) return false;
+          if (firstFinishedAt === null) firstFinishedAt = Date.now();
+          if (Date.now() - firstFinishedAt < 250) return false;
+
+          const delivered = getInventorySum(bot, descriptor.watchedItems) - baselineDelivered;
+          if (delivered < descriptor.requiredCount) {
+            const itemDesc = descriptor.watchedItems.join('|');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+            (st as any).stepSucceeded = false;
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+            (st as any).stepFailureReason = `output_shortfall:${itemDesc}:${delivered}/${descriptor.requiredCount}`;
+            return true;
+          }
+          // Grace elapsed and delivery satisfied — release forward progress.
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+          (st as any).__safetyNetPending = false;
+          return false;
         },
         onTransition: () => {
           shared.failed = true;
@@ -251,7 +354,16 @@ export function buildStateMachineForPath(
     parent: prev,
     child: exit,
     name: 'final-exit',
-    shouldTransition: () => (prev && typeof prev.isFinished === 'function' ? prev.isFinished() : true),
+    shouldTransition: () => {
+      const finished = prev && typeof prev.isFinished === 'function' ? prev.isFinished() : true;
+      if (!finished) return false;
+      // Defer final exit while the last step's safety-net grace is still
+      // pending. The abort transition will route through `exit` with
+      // shared.failed=true if the inventory delta falls short.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      if ((prev as any).__safetyNetPending === true) return false;
+      return true;
+    },
     onTransition: () => {
       logger.info('PathBuilder: final-exit');
       const success = !shared.failed;

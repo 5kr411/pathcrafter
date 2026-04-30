@@ -132,6 +132,8 @@ function createCraftWithTableIfNeeded(bot: Bot, targets: Targets): any {
     shouldTransition: () => craftWithTableState.isFinished(),
     onTransition: () => {
       stateMachine.stepSucceeded = craftWithTableState.stepSucceeded;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      stateMachine.stepFailureReason = (craftWithTableState as any).stepFailureReason;
       logger.info('BehaviorCraftWithTableIfNeeded: craft with table -> exit');
     }
   });

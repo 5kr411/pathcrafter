@@ -248,6 +248,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       clearHuntTimeout();
       cleanupEntityTracking();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = 'no_entity_found';
       logger.info('BehaviorHuntEntity: no entity found, exiting');
     }
   });
@@ -260,6 +264,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       clearHuntTimeout();
       cleanupEntityTracking();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = 'find_timeout';
       logger.info('BehaviorHuntEntity: timed out while searching, exiting');
     }
   });
@@ -278,6 +286,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       clearHuntTimeout();
       cleanupEntityTracking();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = 'target_lost';
       logger.info('BehaviorHuntEntity: target lost while approaching, exiting');
       targets.entity = null;
     }
@@ -291,6 +303,10 @@ function createHuntEntityState(bot: Bot, targets: Targets): any {
     onTransition: () => {
       clearHuntTimeout();
       cleanupEntityTracking();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepSucceeded = false;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+      (stateMachine as any).stepFailureReason = 'approach_timeout';
       logger.info('BehaviorHuntEntity: timed out while approaching, exiting');
     }
   });

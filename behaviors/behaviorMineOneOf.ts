@@ -319,6 +319,10 @@ function createMineOneOfState(bot: Bot, targets: Targets): any {
           logger.info(`BehaviorMineOneOf: goal reached! ${collected}/${totalRequiredAmount}`);
         } catch (_) {}
       } else {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+        (stateMachine as any).stepSucceeded = false;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- behavior-node runtime context untyped
+        (stateMachine as any).stepFailureReason = `no_viable_candidate:${collected}/${totalRequiredAmount}`;
         try {
           logger.error(`BehaviorMineOneOf: no viable candidate found; collected ${collected}/${totalRequiredAmount}`);
         } catch (_) {}

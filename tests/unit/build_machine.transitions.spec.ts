@@ -27,6 +27,26 @@ jest.mock('../../behavior_generator/mine', () => ({
   create: () => makeSimpleState()
 }));
 
+// The PathBuilder safety net checks inventory delta against the step's declared
+// output. This unit test mocks the per-step behaviors as no-ops, so we also
+// stub the inventory helper: it returns 0 at step entry (baseline) and then
+// jumps to 999 once the step is "running", so the delta is always large enough
+// to satisfy the safety net. This keeps the test focused on transition
+// ordering rather than delivery verification.
+jest.mock('../../utils/inventory', () => {
+  const actual = jest.requireActual('../../utils/inventory');
+  let calls = 0;
+  return {
+    ...actual,
+    getItemCountInInventory: jest.fn().mockImplementation(() => {
+      calls += 1;
+      // First call per step = baseline (return 0); subsequent = post-step (999).
+      // Steps run sequentially, so alternating odd/even mirrors entry/check.
+      return calls % 2 === 1 ? 0 : 999;
+    })
+  };
+});
+
 describe('unit: buildStateMachineForPath transitions', () => {
   beforeEach(() => {
     jest.useFakeTimers();
