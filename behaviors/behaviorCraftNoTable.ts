@@ -144,7 +144,6 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
 
     const startingCount = getItemCountInInventory(bot, itemName);
     const targetCount = startingCount + additionalNeeded;
-    let currentCount = startingCount;
 
     logger.info(
       `BehaviorCraftNoTable: Starting with ${startingCount} ${itemName}, need ${additionalNeeded} more (target: ${targetCount})`
@@ -177,7 +176,7 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       await ensureInventoryRoom(bot);
       await clearCraftingSlots(bot);
 
-      const remainingNeeded = targetCount - currentCount;
+      const remainingNeeded = targetCount - startingCount;
       const timesToCraft = Math.min(
         Math.ceil(remainingNeeded / recipe.result.count),
         Math.floor(64 / recipe.result.count)
@@ -194,20 +193,18 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
         await new Promise(r => setTimeout(r, 100));
         await bot.craft(recipe, timesToCraft, null);
       }
-      // Wait a tick for server inventory sync to avoid desync from rapid crafting
+      // bot.craft resolved without throwing, but server setSlot packets that
+      // update bot.inventory may still be in flight. Don't trust a synchronous
+      // count check here — the state machine's polling loop verifies the final
+      // count against `baselineCount + targets.amount` over a 20s window.
       await new Promise(r => setTimeout(r, 50));
 
       const newCount = getItemCountInInventory(bot, itemName);
       logger.info(
-        `BehaviorCraftNoTable: Successfully crafted. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`
+        `BehaviorCraftNoTable: craft attempt complete. Inventory now has ${newCount}/${targetCount} ${itemName} (started with ${startingCount})`
       );
 
-      if (newCount === currentCount) {
-        logger.error('BehaviorCraftNoTable: Crafting did not increase item count');
-        return false;
-      }
-
-      return newCount >= targetCount;
+      return true;
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
       logger.error(`BehaviorCraftNoTable: Error crafting ${itemName}: ${errMsg}`);
@@ -297,10 +294,15 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       if (!targets.itemName) return craftingDone;
       const have = getItemCountInInventory(bot, targets.itemName);
       const needed = baselineCount + targets.amount;
-      if (have >= needed) return craftingDone;
+      if (have >= needed) return true;
       const timedOut = Date.now() - waitForCraftStartTime > 20000;
       if (timedOut) return true;
-      return craftingDone;
+      // Real failures (no recipe / missing ingredients / repeated throws)
+      // surface as craftingOk=false. Bail out fast rather than waiting 20s.
+      if (craftingDone && !craftingOk) return true;
+      // Otherwise: bot.craft resolved successfully but inventory may still
+      // be syncing. Keep polling — the timeout above is the safety net.
+      return false;
     },
     onTransition: () => {
       if (!targets.itemName) {

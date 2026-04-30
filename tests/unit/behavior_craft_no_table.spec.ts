@@ -135,6 +135,97 @@ describe('unit: behaviorCraftNoTable', () => {
     expect(counts.spruce_planks).toBe(8);
     invSpy.mockRestore();
   });
+
+  test('inventory sync race: bot.craft resolves before items show up in inventory', async () => {
+    // Reproduces the zero-delta false-success bug: bot.craft's promise
+    // resolves before the server's setSlot packets land. The post-craft
+    // count reads 0, the behavior used to declare failure ("Crafting did
+    // not increase item count") and the executor would wander+retry.
+    // Fix: state machine must keep polling until inventory satisfies the
+    // request or the 20s timeout elapses.
+    const bot = makeBot();
+    const counts: Record<string, number> = { oak_planks: 0 };
+    jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation((...args: any[]) => {
+      const name = String(args[1]);
+      return counts[name] || 0;
+    });
+    (bot.craft as jest.Mock).mockImplementation(async () => {
+      // Resolve immediately, but defer the inventory update — simulating
+      // the real race where setSlot packets arrive ~hundreds of ms later.
+      setTimeout(() => { counts.oak_planks = 4; }, 500);
+    });
+
+    const targets = { itemName: 'oak_planks', amount: 4 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      await runWithFakeClock(bot, sm, { maxMs: 3000, stepMs: 50, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    expect(counts.oak_planks).toBe(4);
+    expect((sm as any).stepSucceeded).not.toBe(false);
+  });
+
+  test('inventory mid-flight: items() reads stale 0 then recovers (negative delta)', async () => {
+    // Reproduces "0/16 torch (started with 8)": bot has 8 torches, crafts
+    // 8 more (target 16). Briefly after bot.craft resolves, items() returns
+    // 0 because in-flight setSlot packets have temporarily nulled the slot.
+    // The behavior should not declare failure on this read — wait for sync.
+    const bot = makeBot();
+    let inventoryFlight = false;
+    const counts: Record<string, number> = { torch: 8 };
+    jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation((...args: any[]) => {
+      const name = String(args[1]);
+      if (inventoryFlight && name === 'torch') return 0;
+      return counts[name] || 0;
+    });
+    (bot.craft as jest.Mock).mockImplementation(async () => {
+      inventoryFlight = true;
+      setTimeout(() => {
+        inventoryFlight = false;
+        counts.torch = 16;
+      }, 500);
+    });
+
+    const targets = { itemName: 'torch', amount: 8 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      await runWithFakeClock(bot, sm, { maxMs: 3000, stepMs: 50, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    expect(counts.torch).toBe(16);
+    expect((sm as any).stepSucceeded).not.toBe(false);
+  });
+
+  test('real failure: missing ingredients still fails fast (no 20s wait)', async () => {
+    // Negative coverage for the fix: a real failure (missing ingredients)
+    // must still bail out quickly via stepSucceeded=false, not stall waiting
+    // for inventory that will never arrive.
+    const bot = makeBot({
+      // Recipe says we need 1 oak_log per plank, but inventory has none.
+      recipesFor: () => [{ requiresTable: false, result: { count: 4 }, delta: [{ id: 1, count: -1 }] }]
+    });
+    // Mock mcData lookup so the delta points at "oak_log" we don't have.
+    const mcData = require('minecraft-data');
+    const realData = mcData('1.20.1');
+    jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation(() => 0);
+
+    const targets = { itemName: 'oak_planks', amount: 4 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      await runWithFakeClock(bot, sm, { maxMs: 1000, stepMs: 50, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    expect((sm as any).stepSucceeded).toBe(false);
+    expect(bot.craft).not.toHaveBeenCalled();
+    // Quiet ts/eslint about unused mc-data sanity import
+    void realData;
+  });
 });
 
 
