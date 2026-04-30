@@ -45,34 +45,28 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
   const waitForCraft = new BehaviorIdle();
   const exit = new BehaviorIdle();
 
-  function clearCraftingSlots(bot: Bot): Promise<void> {
-    const craftingSlotIndices = [1, 2, 3, 4];
-    return new Promise((resolve) => {
-      let completedSlots = 0;
-
-      craftingSlotIndices.forEach((index) => {
-        const slot = bot.inventory.slots[index];
-        if (!slot) {
-          completedSlots++;
-          if (completedSlots === craftingSlotIndices.length) resolve();
-          return;
-        }
-
-        bot
-          .moveSlotItem(index, bot.inventory.firstEmptyInventorySlot())
-          .then(() => {
-            logger.info(`BehaviorCraftNoTable: Moved item from crafting slot ${index} to inventory`);
-            completedSlots++;
-            if (completedSlots === craftingSlotIndices.length) resolve();
-          })
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
-          .catch((err: any) => {
-            logger.error(`BehaviorCraftNoTable: Error moving item from crafting slot ${index}:`, err);
-            completedSlots++;
-            if (completedSlots === craftingSlotIndices.length) resolve();
-          });
-      });
-    });
+  async function clearCraftingSlots(bot: Bot): Promise<void> {
+    // Sequentially: each move must finish (and the resulting setSlot land)
+    // before we sample firstEmptyInventorySlot for the next move. Running
+    // them in parallel lets all four calls resolve to the same destination
+    // because slot updates haven't been confirmed yet, and later moves
+    // overwrite earlier ones.
+    for (const index of [1, 2, 3, 4]) {
+      const slot = bot.inventory.slots[index];
+      if (!slot) continue;
+      const dest = bot.inventory.firstEmptyInventorySlot();
+      if (dest == null || dest < 0) {
+        logger.warn(`BehaviorCraftNoTable: no empty inventory slot to clear crafting slot ${index}`);
+        continue;
+      }
+      try {
+        await bot.moveSlotItem(index, dest);
+        logger.info(`BehaviorCraftNoTable: Moved item from crafting slot ${index} to inventory slot ${dest}`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- catch clause default type
+      } catch (err: any) {
+        logger.error(`BehaviorCraftNoTable: Error moving item from crafting slot ${index}:`, err);
+      }
+    }
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
@@ -176,9 +170,23 @@ function createCraftNoTableState(bot: Bot, targets: Targets): any {
       await ensureInventoryRoom(bot);
       await clearCraftingSlots(bot);
 
-      const remainingNeeded = targetCount - startingCount;
+      // Re-capture pre-craft count AFTER ensureInventoryRoom — the gate may
+      // have dropped some of the target item to free slots. baselineCount
+      // drives the state-machine polling target (`baselineCount + amount`),
+      // so it must reflect what's actually in the inventory right before
+      // bot.craft fires. Without this, a drop turns success into a 20s
+      // timeout because the post-craft count can never reach the original
+      // pre-drop baseline + amount.
+      const preCraftCount = getItemCountInInventory(bot, itemName);
+      baselineCount = preCraftCount;
+      if (preCraftCount !== startingCount) {
+        logger.info(
+          `BehaviorCraftNoTable: ${itemName} count changed during inventory prep (${startingCount} -> ${preCraftCount}); rebaselined`
+        );
+      }
+
       const timesToCraft = Math.min(
-        Math.ceil(remainingNeeded / recipe.result.count),
+        Math.ceil(additionalNeeded / recipe.result.count),
         Math.floor(64 / recipe.result.count)
       );
 

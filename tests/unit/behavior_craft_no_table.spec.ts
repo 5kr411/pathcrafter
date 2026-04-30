@@ -200,6 +200,81 @@ describe('unit: behaviorCraftNoTable', () => {
     expect((sm as any).stepSucceeded).not.toBe(false);
   });
 
+  test('clearCraftingSlots: each move uses a fresh empty slot, no collisions', async () => {
+    // Reproduces a race where clearCraftingSlots sampled
+    // bot.inventory.firstEmptyInventorySlot() synchronously for all four
+    // crafting slots, before any move had finished server-side. All moves
+    // resolved to the same destination, and later moves clobbered earlier
+    // ones (or got rejected). Sequential awaits force a fresh sample
+    // between moves.
+    const bot = makeBot();
+    bot.inventory.slots[1] = { name: 'oak_log', count: 1 };
+    bot.inventory.slots[3] = { name: 'stick', count: 1 };
+    bot.inventory.slots[4] = { name: 'coal', count: 1 };
+    bot.inventory.firstEmptyInventorySlot = () =>
+      bot.inventory.slots.findIndex((s: any, i: number) => !s && i >= 9);
+    // Defer the slot update by one microtask, simulating a server roundtrip
+    // — the synchronous (broken) version of clearCraftingSlots would not
+    // see the updated slots between iterations.
+    (bot.moveSlotItem as jest.Mock).mockImplementation((src: number, dst: number) =>
+      Promise.resolve().then(() => {
+        bot.inventory.slots[dst] = bot.inventory.slots[src];
+        bot.inventory.slots[src] = null;
+      })
+    );
+
+    const counts: Record<string, number> = { stick: 0 };
+    jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation((...args: any[]) => {
+      const name = String(args[1]);
+      return counts[name] || 0;
+    });
+    (bot.craft as jest.Mock).mockImplementation(async () => { counts.stick = 4; });
+
+    const targets = { itemName: 'stick', amount: 4 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      await runWithFakeClock(bot, sm, { maxMs: 3000, stepMs: 50, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    const dests = (bot.moveSlotItem as jest.Mock).mock.calls.map((c: any[]) => c[1]);
+    expect(dests.length).toBeGreaterThanOrEqual(3);
+    expect(new Set(dests).size).toBe(dests.length); // all distinct
+  });
+
+  test('drop during prep: baseline re-captured so success not turned into timeout', async () => {
+    // Reproduces: ensureInventoryRoom may drop the target item to free
+    // slots. baselineCount used to be sampled before that drop, so the
+    // state machine polled `baseline + amount` which was unreachable after
+    // the drop, causing a 20s timeout on what was actually a successful
+    // craft. Re-baselining after the gate runs makes the polling target
+    // reflect post-drop reality.
+    const bot = makeBot();
+    const counts: Record<string, number> = { torch: 8 };
+    jest.spyOn(require('../../utils/inventory'), 'getItemCountInInventory').mockImplementation((...args: any[]) => {
+      const name = String(args[1]);
+      return counts[name] || 0;
+    });
+    jest.spyOn(require('../../utils/inventoryGate'), 'ensureInventoryRoom').mockImplementation(async () => {
+      counts.torch = 0; // gate dropped all the torches
+    });
+    (bot.craft as jest.Mock).mockImplementation(async () => { counts.torch += 8; });
+
+    const targets = { itemName: 'torch', amount: 8 } as any;
+    const sm = createCraftNoTableState(bot, targets);
+
+    await withLoggerSpy(async () => {
+      // Allow up to 22s of fake time so the broken (timeout) path would
+      // surface as stepSucceeded=false. Fixed path exits within ~150ms.
+      await runWithFakeClock(bot, sm, { maxMs: 22000, stepMs: 250, directNested: true });
+    });
+
+    expect((sm as any).isFinished()).toBe(true);
+    expect((sm as any).stepSucceeded).not.toBe(false);
+    expect(counts.torch).toBe(8);
+  });
+
   test('real failure: missing ingredients still fails fast (no 20s wait)', async () => {
     // Negative coverage for the fix: a real failure (missing ingredients)
     // must still bail out quickly via stepSucceeded=false, not stall waiting
