@@ -8,9 +8,10 @@ describe('collect_item', () => {
       startNextTarget: () => { events.push('start'); return Promise.resolve(); },
       isRunning: () => false,
       stop: () => events.push('stop'),
-      getTargets: () => []
+      getTargets: () => [],
+      getNoPlanFailures: () => []
     };
-    const bot = { inventory: { items: () => [], slots: [] } };
+    const bot = { version: '1.20.1', inventory: { items: () => [], slots: [] } };
     const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
 
     const r = await collectItemTool.execute({ targets: [{ item: 'oak_log', count: 4 }] }, ctx);
@@ -27,10 +28,11 @@ describe('collect_item', () => {
       startNextTarget: jest.fn().mockImplementation(() => hang),
       isRunning: () => true,
       stop: jest.fn().mockImplementation(() => resolveHang()),
-      getTargets: () => [{ item: 'oak_log', count: 4 }]
+      getTargets: () => [{ item: 'oak_log', count: 4 }],
+      getNoPlanFailures: () => []
     };
     const ctx: any = {
-      bot: { inventory: { items: () => [], slots: [] } },
+      bot: { version: '1.20.1', inventory: { items: () => [], slots: [] } },
       signal: ctrl.signal,
       targetExecutor,
       agentActionExecutor: {},
@@ -60,10 +62,11 @@ describe('collect_item', () => {
       startNextTarget: jest.fn().mockResolvedValue(undefined),
       isRunning: () => false,
       stop: jest.fn(),
-      getTargets: () => []
+      getTargets: () => [],
+      getNoPlanFailures: () => []
     };
     const ctx: any = {
-      bot: { inventory: { items: () => [], slots: [] } },
+      bot: { version: '1.20.1', inventory: { items: () => [], slots: [] } },
       signal: fakeSignal,
       targetExecutor,
       agentActionExecutor: {},
@@ -90,6 +93,7 @@ describe('collect_item', () => {
     ];
     let call = 0;
     const bot = {
+      version: '1.20.1',
       inventory: {
         items: () => invSnapshots[Math.min(call++, invSnapshots.length - 1)],
         slots: []
@@ -100,7 +104,8 @@ describe('collect_item', () => {
       startNextTarget: jest.fn().mockResolvedValue(undefined),
       isRunning: () => false,
       stop: jest.fn(),
-      getTargets: () => []
+      getTargets: () => [],
+      getNoPlanFailures: () => []
     };
     const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
     const r = await collectItemTool.execute({ targets: [{ item: 'oak_log', count: 4 }] }, ctx);
@@ -108,6 +113,116 @@ describe('collect_item', () => {
     if (r.ok) {
       expect((r.data as any).acquired).toEqual({ oak_log: 3 });
       expect((r.data as any).missing).toEqual({ oak_log: 1 });
+      expect((r.data as any).noPlan).toBeUndefined();
     }
+  });
+
+  describe('unknown_item validation', () => {
+    function makeExecutor() {
+      return {
+        setTargets: jest.fn(),
+        startNextTarget: jest.fn().mockResolvedValue(undefined),
+        isRunning: () => false,
+        stop: jest.fn(),
+        getTargets: () => [],
+        getNoPlanFailures: () => []
+      };
+    }
+
+    it('rejects single bogus item without invoking the planner', async () => {
+      const targetExecutor = makeExecutor();
+      const bot = { version: '1.20.1', inventory: { items: () => [], slots: [] } };
+      const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
+
+      const r = await collectItemTool.execute({ targets: [{ item: 'definitely_not_an_item', count: 1 }] }, ctx);
+
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toMatch(/^unknown_item/);
+        expect(r.error).toContain("'definitely_not_an_item'");
+        expect(r.invalidItems).toEqual(['definitely_not_an_item']);
+      }
+      expect(targetExecutor.setTargets).not.toHaveBeenCalled();
+      expect(targetExecutor.startNextTarget).not.toHaveBeenCalled();
+    });
+
+    it('rejects whole call when mixing valid and invalid items, listing every invalid name', async () => {
+      const targetExecutor = makeExecutor();
+      const bot = { version: '1.20.1', inventory: { items: () => [], slots: [] } };
+      const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
+
+      const r = await collectItemTool.execute({
+        targets: [
+          { item: 'oak_log', count: 4 },
+          { item: 'cooked_beef_premium', count: 2 },
+          { item: 'definitely_fake', count: 1 },
+          { item: 'iron_pickaxe', count: 1 }
+        ]
+      }, ctx);
+
+      expect(r.ok).toBe(false);
+      if (!r.ok) {
+        expect(r.error).toMatch(/^unknown_item/);
+        expect(r.invalidItems).toEqual(['cooked_beef_premium', 'definitely_fake']);
+      }
+      expect(targetExecutor.setTargets).not.toHaveBeenCalled();
+      expect(targetExecutor.startNextTarget).not.toHaveBeenCalled();
+    });
+
+    it('proceeds when all items are valid', async () => {
+      const targetExecutor = makeExecutor();
+      const bot = { version: '1.20.1', inventory: { items: () => [], slots: [] } };
+      const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
+
+      const r = await collectItemTool.execute({
+        targets: [{ item: 'oak_log', count: 4 }, { item: 'iron_pickaxe', count: 1 }]
+      }, ctx);
+
+      expect(r.ok).toBe(true);
+      expect(targetExecutor.setTargets).toHaveBeenCalled();
+    });
+  });
+
+  describe('no_plan reporting', () => {
+    it('surfaces noPlan failures from executor in data.noPlan', async () => {
+      const targetExecutor = {
+        setTargets: jest.fn(),
+        startNextTarget: jest.fn().mockResolvedValue(undefined),
+        isRunning: () => false,
+        stop: jest.fn(),
+        getTargets: () => [],
+        getNoPlanFailures: () => [{ item: 'cooked_beef', count: 1 }]
+      };
+      const bot = { version: '1.20.1', inventory: { items: () => [], slots: [] } };
+      const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
+
+      const r = await collectItemTool.execute({ targets: [{ item: 'cooked_beef', count: 1 }] }, ctx);
+
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect((r.data as any).noPlan).toEqual([{ item: 'cooked_beef', count: 1 }]);
+        expect((r.data as any).missing).toEqual({ cooked_beef: 1 });
+      }
+    });
+
+    it('omits data.noPlan when there are no no-plan failures', async () => {
+      const targetExecutor = {
+        setTargets: jest.fn(),
+        startNextTarget: jest.fn().mockResolvedValue(undefined),
+        isRunning: () => false,
+        stop: jest.fn(),
+        getTargets: () => [],
+        getNoPlanFailures: () => []
+      };
+      const bot = { version: '1.20.1', inventory: { items: () => [], slots: [] } };
+      const ctx: any = { bot, signal: new AbortController().signal, targetExecutor, agentActionExecutor: {}, safeChat: () => {} };
+
+      const r = await collectItemTool.execute({ targets: [{ item: 'oak_log', count: 1 }] }, ctx);
+
+      expect(r.ok).toBe(true);
+      if (r.ok) {
+        expect((r.data as any).noPlan).toBeUndefined();
+      }
+    });
   });
 });

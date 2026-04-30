@@ -8,6 +8,7 @@ export interface TargetExecutorLike {
   stop(): void;
   isRunning(): boolean;
   getTargets(): { item: string; count: number }[];
+  getNoPlanFailures?(): { item: string; count: number }[];
   resetAndRestart?(): void;
 }
 
@@ -37,7 +38,7 @@ export interface ToolContext {
 
 export type ToolResult =
   | { ok: true; data?: unknown }
-  | { ok: false; error: string; partial?: unknown; cancelled?: boolean; preempted?: boolean };
+  | { ok: false; error: string; partial?: unknown; cancelled?: boolean; preempted?: boolean; invalidItems?: string[] };
 
 export interface ToolImpl<TInput = unknown> {
   schema: ToolSchema;

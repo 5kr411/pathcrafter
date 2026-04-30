@@ -1,7 +1,31 @@
 import type { ToolImpl, TargetExecutorLike } from '../types';
 import { getInventoryObject } from '../../../../utils/inventory';
+import { resolveMcData } from '../../../../action_tree/utils/mcDataResolver';
 
 type CollectItemInput = { targets: { item: string; count: number }[] };
+
+function findUnknownItems(
+  targets: { item: string; count: number }[],
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- bot is untyped
+  bot: any
+): string[] {
+  let mcData: { itemsByName?: Record<string, unknown> } | undefined;
+  try {
+    mcData = resolveMcData(bot?.version);
+  } catch (_) {
+    return [];
+  }
+  if (!mcData || !mcData.itemsByName) return [];
+  const invalid: string[] = [];
+  const seen = new Set<string>();
+  for (const t of targets) {
+    const name = String(t?.item ?? '');
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    if (!mcData.itemsByName[name]) invalid.push(name);
+  }
+  return invalid;
+}
 
 export const collectItemTool: ToolImpl<CollectItemInput> = {
   schema: {
@@ -31,6 +55,17 @@ export const collectItemTool: ToolImpl<CollectItemInput> = {
     if (!Array.isArray(targets) || targets.length === 0) {
       return { ok: false, error: 'targets must be a non-empty array' };
     }
+
+    const invalidItems = findUnknownItems(targets, ctx.bot);
+    if (invalidItems.length > 0) {
+      const list = invalidItems.map(n => `'${n}'`).join(', ');
+      return {
+        ok: false,
+        error: `unknown_item: ${list} ${invalidItems.length === 1 ? 'is' : 'are'} not valid Minecraft item name(s); valid names match minecraft-data for the server's protocol version`,
+        invalidItems
+      };
+    }
+
     const invBefore = getInventoryObject(ctx.bot);
     ctx.targetExecutor.setTargets(targets);
 
@@ -64,7 +99,16 @@ export const collectItemTool: ToolImpl<CollectItemInput> = {
       const got = acquired[t.item] ?? 0;
       if (got < t.count) missing[t.item] = t.count - got;
     }
-    return { ok: true, data: { acquired, missing } };
+    const noPlanRaw = ctx.targetExecutor.getNoPlanFailures?.() ?? [];
+    const noPlan = Array.isArray(noPlanRaw)
+      ? noPlanRaw.map(p => ({ item: p.item, count: p.count }))
+      : [];
+    const data: { acquired: Record<string, number>; missing: Record<string, number>; noPlan?: { item: string; count: number }[] } = {
+      acquired,
+      missing
+    };
+    if (noPlan.length > 0) data.noPlan = noPlan;
+    return { ok: true, data };
   }
 };
 

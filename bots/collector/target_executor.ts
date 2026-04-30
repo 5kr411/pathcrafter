@@ -224,6 +224,8 @@ export class TargetExecutor implements StateBehavior {
   private sequenceTargets: Target[] = [];
   private sequenceIndex = 0;
   private targetRetryCount = new Map<number, number>();
+  private noPlanFailures: Target[] = [];
+  private noPlanForCurrentTarget = false;
   private running = false;
   private currentTargetStartInventory: InventoryObject = {};
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- untyped plugin event payload
@@ -441,10 +443,16 @@ export class TargetExecutor implements StateBehavior {
     this.sequenceTargets = targets.slice();
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
+    this.noPlanFailures = [];
+    this.noPlanForCurrentTarget = false;
   }
 
   getTargets(): Target[] {
     return this.sequenceTargets;
+  }
+
+  getNoPlanFailures(): Target[] {
+    return this.noPlanFailures.slice();
   }
 
   startNextTarget(): Promise<void> {
@@ -510,6 +518,8 @@ export class TargetExecutor implements StateBehavior {
     this.running = true;
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
+    this.noPlanFailures = [];
+    this.noPlanForCurrentTarget = false;
     this.restartPending = true;
     this.restartReady = false;
     this.restartDelayUntil = Date.now() + RESTART_DELAY_MS;
@@ -524,6 +534,8 @@ export class TargetExecutor implements StateBehavior {
     this.sequenceTargets = [];
     this.sequenceIndex = 0;
     this.targetRetryCount.clear();
+    this.noPlanFailures = [];
+    this.noPlanForCurrentTarget = false;
     this.clearActiveState();
     // Invalidate any in-flight worker planning job so its result is discarded
     // on arrival instead of auto-resuming into the cancelled target.
@@ -547,6 +559,7 @@ export class TargetExecutor implements StateBehavior {
     this.wanderDone = false;
     this.planPath = null;
     this.planningOutcome = 'pending';
+    this.noPlanForCurrentTarget = false;
 
     if (!this.running) {
       this.planningOutcome = 'idle';
@@ -713,6 +726,7 @@ export class TargetExecutor implements StateBehavior {
         return;
       }
       this.safeChat('no viable paths found');
+      this.noPlanForCurrentTarget = true;
       this.planningOutcome = 'failure';
       return;
     }
@@ -834,6 +848,29 @@ export class TargetExecutor implements StateBehavior {
 
   handleTargetFailure(): void {
     this.failureHandled = true;
+
+    if (this.noPlanForCurrentTarget) {
+      this.shouldWander = false;
+      const failTarget = this.sequenceTargets[this.sequenceIndex];
+      if (failTarget) {
+        this.noPlanFailures.push({ item: failTarget.item, count: failTarget.count });
+      }
+      const failDesc = failTarget ? `${failTarget.item} x${failTarget.count}` : 'unknown';
+      const failElapsedMs = this.targetStartTime ? Date.now() - this.targetStartTime : 0;
+      const failElapsedSec = (failElapsedMs / 1000).toFixed(1);
+      logger.milestone(`target ${this.sequenceIndex + 1} unreachable (no_plan), moving to next target | ${failDesc} (${failElapsedSec}s)`);
+      this.safeChat(`no plan for ${failDesc}, skipping`);
+      this.targetRetryCount.delete(this.sequenceIndex);
+      this.sequenceIndex++;
+      this.delayUntil = Date.now() + SKIP_DELAY_MS;
+      this.noPlanForCurrentTarget = false;
+
+      if (this.sequenceIndex >= this.sequenceTargets.length) {
+        this.completeAllTargets();
+      }
+      return;
+    }
+
     const retryCount = this.targetRetryCount.get(this.sequenceIndex) || 0;
 
     const resolution = resolveTargetFailure({
